@@ -1,0 +1,13 @@
+---
+# ===========================================================================
+# Shared, demo-agnostic AAP configuration. Applies to every environment.
+# ===========================================================================
+
+# This catalog item ships AAP 2.6 on the OpenShift operator. Pin to it.
+# (aap_config targets 2.7 — do not copy its connection settings verbatim.)
+aap_target_version: "2.6"
+
+aap_organization_name: "Default"
+
+# Prefer ansible.platform over ansible.controller — controller is legacy.
+# Any playbook that creates a token must delete it in an `always:` block.

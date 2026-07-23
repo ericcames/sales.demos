@@ -1,0 +1,18 @@
+---
+# ===========================================================================
+# connection.yml — STRUCTURE ONLY. Committed. Never holds an environment
+# -specific value.
+#
+# Every hostname, URL, token, and password comes from secrets.yml (gitignored,
+# see secrets.yml.example). That split is why re-pointing at a fresh RHDP
+# environment means editing exactly one file.
+# ===========================================================================
+
+aap_env_name: "sandbox"
+
+# Resolved from secrets.yml — do not inline real values here.
+aap_validate_certs: "{{ aap_validate_certs | default(false) }}"
+aap_request_timeout: 30
+
+# Namespace the demo VMs are created in.
+ocpvirt_namespace: "sales-demos-sandbox"
