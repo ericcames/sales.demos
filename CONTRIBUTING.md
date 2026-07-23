@@ -1,62 +1,96 @@
 # Contributing
 
-Contributions to `aap_config` are welcome — playbooks, inventory/CaC content,
-GitHub Actions, runbooks, AI-assist prompts, and docs. This repo is a
-**config-as-code starter kit** that teaches sysadmins to export AAP 2.7 objects
-from a production instance into Git and load them into on-prem dev/qa/prod via
-GitHub Actions. **Read [`AGENTS.md`](AGENTS.md) first** — it is the canonical
-guidance (purpose, layout, the Ansible standards, how to run everything). Then
-skim [`README.md`](README.md) and [`ROADMAP.md`](ROADMAP.md).
+## Never commit
 
-## Content & secret policy
-
-**Never commit:**
-
-- AAP tokens, passwords, OAuth tokens, or vault passwords
+- AAP tokens, passwords, OAuth tokens, bearer tokens, or vault passwords
 - Customer or company names, or any hostname that identifies a customer's estate
-  — use generic placeholders (e.g. `controller-<id>.apps.<cluster>.rhdp.net`)
-  in `.example` files and docs
-- Real values in exported credential files — they must stay `{{ vaulted_* }}`
+- Real values in any tracked file, commit message, PR title or body, issue, or
+  CHANGELOG entry
 
-All secrets — connection credentials AND CaC object values — go in
-vault-encrypted `inventory/group_vars/<env>/secrets.yml`. Non-secret connection
-settings (hostname, cert validation) go in the committed `connection.yml` in the
-same directory. Audit every diff before pushing. The pre-commit hook and CI run
-`utilities/check-vault-encrypted.sh` + `utilities/scan-exports.sh`.
+Use generic placeholders in committed docs and examples:
+`api.cluster-<id>.dyn.redhatworkshops.io`.
 
-**Ephemeral lab URLs are fine to commit.** RHDP `*.redhatworkshops.io` hostnames
-and their cluster IDs identify a short-lived demo environment, not a customer, so
-they live in the real `connection.yml` as above. The rule is about *customer*
-identity, not about URLs in general.
+## Where values live
 
-## The Ansible standard that trips people up
+`inventory/group_vars/<env>/secrets.yml` (gitignored) is the **only** secrets
+mechanism in this repo. `connection.yml` is committed and holds structure only.
 
-Object variables load **implicitly from `inventory/group_vars/`** by group
-membership — **do not** add `vars_files:` or `include_vars:` to load them from a
-files folder. Environment is selected with `--limit <env>`. Shared objects live in
-`group_vars/aap/`; per-env deltas + secrets in `group_vars/<env>/`; they merge via
-the `*_all` / `*_<env>` suffix convention and `dispatch_include_wildcard_vars`.
-See AGENTS.md → "Ansible standards".
+**Every environment-specific value goes in `secrets.yml`** — AAP hostname,
+OpenShift API URL, tokens, quay credentials — not only the strictly secret ones.
+
+The reason is operational rather than security: a new RHDP environment should
+mean editing exactly one file. Re-point `secrets.yml` and everything follows.
+`connection.yml` never changes because nothing in it varies per environment.
+
+> **Note for anyone coming from [`aap_config`](https://github.com/ericcames/aap_config):**
+> that repo says ephemeral RHDP lab URLs are fine to commit, and on pure secrecy
+> grounds that is true — a `*.redhatworkshops.io` hostname is publicly
+> resolvable, is not a credential, and points at a cluster that expires in days.
+> This repo still keeps them out of `connection.yml`, for a different reason: the
+> one-file-edit property above. Two rules, two rationales, no contradiction.
+>
+> Tokens are a separate matter in both repos. A live bearer token in a public
+> repo is scraped within minutes. That one is absolute.
+
+`secrets.yml.example` is the **only** `.example` file in the repo. Do not create
+`connection.yml.example` or any other `.example` twin, and do not add a second
+sourceable secrets file — `docs/dev-environment.sh` is retired here.
+
+## Audit before every push
+
+This repo is public.
+
+```bash
+git ls-files -z | xargs -0 grep -nEi \
+  'redhatworkshops|sha256~|[0-9]{1,3}(\.[0-9]{1,3}){3}|BEGIN [A-Z ]*PRIVATE KEY'
+```
+
+Only placeholder lines in `secrets.yml.example`, prose, and the audit pattern
+itself may match. Keep the pattern generic — never hardcode a real cluster ID
+into the check.
+
+## Ansible standards
+
+- Variables load **implicitly from `inventory/group_vars/`** by group membership.
+  Do not add `vars_files:` or `include_vars:` to load them from a files folder.
+  Select an environment with `--limit <env>`.
+- Shared, demo-agnostic config lives in `group_vars/aap/`; per-environment
+  values in `group_vars/<env>/`.
+- **AAP 2.6** — pin to it. This catalog item ships 2.6 on the OpenShift operator.
+- **`ansible.platform` over `ansible.controller`** — controller is legacy.
+- **Always clean up tokens** — any playbook that creates one must delete it in an
+  `always:` block.
+- **Never add a project-local `ansible.cfg`** — Ansible picks one cfg file and
+  does not merge. A local one shadows `~/.ansible.cfg`, which holds the working
+  Automation Hub token, and breaks certified content installs. Use CLI flags or
+  environment variables instead.
+
+## Skills and playbooks
+
+Every phase runs both as a Claude Code skill and as an AAP job template. The
+skill never reimplements logic — both drive the same playbook.
+
+- `playbooks/<phase>.yml` does the work: idempotent, no interactive prompts,
+  every input via `extra_vars`, required vars asserted at the top so both entry
+  points fail identically.
+- `.claude/skills/<name>/SKILL.md` does preflight checks, collects inputs, and
+  invokes the playbook.
+- Survey variable names, skill prompts, and playbook `extra_vars` must match
+  exactly. **The variable names are the contract.**
 
 ## Workflow
 
-1. Branch off `main` (`main` is protected — all changes land via PR).
-2. Make one focused change. Keep YAML and Ansible clean:
-   - `yamllint .` against [`.yamllint`](.yamllint)
-   - `ansible-lint` against [`.ansible-lint`](.ansible-lint)
+1. **Open an issue before writing code.** Label it — run
+   `gh label list --repo ericcames/sales.demos` and apply every label that fits.
+2. Branch off `main`.
+3. Make one focused change. One concern per PR — group by shared root cause, not
+   item count. The test: would you revert these together? Then ship them
+   together. Behavior changes and anything risky stay isolated regardless.
+4. Update [`CHANGELOG.md`](CHANGELOG.md) under `[Unreleased]`.
+5. Update [`ROADMAP.md`](ROADMAP.md) if the plan changes, and
+   [`CLAUDE.md`](CLAUDE.md) if a convention changes.
+6. Run the leak audit above.
+7. Open a PR with a summary, a test plan, and a rollback note.
 
-   Both run in CI on every PR. If you call a new certified module that isn't
-   installed in CI, add it to `mock_modules` in `.ansible-lint`.
-3. Update [`CHANGELOG.md`](CHANGELOG.md) under `[Unreleased]`
-   (Added / Changed / Fixed / Removed).
-4. Update [`ROADMAP.md`](ROADMAP.md) phase status if the plan changes, and
-   [`AGENTS.md`](AGENTS.md) if the layout or a convention changes.
-5. Open a PR using the template; fill in Summary, Test plan, and Risk/rollback.
-
-## Pull requests
-
-- One concern per PR — group by shared root cause, not item count. The test:
-  would you revert these changes together?
-- Descriptive title, e.g. `Add gateway_organizations to config/all`.
-- Behavior changes and anything risky stay isolated.
-- Additive only — don't remove old capabilities until replacements are proven.
+**Additive only** — do not remove a working capability until its replacement is
+proven.
