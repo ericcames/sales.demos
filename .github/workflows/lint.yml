@@ -18,8 +18,8 @@ jobs:
   yamllint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
       - run: pip install yamllint
@@ -28,8 +28,8 @@ jobs:
   ansible-lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
       - run: pip install ansible-lint
@@ -38,7 +38,7 @@ jobs:
   secret-guard:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: No live credentials or RHDP identifiers in tracked files
         # This repo is public. CONTRIBUTING.md documents the same check as a
         # manual pre-push step; running it here means it cannot be skipped at
@@ -48,7 +48,7 @@ jobs:
   skills-frontmatter:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Skills stay portable across Claude Code and Copilot CLI
         # yamllint is blind to Markdown frontmatter, so nothing else catches a
         # SKILL.md that stops loading. Copilot CLI accepts only name/description/
