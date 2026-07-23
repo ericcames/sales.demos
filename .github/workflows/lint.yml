@@ -5,7 +5,13 @@ name: Lint
 # (certified collections aren't installed in CI; .ansible-lint mocks them).
 #
 # Adapted from ericcames/aap_config. Its deploy-{dev,qa,prod} workflows are
-# deliberately NOT ported yet — see the "CI deployment" issue for why.
+# deliberately NOT ported, and will not be (issue #7).
+#
+# Nothing deploys from CI. Deploys run via ansible-playbook, either wrapped by a
+# skill in .claude/skills/ or as an AAP job template — both driving the same
+# playbooks/<phase>.yml. That keeps every environment-specific value in the
+# gitignored inventory/group_vars/<env>/secrets.yml with no second copy in
+# GitHub Environment secrets, so a new RHDP env stays a one-file edit.
 on:
   pull_request:
   push:

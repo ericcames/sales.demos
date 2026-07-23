@@ -108,6 +108,32 @@ in this repo, which for repo-specific skills is the correct scope.
 None are implemented yet — see the [roadmap](ROADMAP.md) and the open issues. CI
 enforces that every skill added here appears in this table.
 
+## Running a phase
+
+**Nothing deploys from CI.** GitHub Actions is a pull-request gate only — lint,
+secret hygiene, and skill portability. Everything that touches an environment
+runs through `ansible-playbook`.
+
+Locally, against the sandbox environment:
+
+```bash
+ansible-galaxy collection install -r collections/requirements.yml
+
+ansible-playbook playbooks/setup.yml \
+  -i inventory --limit sandbox
+```
+
+Or open this repo in Claude Code and invoke the matching skill, which runs the
+same playbook after collecting inputs and checking prerequisites.
+
+From AAP, the same playbook runs as a job template with survey answers mapped to
+the same `extra_vars`. All three paths are the same code.
+
+That is deliberate: keeping deploys out of CI means every environment-specific
+value stays in the gitignored `secrets.yml`, with no second copy living in
+GitHub Environment secrets. Re-pointing at a fresh RHDP environment stays a
+one-file edit. See [#7](https://github.com/ericcames/sales.demos/issues/7).
+
 ## Conventions
 
 See [`CLAUDE.md`](CLAUDE.md). The short version: AAP 2.6, `ansible.platform`

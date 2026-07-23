@@ -59,6 +59,16 @@ Skills live in `.claude/skills/` and are discovered natively — no marketplace,
 no `plugin.json`. The `aap-skills` plugin stays installed and untouched for
 other demos.
 
+### Nothing deploys from CI
+
+GitHub Actions is a pull-request gate only: lint, secret hygiene, skill
+portability. Do not add a deploy workflow — that was decided and closed in #7.
+
+Anything touching an environment runs via `ansible-playbook`, either wrapped by
+a skill or as an AAP job template. This is what keeps every environment-specific
+value in the gitignored `secrets.yml` instead of a second copy in GitHub
+Environment secrets.
+
 ## Ansible
 
 - **AAP 2.6** — this catalog item ships 2.6 on the OpenShift operator. Pin to it.

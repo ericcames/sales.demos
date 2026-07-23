@@ -28,5 +28,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - GitHub CODEOWNERS, PR template, issue templates, and security policy.
 
 ### Notes
-- `aap_config`'s `deploy-{dev,qa,prod}` workflows were deliberately not ported.
-  See the tracking issue.
+- `aap_config`'s `deploy-{dev,qa,prod}` workflows were deliberately not ported
+  and will not be (#7). CI is a PR gate only; nothing deploys from GitHub
+  Actions. Deploys run via `ansible-playbook` — wrapped by a skill locally, or
+  as an AAP job template — which keeps every environment-specific value in the
+  gitignored `secrets.yml` with no second copy in GitHub Environment secrets.
