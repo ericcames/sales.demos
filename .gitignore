@@ -1,0 +1,42 @@
+# ---------------------------------------------------------------------------
+# Secrets — the ONLY secrets mechanism in this repo is
+# inventory/group_vars/<env>/secrets.yml. Every environment-specific value
+# lives there: AAP hostname, OpenShift API URL, tokens, quay credentials.
+# A new RHDP env means editing exactly one file.
+#
+# Do NOT add a second sourceable secrets file (no docs/dev-environment.sh).
+# ---------------------------------------------------------------------------
+inventory/group_vars/*/secrets.yml
+!inventory/group_vars/*/secrets.yml.example
+
+# Kubeconfigs and cluster credentials
+**/kubeconfig
+*.kubeconfig
+.kube/
+
+# ---------------------------------------------------------------------------
+# Terraform — state can contain secrets in plaintext; tfvars almost always do.
+# ---------------------------------------------------------------------------
+.terraform/
+.terraform.lock.hcl.bak
+*.tfstate
+*.tfstate.*
+*.tfvars
+*.tfvars.json
+crash.log
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+
+# Ansible
+*.retry
+collections/ansible_collections/
+!collections/requirements.yml
+
+# Editor / OS
+.vscode/
+.idea/
+*.swp
+.DS_Store
+__pycache__/
