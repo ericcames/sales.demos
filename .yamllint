@@ -1,0 +1,29 @@
+---
+# yamllint config for sales.demos (CI lint gate).
+# Codifies the standard .github/workflows/lint.yml enforces.
+extends: default
+
+ignore: |
+  collections/ansible_collections/
+  # secrets.yml is gitignored, but ignore it here too so a local copy never
+  # trips the linter mid-work.
+  inventory/group_vars/*/secrets.yml
+
+rules:
+  # Kubernetes/KubeVirt manifests and long env-var lookups run past 80. Keep
+  # readability without hard-wrapping — warn, don't fail.
+  line-length:
+    max: 200
+    level: warning
+  truthy:
+    allowed-values: ["true", "false", "yes", "no"]
+    check-keys: false
+  comments:
+    min-spaces-from-content: 1
+  comments-indentation: disable
+  # Kept aligned with ansible-lint's embedded yamllint so the two don't disagree.
+  braces:
+    max-spaces-inside: 1
+  octal-values:
+    forbid-implicit-octal: true
+    forbid-explicit-octal: true

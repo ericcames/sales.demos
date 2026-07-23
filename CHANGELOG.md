@@ -19,3 +19,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the repo's only `.example` file.
 - `.gitignore` as the first commit, so no environment-specific value can enter
   history.
+- CI lint gate ported and adapted from `aap_config`: yamllint, ansible-lint,
+  a secret-hygiene guard, and a portability check on in-repo skills.
+- `utilities/check-no-secrets.sh` — enforces the pre-push audit automatically.
+  Matches the shape of real credentials so docs and `.example` placeholders pass
+  while genuine values fail the build.
+- `.yamllint`, `.ansible-lint`, and pinned `collections/requirements.yml`.
+- GitHub CODEOWNERS, PR template, issue templates, and security policy.
+
+### Notes
+- `aap_config`'s `deploy-{dev,qa,prod}` workflows were deliberately not ported.
+  See the tracking issue.

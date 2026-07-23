@@ -1,0 +1,25 @@
+# Code owners for sales.demos.
+# GitHub requests review from these owners when matching paths change.
+
+# Catch-all
+*                       @ericcames
+
+# Conventions contract — changes here need extra scrutiny.
+/CLAUDE.md              @ericcames
+/CONTRIBUTING.md        @ericcames
+
+# Secret hygiene — this repo is public.
+/.gitignore             @ericcames
+/utilities/             @ericcames
+
+# Demo content, infrastructure, and CI
+/inventory/             @ericcames
+/playbooks/             @ericcames
+/terraform/             @ericcames
+/demos/                 @ericcames
+/.claude/skills/        @ericcames
+/.github/workflows/     @ericcames
+
+# Governance + docs
+/docs/                  @ericcames
+/ROADMAP.md             @ericcames

@@ -95,6 +95,19 @@ Skills here live in `.claude/skills/` and are discovered natively when this repo
 is open — no marketplace, no `plugin.json`. They load only while you are working
 in this repo, which for repo-specific skills is the correct scope.
 
+### Skills
+
+| Skill | Playbook | Does |
+|---|---|---|
+| `ocpvirt-setup` | `playbooks/setup.yml` | Bootstrap AAP and install OpenShift Virtualization |
+| `ocpvirt-provision` | `playbooks/provision_vm.yml` | Run Terraform, register the new VMs in AAP |
+| `ocpvirt-windows-image` | `playbooks/build_windows_golden.yml` | Build and publish the Windows golden image |
+| `ocpvirt-demo` | `playbooks/run_demo.yml` | Launch the layered daily demo |
+| `ocpvirt-teardown` | `playbooks/teardown.yml` | Destroy VMs; keep CNV and the golden image |
+
+None are implemented yet — see the [roadmap](ROADMAP.md) and the open issues. CI
+enforces that every skill added here appears in this table.
+
 ## Conventions
 
 See [`CLAUDE.md`](CLAUDE.md). The short version: AAP 2.6, `ansible.platform`

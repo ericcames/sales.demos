@@ -1,0 +1,18 @@
+---
+# Pinned collections. CI does not install these (offline, no Hub token) —
+# .ansible-lint mocks what the playbooks reference. Install locally with:
+#   ansible-galaxy collection install -r collections/requirements.yml
+#
+# Never add a project-local ansible.cfg to make this work: Ansible picks ONE
+# cfg file and does not merge. A local one shadows ~/.ansible.cfg, which holds
+# the working Automation Hub token, and breaks certified content installs.
+collections:
+  # AAP 2.6 config-as-code.
+  - name: infra.aap_configuration
+    version: "4.2.0"
+  - name: ansible.platform
+  - name: ansible.controller   # legacy — prefer ansible.platform
+
+  # OpenShift / KubeVirt.
+  - name: kubernetes.core
+  - name: redhat.openshift_virtualization

@@ -1,0 +1,89 @@
+---
+name: Lint
+# PR gate. yamllint + ansible-lint + the secret-hygiene guard + a portability
+# check on in-repo skills. No secrets needed: ansible-lint runs offline
+# (certified collections aren't installed in CI; .ansible-lint mocks them).
+#
+# Adapted from ericcames/aap_config. Its deploy-{dev,qa,prod} workflows are
+# deliberately NOT ported yet — see the "CI deployment" issue for why.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  yamllint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install yamllint
+      - run: yamllint .
+
+  ansible-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install ansible-lint
+      - run: ansible-lint
+
+  secret-guard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: No live credentials or RHDP identifiers in tracked files
+        # This repo is public. CONTRIBUTING.md documents the same check as a
+        # manual pre-push step; running it here means it cannot be skipped at
+        # the end of a long demo build.
+        run: bash utilities/check-no-secrets.sh
+
+  skills-frontmatter:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Skills stay portable across Claude Code and Copilot CLI
+        # yamllint is blind to Markdown frontmatter, so nothing else catches a
+        # SKILL.md that stops loading. Copilot CLI accepts only name/description/
+        # license; an extra key is the likeliest way to silently break one tool.
+        run: |
+          bad=0
+          shopt -s nullglob
+          for f in .claude/skills/*/SKILL.md; do
+            dir=$(basename "$(dirname "$f")")
+            if [ "$(head -n1 "$f")" != "---" ]; then
+              echo "::error::$f must start with '---' frontmatter"; bad=1; continue
+            fi
+            # Frontmatter = lines between the first '---' and the next one.
+            fm=$(awk 'NR>1{if($0=="---")exit; print}' "$f")
+            name=$(printf '%s\n' "$fm" | sed -n 's/^name:[[:space:]]*//p')
+            desc=$(printf '%s\n' "$fm" | sed -n 's/^description:[[:space:]]*//p')
+            [ -n "$name" ] || { echo "::error::$f missing 'name:'"; bad=1; }
+            [ -n "$desc" ] || { echo "::error::$f missing 'description:'"; bad=1; }
+            if [ -n "$name" ] && [ "$name" != "$dir" ]; then
+              echo "::error::$f name '$name' does not match directory '$dir'"; bad=1
+            fi
+            # Only top-level keys; indented lines are continuations.
+            for k in $(printf '%s\n' "$fm" | sed -n 's/^\([a-zA-Z_-]*\):.*/\1/p'); do
+              case "$k" in
+                name|description|license) ;;
+                *) echo "::error::$f key '$k' is not portable — use only name/description/license"; bad=1 ;;
+              esac
+            done
+            # Every skill must be listed in the README skill table.
+            if ! grep -q "$dir" README.md; then
+              echo "::error::README.md does not list skill: $dir"; bad=1
+            fi
+          done
+          if [ "$bad" -ne 0 ]; then
+            echo "See CLAUDE.md -> 'Skills and playbooks' for the contract."
+            exit 1
+          fi
+          echo "All skills are portable and listed in README.md."

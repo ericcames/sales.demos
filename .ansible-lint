@@ -1,0 +1,24 @@
+---
+# ansible-lint config for the CI lint gate (.github/workflows/lint.yml).
+# CI runs offline with no Automation Hub token, so the certified collections in
+# collections/requirements.yml are NOT installed there. Declare the modules and
+# roles the playbooks call from them, otherwise syntax-check fails with
+# "couldn't resolve module/action". Locally they resolve because the collections
+# are installed; CI is the clean case these mocks cover.
+offline: true
+profile: basic
+
+mock_modules:
+  # Platform gateway — token lifecycle. Any playbook creating a token must
+  # delete it in an `always:` block.
+  - ansible.platform.token
+  # OpenShift Virtualization — VM lifecycle (Phases 1-4).
+  - redhat.openshift_virtualization.kubevirt_vm
+  - redhat.openshift_virtualization.kubevirt_vm_info
+
+mock_roles:
+  - infra.aap_configuration.dispatch
+
+exclude_paths:
+  - collections/ansible_collections/
+  - .github/
