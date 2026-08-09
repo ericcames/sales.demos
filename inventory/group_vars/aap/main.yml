@@ -14,3 +14,29 @@ aap_organization_name: "IT Service Automation"
 
 # Prefer ansible.platform over ansible.controller — controller is legacy.
 # Any playbook that creates a token must delete it in an `always:` block.
+
+# ---------------------------------------------------------------------------
+# Automation Hub token — read from ~/.ansible.cfg, NOT stored in the vault.
+#
+# ~/.ansible.cfg already holds this token and is the authoritative copy: it is
+# what `ansible-galaxy collection install` uses for Red Hat certified content,
+# and it is shared across every one of Eric's repos. Vaulting a second copy
+# would mean a value that silently goes stale the next time the token is
+# rotated, with nothing to detect the drift. Same approach as aap.as.code and
+# aap-skills, which read it the same way. (#22)
+#
+# Use ~/.ansible.cfg, not ~/.ansible/ansible.cfg. Both currently hold the same
+# token, but the latter is a frozen leftover from when the former was a symlink
+# (converted because ansible-builder's COPY does not follow symlinks). It will
+# drift on the next rotation. aap-skills still points at the stale path — do
+# not copy that detail.
+#
+# KNOWN LIMITATION: this resolves on the controller, so it will NOT resolve
+# inside an AAP execution environment, where ~/.ansible.cfg does not exist.
+# That is acceptable because the only consumer is the AAP bootstrap, which is
+# inherently laptop-side — you cannot use AAP to bootstrap itself. A job
+# template needing Hub access gets an AAP credential instead of this variable.
+# ---------------------------------------------------------------------------
+automation_hub_token: >-
+  {{ lookup('ansible.builtin.ini',
+            'token section=galaxy_server.rh_certified file=~/.ansible.cfg') }}

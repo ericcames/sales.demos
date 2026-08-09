@@ -95,6 +95,13 @@ editing that environment's `connection.yml` plus two keys in the vault.
 `secrets.yml.example` is the only `.example` file in the repo, and shows the
 shape of the real one.
 
+**The Automation Hub token is deliberately not in the vault.** `~/.ansible.cfg`
+already holds it and is the authoritative copy — it is what
+`ansible-galaxy collection install` uses for Red Hat certified content — so
+`group_vars/aap/main.yml` reads it from there with an `ini` lookup instead of
+keeping a second copy that would go stale on the next rotation. Same approach
+as `aap.as.code` and `aap-skills`.
+
 ### Public repo
 
 RHDP URLs are **not** treated as sensitive here. `*.dyn.redhatworkshops.io`
