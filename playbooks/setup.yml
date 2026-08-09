@@ -1,0 +1,22 @@
+---
+# ===========================================================================
+# setup.yml — Phase 0 entry point. Takes a bare RHDP "Ansible Product Demo"
+# environment to demo-ready. Issue #1.
+#
+#   ansible-playbook playbooks/setup.yml -i inventory --limit sandbox
+#
+# Phase 0 has two halves:
+#
+#   1. Install OpenShift Virtualization  -> playbooks/install_cnv.yml  DONE
+#   2. Bootstrap AAP (Hub credentials, vault credential, project, base job
+#      templates)                        -> not implemented yet, issue #1
+#
+# The AAP bootstrap half imports here when it lands. Keeping this file as the
+# stable entry point means the skill, the README table, and the future job
+# template never have to be re-pointed. Splitting the CNV work into its own
+# playbook also keeps it runnable on its own when AAP is already bootstrapped
+# and only a fresh cluster needs CNV.
+# ===========================================================================
+
+- name: Phase 0 — install OpenShift Virtualization
+  ansible.builtin.import_playbook: install_cnv.yml
