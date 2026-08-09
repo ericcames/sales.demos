@@ -102,8 +102,14 @@ not pass one on the command line; that would put it in shell history.
 ## Run
 
 ```bash
-ansible-playbook playbooks/setup.yml -i inventory --limit sandbox
+ansible-playbook playbooks/setup.yml -i inventory --limit sandbox -e target_env=sandbox
 ```
+
+**`--limit` is mandatory.** The play targets `hosts: aap`, so without a limit it
+matches every environment at once; it asserts on that and fails closed rather
+than configuring sandbox and demo in the same run. Passing `target_env` as well
+makes the play verify the inventory resolved to the environment you meant, and
+fail loudly if not — cheap insurance against applying to the wrong cluster.
 
 Tell the user this takes 10–20 minutes and stream the output. The play is
 idempotent — a re-run against an installed cluster is safe.
@@ -113,11 +119,11 @@ Optional overrides, if the user has a reason:
 ```bash
 # Pin scratch space to a specific StorageClass instead of the cluster default
 ansible-playbook playbooks/setup.yml -i inventory --limit sandbox \
-  -e cnv_storage_class=<storageclass-name>
+  -e target_env=sandbox -e cnv_storage_class=<storageclass-name>
 
 # Skip the boot-source wait (returns as soon as the operator is Available)
 ansible-playbook playbooks/setup.yml -i inventory --limit sandbox \
-  -e cnv_wait_for_datasource=false
+  -e target_env=sandbox -e cnv_wait_for_datasource=false
 ```
 
 ## Verify on the cluster

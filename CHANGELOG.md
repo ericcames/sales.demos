@@ -68,6 +68,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   added to `secrets.yml.example`. `controller_settings.yml` requires both in
   every environment or the apply fails with an undefined-variable error. (#14)
 
+### Fixed
+- **`--limit demo` silently targeted `sandbox`.** Both environment groups in
+  `inventory/hosts.yml` pointed at the same host, `localhost`. `--limit` filters
+  which hosts run, not which `group_vars` load, so a host in two environment
+  groups loaded both environments' variables — and same-level groups resolve
+  alphabetically with the later name winning, so `sandbox` always beat `demo`.
+  Asking for `demo` returned sandbox's hostname and sandbox's bearer token with
+  no warning, which meant the `demo` environment could not be targeted at all.
+  Each environment now has its own host (`sandbox-local`, `demo-local`), so
+  `group_vars` stop merging. Adding a `demo/secrets.yml` would not have fixed
+  this; `sandbox` still won. (#16)
+- Playbooks target `hosts: aap` and assert that exactly one environment is in
+  scope, so a run without `--limit` fails closed instead of configuring both
+  environments at once. An optional `-e target_env=<env>` makes the play verify
+  the inventory resolved to the environment the caller intended. `--limit
+  sandbox` and `--limit demo` are unchanged as invocations. (#16)
+
 ### Changed
 - `aap_organization_name` in `inventory/group_vars/aap/main.yml` moved
   `Default` → `IT Service Automation`, matching the organization
