@@ -27,6 +27,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `.yamllint`, `.ansible-lint`, and pinned `collections/requirements.yml`.
 - GitHub CODEOWNERS, PR template, issue templates, and security policy.
 
+### Changed
+- `docs/plan/ocpvirt-demo-plan.md` records the Phase 0 validation run. The
+  original research stands — it correctly reported `kubevirt-hyperconverged` as
+  *available in the operator catalog*, not installed — but the doc read as a
+  plan with nothing confirming it had been executed. Now states outright that a
+  freshly provisioned environment has no `kubevirt.io` API group, and adds the
+  observed versions and timings, confirmation of the `u1` instance-type shapes
+  the sizing tiers depend on, the decision to discover the default StorageClass
+  rather than hard-code it, and a note that OpenShift version and cluster ID are
+  per-environment samples rather than properties of the catalog item. (#9)
+
 ### Notes
 - `aap_config`'s `deploy-{dev,qa,prod}` workflows were deliberately not ported
   and will not be (#7). CI is a PR gate only; nothing deploys from GitHub

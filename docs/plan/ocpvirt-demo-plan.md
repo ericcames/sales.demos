@@ -243,6 +243,64 @@ Self-contained: takes a bare RHDP env to demo-ready in one flow.
 
 Any playbook creating an AAP token must delete it in an `always:` block.
 
+#### Phase 0: validated — step 2 and 3 are built and proven
+
+Steps 2 and 3 are implemented in `playbooks/install_cnv.yml`, imported by
+`playbooks/setup.yml` and wrapped by the `ocpvirt-setup` skill. **Step 1, the AAP bootstrap,
+is still open** — see [#1](https://github.com/ericcames/sales.demos/issues/1).
+
+The research above stands: `kubevirt-hyperconverged` is present in the operator catalog and
+nested virt is real. What that research did *not* say, and what is worth saying outright:
+
+> **A freshly provisioned environment has no `kubevirt.io` API group at all.** CNV is
+> *available* in the catalog, not *installed*. Nothing can create a VM on a new provision
+> until Phase 0 runs. Do not assume otherwise when a fresh env lands.
+
+Observed on the validated run:
+
+| Observation | Value |
+|---|---|
+| API groups | 86 before the install → **102** after |
+| Operator | `kubevirt-hyperconverged-operator.v4.20.21`, channel `stable` |
+| StorageClass chosen | `ocs-external-storagecluster-ceph-rbd` — the cluster default, discovered at run time |
+| `devices.kubevirt.io/kvm` on node | absent before → **`1k`** after |
+| Operator `Succeeded` | ~80s |
+| `HyperConverged` `Available` | ~2.5 min |
+| Re-run of the whole play | `changed=0` — idempotent in practice, not just by design |
+
+The sizing tiers are confirmed against the real `u1` cluster instance types, with the exact
+shapes the [sizing design](#sizing-design) assumes: `u1.small` 1 vCPU/2Gi, `u1.medium`
+1 vCPU/4Gi, `u1.large` 2 vCPU/8Gi. The `ocpvirt-setup` skill re-checks these shapes after
+every run — if they ever drift, Phase 1 sizing is wrong and this table is what needs fixing.
+
+One design change against the plan above: the storage default is **discovered** (the
+StorageClass annotated `storageclass.kubernetes.io/is-default-class`) rather than hard-coded
+to `ocs-external-storagecluster-ceph-rbd`, with `cnv_storage_class` as an override. Hard-coding
+would have tied Phase 0 to one catalog item. `volumeMode: Block` is left to CDI's StorageProfile
+auto-detection, which already resolves to Block for Ceph RBD.
+
+**OpenShift version and cluster ID vary per provisioned environment** — the `4.20.28` in the
+research table and the `4.20.32` this was validated on are both just what one env happened to
+ship. Treat them as samples, not as properties of the catalog item.
+
+##### What this cost, and the lesson worth keeping
+
+Two defects shipped through a fully green CI gate — yamllint, ansible-lint, secret hygiene,
+and skill portability all passed while the playbook could not run at all:
+
+1. Ansible's interpreter discovery selected a stale `/usr/bin/python3.13` that lacked the
+   `kubernetes` client. Fixed by pinning `ansible_python_interpreter` to
+   `{{ ansible_playbook_python }}` in `inventory/hosts.yml` — not in an `ansible.cfg`, which
+   would shadow `~/.ansible.cfg` and break certified collection installs.
+2. The default-StorageClass lookup used `selectattr` with a bracket-indexed annotation key.
+   Jinja's dotted attribute syntax cannot address `storageclass.kubernetes.io/is-default-class`,
+   so it failed at run time. Rewritten as a `loop` with a `when`.
+
+**The CI gate validates syntax and hygiene. It cannot validate that a playbook works.** Every
+phase must be run against `sandbox` and then verified against the cluster before its PR
+merges. That is why the `ocpvirt-setup` skill ends in a cluster-side check rather than
+trusting the Ansible recap.
+
 ### Phase 1 — Terraform module
 
 Mirror `dc1.azure/terraform/` file-for-file; it already implements this exact t-shirt +
