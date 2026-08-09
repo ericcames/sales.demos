@@ -68,6 +68,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   added to `secrets.yml.example`. `controller_settings.yml` requires both in
   every environment or the apply fails with an undefined-variable error. (#14)
 
+### Changed — what the vault actually holds (#22)
+- **`automation_hub_token` is no longer stored in the vault.** Nothing consumed
+  it — `ansible-galaxy collection install` reads `~/.ansible.cfg` itself, which
+  is the authoritative copy of that token and is shared across every repo.
+  `inventory/group_vars/aap/main.yml` now reads it with an `ansible.builtin.ini`
+  lookup against `~/.ansible.cfg`, matching how `aap.as.code` and `aap-skills`
+  already do it. A vaulted second copy would have gone stale silently on the
+  next rotation, with nothing to detect the drift.
+  - Reads `~/.ansible.cfg`, **not** `~/.ansible/ansible.cfg`. Both hold the same
+    token today, but the latter is a frozen leftover from when the former was a
+    symlink, and will drift. `aap-skills` still points at the stale path.
+  - Known limitation, documented in the file: the lookup resolves on the
+    controller, so it will not resolve inside an AAP execution environment. The
+    only consumer is the AAP bootstrap, which is inherently laptop-side.
+- **The Automation Analytics credentials are now real, not `CHANGEME`.**
+  `vaulted_subscriptions_client_id` and `_client_secret` are required by
+  `controller_settings.yml` for every environment (#14) but were seeded as
+  placeholders. Copied from `aap_config`'s qa vault — the same Red Hat service
+  account — by piping between `ansible-vault` invocations, so the values never
+  touched a plaintext file or shell history.
+  - Consequence recorded in the vault file's header: they now live in two vaults
+    with no shared secret store, so rotating the service account means updating
+    both.
+- `secrets.yml.example` stays `CHANGEME` for the analytics keys — it is a
+  template, not a value store — and now explains that the Hub token is not there.
+
 ### Added — per-environment sign-in logos (#20)
 - `inventory/group_vars/<env>/gateway_settings.yml` sets the gateway's
   `custom_logo` to an environment-badged version of the AAP lockup, so the
