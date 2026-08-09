@@ -1,0 +1,22 @@
+---
+# ===========================================================================
+# group_vars/demo/gateway_settings.yml — demo-only gateway settings
+# ===========================================================================
+# See group_vars/sandbox/gateway_settings.yml for the full explanation of the
+# suffix convention and why custom_logo is a sign-in-time marker only. The
+# short version:
+#
+#   - `gateway_settings_all` (group_vars/aap/) holds the shared pre-login
+#     banner; this file adds a key only demo gets, and dispatch merges them.
+#   - The two files MUST set disjoint keys — merging is per-key, so a scalar in
+#     both means this file wins rather than combines.
+#   - custom_logo changes the SIGN-IN PAGE only, never the post-login masthead.
+#
+# Red for demo, green for sandbox: this is the environment you show customers,
+# so it gets the colour that means "think before you touch". Regenerate with:
+#
+#   python3 utilities/make-env-logo.py --env demo
+# ===========================================================================
+
+gateway_settings_demo:
+  custom_logo: "data:image/png;base64,{{ lookup('ansible.builtin.file', inventory_dir + '/../docs/images/logo-demo.png.b64') }}"

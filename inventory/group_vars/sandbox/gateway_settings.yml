@@ -1,0 +1,39 @@
+---
+# ===========================================================================
+# group_vars/sandbox/gateway_settings.yml — sandbox-only gateway settings
+# ===========================================================================
+# The other half of the suffix convention: `gateway_settings_all` (in
+# group_vars/aap/) holds the pre-login banner every environment shares, and
+# this file adds a key only sandbox gets. dispatch MERGES them — see
+# infra.aap_configuration/roles/dispatch/tasks/include_wildcard_vars.yml, which
+# combines mappings with combine(recursive=true). This file does not replace
+# the shared one.
+#
+# THE TWO FILES MUST SET DISJOINT KEYS. Merging is per-key: a scalar present in
+# both does not combine, the environment file simply wins. custom_login_info
+# stays shared in group_vars/aap/gateway_settings.yml; only custom_logo is set
+# here.
+#
+# custom_logo is the logo on the AAP SIGN-IN PAGE, shown next to
+# custom_login_info. It does NOT change the masthead after login — that is a
+# bundled UI asset rather than a setting. Verified on AAP 2.6: 44 gateway
+# settings exist and none of them mark the environment post-login.
+#
+# So this is a sign-in-time environment marker. You see which environment you
+# are entering before you touch anything, and nothing after — which is still
+# the moment the warning is most useful, because both environments are
+# otherwise identical at the login page.
+#
+# Green for sandbox, red for demo: the environment you break, and the one you
+# show customers. Reuses aap_config's severity convention. Regenerate with:
+#
+#   python3 utilities/make-env-logo.py --env sandbox
+#
+# The image extends the official product lockup rather than replacing it, so
+# Red Hat branding survives and only an environment badge is added. The badge
+# carries its own solid background so the environment stays legible in both
+# light and dark themes, even where the white wordmark does not.
+# ===========================================================================
+
+gateway_settings_sandbox:
+  custom_logo: "data:image/png;base64,{{ lookup('ansible.builtin.file', inventory_dir + '/../docs/images/logo-sandbox.png.b64') }}"
