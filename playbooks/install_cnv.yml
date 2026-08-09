@@ -1,0 +1,250 @@
+---
+# ===========================================================================
+# install_cnv.yml — install OpenShift Virtualization (CNV) on the cluster.
+#
+# Phase 0, the CNV half of issue #1. Imported by playbooks/setup.yml; also
+# runnable on its own when AAP is already bootstrapped and only the cluster
+# needs CNV.
+#
+# Idempotent, no prompts. Every input arrives as an extra_var or from
+# inventory/group_vars/<env>/secrets.yml, so the skill, an AAP job template,
+# and a laptop run are the same code.
+#
+#   ansible-playbook playbooks/install_cnv.yml -i inventory --limit sandbox
+#
+# Deliberately does NOT enable hugepages or KSM. Those write a MachineConfig
+# and reboot the node, and on this catalog item AAP is co-resident on the only
+# node — a reboot would take the demo down mid-install. A stock CNV install
+# writes no MachineConfig and is safe to run from an AAP job template.
+#
+# Creates no AAP token, so there is nothing to clean up in an `always:` block.
+# ===========================================================================
+
+- name: Install OpenShift Virtualization
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  # kubernetes.core reads these; keeps the token out of every task's args and
+  # out of any -vvv output.
+  environment:
+    K8S_AUTH_HOST: "{{ openshift_api_url }}"
+    K8S_AUTH_API_KEY: "{{ openshift_api_token }}"
+    K8S_AUTH_VERIFY_SSL: "{{ openshift_validate_certs | default(false) | bool }}"
+
+  vars:
+    cnv_namespace: "openshift-cnv"
+    cnv_channel: "stable"
+    cnv_package: "kubevirt-hyperconverged"
+    cnv_catalog_source: "redhat-operators"
+    cnv_catalog_source_namespace: "openshift-marketplace"
+    # Empty means "discover the cluster's default StorageClass at runtime".
+    # Override only to pin CNV scratch space to a non-default class.
+    cnv_storage_class: ""
+    # CNV pulls several multi-hundred-MB images; 20 min is not generous.
+    cnv_wait_timeout: 1200
+    cnv_wait_retries: 60
+    cnv_wait_delay: 20
+    # Boot sources RHEL imports after the operator is up. Gate the play on one
+    # so "finished" means "ready to create a VM", not just "operator running".
+    cnv_wait_for_datasource: true
+    cnv_datasource_name: "rhel9"
+    cnv_datasource_namespace: "openshift-virtualization-os-images"
+
+  tasks:
+    - name: Assert the required connection variables are set
+      # Asserted here so the skill, a job template, and a laptop run all fail
+      # identically with the same message. See CLAUDE.md -> Skills and playbooks.
+      ansible.builtin.assert:
+        that:
+          - openshift_api_url is defined
+          - openshift_api_url | length > 0
+          - openshift_api_token is defined
+          - openshift_api_token | length > 0
+        fail_msg: >-
+          openshift_api_url and openshift_api_token are required. They live in
+          inventory/group_vars/<env>/secrets.yml (gitignored) — copy
+          inventory/group_vars/sandbox/secrets.yml.example and fill it in, then
+          run with `-i inventory --limit <env>`.
+        quiet: true
+
+    - name: Confirm the cluster is reachable and the token is valid
+      kubernetes.core.k8s_info:
+        api_version: config.openshift.io/v1
+        kind: ClusterVersion
+        name: version
+      register: cnv_clusterversion
+
+    - name: Show the cluster version CNV is being installed on
+      ansible.builtin.debug:
+        msg: >-
+          OpenShift {{ cnv_clusterversion.resources[0].status.desired.version }}
+          — installing {{ cnv_package }} from channel {{ cnv_channel }}.
+
+    - name: Use the StorageClass the caller pinned
+      ansible.builtin.set_fact:
+        cnv_effective_storage_class: "{{ cnv_storage_class }}"
+      when: cnv_storage_class | length > 0
+
+    - name: Look up the cluster's StorageClasses
+      kubernetes.core.k8s_info:
+        api_version: storage.k8s.io/v1
+        kind: StorageClass
+      register: cnv_storageclasses
+      when: cnv_storage_class | length == 0
+
+    - name: Resolve the StorageClass CNV will use for scratch space
+      # A loop with a `when`, not a selectattr chain: the marker is an
+      # annotation key containing dots and slashes, which Jinja's dotted
+      # attribute syntax cannot address.
+      ansible.builtin.set_fact:
+        cnv_effective_storage_class: "{{ item.metadata.name }}"
+      loop: "{{ cnv_storageclasses.resources | default([]) }}"
+      loop_control:
+        label: "{{ item.metadata.name }}"
+      when:
+        - cnv_storage_class | length == 0
+        - (item.metadata.annotations | default({}))['storageclass.kubernetes.io/is-default-class'] | default('false') == 'true'
+
+    - name: Assert a StorageClass was resolved
+      ansible.builtin.assert:
+        that:
+          - cnv_effective_storage_class | default('') | length > 0
+        fail_msg: >-
+          No default StorageClass on this cluster and cnv_storage_class was not
+          set. CNV needs one for CDI scratch space. Pass
+          -e cnv_storage_class=<name>.
+        quiet: true
+
+    - name: Create the OpenShift Virtualization namespace
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: v1
+          kind: Namespace
+          metadata:
+            name: "{{ cnv_namespace }}"
+            labels:
+              openshift.io/cluster-monitoring: "true"
+
+    - name: Create the OperatorGroup
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: operators.coreos.com/v1
+          kind: OperatorGroup
+          metadata:
+            name: kubevirt-hyperconverged-group
+            namespace: "{{ cnv_namespace }}"
+          spec:
+            targetNamespaces:
+              - "{{ cnv_namespace }}"
+
+    - name: Subscribe to the OpenShift Virtualization operator
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: operators.coreos.com/v1alpha1
+          kind: Subscription
+          metadata:
+            name: hco-operatorhub
+            namespace: "{{ cnv_namespace }}"
+          spec:
+            name: "{{ cnv_package }}"
+            channel: "{{ cnv_channel }}"
+            source: "{{ cnv_catalog_source }}"
+            sourceNamespace: "{{ cnv_catalog_source_namespace }}"
+            installPlanApproval: Automatic
+
+    - name: Wait for the operator ClusterServiceVersion to succeed
+      kubernetes.core.k8s_info:
+        api_version: operators.coreos.com/v1alpha1
+        kind: ClusterServiceVersion
+        namespace: "{{ cnv_namespace }}"
+      register: cnv_csv
+      retries: "{{ cnv_wait_retries }}"
+      delay: "{{ cnv_wait_delay }}"
+      until:
+        - cnv_csv.resources | default([]) | selectattr('metadata.name', 'search', '^kubevirt-hyperconverged-operator')
+          | selectattr('status.phase', 'defined')
+          | selectattr('status.phase', 'equalto', 'Succeeded') | list | length > 0
+
+    - name: Report the installed operator version
+      ansible.builtin.debug:
+        msg: >-
+          {{
+            cnv_csv.resources
+            | selectattr('metadata.name', 'search', '^kubevirt-hyperconverged-operator')
+            | map(attribute='metadata.name') | first
+          }} is Succeeded.
+
+    - name: Wait for the HyperConverged CRD to be established
+      kubernetes.core.k8s_info:
+        api_version: apiextensions.k8s.io/v1
+        kind: CustomResourceDefinition
+        name: hyperconvergeds.hco.kubevirt.io
+      register: cnv_crd
+      retries: "{{ cnv_wait_retries }}"
+      delay: "{{ cnv_wait_delay }}"
+      until: cnv_crd.resources | default([]) | length > 0
+
+    - name: Create the HyperConverged custom resource
+      # Stock configuration on purpose. No hugepages, no KSM, no workload
+      # partitioning — each of those triggers a MachineConfig rollout and a
+      # node reboot, which would restart AAP on this single-node cluster.
+      kubernetes.core.k8s:
+        state: present
+        apply: true
+        definition:
+          apiVersion: hco.kubevirt.io/v1beta1
+          kind: HyperConverged
+          metadata:
+            name: kubevirt-hyperconverged
+            namespace: "{{ cnv_namespace }}"
+          spec:
+            scratchSpaceStorageClass: "{{ cnv_effective_storage_class }}"
+
+    - name: Wait for HyperConverged to report Available
+      kubernetes.core.k8s_info:
+        api_version: hco.kubevirt.io/v1beta1
+        kind: HyperConverged
+        name: kubevirt-hyperconverged
+        namespace: "{{ cnv_namespace }}"
+      register: cnv_hco
+      retries: "{{ cnv_wait_retries }}"
+      delay: "{{ cnv_wait_delay }}"
+      until:
+        - cnv_hco.resources | default([]) | length > 0
+        - cnv_hco.resources[0].status.conditions | default([])
+          | selectattr('type', 'equalto', 'Available')
+          | selectattr('status', 'equalto', 'True') | list | length > 0
+
+    - name: Wait for the boot-source DataSource to be ready
+      # CDI imports the RHEL boot source in the background. Gating on it means
+      # a green run genuinely leaves the cluster able to create a VM.
+      kubernetes.core.k8s_info:
+        api_version: cdi.kubevirt.io/v1beta1
+        kind: DataSource
+        name: "{{ cnv_datasource_name }}"
+        namespace: "{{ cnv_datasource_namespace }}"
+      register: cnv_datasource
+      retries: "{{ cnv_wait_retries }}"
+      delay: "{{ cnv_wait_delay }}"
+      until:
+        - cnv_datasource.resources | default([]) | length > 0
+        - cnv_datasource.resources[0].status.conditions | default([])
+          | selectattr('type', 'equalto', 'Ready')
+          | selectattr('status', 'equalto', 'True') | list | length > 0
+      when: cnv_wait_for_datasource | bool
+
+    - name: Summarise what is now on the cluster
+      ansible.builtin.debug:
+        msg:
+          - "OpenShift Virtualization is installed and Available."
+          - "Namespace:      {{ cnv_namespace }}"
+          - "Channel:        {{ cnv_channel }}"
+          - "Scratch class:  {{ cnv_effective_storage_class }}"
+          - >-
+            Boot source {{ cnv_datasource_name }}:
+            {{ 'ready' if cnv_wait_for_datasource | bool else 'not waited on' }}
+          - "Next: Phase 1 — terraform/ocpvirt (issue #2)."
