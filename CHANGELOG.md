@@ -68,6 +68,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   added to `secrets.yml.example`. `controller_settings.yml` requires both in
   every environment or the apply fails with an undefined-variable error. (#14)
 
+### Added — per-environment sign-in logos (#20)
+- `inventory/group_vars/<env>/gateway_settings.yml` sets the gateway's
+  `custom_logo` to an environment-badged version of the AAP lockup, so the
+  sign-in page shows which environment you are entering. Green for `sandbox`,
+  red for `demo` — the environment you break, and the one you show customers,
+  reusing `aap_config`'s severity convention.
+- `utilities/make-env-logo.py`, ported from `aap_config` with this repo's two
+  environments in place of its dev/qa/prod. Extends the official product lockup
+  rather than replacing it, so Red Hat branding survives and only a badge is
+  added. Needs Pillow, ImageMagick with the librsvg delegate, and Red Hat
+  Display.
+- `docs/images/` — `aap-logo-white.svg` plus the generated `logo-{sandbox,demo}.png`
+  and their base64 sidecars, all committed so they render on GitHub and so a
+  clone does not need ImageMagick to apply the config.
+- `custom_logo` changes the **sign-in page only**, never the post-login masthead,
+  which is a bundled UI asset rather than a setting. Confirmed on AAP 2.6: 44
+  gateway settings exist and none of them mark the environment after login.
+- Relies on `dispatch_include_wildcard_vars` merging `gateway_settings_all` with
+  `gateway_settings_<env>`. The shared `custom_login_info` banner stays in
+  `group_vars/aap/`, and the per-environment files set only `custom_logo` —
+  verified disjoint, since merging is per-key and a scalar in both would mean the
+  environment file wins rather than combines. The setting reaches a real gateway
+  only once an AAP apply playbook exists (the open half of #1).
+
 ### Changed — secrets model (#18)
 - **`secrets.yml` is now vault-encrypted and committed, not gitignored plaintext**,
   matching `aap_config`. One file at `inventory/group_vars/aap/secrets.yml`,

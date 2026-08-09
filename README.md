@@ -44,6 +44,27 @@ There is deliberately **no `golden` environment**. "This config is proven good"
 is a state of the config, not a connection target — git already models that with
 `main` plus a release tag.
 
+### Telling them apart at the sign-in page
+
+Both environments look identical at the AAP login page, and the moment you are
+most likely to act on the wrong one is the moment before you have touched
+anything. Each gets a badged sign-in logo:
+
+![sandbox](docs/images/logo-sandbox.png)
+
+![demo](docs/images/logo-demo.png)
+
+Green for the environment you break, red for the one you show customers —
+the same severity convention as `aap_config`. Regenerate with:
+
+```bash
+python3 utilities/make-env-logo.py --env sandbox
+```
+
+This sets the gateway's `custom_logo`, which changes the **sign-in page only**.
+The post-login masthead is a bundled UI asset, not a setting — verified on AAP
+2.6, where none of the 44 gateway settings mark the environment after login.
+
 ## Secrets: one vaulted file, both environments
 
 `inventory/group_vars/aap/secrets.yml` is **vault-encrypted and committed**. It
