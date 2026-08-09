@@ -12,25 +12,38 @@ Use generic placeholders in committed docs and examples:
 
 ## Where values live
 
-`inventory/group_vars/<env>/secrets.yml` (gitignored) is the **only** secrets
-mechanism in this repo. `connection.yml` is committed and holds structure only.
+`inventory/group_vars/aap/secrets.yml` is **vault-encrypted and committed**, and
+is the only secrets mechanism in this repo. It sits in the `aap` group directory
+so it loads for every environment — one file, both `sandbox` and `demo`.
 
-**Every environment-specific value goes in `secrets.yml`** — AAP hostname,
-OpenShift API URL, tokens, quay credentials — not only the strictly secret ones.
+```bash
+ansible-vault edit inventory/group_vars/aap/secrets.yml \
+  --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
+```
 
-The reason is operational rather than security: a new RHDP environment should
-mean editing exactly one file. Re-point `secrets.yml` and everything follows.
-`connection.yml` never changes because nothing in it varies per environment.
+**It holds credentials only.** Per-environment credentials are keyed under
+`env_secrets` by environment name. Everything that is not a credential —
+`aap_hostname`, `openshift_api_url`, usernames, namespaces — lives in the
+committed plaintext `inventory/group_vars/<env>/connection.yml`.
 
-> **Note for anyone coming from [`aap_config`](https://github.com/ericcames/aap_config):**
-> that repo says ephemeral RHDP lab URLs are fine to commit, and on pure secrecy
-> grounds that is true — a `*.redhatworkshops.io` hostname is publicly
-> resolvable, is not a credential, and points at a cluster that expires in days.
-> This repo still keeps them out of `connection.yml`, for a different reason: the
-> one-file-edit property above. Two rules, two rationales, no contradiction.
+A new RHDP environment therefore means editing that environment's
+`connection.yml` plus two keys in the vault.
+
+The vault password lives outside this repo at
+`~/secrets/.vault_pass_sales_demos` (`chmod 600`, `chmod 700` directory),
+alongside the other `.vault_pass_*` files. It is the one secret that cannot be
+vaulted, and losing it makes the committed file unrecoverable.
+
+> **RHDP URLs are not sensitive here**, matching
+> [`aap_config`](https://github.com/ericcames/aap_config). A
+> `*.dyn.redhatworkshops.io` hostname is publicly resolvable, is not a
+> credential, and points at a cluster that expires in days. Keeping them
+> readable in `connection.yml` is what lets the vaulted file hold credentials
+> only.
 >
-> Tokens are a separate matter in both repos. A live bearer token in a public
-> repo is scraped within minutes. That one is absolute.
+> Tokens are a separate matter. A live bearer token in a public repo is scraped
+> within minutes. That one is absolute — which is why the CI guard fails on a
+> tracked `secrets.yml` that is not vault-encrypted.
 
 `secrets.yml.example` is the **only** `.example` file in the repo. Do not create
 `connection.yml.example` or any other `.example` twin, and do not add a second
@@ -42,12 +55,18 @@ This repo is public.
 
 ```bash
 git ls-files -z | xargs -0 grep -nEi \
-  'redhatworkshops|sha256~|[0-9]{1,3}(\.[0-9]{1,3}){3}|BEGIN [A-Z ]*PRIVATE KEY'
+  'sha256~|BEGIN [A-Z ]*PRIVATE KEY|AKIA[0-9A-Z]{16}'
 ```
 
-Only placeholder lines in `secrets.yml.example`, prose, and the audit pattern
-itself may match. Keep the pattern generic — never hardcode a real cluster ID
-into the check.
+Only placeholder lines, prose, and the audit pattern itself may match. Keep the
+pattern generic — never hardcode a real value into the check.
+
+`utilities/check-no-secrets.sh` runs this in CI along with the check that
+matters most under the vault model: **a tracked `secrets.yml` must begin with
+`$ANSIBLE_VAULT`.** Since `secrets.yml` is no longer gitignored, that check is
+the only thing standing between a plaintext credential file and a public push.
+Do not weaken it, and do not "fix" a failure by re-adding an ignore rule — that
+would hide the file rather than verify it.
 
 ## Ansible standards
 

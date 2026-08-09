@@ -1,18 +1,43 @@
 ---
 # ===========================================================================
-# connection.yml — STRUCTURE ONLY. Committed. Never holds an environment
-# -specific value.
+# connection.yml — everything about the demo environment that is NOT a
+# credential. Committed, plaintext.
 #
-# Every hostname, URL, token, and password comes from secrets.yml (gitignored,
-# see secrets.yml.example). That split is why re-pointing at a fresh RHDP
-# environment means editing exactly one file.
+# This is the file you edit when you get a fresh RHDP demo environment: paste
+# the new hostname and API URL here, then update the two credential keys under
+# `env_secrets.demo` in the vault-encrypted group_vars/aap/secrets.yml.
+#
+# NOT YET PROVISIONED. The placeholders below are the shape, not a live
+# environment — an apply against `demo` will fail until they are real. That is
+# correct behaviour: it used to succeed by silently borrowing sandbox's values,
+# which is the bug fixed in #16.
+#
+#   ansible-vault edit inventory/group_vars/aap/secrets.yml \
+#     --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
 # ===========================================================================
 
 aap_env_name: "demo"
 
-# Resolved from secrets.yml — do not inline real values here.
-aap_validate_certs: "{{ aap_validate_certs | default(false) }}"
+# --- Ansible Automation Platform -------------------------------------------
+aap_hostname: "aap-aap.apps.cluster-<id>.dyn.redhatworkshops.io"
+aap_username: "admin"
+aap_validate_certs: false
 aap_request_timeout: 30
+
+# --- OpenShift -------------------------------------------------------------
+openshift_api_url: "https://api.cluster-<id>.dyn.redhatworkshops.io:6443"
+openshift_validate_certs: false
+
+# --- Credentials, resolved from the vaulted group_vars/aap/secrets.yml -----
+# Do not inline real values here. This selects this environment's slice, so
+# `--limit demo` can never pick up sandbox's credentials (#16).
+aap_password: "{{ env_secrets[aap_env_name].aap_password }}"
+openshift_api_token: "{{ env_secrets[aap_env_name].openshift_api_token }}"
+
+# --- Demo VM defaults (not secret) -----------------------------------------
+windows_admin_username: "demoadmin"
+linux_admin_username: "cloud-user"
+quay_windows_image: "quay.io/<user>/windows2k22-golden:<date>"
 
 # Namespace the demo VMs are created in.
 ocpvirt_namespace: "sales-demos-demo"

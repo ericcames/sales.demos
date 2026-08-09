@@ -36,21 +36,33 @@ on the only node, so a reboot would take the demo down mid-install.
 Run these before doing anything else. Every one must pass.
 
 ```bash
-# 1. secrets.yml exists for the target environment (default: sandbox)
 ENV=${ENV:-sandbox}
-test -s "inventory/group_vars/$ENV/secrets.yml" \
-  && echo "✅ secrets.yml ($ENV)" \
-  || echo "❌ secrets.yml missing — cp inventory/group_vars/sandbox/secrets.yml.example inventory/group_vars/$ENV/secrets.yml"
+VAULT_ID="sales.demos@$HOME/secrets/.vault_pass_sales_demos"
 
-# 2. It has real values, not the shipped placeholders
-grep -qE 'openshift_api_token:.*(CHANGEME|sha256~CHANGEME)' "inventory/group_vars/$ENV/secrets.yml" \
-  && echo "❌ openshift_api_token is still CHANGEME" \
-  || echo "✅ openshift_api_token filled in"
+# 1. The vault password file exists. It is NOT in this repo — see
+#    ~/secrets/, alongside .vault_pass_azure and .vault_pass_qa.
+test -s "$HOME/secrets/.vault_pass_sales_demos" \
+  && echo "✅ vault password file" \
+  || echo "❌ ~/secrets/.vault_pass_sales_demos missing — without it the committed secrets cannot be decrypted"
 
-# 3. It is gitignored — this repo is public
-git check-ignore -q "inventory/group_vars/$ENV/secrets.yml" \
-  && echo "✅ secrets.yml is gitignored" \
-  || echo "❌ secrets.yml is NOT gitignored — stop, do not commit"
+# 2. The committed secrets file is vault-encrypted, not plaintext.
+#    (This repo is public and secrets.yml is deliberately tracked.)
+head -c 15 inventory/group_vars/aap/secrets.yml 2>/dev/null | grep -q '^\$ANSIBLE_VAULT' \
+  && echo "✅ secrets.yml is vault-encrypted" \
+  || echo "❌ secrets.yml is NOT encrypted — stop, do not commit"
+
+# 3. This environment's credentials are real, not placeholders.
+#    Read through the vault; never yaml.safe_load the file directly.
+ansible-vault view inventory/group_vars/aap/secrets.yml --vault-id "$VAULT_ID" 2>/dev/null \
+  | python3 -c "
+import sys, yaml, os
+env = os.environ.get('ENV', 'sandbox')
+d = yaml.safe_load(sys.stdin) or {}
+e = (d.get('env_secrets') or {}).get(env, {})
+bad = [k for k, v in e.items() if 'CHANGEME' in str(v)]
+print(('❌ ' + env + ' still has placeholders: ' + ', '.join(bad)) if bad
+      else ('✅ ' + env + ' credentials filled in'))
+"
 
 # 4. kubernetes.core and its python client are installed
 ansible-galaxy collection list kubernetes.core 2>/dev/null | grep -q kubernetes.core \
@@ -74,14 +86,33 @@ beside it. Do not attempt the run with a failing prerequisite.
 CNV may already be installed. Check before running — the playbook is
 idempotent, but 20 minutes of waiting is not worth spending on a no-op.
 
+Resolve the cluster's URL and token through Ansible rather than by reading
+files. The URL is plaintext in `connection.yml` but the token is inside the
+vault, and going through Ansible means the `--limit` selects the environment —
+the same path the playbook takes, so a mismatch cannot hide here.
+
+```bash
+ENV=${ENV:-sandbox}
+VAULT_ID="sales.demos@$HOME/secrets/.vault_pass_sales_demos"
+
+read -r OCP_URL OCP_TOKEN <<<"$(
+  ansible -i inventory --limit "$ENV" aap -m debug --vault-id "$VAULT_ID" \
+    -a 'msg="{{ openshift_api_url }} {{ openshift_api_token }}"' 2>/dev/null \
+  | sed -n 's/.*"msg": "\(.*\)"/\1/p'
+)"
+export OCP_URL OCP_TOKEN
+
+test -n "$OCP_TOKEN" \
+  && echo "✅ resolved $ENV credentials via vault" \
+  || echo "❌ could not resolve credentials — check the vault password and --limit"
+```
+
 ```bash
 python3 - <<'PY'
-import os, ssl, json, urllib.request, yaml
-env = os.environ.get("ENV", "sandbox")
-s = yaml.safe_load(open(f"inventory/group_vars/{env}/secrets.yml"))
+import os, ssl, json, urllib.request
 ctx = ssl.create_default_context(); ctx.check_hostname = False; ctx.verify_mode = ssl.CERT_NONE
-req = urllib.request.Request(s["openshift_api_url"].rstrip("/") + "/apis",
-                             headers={"Authorization": "Bearer " + s["openshift_api_token"]})
+req = urllib.request.Request(os.environ["OCP_URL"].rstrip("/") + "/apis",
+                             headers={"Authorization": "Bearer " + os.environ["OCP_TOKEN"]})
 groups = [g["name"] for g in json.load(urllib.request.urlopen(req, context=ctx, timeout=20))["groups"]]
 print("CNV already installed" if "kubevirt.io" in groups else "CNV NOT installed — run the playbook")
 PY
@@ -93,16 +124,19 @@ Only one input, and it has a default. Ask the user only if it is ambiguous:
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `ENV` (inventory limit) | `sandbox` | Which environment's `secrets.yml` to use — `sandbox` or `demo` |
+| `ENV` (inventory limit) | `sandbox` | Which environment to target — `sandbox` or `demo` |
 
-Everything else — API URL, token, StorageClass, channel — comes from
-`secrets.yml` or is discovered on the cluster. Do not prompt for a token and do
-not pass one on the command line; that would put it in shell history.
+Everything else is resolved for you: hostname and API URL from that
+environment's committed `connection.yml`, credentials from the environment's
+slice of the vault-encrypted `group_vars/aap/secrets.yml`, StorageClass and
+channel discovered on the cluster. Do not prompt for a token and never pass one
+on the command line; that would put it in shell history.
 
 ## Run
 
 ```bash
-ansible-playbook playbooks/setup.yml -i inventory --limit sandbox -e target_env=sandbox
+ansible-playbook playbooks/setup.yml -i inventory --limit sandbox -e target_env=sandbox \
+  --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
 ```
 
 **`--limit` is mandatory.** The play targets `hosts: aap`, so without a limit it
@@ -119,10 +153,12 @@ Optional overrides, if the user has a reason:
 ```bash
 # Pin scratch space to a specific StorageClass instead of the cluster default
 ansible-playbook playbooks/setup.yml -i inventory --limit sandbox \
+  --vault-id sales.demos@~/secrets/.vault_pass_sales_demos \
   -e target_env=sandbox -e cnv_storage_class=<storageclass-name>
 
 # Skip the boot-source wait (returns as soon as the operator is Available)
 ansible-playbook playbooks/setup.yml -i inventory --limit sandbox \
+  --vault-id sales.demos@~/secrets/.vault_pass_sales_demos \
   -e target_env=sandbox -e cnv_wait_for_datasource=false
 ```
 
@@ -133,17 +169,20 @@ ansible-playbook playbooks/setup.yml -i inventory --limit sandbox \
 playbook was broken in two different ways; only running it and then checking
 the cluster caught either one.
 
+Reuses `$OCP_URL` and `$OCP_TOKEN` exported in the preflight above. If you are
+running this standalone, resolve them with the same `ansible … -m debug` command
+first — do not `yaml.safe_load` the secrets file, which is ciphertext.
+
 ```bash
-ENV=${ENV:-sandbox} python3 - <<'PY'
-import os, ssl, json, urllib.request, yaml
-env = os.environ.get("ENV", "sandbox")
-s = yaml.safe_load(open(f"inventory/group_vars/{env}/secrets.yml"))
-base = s["openshift_api_url"].rstrip("/")
+python3 - <<'PY'
+import os, ssl, json, urllib.request
+base = os.environ["OCP_URL"].rstrip("/")
+token = os.environ["OCP_TOKEN"]
 ctx = ssl.create_default_context(); ctx.check_hostname = False; ctx.verify_mode = ssl.CERT_NONE
 
 def get(path):
     req = urllib.request.Request(base + path,
-                                 headers={"Authorization": "Bearer " + s["openshift_api_token"]})
+                                 headers={"Authorization": "Bearer " + token})
     return json.load(urllib.request.urlopen(req, context=ctx, timeout=25))
 
 ok = True
@@ -186,7 +225,9 @@ for t-shirt-sized VMs
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| `401` / `Unauthorized` on the first task | RHDP bearer token expired — they are short-lived | Get a fresh token from the OpenShift console (*Copy login command*) and update `openshift_api_token` in `secrets.yml` |
+| `401` / `Unauthorized` on the first task | RHDP bearer token expired — they are short-lived | Get a fresh token from the OpenShift console (*Copy login command*), then `ansible-vault edit inventory/group_vars/aap/secrets.yml --vault-id sales.demos@~/secrets/.vault_pass_sales_demos` and update `env_secrets.<env>.openshift_api_token` |
+| `Attempting to decrypt but no vault secrets found` | `--vault-id` missing from the command | Add `--vault-id sales.demos@~/secrets/.vault_pass_sales_demos` |
+| `Decryption failed` | Wrong or missing vault password file | Confirm `~/secrets/.vault_pass_sales_demos` exists and is the password the file was encrypted with |
 | ClusterServiceVersion never reaches `Succeeded` | Catalog source not ready, or no `kubevirt-hyperconverged` in `redhat-operators` | `oc get packagemanifest kubevirt-hyperconverged -n openshift-marketplace` |
 | DataSource `rhel9` never Ready | CDI still importing, or no default StorageClass | Re-run; or pass `-e cnv_wait_for_datasource=false` and check `oc get datavolume -n openshift-virtualization-os-images` |
 | `no default StorageClass` assertion | Cluster has none annotated default | Pass `-e cnv_storage_class=<name>` |

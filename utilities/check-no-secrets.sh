@@ -39,8 +39,11 @@ check() {
 check "OpenShift bearer token" \
       'sha256~[A-Za-z0-9_-]{20,}'
 
-check "Live RHDP cluster hostname (use cluster-<id> placeholder)" \
-      '[Cc]luster-[a-z0-9]{4,}[-.][a-z0-9.-]*redhatworkshops'
+# RHDP hostnames are NOT checked. They are ephemeral demo-platform addresses,
+# not customer-identifying, and group_vars/<env>/connection.yml now carries them
+# in the clear on purpose — that is what lets the vaulted secrets file hold
+# credentials only. The hard rule about customer names, passwords, tokens, and
+# API keys is unchanged; only the RHDP URL concern is relaxed. (#18)
 
 check "Private key block" \
       '-----BEGIN [A-Z ]*PRIVATE KEY-----'
@@ -54,17 +57,34 @@ check "GitHub token" \
 check "Quay/registry credential in a tracked file" \
       '(quay|registry)[._-]?(password|token)[[:space:]]*[:=][[:space:]]*["'"'"']?[A-Za-z0-9_/+=-]{12,}'
 
-# A real secrets.yml must never be tracked, whatever it contains.
-if git ls-files --error-unmatch 'inventory/group_vars/*/secrets.yml' >/dev/null 2>&1; then
-  echo "::error::inventory/group_vars/*/secrets.yml is tracked — it must stay gitignored"
-  fail=1
-fi
+# ---------------------------------------------------------------------------
+# A tracked secrets.yml MUST be vault-encrypted.
+#
+# This replaced the old "secrets.yml must never be tracked" rule when the repo
+# moved to vault-encrypted committed secrets (#18). It is the load-bearing check
+# of that change: secrets.yml is no longer gitignored, so this is the only thing
+# standing between a plaintext credential file and a public push. Do not weaken
+# it, and do not re-add an ignore rule instead — an ignore rule would hide the
+# real file rather than verify it.
+#
+# Checks the committed blob, not the working tree, so staging a plaintext file
+# over an encrypted one is caught.
+# ---------------------------------------------------------------------------
+while IFS= read -r f; do
+  [ -n "$f" ] || continue
+  if ! git show ":$f" 2>/dev/null | head -c 15 | grep -q '^\$ANSIBLE_VAULT'; then
+    echo "::error::$f is tracked but NOT vault-encrypted"
+    echo "    Encrypt it before committing:"
+    echo "      ansible-vault encrypt $f --vault-id sales.demos@~/secrets/.vault_pass_sales_demos"
+    fail=1
+  fi
+done < <(git ls-files '*/secrets.yml' 'secrets.yml')
 
 if [ "$fail" -ne 0 ]; then
   echo
   echo "Secret-hygiene check failed. See CONTRIBUTING.md -> 'Audit before every push'."
-  echo "Environment-specific values belong in the gitignored"
-  echo "inventory/group_vars/<env>/secrets.yml, never in a tracked file."
+  echo "Credentials belong in the vault-encrypted inventory/group_vars/aap/secrets.yml,"
+  echo "never in plaintext. Hostnames and API URLs are fine in connection.yml."
   exit 1
 fi
 

@@ -6,33 +6,54 @@ phase plan, including *why* each choice was made.
 
 ## This repo is public
 
-No customer information, ever. No RHDP hostname, cluster ID, deployment URL,
-password, or API token in any tracked file, commit message, PR title or body,
-issue, or CHANGELOG. Use generic placeholders in committed docs and examples
-(`api.cluster-<id>.dyn.redhatworkshops.io`).
+No customer information, ever. No customer name, password, or API token in any
+tracked file, commit message, PR title or body, issue, or CHANGELOG.
+
+**RHDP URLs are the documented exception.** `*.dyn.redhatworkshops.io`
+hostnames and cluster IDs are ephemeral demo-platform addresses, not
+customer-identifying, and are committed in plaintext in `connection.yml` on
+purpose. Do not flag them, and do not "fix" them into placeholders.
 
 Audit every diff before pushing:
 
 ```bash
 git ls-files -z | xargs -0 grep -nEi \
-  'redhatworkshops|sha256~|[0-9]{1,3}(\.[0-9]{1,3}){3}|BEGIN [A-Z ]*PRIVATE KEY'
+  'sha256~|BEGIN [A-Z ]*PRIVATE KEY|AKIA[0-9A-Z]{16}'
 ```
 
-Only placeholder lines in `secrets.yml.example` may match.
+Only placeholder lines and the audit pattern itself may match.
 
 ## Secrets: exactly one mechanism
 
-`inventory/group_vars/<env>/secrets.yml` (gitignored) is the only secrets file.
+`inventory/group_vars/aap/secrets.yml` is the only secrets file. It is
+**vault-encrypted and committed**, and lives in the `aap` group directory so it
+loads for every environment — one file, both `sandbox` and `demo`.
 
-- **Every** environment-specific value goes there — hostnames, URLs, tokens,
-  passwords — not just the strictly secret ones. A new RHDP environment must be
-  a one-file edit.
-- `connection.yml` is committed and holds structure only. It never varies
-  between environments.
+```bash
+ansible-vault edit inventory/group_vars/aap/secrets.yml \
+  --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
+```
+
+- **Credentials only.** Per-environment credentials are keyed under
+  `env_secrets` by environment name; `connection.yml` selects its slice with
+  `env_secrets[aap_env_name]`.
+- `connection.yml` is committed plaintext and holds everything that is not a
+  credential: `aap_hostname`, `openshift_api_url`, usernames, namespaces. It
+  *does* vary per environment — that is the point.
+- A new RHDP environment means editing that environment's `connection.yml` plus
+  two keys in the vault.
+- The vault password is at `~/secrets/.vault_pass_sales_demos` (`600`, in a
+  `700` directory), outside this repo, following the same convention as
+  `aap_config`'s `.vault_pass_<env>` files.
 - `secrets.yml.example` is the **only** `.example` file in the repo. Do not
   create `connection.yml.example` or any other `.example` twin.
 - Do **not** introduce a second sourceable secrets file. `docs/dev-environment.sh`
   is retired and must not come back.
+- **Never weaken the vault check** in `utilities/check-no-secrets.sh`. Because
+  `secrets.yml` is tracked rather than gitignored, that check — a tracked
+  `secrets.yml` must begin with `$ANSIBLE_VAULT` — is the only thing preventing
+  a plaintext credential file from being pushed publicly. Do not replace it with
+  a `.gitignore` rule; that hides the file instead of verifying it.
 
 ## Environments
 
