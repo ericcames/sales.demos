@@ -1,0 +1,25 @@
+---
+# ============================================================================
+# group_vars/aap/aap_organizations.yml — organizations shared by EVERY env
+# ============================================================================
+# Ported verbatim from ericcames/aap_config (#14), where it was curated from an
+# export of the Azure AAP. This repo has no export tooling, so treat the list
+# below as authored config rather than something regenerated.
+#
+# NOTE THE VARIABLE NAME. An export writes a top-level `gateway_organizations:`
+# key, but the dispatch role reads this object type from `aap_organizations`.
+# The rule is "rename the export's key to the variable dispatch expects, plus
+# the _all / _<env> suffix" — which is not always just the export's key + _all.
+# Check infra.aap_configuration/roles/dispatch/defaults/main.yml when in doubt.
+#
+# THIS ORGANIZATION DOES NOT EXIST ON A FRESH RHDP ENVIRONMENT. The catalog
+# item ships `Default` and `Ansible Product Demos (APD)`, so the first apply
+# creates this one. aap_organization_name in main.yml is kept in step with it
+# so the repo names a single organization.
+#
+# Nothing consumes this yet — there is no dispatch playbook here until the AAP
+# bootstrap half of #1 lands.
+# ============================================================================
+
+aap_organizations_all:
+  - name: "IT Service Automation"

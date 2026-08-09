@@ -53,7 +53,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the laptop's collection path, never a demo environment, so it must never run
   from AAP. (#8)
 
+- Shared AAP configuration ported from `ericcames/aap_config` into
+  `inventory/group_vars/aap/` — `aap_settings.yml`
+  (`dispatch_include_wildcard_vars`, `aap_configuration_secure_logging`),
+  `aap_organizations.yml`, `controller_settings.yml` (Automation Analytics and
+  subscriptions), and `gateway_settings.yml` (the `custom_login_info` sign-in
+  banner). Values verbatim; comments adapted to this repo, which has two
+  environments and no export tooling. Every key was verified present on the
+  live AAP 2.6 catalog item first, so the standing "aap_config targets 2.7, do
+  not copy its settings verbatim" caution does not apply to these files.
+  Collection pins already matched exactly. Nothing consumes these variables
+  until the AAP bootstrap half of #1 lands. (#14)
+- `vaulted_subscriptions_client_id` and `vaulted_subscriptions_client_secret`
+  added to `secrets.yml.example`. `controller_settings.yml` requires both in
+  every environment or the apply fails with an undefined-variable error. (#14)
+
 ### Changed
+- `aap_organization_name` in `inventory/group_vars/aap/main.yml` moved
+  `Default` → `IT Service Automation`, matching the organization
+  `aap_organizations.yml` declares, so the repo names one organization rather
+  than two. A fresh RHDP environment ships `Default` and `Ansible Product Demos
+  (APD)`, so the first apply creates it. (#14)
 - **Every collection in `collections/requirements.yml` is now pinned to an exact
   version.** `ansible.platform` (2.7.20260604), `ansible.controller` (4.8.0),
   `kubernetes.core` (6.4.0), and `redhat.openshift_virtualization` (2.3.0) were
