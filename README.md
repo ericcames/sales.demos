@@ -157,8 +157,21 @@ Locally, against the sandbox environment:
 ansible-galaxy collection install -r collections/requirements.yml
 
 ansible-playbook playbooks/setup.yml \
-  -i inventory --limit sandbox
+  -i inventory --limit sandbox -e target_env=sandbox
 ```
+
+**`--limit` selects the environment and is mandatory.** Playbooks target
+`hosts: aap`, so without a limit they match every environment at once — they
+assert on that and fail closed rather than configuring `sandbox` and `demo` in
+the same run. Adding `-e target_env=<env>` makes the play verify the inventory
+resolved to the environment you meant.
+
+Each environment has its own host in `inventory/hosts.yml` (`sandbox-local`,
+`demo-local`). That matters: when both groups shared one host, `--limit` filtered
+hosts but not `group_vars`, so both environments' variables merged and
+`--limit demo` silently used sandbox's hostname and token
+([#16](https://github.com/ericcames/sales.demos/issues/16)). Never point two
+environment groups at the same host.
 
 Or open this repo in Claude Code and invoke the matching skill, which runs the
 same playbook after collecting inputs and checking prerequisites.

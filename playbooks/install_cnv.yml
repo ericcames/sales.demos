@@ -21,8 +21,11 @@
 # ===========================================================================
 
 - name: Install OpenShift Virtualization
-  hosts: localhost
-  connection: local
+  # `hosts: aap` plus `--limit <env>` is what selects the environment. Targeting
+  # a bare host here instead would re-open #16, where both environment groups
+  # shared one host and their group_vars merged. Connection details come from
+  # the inventory, not from this play.
+  hosts: aap
   gather_facts: false
 
   # kubernetes.core reads these; keeps the token out of every task's args and
@@ -52,6 +55,32 @@
     cnv_datasource_namespace: "openshift-virtualization-os-images"
 
   tasks:
+    - name: Assert exactly one environment is targeted
+      # Without a --limit, `hosts: aap` matches every environment and this play
+      # would configure sandbox and demo in the same run. Fail closed. (#16)
+      ansible.builtin.assert:
+        that:
+          - ansible_play_hosts_all | length == 1
+        fail_msg: >-
+          This run targets {{ ansible_play_hosts_all | length }} environments
+          ({{ ansible_play_hosts_all | join(', ') }}). Pass exactly one:
+          `--limit sandbox` or `--limit demo`.
+        quiet: true
+      run_once: true
+
+    - name: Assert the targeted environment is the intended one
+      # Optional belt-and-braces for callers that know which environment they
+      # mean: `-e target_env=demo` fails loudly rather than silently applying
+      # somewhere else. Skipped when the caller does not pass it.
+      ansible.builtin.assert:
+        that:
+          - aap_env_name == target_env
+        fail_msg: >-
+          Requested target_env={{ target_env }} but the inventory resolved to
+          aap_env_name={{ aap_env_name }}. Check your --limit.
+        quiet: true
+      when: target_env is defined
+
     - name: Assert the required connection variables are set
       # Asserted here so the skill, a job template, and a laptop run all fail
       # identically with the same message. See CLAUDE.md -> Skills and playbooks.
