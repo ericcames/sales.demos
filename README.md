@@ -165,7 +165,16 @@ environment, so it must never run from AAP:
 
 | Skill | Does |
 |---|---|
+| `sales-demos-first-time` | One-time setup on a new machine — start here |
 | `collections-sync` | Pin, install, and verify `collections/requirements.yml` |
+
+New machine? Run `/sales-demos-first-time` first. It walks every prerequisite and
+validates each one, including the vault password — without which nothing in this
+repo decrypts.
+
+**This repo is self-contained.** Every skill it needs is in `.claude/skills/`
+and discovered natively. Nothing here depends on a plugin or another repo's
+skills, and nothing should be added that does.
 
 ## Collections
 
@@ -210,6 +219,23 @@ ansible-playbook playbooks/setup.yml \
 **`--vault-id` is required** — credentials come from the vault-encrypted
 `group_vars/aap/secrets.yml`. Without it the run fails with
 *"Attempting to decrypt but no vault secrets found"*.
+
+### Keep the run log
+
+Phase 0 takes 10–20 minutes. If it fails and the terminal is gone, so is the
+evidence. Set a log path before running:
+
+```bash
+export ANSIBLE_LOG_PATH=~/ansible-logs/sales-demos-$(date +%F).log
+```
+
+Logs go to `~/ansible-logs/`, **outside the repo** — this repo is public, and
+keeping them out entirely beats relying on an ignore rule.
+
+**Do not pipe through `tee`.** In a pipeline the exit status comes from `tee`,
+not from `ansible-playbook`, so a failed run reports success. That is not
+hypothetical: it caused a real misread during Phase 0, where the harness showed
+exit 0 for a playbook that had actually failed.
 
 To apply the AAP configuration itself — organization, sign-in banner, the
 environment-badged logo, analytics settings — use the config-as-code pair.

@@ -70,15 +70,23 @@ reimplements logic.
   every input via `extra_vars`, required vars asserted at the top so both entry
   points fail identically.
 - `.claude/skills/<name>/SKILL.md` does preflight checks, collects inputs, and
-  invokes the playbook. Follow the shape used in the `aap-skills` repo:
-  frontmatter `name` + `description` with explicit **TRIGGER** and **SKIP**
-  clauses, then a Preflight Check section of shell one-liners.
+  invokes the playbook. Follow the shape of the skills already here — see
+  `.claude/skills/ocpvirt-setup/SKILL.md`: frontmatter `name` + `description`
+  with explicit **TRIGGER** and **SKIP** clauses, then a Preflight Check section
+  of shell one-liners, and a verification step that asks the target rather than
+  trusting the Ansible recap.
 - Survey variable names, skill prompt names, and playbook `extra_vars` must
   match exactly. The variable names *are* the contract.
 
 Skills live in `.claude/skills/` and are discovered natively — no marketplace,
-no `plugin.json`. The `aap-skills` plugin stays installed and untouched for
-other demos.
+no `plugin.json`.
+
+**This repo is self-contained.** Never send a user to a skill from another repo
+or plugin, and never build a workflow here that depends on one. If something is
+missing, add it here. Other plugins may be installed on the same machine for
+other demos; they stay untouched, and nothing here relies on them. The
+`sales-demos-` prefix on repo-wide skills keeps them unambiguous when other
+skills are loaded alongside.
 
 ### Nothing deploys from CI
 

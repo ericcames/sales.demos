@@ -135,9 +135,20 @@ on the command line; that would put it in shell history.
 ## Run
 
 ```bash
+mkdir -p ~/ansible-logs
+export ANSIBLE_LOG_PATH=~/ansible-logs/ocpvirt-setup-sandbox-$(date +%F-%H%M).log
+
 ansible-playbook playbooks/setup.yml -i inventory --limit sandbox -e target_env=sandbox \
   --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
 ```
+
+**Always set `ANSIBLE_LOG_PATH`** — this run takes 10–20 minutes and the log is
+the only evidence left if it fails. Logs live outside the repo, in
+`~/ansible-logs/`. Tell the user the path so they can find it later.
+
+**Never pipe the run through `tee`.** In a pipeline the exit status comes from
+`tee`, not `ansible-playbook`, so a failed run reports success — this caused a
+real misread during Phase 0.
 
 **`--limit` is mandatory.** The play targets `hosts: aap`, so without a limit it
 matches every environment at once; it asserts on that and fails closed rather
