@@ -68,6 +68,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   added to `secrets.yml.example`. `controller_settings.yml` requires both in
   every environment or the apply fails with an undefined-variable error. (#14)
 
+### Added — config-as-code apply and validate (#24)
+- `playbooks/config.yml` applies the AAP objects defined in
+  `inventory/group_vars/`; `playbooks/validate.yml` is the same play in check
+  mode. Until now nothing in this repo ran `infra.aap_configuration.dispatch`, so
+  the objects ported in #14 and the sign-in logos from #20 had never been executed
+  against a real AAP.
+- Both are thin — the work is `include_role: infra.aap_configuration.dispatch`,
+  with variables arriving implicitly from `inventory/group_vars/`. Basic auth via
+  `aap_username`/`aap_password`; no OAuth token is minted, so there is nothing to
+  leak and nothing to clean up in an `always:` block.
+- The environment guard from #16 moves to
+  `playbooks/tasks/assert_target_environment.yml` rather than being copied a third
+  time; `install_cnv.yml` adopts it and still runs at `changed=0`.
+- Verified against the sandbox by running it: check mode `ok=36 changed=4`, then
+  the apply `ok=37 changed=2`, then confirmed against the AAP API — organization
+  created, banner set, and `custom_logo` byte-identical to the committed
+  `docs/images/logo-sandbox.png.b64`.
+- Documented check-mode caveat: some roles' "wait for the object to exist" tasks
+  report `FAILED - RETRYING` under check mode because nothing was created for them
+  to find. The play still succeeds; treat check mode as a strong signal, not a
+  contract.
+
 ### Changed — what the vault actually holds (#22)
 - **`automation_hub_token` is no longer stored in the vault.** Nothing consumed
   it — `ansible-galaxy collection install` reads `~/.ansible.cfg` itself, which
