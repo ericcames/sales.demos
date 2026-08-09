@@ -59,6 +59,12 @@ collections/ansible_collections/
 !collections/requirements.yml
 .ansible/
 
+# Run logs belong in ~/ansible-logs, OUTSIDE this repo — it is public, and
+# keeping them out entirely beats relying on a rule here. These patterns are
+# only a guard in case someone points ANSIBLE_LOG_PATH at the working tree. (#26)
+logs/
+*.log
+
 # Editor / OS
 .vscode/
 .idea/

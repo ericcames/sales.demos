@@ -68,6 +68,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   added to `secrets.yml.example`. `controller_settings.yml` requires both in
   every environment or the apply fails with an undefined-variable error. (#14)
 
+### Added — first-time setup and run logging (#26)
+- `.claude/skills/sales-demos-first-time/SKILL.md` — one-time setup for a new
+  machine. Audits what exists, guides what is missing, and validates each step by
+  exercising the real path (inventory resolution, the vault, and the Hub token
+  lookup together) rather than checking files exist.
+  - It is explicit that the vault password **cannot be created by a new user**.
+    `group_vars/aap/secrets.yml` is committed but encrypted, so without
+    `~/secrets/.vault_pass_sales_demos` nothing decrypts and every playbook fails.
+    It has to be handed over; there is no derivation and no recovery.
+- Run logs now go to **`~/ansible-logs/`, outside the repo**, via
+  `ANSIBLE_LOG_PATH`. Documented in `README.md`, the `ocpvirt-setup` skill, and
+  the first-time skill. Outside the repo on purpose: this repo is public, and
+  keeping logs out entirely beats relying on an ignore rule. A defensive
+  `logs/` + `*.log` rule is added anyway in case someone points
+  `ANSIBLE_LOG_PATH` at the working tree.
+  - **Not `tee`.** In a pipeline the exit status comes from `tee`, not from
+    `ansible-playbook`, so a failed run reports success. This is recorded because
+    it caused a real misread during Phase 0. `ANSIBLE_LOG_PATH` also works
+    without an `ansible.cfg`, which matters since a project-local one is banned.
+
+### Changed
+- `CLAUDE.md` and `README.md` now state plainly that **this repo is
+  self-contained**: every skill it needs lives in `.claude/skills/`, nothing
+  depends on a plugin or another repo's skills, and nothing that does should be
+  added. The skill-authoring guidance points at `ocpvirt-setup` as the in-repo
+  example rather than at an external repo. (#26)
+
 ### Added — config-as-code apply and validate (#24)
 - `playbooks/config.yml` applies the AAP objects defined in
   `inventory/group_vars/`; `playbooks/validate.yml` is the same play in check
