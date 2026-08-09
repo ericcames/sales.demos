@@ -44,37 +44,55 @@ There is deliberately **no `golden` environment**. "This config is proven good"
 is a state of the config, not a connection target — git already models that with
 `main` plus a release tag.
 
-## Secrets: one file to edit
+## Secrets: one vaulted file, both environments
 
-Copy the example and fill it in:
+`inventory/group_vars/aap/secrets.yml` is **vault-encrypted and committed**. It
+sits in the `aap` group directory, so it loads for `sandbox` and `demo` alike —
+one file, no per-environment copy to keep in step.
+
+On a fresh clone you do not create it. You already have it; you need the vault
+password, which lives outside this repo at `~/secrets/.vault_pass_sales_demos`
+(`chmod 600`, in a `chmod 700` directory) alongside the other `.vault_pass_*`
+files. **Back that password up** — losing it makes the committed file
+unrecoverable.
 
 ```bash
-cp inventory/group_vars/sandbox/secrets.yml.example \
-   inventory/group_vars/sandbox/secrets.yml
+ansible-vault edit inventory/group_vars/aap/secrets.yml \
+  --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
 ```
 
-`secrets.yml` is gitignored and is the **only** secrets mechanism in this repo.
-Every environment-specific value lives there — AAP hostname, OpenShift API URL,
-tokens, quay credentials — not just the strictly secret ones.
+**It holds credentials only.** Values that differ per environment are keyed
+under `env_secrets` by environment name; each `connection.yml` selects its own
+slice with `env_secrets[aap_env_name]`, which is also what stops one
+environment from picking up another's credentials.
 
-That is deliberate: **a new RHDP environment means editing exactly one file.**
-`connection.yml` is committed, holds structure only, and never changes between
-environments.
+Everything that is *not* a credential — `aap_hostname`, `openshift_api_url`,
+usernames, namespaces — lives in the committed plaintext
+`inventory/group_vars/<env>/connection.yml`. So a new RHDP environment means
+editing that environment's `connection.yml` plus two keys in the vault.
 
-`secrets.yml.example` is the only `.example` file in the repo. Its whole job is
-to show you what `secrets.yml` must look like.
+`secrets.yml.example` is the only `.example` file in the repo, and shows the
+shape of the real one.
 
 ### Public repo
 
-This repo is public. No RHDP hostname, cluster ID, token, or password belongs in
-any tracked file, commit message, issue, or PR. Before pushing:
+RHDP URLs are **not** treated as sensitive here. `*.dyn.redhatworkshops.io`
+addresses are ephemeral demo-platform hostnames, not customer-identifying, and
+keeping them readable in `connection.yml` is what lets the vaulted file hold
+credentials only.
+
+Everything else still applies: no customer names, passwords, tokens, or API keys
+in any tracked file, commit message, issue, or PR. Before pushing:
 
 ```bash
 git ls-files -z | xargs -0 grep -nEi \
-  'redhatworkshops|sha256~|[0-9]{1,3}(\.[0-9]{1,3}){3}|BEGIN [A-Z ]*PRIVATE KEY'
+  'sha256~|BEGIN [A-Z ]*PRIVATE KEY|AKIA[0-9A-Z]{16}'
 ```
 
-That should return nothing but placeholder lines in `secrets.yml.example`.
+That should return nothing but placeholder lines and the audit pattern itself.
+`utilities/check-no-secrets.sh` runs the same check in CI, plus the one that
+matters most under this model: **a tracked `secrets.yml` must start with
+`$ANSIBLE_VAULT`**, so a plaintext one can never be committed.
 
 ## Skills and playbooks: one contract, two entry points
 
@@ -157,8 +175,13 @@ Locally, against the sandbox environment:
 ansible-galaxy collection install -r collections/requirements.yml
 
 ansible-playbook playbooks/setup.yml \
-  -i inventory --limit sandbox -e target_env=sandbox
+  -i inventory --limit sandbox -e target_env=sandbox \
+  --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
 ```
+
+**`--vault-id` is required** — credentials come from the vault-encrypted
+`group_vars/aap/secrets.yml`. Without it the run fails with
+*"Attempting to decrypt but no vault secrets found"*.
 
 **`--limit` selects the environment and is mandatory.** Playbooks target
 `hosts: aap`, so without a limit they match every environment at once — they
@@ -179,10 +202,9 @@ same playbook after collecting inputs and checking prerequisites.
 From AAP, the same playbook runs as a job template with survey answers mapped to
 the same `extra_vars`. All three paths are the same code.
 
-That is deliberate: keeping deploys out of CI means every environment-specific
-value stays in the gitignored `secrets.yml`, with no second copy living in
-GitHub Environment secrets. Re-pointing at a fresh RHDP environment stays a
-one-file edit. See [#7](https://github.com/ericcames/sales.demos/issues/7).
+That is deliberate: keeping deploys out of CI means no runner ever needs the
+vault password, and there is no second copy of it living in GitHub Environment
+secrets. See [#7](https://github.com/ericcames/sales.demos/issues/7).
 
 ## Conventions
 

@@ -1,13 +1,26 @@
 # ---------------------------------------------------------------------------
 # Secrets — the ONLY secrets mechanism in this repo is
-# inventory/group_vars/<env>/secrets.yml. Every environment-specific value
-# lives there: AAP hostname, OpenShift API URL, tokens, quay credentials.
-# A new RHDP env means editing exactly one file.
+# inventory/group_vars/aap/secrets.yml, which is VAULT-ENCRYPTED AND COMMITTED.
+# One file, both environments. Credentials only; hostnames and API URLs live in
+# the committed plaintext group_vars/<env>/connection.yml.
+#
+# secrets.yml is deliberately NOT ignored — it is meant to be tracked. What
+# stops a plaintext one being committed is utilities/check-no-secrets.sh, which
+# fails the build if a tracked secrets.yml does not start with $ANSIBLE_VAULT.
+# That check is the safety net; do not remove it.
+#
+# The vault PASSWORD is the one secret that cannot be vaulted. It lives outside
+# this repo at ~/secrets/.vault_pass_sales_demos (chmod 600, chmod 700 dir).
+# The patterns below are belt-and-braces in case one is ever copied in here.
 #
 # Do NOT add a second sourceable secrets file (no docs/dev-environment.sh).
 # ---------------------------------------------------------------------------
-inventory/group_vars/*/secrets.yml
-!inventory/group_vars/*/secrets.yml.example
+.vault_pass
+.vault_pass*
+.vault_password
+*.vault_pass
+*.vault-password
+.vault-password
 
 # Kubeconfigs and cluster credentials
 **/kubeconfig

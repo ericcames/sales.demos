@@ -90,35 +90,52 @@ the config, not a connection target — git already models it with `main` plus a
 **`.example` files are for `secrets.yml` only.** Their single purpose is to show others what
 that file must look like. No `connection.yml.example`, no proliferation of `.example` twins.
 
-**Every environment-specific value goes in `secrets.yml`** — AAP hostname, OpenShift API URL,
-tokens, quay credentials — not just the things that are strictly secret. Committed
-`connection.yml` holds only structure and references vars defined in secrets.
+> **Superseded — the model below changed in #18.** The original design put *every*
+> environment-specific value in a gitignored plaintext `secrets.yml`, one per environment,
+> so nothing appeared on GitHub. It now matches `aap_config`: **one vault-encrypted,
+> committed `secrets.yml` in `group_vars/aap/`, holding credentials only.** The reasoning
+> for the change is recorded below; the original argument is kept because the *shape* of the
+> split — one obvious place to look, no `.example` twins, no second sourceable file — was
+> right and survived.
 
-The reason is operational, not security: **a new RHDP env means editing exactly one file.**
-Re-point `secrets.yml` and everything follows; `connection.yml` never changes because nothing
-in it varies per environment. Splitting env-specific values across two files would mean
-remembering both every time a demo env is reprovisioned — which is the step you'd skip at the
-end of a long day.
+**Credentials go in `group_vars/aap/secrets.yml`, vault-encrypted and committed.** It sits in
+the `aap` group directory so it loads for every environment: one file, both `sandbox` and
+`demo`, with per-environment credentials keyed under `env_secrets` and selected by
+`connection.yml` via `env_secrets[aap_env_name]`.
 
-Keeping RHDP URLs out of a public repo falls out of this for free. Worth being clear-eyed
-about the risk levels, so the rule is applied with judgment rather than fear:
+**Everything that is not a credential goes in `group_vars/<env>/connection.yml`,** committed
+plaintext — `aap_hostname`, `openshift_api_url`, usernames, namespaces. So `connection.yml`
+*does* vary per environment now; that is what makes the environment axis real rather than
+decorative.
+
+A new RHDP env means editing that env's `connection.yml` plus two keys in the vault. That is
+two files rather than the original one — the cost of the change, taken knowingly, in exchange
+for secrets that travel with the repo and survive a laptop loss.
+
+Risk levels, stated plainly so the rule is applied with judgment rather than fear:
 
 - **Tokens: absolute.** A live bearer token granting `kube:admin` is scraped by bots within
-  minutes of a public push. No exceptions.
-- **URLs: low direct risk.** `dyn.redhatworkshops.io` is publicly resolvable, a hostname is
-  not a credential, and the cluster expires in days. The real reasons to exclude it are that
-  it is ephemeral (wrong within a week, so useless to a future cloner) and that it would
-  become a genuine disclosure the moment an env is ever named after a customer or opportunity.
+  minutes of a public push. Committed only as ciphertext, never in the clear. The CI guard
+  enforces this: a tracked `secrets.yml` that does not begin with `$ANSIBLE_VAULT` fails the
+  build. Since `secrets.yml` is no longer gitignored, that check is the only thing standing
+  between a plaintext credential file and a public push.
+- **URLs: not sensitive.** `dyn.redhatworkshops.io` is publicly resolvable, a hostname is not
+  a credential, and the cluster expires in days. These are committed in the clear on purpose,
+  matching `aap_config`. The original objection — that an env might one day be named after a
+  customer — is handled by the standing rule against customer names, not by hiding hostnames.
+- **The vault password is the one secret that cannot be vaulted.** It lives at
+  `~/secrets/.vault_pass_sales_demos`, outside the repo, and must be backed up.
 
-**`secrets.yml` is the only secrets mechanism in this repo.** No `docs/dev-environment.sh` —
-that convention is retired here. One place to look, one file to gitignore, one example to
-maintain. Do not introduce a second sourceable secrets file unless something genuinely cannot
-go in `secrets.yml`.
+**Ciphertext in public history is permanent.** A later revert does not remove it, and the
+protection is exactly the strength of the vault password. No rotation is planned: RHDP
+environments are destroyed when testing finishes, and that destruction is the remediation.
 
-- `.gitignore` covers `*.tfstate*`, `*.tfvars`, `inventory/group_vars/*/secrets.yml`,
-  `**/kubeconfig`, `.terraform/`.
-- The cluster URL and bearer token used to research this plan stay out of the repo entirely.
-- Audit the diff for RHDP specifics before every push.
+**One secrets mechanism.** No `docs/dev-environment.sh` — that convention is retired here.
+Do not introduce a second sourceable secrets file.
+
+- `.gitignore` covers `*.tfstate*`, `*.tfvars`, `**/kubeconfig`, `.terraform/`, `.ansible/`,
+  and vault password files. It deliberately does **not** cover `secrets.yml`.
+- Audit the diff before every push; `utilities/check-no-secrets.sh` runs the same check in CI.
 
 ---
 
@@ -211,13 +228,14 @@ committed plan as its starting context.
 5. **Open labeled GitHub issues** — one per phase. Run
    `gh label list --repo ericcames/sales.demos` first and apply every label that fits.
 
-6. **Pre-push audit** — the repo is public. Confirm no RHDP cluster ID, URL, or token appears
-   in any tracked file:
+6. **Pre-push audit** — the repo is public. Confirm no credential appears in the clear in any
+   tracked file. *(Pattern updated in #18: RHDP hostnames are no longer flagged — they are
+   committed in `connection.yml` on purpose.)*
    ```
-   git ls-files -z | xargs -0 grep -nEi 'redhatworkshops|sha256~|[0-9]{1,3}(\.[0-9]{1,3}){3}|BEGIN [A-Z ]*PRIVATE KEY'
+   git ls-files -z | xargs -0 grep -nEi 'sha256~|BEGIN [A-Z ]*PRIVATE KEY|AKIA[0-9A-Z]{16}'
    ```
    Must return nothing except `secrets.yml.example` placeholder lines. Note the pattern is
-   deliberately generic — do not hardcode a real cluster ID into the check itself.
+   deliberately generic — do not hardcode a real value into the check itself.
 
 Everything below is **tomorrow's work**, committed as the plan of record.
 

@@ -68,6 +68,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   added to `secrets.yml.example`. `controller_settings.yml` requires both in
   every environment or the apply fails with an undefined-variable error. (#14)
 
+### Changed — secrets model (#18)
+- **`secrets.yml` is now vault-encrypted and committed, not gitignored plaintext**,
+  matching `aap_config`. One file at `inventory/group_vars/aap/secrets.yml`,
+  vault-id `sales.demos`, loaded for every environment because it sits in the
+  `aap` group directory. Replaces the per-environment gitignored files.
+- **It holds credentials only.** Per-environment credentials are keyed under
+  `env_secrets` by environment name; each `connection.yml` selects its slice with
+  `env_secrets[aap_env_name]`, which is also what keeps `--limit demo` from
+  reaching sandbox's credentials (#16).
+- **`connection.yml` now carries the environment-specific non-secrets** in
+  committed plaintext — `aap_hostname`, `openshift_api_url`, usernames,
+  namespaces. It previously held structure only. A new RHDP environment is now a
+  two-file edit: that `connection.yml` plus two keys in the vault.
+- **RHDP URLs are no longer treated as sensitive.** `*.dyn.redhatworkshops.io`
+  hostnames are ephemeral demo-platform addresses, not customer-identifying, and
+  are committed in the clear on purpose — that is what lets the vaulted file hold
+  credentials only. The RHDP-hostname pattern is removed from
+  `utilities/check-no-secrets.sh`. This reverses a rule previously stated in
+  `CLAUDE.md`, `CONTRIBUTING.md`, `README.md`, and the plan doc, all updated.
+- **`utilities/check-no-secrets.sh` guard inverted.** The "no tracked
+  `secrets.yml`" rule is replaced by "a tracked `secrets.yml` must begin with
+  `$ANSIBLE_VAULT`", checked against the committed blob rather than the working
+  tree. Since `secrets.yml` is no longer gitignored, this is the only thing
+  preventing a plaintext credential file from being pushed. Every other pattern —
+  bearer tokens, private keys, AWS and GitHub tokens, quay credentials — is
+  unchanged. Verified by triggering it: a staged plaintext `secrets.yml` fails
+  with exit 1.
+- `.gitignore` drops the `inventory/group_vars/*/secrets.yml` rule and adds vault
+  password patterns. The password itself lives outside the repo at
+  `~/secrets/.vault_pass_sales_demos`, following the same convention as
+  `aap_config`'s `.vault_pass_<env>` files.
+- `.claude/skills/ocpvirt-setup/SKILL.md` — two real breakages fixed, not just
+  wording. Its preflight asserted `git check-ignore` *succeeds* on `secrets.yml`,
+  which is now exactly backwards; and its preflight and verification blocks
+  `yaml.safe_load`ed the secrets file directly, which fails on ciphertext. Both
+  now resolve credentials through `ansible … -m debug` with `--vault-id`, so the
+  `--limit` selects the environment by the same path the playbook takes.
+
 ### Fixed
 - **`--limit demo` silently targeted `sandbox`.** Both environment groups in
   `inventory/hosts.yml` pointed at the same host, `localhost`. `--limit` filters
