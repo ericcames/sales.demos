@@ -29,10 +29,22 @@ override.tf
 override.tf.json
 *_override.tf
 
-# Ansible
+# ---------------------------------------------------------------------------
+# Ansible — collections are NEVER vendored into this repo. They install to the
+# recommended path (Ansible's default ~/.ansible/collections) from the pinned
+# collections/requirements.yml. Two artifact directories get created here and
+# neither belongs in git:
+#
+#   collections/ansible_collections/  ansible-galaxy, if pointed at the repo
+#   .ansible/                         ansible-lint's generated module mocks
+#
+# The .ansible/ mocks are regenerated from .ansible-lint `mock_modules` on
+# every run, so tracking them only guarantees they go stale. (#8)
+# ---------------------------------------------------------------------------
 *.retry
 collections/ansible_collections/
 !collections/requirements.yml
+.ansible/
 
 # Editor / OS
 .vscode/

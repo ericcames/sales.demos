@@ -112,6 +112,39 @@ A green CI run does not mean a playbook works — the lint gate cannot execute
 anything. Run each phase against `sandbox` and verify against the cluster before
 its PR merges; `ocpvirt-setup` ends in exactly that cluster-side check.
 
+#### Repo maintenance skills
+
+One skill has no playbook, deliberately — it touches your laptop, never a demo
+environment, so it must never run from AAP:
+
+| Skill | Does |
+|---|---|
+| `collections-sync` | Pin, install, and verify `collections/requirements.yml` |
+
+## Collections
+
+Every collection is pinned to an exact version in
+[`collections/requirements.yml`](collections/requirements.yml). Nothing floats —
+a floating version means two laptops resolve different code and a demo that
+worked yesterday breaks on the next install.
+
+Pins record versions that were **actually run**, not the newest published. Bump
+a pin deliberately, re-run the affected phase against `sandbox`, then commit.
+
+```bash
+ansible-galaxy collection install -r collections/requirements.yml
+```
+
+They install to Ansible's default path, `~/.ansible/collections`. **Collections
+are never vendored into this repo** — both `collections/ansible_collections/`
+and `.ansible/` (ansible-lint's generated module mocks) are gitignored build
+artifacts.
+
+Run the `collections-sync` skill to pin, install, and verify in one pass. The
+verify step is the point: `ansible-galaxy` reports success without installing
+anything when it believes a collection is already present, and it silently
+refuses to downgrade, so its exit code does not tell you what you actually have.
+
 ## Running a phase
 
 **Nothing deploys from CI.** GitHub Actions is a pull-request gate only — lint,
