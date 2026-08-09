@@ -211,6 +211,24 @@ ansible-playbook playbooks/setup.yml \
 `group_vars/aap/secrets.yml`. Without it the run fails with
 *"Attempting to decrypt but no vault secrets found"*.
 
+To apply the AAP configuration itself — organization, sign-in banner, the
+environment-badged logo, analytics settings — use the config-as-code pair.
+Always run `validate.yml` first; it is the same play in check mode:
+
+```bash
+ansible-playbook playbooks/validate.yml -i inventory --limit sandbox \
+  -e target_env=sandbox --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
+
+ansible-playbook playbooks/config.yml -i inventory --limit sandbox \
+  -e target_env=sandbox --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
+```
+
+`config.yml` reports `changed` on **every** run. AAP returns
+`SUBSCRIPTIONS_CLIENT_SECRET` as `$encrypted$` and never in the clear, so the
+role cannot compare desired against actual and rewrites it each time. That is
+the platform refusing to hand back a secret, not drift — see the header of
+`inventory/group_vars/aap/controller_settings.yml`.
+
 **`--limit` selects the environment and is mandatory.** Playbooks target
 `hosts: aap`, so without a limit they match every environment at once — they
 assert on that and fail closed rather than configuring `sandbox` and `demo` in

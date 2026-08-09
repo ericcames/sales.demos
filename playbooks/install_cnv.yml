@@ -55,31 +55,10 @@
     cnv_datasource_namespace: "openshift-virtualization-os-images"
 
   tasks:
-    - name: Assert exactly one environment is targeted
-      # Without a --limit, `hosts: aap` matches every environment and this play
-      # would configure sandbox and demo in the same run. Fail closed. (#16)
-      ansible.builtin.assert:
-        that:
-          - ansible_play_hosts_all | length == 1
-        fail_msg: >-
-          This run targets {{ ansible_play_hosts_all | length }} environments
-          ({{ ansible_play_hosts_all | join(', ') }}). Pass exactly one:
-          `--limit sandbox` or `--limit demo`.
-        quiet: true
-      run_once: true
-
-    - name: Assert the targeted environment is the intended one
-      # Optional belt-and-braces for callers that know which environment they
-      # mean: `-e target_env=demo` fails loudly rather than silently applying
-      # somewhere else. Skipped when the caller does not pass it.
-      ansible.builtin.assert:
-        that:
-          - aap_env_name == target_env
-        fail_msg: >-
-          Requested target_env={{ target_env }} but the inventory resolved to
-          aap_env_name={{ aap_env_name }}. Check your --limit.
-        quiet: true
-      when: target_env is defined
+    - name: Assert the environment is unambiguous
+      # Shared with config.yml and validate.yml so the guard has one definition
+      # rather than three that drift. (#16, extracted in #24)
+      ansible.builtin.include_tasks: tasks/assert_target_environment.yml
 
     - name: Assert the required connection variables are set
       # Asserted here so the skill, a job template, and a laptop run all fail

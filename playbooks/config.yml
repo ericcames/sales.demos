@@ -1,0 +1,72 @@
+---
+# ===========================================================================
+# config.yml — apply config-as-code to an AAP environment. Issue #24.
+#
+# Applies the objects defined in inventory/group_vars/ to the environment
+# chosen with --limit. Idempotent, with one documented exception noted below.
+#
+#   ansible-playbook playbooks/config.yml -i inventory --limit sandbox \
+#     -e target_env=sandbox \
+#     --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
+#
+# Run playbooks/validate.yml first. It is the same play in check mode.
+#
+# HOW VARS ARRIVE: implicitly, from inventory/group_vars/. There is deliberately
+# no vars_files or include_vars. `--limit sandbox` loads group_vars/aap/*
+# (shared) merged with group_vars/sandbox/* (per-environment deltas), combined
+# by dispatch_include_wildcard_vars, which is set in group_vars/aap/aap_settings.yml.
+# That merge is how gateway_settings_all (shared pre-login banner) and
+# gateway_settings_sandbox (environment-badged sign-in logo) end up applied
+# together rather than one replacing the other.
+#
+# EXPECT changed ON EVERY RUN. AAP returns SUBSCRIPTIONS_CLIENT_SECRET as
+# "$encrypted$" and never in the clear, so the controller_settings role cannot
+# compare desired against actual and rewrites it each time. That is the platform
+# refusing to hand back a secret, not drift and not a bug — see the header of
+# group_vars/aap/controller_settings.yml, which also says which two lines to
+# drop if a clean changed=0 story matters more than analytics.
+# ===========================================================================
+
+- name: Apply AAP configuration
+  hosts: aap
+  gather_facts: false
+
+  tasks:
+    - name: Assert the environment is unambiguous
+      ansible.builtin.include_tasks: tasks/assert_target_environment.yml
+
+    - name: Assert AAP connection variables are set
+      # aap_hostname and aap_username come from the committed
+      # group_vars/<env>/connection.yml; aap_password is resolved from the
+      # vault-encrypted group_vars/aap/secrets.yml via env_secrets.
+      ansible.builtin.assert:
+        that:
+          - aap_hostname | default('') | length > 0
+          - aap_username | default('') | length > 0
+          - aap_password | default('') | length > 0
+        fail_msg: >-
+          aap_hostname / aap_username / aap_password are not set for
+          '{{ aap_env_name | default("?") }}'. Check that environment's
+          connection.yml, and that --vault-id was passed so env_secrets
+          resolves.
+        quiet: true
+
+    - name: Report the target
+      ansible.builtin.debug:
+        msg: "Applying configuration to {{ aap_env_name }} ({{ aap_hostname }})."
+
+    - name: Apply all objects via the dispatch role
+      # Basic auth on purpose. dispatch supports it directly, so no OAuth token
+      # is minted — which means there is nothing to leak and nothing to clean
+      # up in an `always:` block.
+      ansible.builtin.include_role:
+        name: infra.aap_configuration.dispatch
+
+    - name: Summarise what was applied
+      ansible.builtin.debug:
+        msg:
+          - "Applied to {{ aap_env_name }}."
+          - "Organization:  {{ aap_organizations_all | map(attribute='name') | join(', ') }}"
+          - "Sign-in banner and environment-badged logo set on the gateway."
+          - "Automation Analytics settings applied."
+          - "The sign-in logo shows on the LOGIN page only — log out to see it."

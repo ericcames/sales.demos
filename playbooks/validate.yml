@@ -1,0 +1,61 @@
+---
+# ===========================================================================
+# validate.yml — dry-run the config-as-code apply (check mode). Issue #24.
+#
+# Same inputs and auth as config.yml, but runs dispatch in check mode so it
+# reports what WOULD change without changing anything. Run this before
+# config.yml, always — it is the cheapest way to find out that a variable name
+# is wrong or an object is malformed.
+#
+#   ansible-playbook playbooks/validate.yml -i inventory --limit sandbox \
+#     -e target_env=sandbox \
+#     --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
+#
+# HOW VARS ARRIVE: implicitly, from inventory/group_vars/. There is deliberately
+# no vars_files or include_vars. `--limit sandbox` loads group_vars/aap/*
+# (shared) merged with group_vars/sandbox/* (per-environment deltas), combined
+# by dispatch_include_wildcard_vars, which is set in group_vars/aap/aap_settings.yml.
+#
+# CHECK MODE IS NOT A PERFECT PREDICTION. Some infra.aap_configuration roles
+# cannot fully evaluate without writing, so treat the output as a strong signal
+# rather than a contract. It will still catch the common failures: bad
+# credentials, unreachable host, undefined variables, malformed objects.
+# ===========================================================================
+
+- name: Validate AAP configuration in check mode
+  hosts: aap
+  gather_facts: false
+  check_mode: true
+
+  tasks:
+    - name: Assert the environment is unambiguous
+      ansible.builtin.include_tasks: tasks/assert_target_environment.yml
+
+    - name: Assert AAP connection variables are set
+      # aap_hostname and aap_username come from the committed
+      # group_vars/<env>/connection.yml; aap_password is resolved from the
+      # vault-encrypted group_vars/aap/secrets.yml via env_secrets.
+      ansible.builtin.assert:
+        that:
+          - aap_hostname | default('') | length > 0
+          - aap_username | default('') | length > 0
+          - aap_password | default('') | length > 0
+        fail_msg: >-
+          aap_hostname / aap_username / aap_password are not set for
+          '{{ aap_env_name | default("?") }}'. Check that environment's
+          connection.yml, and that --vault-id was passed so env_secrets
+          resolves.
+        quiet: true
+
+    - name: Report what would be applied
+      ansible.builtin.debug:
+        msg: >-
+          Check mode against {{ aap_env_name }} ({{ aap_hostname }}).
+          Nothing will be changed.
+
+    - name: Dispatch in check mode (reports intended changes, applies nothing)
+      # Basic auth on purpose. dispatch supports it directly, so no OAuth token
+      # is minted — which means there is nothing to leak and nothing to clean
+      # up in an `always:` block.
+      ansible.builtin.include_role:
+        name: infra.aap_configuration.dispatch
