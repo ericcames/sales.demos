@@ -65,22 +65,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `.gitignore` now covers `.ansible/`, ansible-lint's artifact directory.
   Collections install to `~/.ansible/collections` and are never vendored here.
   (#8)
-
-### Removed
-- Three ansible-lint-generated module mocks that were tracked under
-  `.ansible/collections/ansible_collections/`. They are regenerated from
-  `.ansible-lint` `mock_modules` on every run, so tracking them only guaranteed
-  they would go stale. (#8)
-
-### Changed
 - `inventory/hosts.yml` pins `ansible_python_interpreter` to
   `{{ ansible_playbook_python }}`. Interpreter discovery otherwise picks whatever
   `/usr/bin` python it finds first, which on Fedora can be an older minor version
   without the `kubernetes` client. Pinned in the inventory rather than an
   `ansible.cfg`, which would shadow `~/.ansible.cfg` and break certified
   collection installs. (#1)
-
-### Changed
 - `docs/plan/ocpvirt-demo-plan.md` records the Phase 0 validation run. The
   original research stands — it correctly reported `kubevirt-hyperconverged` as
   *available in the operator catalog*, not installed — but the doc read as a
@@ -90,6 +80,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the sizing tiers depend on, the decision to discover the default StorageClass
   rather than hard-code it, and a note that OpenShift version and cluster ID are
   per-environment samples rather than properties of the catalog item. (#9)
+
+### Removed
+- Three ansible-lint-generated module mocks that were tracked under
+  `.ansible/collections/ansible_collections/`. They are regenerated from
+  `.ansible-lint` `mock_modules` on every run, so tracking them only guaranteed
+  they would go stale. (#8)
 
 ### Notes
 - `aap_config`'s `deploy-{dev,qa,prod}` workflows were deliberately not ported
