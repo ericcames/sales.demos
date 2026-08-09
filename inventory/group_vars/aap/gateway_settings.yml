@@ -1,0 +1,32 @@
+---
+# ============================================================================
+# group_vars/aap/gateway_settings.yml — gateway settings shared by EVERY env
+# ============================================================================
+# Ported verbatim from ericcames/aap_config (#14), where it was curated by hand
+# from a gitignored settings export. Only the key below is tracked — see
+# controller_settings.yml in this directory for the same pattern.
+#
+# VERIFIED ON AAP 2.6: custom_login_info exists on the RHDP catalog item's
+# gateway and is empty by default, so the first apply visibly changes the
+# sign-in page.
+#
+# custom_login_info is the pre-login banner on the AAP sign-in page. It is the
+# most visible object in this repo: proving an apply landed needs no navigation,
+# just a logout. Plain text with no secret in it, so unlike
+# SUBSCRIPTIONS_CLIENT_SECRET it compares cleanly and stays idempotent.
+#
+# Demoing it live? It is standing config, so a target that already has it
+# reports no change. To show it being set, clear it on the target first:
+#   custom_login_info: ""   (via the UI, or a one-off apply)
+#
+# A freshly provisioned RHDP environment already has it empty, so the first
+# apply against a new env demonstrates this with no preparation.
+# ============================================================================
+
+gateway_settings_all:
+  custom_login_info: >-
+    THIS SYSTEM IS PROVIDED FOR USE BY AUTHORIZED USERS ONLY. ALERT! You are
+    entering into a secured area! Your IP, Login Time, Username has been noted
+    and has been sent to the server administrator! All activities on this
+    system are logged. Unauthorized access will be fully investigated and
+    reported to the appropriate law enforcement agencies.

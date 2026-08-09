@@ -1,0 +1,56 @@
+---
+# ============================================================================
+# group_vars/aap/controller_settings.yml — controller settings, EVERY env
+# ============================================================================
+# Ported from ericcames/aap_config (#14). Values verbatim; comments adapted.
+# There it was curated by hand from a gitignored settings export, because
+# settings exports can embed SSO/client secrets that secrets_as_variables does
+# not template out. This repo has no export tooling — the keys below are
+# authored, and deliberately few.
+#
+# VERIFIED ON AAP 2.6. Every key below exists on the RHDP catalog item's 2.6
+# controller, so the usual "aap_config targets 2.7, do not copy its settings
+# verbatim" caution does not apply to this file. Re-check if the keys move.
+#
+# AUTOMATION ANALYTICS. Uploading to console.redhat.com needs a Red Hat service
+# account. AAP never returns those values through the API — the export shows
+# them as "$encrypted$" — so the credentials CANNOT come from the export. They
+# come from each environment's vault-encrypted secrets.yml.
+#
+# REQUIRED IN EVERY ENVIRONMENT YOU APPLY TO. Because this file lives in
+# group_vars/aap/, it loads for every env under the `aap` group — sandbox and
+# demo both. Any env whose secrets.yml does not define both variables below
+# will fail the apply with an undefined-variable error. They are in
+# inventory/group_vars/sandbox/secrets.yml.example.
+#
+#   vaulted_subscriptions_client_id
+#   vaulted_subscriptions_client_secret
+#
+# EXPECTED: THIS FILE MAKES EVERY APPLY REPORT changed=1.
+# AAP returns SUBSCRIPTIONS_CLIENT_SECRET as "$encrypted$" and never in the
+# clear, so the role cannot compare desired vs actual and rewrites it on every
+# run. Verified in aap_config against its qa environment: with the secret line
+# removed, two consecutive runs both report changed=0; with it present, every
+# run reports changed=1. This is not drift and not a bug — it is the platform
+# refusing to hand back a secret.
+#
+# WORTH KNOWING IN THIS REPO SPECIFICALLY. Phase 0 (playbooks/install_cnv.yml)
+# re-runs at changed=0 and that idempotency is demonstrated deliberately. Once
+# an apply manages this file, "re-run it and nothing changes" stops being
+# literally true for the AAP config path. Drop the two SUBSCRIPTIONS_* lines if
+# you would rather keep a clean changed=0 story than upload analytics.
+#
+# DELIBERATELY NOT CURATED from the export — runtime state and identifying data,
+# not configuration. Committing these would re-assert stale values every apply:
+#   AUTOMATION_ANALYTICS_LAST_GATHER / _LAST_ENTRIES   (timestamps)
+#   LICENSE.*  (subscription_id, pool_id, account_number)
+#   SUBSCRIPTION_USAGE_MODEL, INSTALL_UUID
+# ============================================================================
+
+controller_settings_all:
+  settings:
+    INSIGHTS_TRACKING_STATE: true
+    AUTOMATION_ANALYTICS_URL: "https://cloud.redhat.com/api/ingress/v1/upload"
+    AUTOMATION_ANALYTICS_GATHER_INTERVAL: 14400
+    SUBSCRIPTIONS_CLIENT_ID: "{{ vaulted_subscriptions_client_id }}"
+    SUBSCRIPTIONS_CLIENT_SECRET: "{{ vaulted_subscriptions_client_secret }}"
