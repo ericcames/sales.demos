@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed -- laptop access details were wrong, and invisible (#49)
+- **The `ssh_command` output emitted a flag that no longer exists.** It built
+  `virtctl ssh -n <ns> --local-ssh <user>@<vm>`; virtctl v1.x removed its
+  built-in SSH client, so local ssh became the only mode and `--local-ssh` was
+  **deleted rather than defaulted**. The output failed with `unknown flag:
+  --local-ssh` before connecting. It also omitted the `vm/` resource prefix
+  virtctl needs to tell a VM from a VMI. Verified working on virtctl v1.6.6:
+  `virtctl ssh -n <ns> <user>@vm/<vm-name>`. `-t/--local-ssh-opts` is the
+  surviving way to pass ssh options.
+- **The job that produces the demo URL did not print it.** `web_url` appeared
+  only in the Provision log, tagged "503 until Phase 4 installs httpd" — while
+  `Configure VMs` / `Run Demo`, the job that *makes* it return 200, said only
+  "Public URL comes from the terraform output `web_url`". `Check VMs` never
+  mentioned a URL at all. All three now print the live URL and the laptop
+  `virtctl` line.
+- `web_url` and `ssh_command` are registered as **AAP host variables** by
+  `provision_vm.yml`. They cannot be recomputed downstream:
+  `configure_vm.yml` and `check_vm.yml` target `linuxweb`, a group created at
+  run time, while `ocpvirt_namespace` and `openshift_apps_domain` live in
+  `group_vars/<env>/connection.yml` and load only for the `sandbox-local` /
+  `demo-local` hosts in the `aap` group. `set_stats` does not reach them
+  either — it feeds workflow nodes, not a job re-run on its own. Neither value
+  is a secret. Guests provisioned before this fall back to the terraform
+  outputs rather than failing on an undefined variable.
+
 ### Added -- Phase 4: the demo itself (#5)
 - `playbooks/run_demo.yml` with `playbooks/roles/linux_register` and
   `playbooks/roles/linux_configure`, the `ocpvirt-demo` skill, and a
