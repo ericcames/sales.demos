@@ -316,6 +316,16 @@
           ansible.builtin.debug:
             msg: "{{ tf_apply_result.stderr_lines | default([tf_apply_result.stderr | default('no stderr')]) }}"
 
+        - name: Check whether a stale state lock caused it
+          # BEFORE the generic failure below, so a lock fails with the lock ID and
+          # the force-unlock command instead of "apply exited 1" (#46). Anything
+          # that is not a lock falls straight through to the generic message.
+          ansible.builtin.include_tasks: tasks/terraform_lock_check.yml
+          vars:
+            tf_lock_result: "{{ tf_apply_result }}"
+            tf_lock_operation: apply
+          when: tf_apply_result is failed
+
         - name: Fail if Terraform apply failed
           when: tf_apply_result is failed
           ansible.builtin.fail:

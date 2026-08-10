@@ -1,0 +1,86 @@
+---
+# ===========================================================================
+# terraform_lock_check.yml — turn "the state is already locked" into an
+# instruction. Issue #46.
+#
+# The kubernetes backend takes a lock for the duration of an apply or destroy
+# and releases it on exit. A job that is CANCELLED, times out, or whose pod is
+# evicted never reaches the release, so the lock outlives the run that took it
+# and every later run fails to acquire it.
+#
+# Cancelling a job is a normal thing to do, so this is not an edge case. It is
+# also silent until the next demo: nothing surfaces a stale lock, and the error
+# terraform prints names no remedy.
+#
+# WORSE IN AAP THAN ON A LAPTOP. `Who:` shows a pod name like
+# `1000770000@automation-job-92-qswfk`. That pod is gone, but the line reads
+# like a run in progress, which encourages waiting — the one thing that never
+# helps.
+#
+# THIS DOES NOT UNLOCK ANYTHING, deliberately. force-unlock against a genuinely
+# running apply corrupts state, and the check that would make it safe is a
+# liveness test on the AAP job, not on the pod name in the message. #46 weighed
+# a rare recoverable annoyance against a rare unrecoverable one and chose to
+# report. Do not "improve" this into an automatic unlock.
+#
+# Callers pass:
+#   tf_lock_result      the registered result of the failed terraform command
+#   tf_lock_operation   "apply" or "destroy", for the message
+# ===========================================================================
+
+- name: Look for a state lock in the Terraform error
+  # stdout as well as stderr: terraform sends errors to stderr, but the caller
+  # may have folded them together, and a missed lock here just falls through to
+  # the caller's generic failure — the same message as before this existed.
+  ansible.builtin.set_fact:
+    tf_lock_blob: >-
+      {{ (tf_lock_result.stderr | default('')) ~ "\n" ~ (tf_lock_result.stdout | default('')) }}
+
+- name: Pull the lock ID and holder out of the message
+  # regex_findall rather than regex_search: with a capture group it returns a
+  # plain list, so `| first | default()` is safe when there is no match.
+  # regex_search returns None, and `None | first` is an error.
+  ansible.builtin.set_fact:
+    tf_lock_id: "{{ tf_lock_blob | regex_findall('ID:\\s+([0-9a-fA-F-]{8,})') | first | default('(not in the message)') }}"
+    tf_lock_who: "{{ tf_lock_blob | regex_findall('Who:\\s+(\\S+)') | first | default('(not in the message)') }}"
+  when: "'Error acquiring the state lock' in tf_lock_blob"
+
+- name: Fail with the lock ID and the command that clears it
+  when: "'Error acquiring the state lock' in tf_lock_blob"
+  ansible.builtin.fail:
+    msg: |-
+      Terraform could not acquire the state lock, so the {{ tf_lock_operation }} never
+      started. NOTHING WAS CHANGED — no VM was created, destroyed or modified
+      by this run.
+
+        Lock ID:  {{ tf_lock_id }}
+        Held by:  {{ tf_lock_who }}
+
+      This is almost always a PREVIOUS run that was cancelled, timed out, or
+      whose pod was evicted. The lock is released when terraform exits, and a
+      job that is killed never gets there.
+
+      If "Held by" names an automation-job-* pod, that pod no longer exists.
+      It is not a run in progress, and waiting will not clear it.
+
+      FIRST, confirm no Provision or Teardown job is actually running in AAP.
+      Force-unlocking a live apply corrupts the state file.
+
+      The backend locks with a Lease, so you can check without terraform —
+      empty output means no lock is held and something else is wrong:
+
+        oc get lease lock-tfstate-default-{{ aap_env_name }} \
+          -n {{ ocpvirt_state_namespace }} -o jsonpath='{.spec.holderIdentity}'
+
+      Then, from a laptop with `oc login` to {{ aap_env_name }} already done:
+
+        cd terraform/ocpvirt
+        terraform init -reconfigure \
+          -backend-config=secret_suffix={{ aap_env_name }} \
+          -backend-config=namespace={{ ocpvirt_state_namespace }} \
+          -backend-config=config_path=$HOME/.kube/config \
+          -backend-config=insecure=true
+        terraform force-unlock {{ tf_lock_id }}
+
+      Then re-run this job. Nothing here unlocks by itself, on purpose — see
+      playbooks/tasks/terraform_lock_check.yml.

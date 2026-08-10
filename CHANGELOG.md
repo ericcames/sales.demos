@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed -- a stale Terraform state lock now says how to clear it (#46)
+- Hit for real: a `Sales Demos - Provision VM` job was cancelled mid-apply, and
+  every run afterwards failed with `Error acquiring the state lock`. The
+  kubernetes backend releases its lock when terraform exits, and a job that is
+  cancelled, times out, or has its pod evicted never gets there — so the lock
+  outlives the run that took it.
+- `playbooks/tasks/terraform_lock_check.yml`, shared by `provision_vm.yml`
+  (apply) and `teardown.yml` (destroy). On a failure that names a lock it fails
+  with the **lock ID, the holder, and the exact `force-unlock` command**, and
+  states plainly that nothing was changed — the lock is taken before any work
+  starts. Any other failure falls straight through to the existing message.
+- **`Who:` is misleading in AAP and the message says so.** It shows a pod name
+  like `1000770000@automation-job-92-qswfk`, which reads as a run in progress.
+  That pod is gone; waiting never clears it.
+- The backend locks with a Kubernetes **Lease**
+  (`lock-tfstate-default-<env>` in `sales-demos-tfstate`), so whether a lock is
+  actually held can be checked with `oc` and no terraform at all — an empty
+  `.spec.holderIdentity` means the failure is something else. Both the failure
+  message and the skill give that command, because it is current where `Who:`
+  is a fossil.
+- **Nothing force-unlocks automatically, deliberately.** A stale lock is a rare
+  recoverable annoyance; force-unlocking a live apply is a rare *unrecoverable*
+  one. Doing it safely would need a liveness check against the AAP job, not the
+  pod name in the error. Do not "improve" this into an automatic unlock.
+- Troubleshooting entries added to the `ocpvirt-provision` and
+  `ocpvirt-teardown` skills. Teardown is the likelier victim: the nightly
+  schedule can start while a manual job is still running.
+
 ### Fixed -- laptop access details were wrong, and invisible (#49)
 - **The `ssh_command` output emitted a flag that no longer exists.** It built
   `virtctl ssh -n <ns> --local-ssh <user>@<vm>`; virtctl v1.x removed its

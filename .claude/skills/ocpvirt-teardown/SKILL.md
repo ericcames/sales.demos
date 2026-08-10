@@ -110,3 +110,10 @@ running job is using.
   resources nothing points at. Fix the cause and re-run; it is idempotent.
 - **`0 destroyed` and VMs still visible** — almost always the wrong environment
   or the wrong `secret_suffix`. Check `aap_env_name` resolved to what you meant.
+- **`Error acquiring the state lock`** — a previous run was cancelled, timed
+  out, or had its pod evicted, and never released the lock. Teardown is the
+  likelier victim of the two playbooks, because the nightly schedule can start
+  while a manual job is still running. The playbook now fails with the lock ID
+  and the exact `force-unlock` command (#46); see the same entry in
+  `ocpvirt-provision` for how to read `Who:` and why nothing unlocks
+  automatically.

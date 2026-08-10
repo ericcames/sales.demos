@@ -101,3 +101,50 @@ is for, and it is the difference between "a VM exists" and "the demo will work".
   created that way must be re-created, not restarted.
 - **State lives in `sales-demos-tfstate`**, a long-lived namespace of its own,
   keyed per environment by `secret_suffix`. Never delete it.
+
+## `Error acquiring the state lock`
+
+The kubernetes backend holds a lock for the length of an apply or destroy and
+releases it when terraform exits. A job that is **cancelled**, times out, or has
+its pod evicted never gets there, so the lock outlives the run that took it and
+every later run fails to acquire it. Cancelling a job is a normal thing to do —
+this is not an edge case, and it stays invisible until the next demo.
+
+The playbook detects this and fails with the lock ID and the command (#46).
+Reading the message:
+
+- **`Who:` is a lie in AAP.** It shows something like
+  `1000770000@automation-job-92-qswfk`. That pod is gone. It reads like a run in
+  progress, which encourages waiting — waiting never clears it.
+- **Nothing was changed.** The lock is taken before any work starts, so a locked
+  run created and destroyed nothing.
+
+**Check whether a lock is really held, without terraform.** The backend locks
+with a Kubernetes Lease, so the truth is one command away — and unlike `Who:`,
+it is current:
+
+```bash
+oc get lease lock-tfstate-default-sandbox -n sales-demos-tfstate \
+  -o jsonpath='{.spec.holderIdentity}{"\n"}'
+```
+
+Empty output means no lock is held, and the failure is something else. A held
+lock shows the same identity the error printed.
+
+To clear it, first confirm in AAP that no Provision or Teardown job is genuinely
+running — force-unlocking a live apply corrupts state. Then:
+
+```bash
+cd terraform/ocpvirt
+terraform init -reconfigure \
+  -backend-config=secret_suffix=sandbox \
+  -backend-config=namespace=sales-demos-tfstate \
+  -backend-config=config_path=$HOME/.kube/config \
+  -backend-config=insecure=true
+terraform force-unlock <lock-id>
+```
+
+**Nothing force-unlocks by itself, deliberately.** Clearing a stale lock is a
+recoverable annoyance; clearing a live one corrupts the state file. Making it
+automatic safely would need a liveness check against the AAP job, not the pod
+name in the message.
