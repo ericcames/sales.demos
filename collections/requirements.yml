@@ -34,3 +34,11 @@ collections:
     version: "6.4.0"
   - name: redhat.openshift_virtualization
     version: "2.3.0"
+
+  # Terraform. Phase 3 drives the terraform CLI through ansible.builtin.command,
+  # so the binary — not this collection — is the hard requirement; the custom
+  # execution environment exists to supply it (#31, execution-environment.yml).
+  # Pinned here anyway so the module set is available and identical on both
+  # entry points, and so `ansible-lint` can resolve it locally.
+  - name: cloud.terraform
+    version: "4.0.0"

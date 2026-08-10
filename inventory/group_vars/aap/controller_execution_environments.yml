@@ -1,0 +1,50 @@
+---
+# ============================================================================
+# group_vars/aap/controller_execution_environments.yml — the custom EE (#31)
+# ============================================================================
+# Registers the image built by utilities/build-ee.sh so job templates can
+# select it. Applied by playbooks/config.yml via infra.aap_configuration.dispatch,
+# like every other object here — there is no separate step to run.
+#
+# WHY THIS DIRECTORY AND NOT demos/ocpvirt/. The plan puts job templates under
+# demos/ocpvirt/, but nothing loads that directory yet: dispatch reads
+# group_vars implicitly, and this object has to be applied to be worth
+# committing. When demos/ocpvirt/ gains a loader in #4, this can move with it.
+#
+# NOTE THE VARIABLE NAME, as in aap_organizations.yml. The dispatch role reads
+# this object type from `controller_execution_environments`, plus the
+# _all / _<env> suffix that dispatch_include_wildcard_vars merges on. `_all`
+# because the image is identical in sandbox and demo — it is a public quay
+# repository with nothing environment-specific baked in.
+#
+# Shipped in ansible.controller / ansible.platform terms this is a "controller_"
+# object, not a legacy choice: infra.aap_configuration 4.7.0 names the role
+# controller_execution_environments regardless of which underlying collection
+# it calls.
+# ============================================================================
+
+controller_execution_environments_all:
+  - name: "Sales Demos - OCP Virt EE"
+    description: |-
+      {%- raw -%}
+      sales.demos EE v1.0.0 (base ee-supported-rhel9, AAP 2.6) — Terraform 1.15.8 · cloud.terraform · kubernetes.core · redhat.openshift_virtualization · infra.aap_configuration
+      {%- endraw -%}
+    organization: "IT Service Automation"
+    # PUBLIC quay repository on purpose, so the cluster pulls it with no image
+    # pull secret and no AAP registry credential — one less thing to rebuild on
+    # every fresh RHDP environment. The image contains only pinned open-source
+    # collections and the terraform binary; the Automation Hub token used at
+    # build time stays in the galaxy build stage and is not in the final image.
+    #
+    # Pinned to an immutable tag. Never re-push a tag that is referenced here —
+    # a job template would silently change underneath a running demo. Publish
+    # a new tag and bump this line instead.
+    #
+    # The tag is used rather than the digest because that is what AAP shows an
+    # operator and what the aap_config quay entries already do. Quay tags are
+    # mutable, so the digest published under this tag is recorded here as the
+    # audit trail — if these ever disagree, someone re-pushed:
+    #   sha256:a6ee9e4b110bc12d47b222af93127f8fae9f8e3d02599dd8f1b35e3204d3559b
+    #   skopeo inspect --no-creds docker://quay.io/zigfreed/sales-demos-ee:v1.0.0
+    image: "quay.io/zigfreed/sales-demos-ee:v1.0.0"
+    pull: "missing"
