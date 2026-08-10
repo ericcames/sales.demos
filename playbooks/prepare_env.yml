@@ -54,7 +54,6 @@
     # which is exactly the cluster this playbook is for.
     prep_smoke_instancetype: "u1.small"
     prep_smoke_preference: "rhel.9"
-    prep_smoke_timeout: 600
     prep_smoke_retries: 60
     prep_smoke_delay: 10
     # The whole point is measuring a WARM build. Anything near the cold figure
@@ -356,11 +355,25 @@
       always:
         # Always, so a failed or slow smoke test does not leave a VM sitting on
         # a node eating the memory budget the real demo needs.
+        #
+        # DELIBERATELY DOES NOT WAIT. With `wait: true` this task dominated the
+        # entire playbook: measured across two live environments, an identical
+        # 44s/45s build produced a total runtime of ~2.3 min on a warm cluster
+        # and ~17.5 min on a fresh one, because deleting the namespace blocks on
+        # DataVolume and PVC teardown — which on a fresh cluster contends with
+        # the CSI clone still materialising underneath. The playbook made you
+        # wait a quarter of an hour to be told something it established after 44
+        # seconds, and it was slowest on exactly the environment where the
+        # answer matters most (#39).
+        #
+        # Nothing depends on the namespace being gone before this returns. The
+        # readiness verdict and the build time are already printed above, and
+        # Kubernetes finishes the delete regardless. If a stuck delete ever
+        # needs investigating, `oc get ns sales-demos-smoke` says so.
         - name: Remove the smoke-test namespace
           kubernetes.core.k8s:
             state: absent
             api_version: v1
             kind: Namespace
             name: "{{ prep_smoke_namespace }}"
-            wait: true
-            wait_timeout: "{{ prep_smoke_timeout }}"
+            wait: false

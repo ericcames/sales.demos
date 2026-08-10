@@ -7,13 +7,34 @@ description: "Verify a fresh RHDP environment is genuinely demo-ready before any
 
 Answers one question: **would a live VM build in front of a customer be fast?**
 
-Measured on the sandbox: **5m47s on a cold cluster, ~30s on a warm one.** That
-gap is not Terraform's doing — the module is already on the fast path. The slow
-case is building against a cluster whose boot source has not finished importing,
-so the fix belongs in environment spin-up, not the VM definition.
-
 Run this after `ocpvirt-setup` on a new environment, and before promising anyone
 a live build.
+
+## How long a fresh environment actually takes
+
+Measured end to end on a brand-new RHDP environment (#30, #39):
+
+| Step | Fresh environment | Warm environment |
+|---|---|---|
+| `ocpvirt-setup` — install CNV | **~4 min** | already done |
+| **This skill** — verify and time a build | **~2 min** | ~2 min |
+| — of which the VM build itself | **44s** | 45s |
+
+**Budget roughly 20 minutes from a bare RHDP environment to a demo you would
+run in front of someone**, most of which is provisioning the environment itself
+before any of this starts.
+
+**A fresh cluster is usually already warm.** All six boot-source VolumeSnapshots
+were `readyToUse` before CNV finished installing — the import runs alongside the
+install, so `ocpvirt-setup` returning generally means you are ready. The often
+repeated "5m47s cold versus ~30s warm" figure is a real measurement of a VM
+build, but it did **not** reproduce on a genuinely fresh environment; it almost
+certainly came from building immediately after install and catching the import
+mid-flight.
+
+Which is the point: this skill exists to **prove** readiness in about a minute
+rather than assume it, and to name the specific reason when an environment is
+not ready.
 
 ## Why each check exists
 
