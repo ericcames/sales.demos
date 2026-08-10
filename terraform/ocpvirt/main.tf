@@ -21,6 +21,16 @@ resource "kubernetes_namespace" "demo" {
     name   = var.namespace
     labels = local.common_labels
   }
+
+  # OpenShift's SCC controller stamps every namespace with the UID/GID/MCS ranges
+  # it allocated (openshift.io/sa.scc.*) plus the pod-security level it derived.
+  # Terraform never sent those, so it plans to strip them on every run and the
+  # controller immediately puts them back — a diff that can never converge, and
+  # applying it would hand the guests a different UID range than the one their
+  # pods were admitted under. They are the cluster's to own, so ignore them.
+  lifecycle {
+    ignore_changes = [metadata[0].annotations]
+  }
 }
 
 # ---------------------------------------------------------------------------
@@ -88,6 +98,24 @@ resource "kubernetes_manifest" "linux_vm" {
 
       template = {
         metadata = {
+          # This subtree is x-kubernetes-preserve-unknown-fields, so the provider
+          # has no schema for it and infers the type from the manifest written
+          # here. That makes the KEY SET load-bearing: it must match what the
+          # server returns exactly. KubeVirt's webhook stamps
+          # kubevirt.io/pci-topology-version and a null creationTimestamp onto
+          # every template, so both are declared below even though neither is
+          # ours to set. Omit them and plan fails reading the refreshed object
+          # back (`can't use tftypes.Object[...] as tftypes.Object[...]`); omit
+          # them at apply and it is "Provider produced inconsistent result after
+          # apply: incorrect object attributes".
+          #
+          # computed_fields (spec.template.metadata, above) covers the VALUES, so
+          # the "v3" below is only a placeholder the server overwrites — a bump
+          # to v4 costs nothing. A NEW annotation key would need adding here.
+          creationTimestamp = null
+          annotations = {
+            "kubevirt.io/pci-topology-version" = "v3"
+          }
           labels = merge(local.common_labels, {
             "sales-demos/vm" = local.linux_vm_name
             "sales-demos/os" = "linux"
@@ -202,6 +230,24 @@ resource "kubernetes_manifest" "windows_vm" {
 
       template = {
         metadata = {
+          # This subtree is x-kubernetes-preserve-unknown-fields, so the provider
+          # has no schema for it and infers the type from the manifest written
+          # here. That makes the KEY SET load-bearing: it must match what the
+          # server returns exactly. KubeVirt's webhook stamps
+          # kubevirt.io/pci-topology-version and a null creationTimestamp onto
+          # every template, so both are declared below even though neither is
+          # ours to set. Omit them and plan fails reading the refreshed object
+          # back (`can't use tftypes.Object[...] as tftypes.Object[...]`); omit
+          # them at apply and it is "Provider produced inconsistent result after
+          # apply: incorrect object attributes".
+          #
+          # computed_fields (spec.template.metadata, above) covers the VALUES, so
+          # the "v3" below is only a placeholder the server overwrites — a bump
+          # to v4 costs nothing. A NEW annotation key would need adding here.
+          creationTimestamp = null
+          annotations = {
+            "kubevirt.io/pci-topology-version" = "v3"
+          }
           labels = merge(local.common_labels, {
             "sales-demos/vm" = local.windows_vm_name
             "sales-demos/os" = "windows"
