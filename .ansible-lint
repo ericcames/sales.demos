@@ -33,6 +33,13 @@ mock_modules:
   # OpenShift Virtualization — VM lifecycle (Phases 1-4).
   - redhat.openshift_virtualization.kubevirt_vm
   - redhat.openshift_virtualization.kubevirt_vm_info
+  # AAP inventory membership — playbooks/provision_vm.yml registers the VMs it
+  # creates. These are ansible.controller rather than ansible.platform, which is
+  # NOT an oversight: ansible.platform ships no host, group, or inventory
+  # module. Inventory membership is still controller-scoped in AAP 2.6.
+  - ansible.controller.inventory
+  - ansible.controller.group
+  - ansible.controller.host
 
 mock_roles:
   - infra.aap_configuration.dispatch
