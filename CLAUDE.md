@@ -25,9 +25,15 @@ Only placeholder lines and the audit pattern itself may match.
 
 ## Secrets: exactly one mechanism
 
-`playbooks/group_vars/aap/secrets.yml` is the only secrets file. It is
-**vault-encrypted and committed**, and lives in the `aap` group directory so it
-loads for every environment — one file, both `sandbox` and `demo`.
+`playbooks/group_vars/all/secrets.yml` is the only secrets file. It is
+**vault-encrypted and committed**, and lives in the `all` group directory so it
+loads for every host — both environments, *and the demo VMs*.
+
+It was `group_vars/aap/` until #5, which is scoped to hosts in the `aap` group.
+That was invisible until a playbook targeted something else: `run_demo.yml` runs
+against `linuxweb`, so the guests never received the registration credentials and
+failed an assert that looked like a missing Vault credential. `all` is the only
+scope that covers every play without a second secrets file.
 
 **It sits beside the PLAYBOOKS, not the inventory, and that is not cosmetic.**
 Ansible loads `group_vars/` adjacent to the playbook as well as adjacent to the
@@ -51,7 +57,7 @@ Keeping secrets out of the inventory tree is what lets the sync parse
 time through the job template's Vault credential. Do not move it back.
 
 ```bash
-ansible-vault edit playbooks/group_vars/aap/secrets.yml \
+ansible-vault edit playbooks/group_vars/all/secrets.yml \
   --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
 ```
 

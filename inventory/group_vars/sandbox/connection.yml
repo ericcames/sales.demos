@@ -11,7 +11,7 @@
 # addresses, not customer-identifying, and keeping them readable is what lets
 # the vaulted file hold credentials only.
 #
-#   ansible-vault edit playbooks/group_vars/aap/secrets.yml \
+#   ansible-vault edit playbooks/group_vars/all/secrets.yml \
 #     --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
 # ===========================================================================
 

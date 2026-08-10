@@ -50,7 +50,7 @@ httpd, firewalld, Cockpit, chrony, the demo page, and security patching.
 echo "check the Sales Demo VMs inventory in AAP, group linuxweb"
 
 # 2. Registration credentials present in the vault
-ansible-vault view playbooks/group_vars/aap/secrets.yml \
+ansible-vault view playbooks/group_vars/all/secrets.yml \
   --vault-id sales.demos@~/secrets/.vault_pass_sales_demos 2>/dev/null \
   | grep -q '^rhsm_activation_key:' \
   && echo "✅ rhsm_activation_key present" \

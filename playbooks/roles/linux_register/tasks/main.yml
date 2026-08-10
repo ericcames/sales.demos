@@ -22,7 +22,7 @@
 
 - name: Assert the registration credentials are present
   # Fails here with a useful message rather than deep inside the rhc role with
-  # an opaque one. These come from the vaulted playbooks/group_vars/aap/secrets.yml,
+  # an opaque one. These come from the vaulted playbooks/group_vars/all/secrets.yml,
   # so the usual cause is a missing --vault-id (locally) or a missing Vault
   # credential on the job template (from AAP).
   ansible.builtin.assert:
@@ -31,7 +31,7 @@
       - rhsm_activation_key | default('') | length > 0
     fail_msg: >-
       rhsm_org_id and rhsm_activation_key are required to register the guest.
-      They live in the vault-encrypted playbooks/group_vars/aap/secrets.yml —
+      They live in the vault-encrypted playbooks/group_vars/all/secrets.yml —
       pass --vault-id locally, or attach the 'Sales Demos - Vault' credential to
       the job template.
     quiet: true

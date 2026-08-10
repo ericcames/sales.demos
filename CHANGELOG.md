@@ -206,7 +206,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   inventory source, credentials, and both job templates.
 
 ### Changed -- the vaulted secrets file moved (#4)
-- `inventory/group_vars/aap/secrets.yml` → **`playbooks/group_vars/aap/secrets.yml`**.
+- `inventory/group_vars/aap/secrets.yml` → **`playbooks/group_vars/all/secrets.yml`**.
   Ansible loads `group_vars/` beside the playbook as well as beside the
   inventory, so playbooks resolve it identically. AAP does not: an SCM inventory
   source runs `ansible-inventory`, which parses every `group_vars` file next to
