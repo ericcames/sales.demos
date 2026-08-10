@@ -25,7 +25,8 @@
 # Publishing is a separate, explicit flag. A build is cheap and local; a push
 # overwrites a tag other people's AAP instances pull from.
 #
-# After pushing a NEW tag, update it in demos/ocpvirt/controller_execution_environments.yml
+# After pushing a NEW tag, update it in
+# inventory/group_vars/aap/controller_execution_environments.yml
 # so AAP actually uses it. Never re-push an existing tag — job templates pinned
 # to it would silently change underneath a demo.
 # ===========================================================================
@@ -129,7 +130,9 @@ if [ "$push" -eq 1 ]; then
     || die "not logged in to $registry — run: podman login $registry"
   echo "==> Pushing $EE_IMAGE"
   podman push "$EE_IMAGE"
-  echo "==> Pushed. Now set this image in demos/ocpvirt/controller_execution_environments.yml"
+  echo "==> Pushed. Now set this image in"
+  echo "    inventory/group_vars/aap/controller_execution_environments.yml"
+  echo "    then apply it: ansible-playbook playbooks/config.yml -i inventory --limit sandbox ..."
 else
   echo
   echo "Built locally and not pushed. To publish:"

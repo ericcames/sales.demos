@@ -39,5 +39,12 @@ controller_execution_environments_all:
     # Pinned to an immutable tag. Never re-push a tag that is referenced here —
     # a job template would silently change underneath a running demo. Publish
     # a new tag and bump this line instead.
+    #
+    # The tag is used rather than the digest because that is what AAP shows an
+    # operator and what the aap_config quay entries already do. Quay tags are
+    # mutable, so the digest published under this tag is recorded here as the
+    # audit trail — if these ever disagree, someone re-pushed:
+    #   sha256:a6ee9e4b110bc12d47b222af93127f8fae9f8e3d02599dd8f1b35e3204d3559b
+    #   skopeo inspect --no-creds docker://quay.io/zigfreed/sales-demos-ee:v1.0.0
     image: "quay.io/zigfreed/sales-demos-ee:v1.0.0"
     pull: "missing"
