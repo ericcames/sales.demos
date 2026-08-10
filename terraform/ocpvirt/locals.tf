@@ -70,6 +70,12 @@ locals {
   # Service exists at all — see outputs.tf.
   windows_fqdn = "${local.windows_vm_name}.${var.namespace}.svc.cluster.local"
   linux_fqdn   = "${local.linux_vm_name}.${var.namespace}.svc.cluster.local"
+
+  # Web service and Route — HTTP access for the demo web server.
+  create_web_route       = local.create_linux && var.openshift_apps_domain != ""
+  linux_web_svc_name     = "${local.linux_vm_name}-web"
+  linux_web_route_host   = "${local.linux_web_svc_name}-${var.namespace}.${var.openshift_apps_domain}"
+  linux_web_url          = "http://${local.linux_web_route_host}"
 }
 
 # ---------------------------------------------------------------------------

@@ -158,3 +158,42 @@ variable "datasource_namespace" {
   type        = string
   default     = "openshift-virtualization-os-images"
 }
+
+# ---------------------------------------------------------------------------
+# SSH key injection.
+#
+# Injected via cloud-init ssh_authorized_keys at first boot. The
+# accessCredentials + qemuGuestAgent mechanism was tried first (#29) but the
+# RHEL 9 cloud image's guest agent fails with "failed to create directory
+# '/home/<user>/.ssh': File exists" — a known QEMU guest agent bug where
+# guest-ssh-add-authorized-keys uses mkdir instead of mkdir -p. The
+# guest-exec fallback is also disabled by RHEL 9's security policy. Cloud-init
+# works reliably; the trade-off is that key rotation requires a VM restart.
+#
+# A public key is not a credential. In the Ansible layer it lives in each
+# environment's connection.yml beside linux_admin_username, not in the vault.
+# ---------------------------------------------------------------------------
+
+variable "demo_ssh_public_key" {
+  description = "SSH public key added to the Linux VM via cloud-init. When set, password-based SSH is disabled."
+  type        = string
+  default     = ""
+}
+
+# ---------------------------------------------------------------------------
+# OpenShift ingress domain — used to construct Route hostnames at plan time.
+#
+# NodePort was spiked on RHDP and is FILTERED (high ports are blocked by the
+# RHDP firewall), so SSH access uses `virtctl ssh --local-ssh` (rides port
+# 6443, confirmed open). HTTP access uses a Route, which needs the *.apps
+# ingress domain to construct a plan-time-known hostname.
+#
+# Find it with:
+#   oc get ingresses.config.openshift.io cluster -o jsonpath='{.spec.domain}'
+# ---------------------------------------------------------------------------
+
+variable "openshift_apps_domain" {
+  description = "The *.apps ingress domain for this cluster, e.g. apps.cluster-<id>.dyn.redhatworkshops.io. Required for Route-based HTTP access."
+  type        = string
+  default     = ""
+}

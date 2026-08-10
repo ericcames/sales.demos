@@ -38,5 +38,15 @@ windows_admin_username: "demoadmin"
 linux_admin_username: "cloud-user"
 quay_windows_image: "quay.io/<user>/windows2k22-golden:<date>"
 
+# SSH public key injected into demo VMs via the QEMU guest agent. Not a
+# credential — a public key is safe in plaintext. When set, password-based
+# SSH is disabled on the guest.
+demo_ssh_public_key: ""
+
+# The *.apps ingress domain for this cluster. Used to construct Route
+# hostnames for HTTP access to demo VMs.
+#   oc get ingresses.config.openshift.io cluster -o jsonpath='{.spec.domain}'
+openshift_apps_domain: "apps.cluster-x5f6d-1.dyn.redhatworkshops.io"
+
 # Namespace the demo VMs are created in.
 ocpvirt_namespace: "sales-demos-sandbox"
