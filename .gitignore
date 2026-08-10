@@ -65,6 +65,20 @@ collections/ansible_collections/
 logs/
 *.log
 
+# ---------------------------------------------------------------------------
+# Execution environment build artifacts (#31).
+#
+# utilities/build-ee.sh stages a COPY of ~/.ansible.cfg — which carries the
+# Automation Hub token — into .ee-build/, because ansible-builder cannot read it
+# from $HOME portably. That staged file is a real credential and must never be
+# tracked. The generated build context lands under .ee-build/context/ too.
+#
+# .ee-build/ is deliberately NOT the repo root: an ansible.cfg at the root would
+# shadow ~/.ansible.cfg and break certified collection installs machine-wide.
+# Ansible does not look in subdirectories, so this location is inert.
+# ---------------------------------------------------------------------------
+.ee-build/
+
 # Editor / OS
 .vscode/
 .idea/

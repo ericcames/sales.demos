@@ -160,13 +160,14 @@ its PR merges; `ocpvirt-setup` ends in exactly that cluster-side check.
 
 #### Repo maintenance skills
 
-One skill has no playbook, deliberately — it touches your laptop, never a demo
-environment, so it must never run from AAP:
+These have no playbook, deliberately — they touch your laptop or a registry,
+never a demo environment, so they must never run from AAP:
 
 | Skill | Does |
 |---|---|
 | `sales-demos-first-time` | One-time setup on a new machine — start here |
 | `collections-sync` | Pin, install, and verify `collections/requirements.yml` |
+| `sales-demos-ee-build` | Build, verify, and publish the execution environment |
 
 New machine? Run `/sales-demos-first-time` first. It walks every prerequisite and
 validates each one, including the vault password — without which nothing in this
@@ -199,6 +200,48 @@ Run the `collections-sync` skill to pin, install, and verify in one pass. The
 verify step is the point: `ansible-galaxy` reports success without installing
 anything when it believes a collection is already present, and it silently
 refuses to downgrade, so its exit code does not tell you what you actually have.
+
+## Execution environment
+
+AAP runs this repo's playbooks on a custom image,
+`quay.io/zigfreed/sales-demos-ee`, defined by
+[`execution-environment.yml`](execution-environment.yml).
+
+It exists for one reason: Phase 3 drives `terraform/ocpvirt/` by shelling out to
+the terraform CLI, and no stock execution environment ships that binary.
+Everything else in the image is `ee-supported-rhel9` (AAP 2.6, pinned by digest)
+plus the same `collections/requirements.yml` your laptop installs — so the skill
+path and the job-template path resolve identical collection code.
+
+```bash
+./utilities/build-ee.sh          # build + verify
+./utilities/build-ee.sh --push   # build + verify + publish
+```
+
+Use the script, not `ansible-builder` directly. It stages `~/.ansible.cfg` —
+which holds the Automation Hub token the build needs for certified collections —
+into the gitignored `.ee-build/`, because the EE definition cannot portably
+reference a path in `$HOME` and **a tracked `ansible.cfg` at the repo root would
+shadow `~/.ansible.cfg` and break certified installs machine-wide**. The token
+reaches the galaxy build stage only; the published image carries no credential.
+
+The script then verifies the built image **as UID 1000**, which is who AAP runs
+a job as: `terraform version` must execute, and every pinned collection must be
+present at exactly its pinned version. `Complete!` from ansible-builder is not
+verification — `==> Verified` is.
+
+The image is registered in AAP by
+[`inventory/group_vars/aap/controller_execution_environments.yml`](inventory/group_vars/aap/controller_execution_environments.yml),
+applied by `playbooks/config.yml` like every other object. It is a **public**
+quay repository on purpose, so the cluster pulls it with no image pull secret and
+no AAP registry credential — one less thing to rebuild on each fresh RHDP
+environment.
+
+**Tags are immutable. Never re-push one.** Job templates pin a tag with
+`pull: missing`, so re-pushing changes what a job runs with no corresponding
+change in git — a failure that surfaces mid-demo. Publish a new tag and bump the
+reference. The `sales-demos-ee-build` skill has the bump rules and the build
+gotchas.
 
 ## Terraform: the `ocpvirt` module
 

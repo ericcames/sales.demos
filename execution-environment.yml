@@ -1,0 +1,122 @@
+---
+# sales.demos execution environment — the image AAP runs this repo's playbooks on.
+#
+# WHY THIS EXISTS (#31)
+# Everything here is meant to run from AAP as well as from a skill, against the
+# same playbooks/<phase>.yml. Phase 3 (#4) shells out to the terraform CLI to
+# drive terraform/ocpvirt/, and no stock execution environment ships that
+# binary. That single missing binary is the whole reason for a custom image.
+#
+# Build and push with utilities/build-ee.sh — do not call ansible-builder
+# directly. The script stages ~/.ansible.cfg into the build context, which this
+# file expects to already be there (see additional_build_files below).
+#
+# Register the built image in AAP via demos/ocpvirt/controller_execution_environments.yml.
+version: 3
+
+images:
+  base_image:
+    # AAP 2.6 supported EE, pinned by DIGEST rather than tag.
+    #
+    # The tag is not a usable pin here: `latest` moves, and this repository
+    # publishes no immutable tag matching the build `latest` currently resolves
+    # to (its version/release labels, 2.0.0-1785339117, are not in RepoTags).
+    # The digest is the only thing that names exactly one build. This follows
+    # aap_config, which pins its EE images the same way.
+    #
+    # To re-pin after a base-image refresh:
+    #   skopeo inspect docker://registry.redhat.io/ansible-automation-platform-26/ee-supported-rhel9:latest | jq -r .Digest
+    name: registry.redhat.io/ansible-automation-platform-26/ee-supported-rhel9@sha256:0c3b74f2b6b9eb8f4a144e10b27208c53bc104fb548b0371f905150f75fe6861
+
+options:
+  # ee-supported-rhel9 ships microdnf, NOT dnf. ansible-builder defaults to
+  # /usr/bin/dnf and the build fails at the first system-package step without
+  # this. Verified against the pinned digest above.
+  package_manager_path: /usr/bin/microdnf
+
+dependencies:
+  # The same pinned file the local skill path installs from, so both entry
+  # points resolve identical collection code. That equality is the point — see
+  # CLAUDE.md, "Skills and playbooks".
+  #
+  # Most of what this file pins is already in the base image at the same
+  # version (kubernetes.core 6.4.0, redhat.openshift_virtualization 2.3.0,
+  # cloud.terraform 4.0.0). Installing anyway is deliberate: the base image is
+  # free to change those on its next respin, and the pins are what was
+  # validated. ansible.platform and ansible.controller are genuinely different
+  # (base ships 2.6.20260504 / 4.7.15), and infra.aap_configuration is absent
+  # entirely.
+  galaxy: collections/requirements.yml
+
+  exclude:
+    python:
+      # systemd-python breaks the build, and nothing here uses it.
+      #
+      # ansible-builder introspects EVERY collection in the image, not just the
+      # ones this repo asked for. ee-supported-rhel9 ships ansible.eda, whose
+      # requirements.txt lists systemd-python for its journald event source.
+      # No wheel is published for it, so pip builds from source and fails:
+      #   Cannot find libsystemd or libsystemd-journal
+      # because the UBI base has no systemd-devel and no subscription to get it.
+      #
+      # Excluding it is the right fix rather than adding systemd-devel to a
+      # bindep: this EE runs terraform and talks to OpenShift and AAP. It has no
+      # journald event source, so the dependency is pure collateral from the
+      # base image. Every other introspected requirement is already satisfied.
+      - systemd-python
+
+additional_build_files:
+  # Staged here by utilities/build-ee.sh, copied from the real ~/.ansible.cfg.
+  # That file holds the Automation Hub token the galaxy step needs for
+  # certified content (ansible.platform, ansible.controller).
+  #
+  # It is staged rather than referenced in place for two reasons. An absolute
+  # /home/<user>/.ansible.cfg would not work on a teammate's machine, and a
+  # tracked ansible.cfg at the repo root is forbidden — Ansible picks ONE cfg
+  # file and does not merge, so a local one shadows ~/.ansible.cfg and breaks
+  # certified installs everywhere else. .ee-build/ is gitignored, is not at the
+  # repo root, and is therefore never picked up as a config file by Ansible.
+  #
+  # (ansible-builder's COPY does not follow symlinks, which is why ~/.ansible.cfg
+  # is a real file and not a symlink to ~/.ansible/ansible.cfg. The script
+  # asserts this.)
+  - src: .ee-build/ansible.cfg
+    dest: configs
+
+additional_build_steps:
+  prepend_galaxy:
+    # The token only ever lands in the galaxy build stage. The final image is
+    # built FROM base and copies the *installed collections* out, not this file,
+    # so the published image carries no credential.
+    - ADD _build/configs/ansible.cfg /etc/ansible/ansible.cfg
+
+  append_final:
+    # Terraform CLI. Phase 3 invokes it through ansible.builtin.command, exactly
+    # as dc1.azure/playbooks/provision_vm.yml already does, so the requirement
+    # is the binary itself; cloud.terraform is present but not on the path a
+    # provision run takes.
+    #
+    # Downloaded and checksummed rather than installed from the HashiCorp yum
+    # repo: one pinned version, one verified artifact, no extra repo config on
+    # a UBI base with no subscription. curl and unzip are both already in the
+    # base image (verified), so no package install is needed.
+    #
+    # linux_amd64 only. Both the laptop and the RHDP cluster are x86_64; add an
+    # arm64 build only when something actually needs it.
+    #
+    # To bump: change both the version and the checksum together, from
+    #   https://releases.hashicorp.com/terraform/<version>/terraform_<version>_SHA256SUMS
+    - >-
+      RUN curl -fsSL -o /tmp/terraform.zip
+      "https://releases.hashicorp.com/terraform/1.15.8/terraform_1.15.8_linux_amd64.zip"
+      && echo "d25ce7b6902013ad905db3d2eab0be4cd905887fe88b81a6171b8d5503c31f3d  /tmp/terraform.zip"
+      | sha256sum -c -
+      && unzip -q -o -d /usr/local/bin /tmp/terraform.zip
+      && chmod 0755 /usr/local/bin/terraform
+      && rm -f /tmp/terraform.zip
+
+    # Fail the BUILD, not a demo, if the binary did not land or will not run.
+    # This executes as root — ansible-builder emits `USER 1000` after every
+    # append_final step — so it does not prove the runtime user can execute it.
+    # utilities/build-ee.sh re-runs it unprivileged after the build for that.
+    - RUN /usr/local/bin/terraform version

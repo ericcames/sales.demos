@@ -7,6 +7,59 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added -- execution environment with terraform (#31)
+- `execution-environment.yml` — the image AAP runs this repo's playbooks on,
+  built on `ee-supported-rhel9` (AAP 2.6). It exists for one reason: Phase 3
+  (#4) drives `terraform/ocpvirt/` through `ansible.builtin.command`, and no
+  stock execution environment ships the terraform binary. Terraform 1.15.8 is
+  downloaded and sha256-verified rather than installed from the HashiCorp yum
+  repo — one pinned version, one checked artifact, no extra repo config on a UBI
+  base with no subscription. `curl` and `unzip` are already in the base image.
+- The base image is pinned by **digest, not tag**. `latest` moves, and the
+  registry publishes no immutable tag matching what `latest` currently resolves
+  to (its `version`/`release` labels are absent from `RepoTags`), so the digest
+  is the only thing that names one build. This follows `aap_config`.
+- `dependencies.exclude.python: [systemd-python]`. ansible-builder introspects
+  every collection in the image, not just the ones requested. `ee-supported-rhel9`
+  ships `ansible.eda`, whose `requirements.txt` lists `systemd-python` for its
+  journald event source; no wheel is published, so pip builds from source and
+  fails with `Cannot find libsystemd or libsystemd-journal` on a UBI base with no
+  `systemd-devel`. Nothing here has a journald event source, so the dependency is
+  pure collateral from the base image and is excluded rather than compiled.
+  (`aap.lightspeed.patching` compiles it instead — correct there, because that EE
+  is on `ee-minimal` where the dependency arrives through a collection in use.)
+- `options.package_manager_path: /usr/bin/microdnf` — `ee-supported-rhel9` ships
+  microdnf, not dnf, and ansible-builder defaults to `/usr/bin/dnf`.
+- `utilities/build-ee.sh` — the build entry point. Stages `~/.ansible.cfg` into
+  the gitignored `.ee-build/` so the galaxy stage can install certified
+  collections, asserting first that it is a **real file**: ansible-builder's
+  `COPY` does not follow symlinks, so a symlinked config silently yields an image
+  with no Hub token. It is staged rather than referenced in place because an
+  absolute `/home/<user>/` path is not portable and a tracked `ansible.cfg` at
+  the repo root would shadow `~/.ansible.cfg` and break certified installs
+  machine-wide. The token reaches the galaxy build stage only; the published
+  image carries no credential.
+- The script verifies the built image **as UID 1000**, which is who AAP runs a
+  job as — `terraform version` must execute, and every collection pinned in
+  `collections/requirements.yml` must be present at exactly that version. The
+  in-Containerfile check cannot do this: ansible-builder emits `USER 1000` after
+  every `append_final` step, so those steps all run as root.
+- `inventory/group_vars/aap/controller_execution_environments.yml` — registers
+  `quay.io/zigfreed/sales-demos-ee:v1.0.0` in AAP, applied by
+  `playbooks/config.yml` via the dispatch role like every other object. It lives
+  in `group_vars/` rather than `demos/ocpvirt/` because dispatch reads
+  `group_vars` implicitly and nothing loads `demos/ocpvirt/` yet; it can move
+  when #4 adds a loader. A **public** quay repository on purpose, so the cluster
+  pulls it with no image pull secret and no AAP registry credential.
+- `collections/requirements.yml` — `cloud.terraform` 4.0.0 pinned. The binary,
+  not this collection, is the hard requirement for Phase 3, but pinning it keeps
+  the module set identical on both entry points and lets `ansible-lint` resolve
+  it locally.
+- `.claude/skills/sales-demos-ee-build/` — build, verify, and publish the EE.
+  No playbook, deliberately: like `collections-sync` it touches a laptop and a
+  registry, never a demo environment, so it must never run from AAP. Carries the
+  immutable-tag rule and the build gotchas.
+
 ### Added -- public SSH and HTTP access (#29)
 - `terraform/ocpvirt/variables.tf` — `demo_ssh_public_key` variable. When set,
   cloud-init injects the key via `ssh_authorized_keys` and disables password-based
