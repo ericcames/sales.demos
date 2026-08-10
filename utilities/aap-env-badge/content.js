@@ -15,6 +15,19 @@
 
   const BADGE_ID = "sales-demos-env-badge";
 
+  // WHY manifest.json MATCHES ALL OF *.dyn.redhatworkshops.io, WHICH LOOKS TOO
+  // BROAD. Chrome match patterns allow `*` only as an entire leading subdomain
+  // (`*.example.com`) or as the whole host — never inside a hostname label. The
+  // obvious `https://aap-aap.apps.cluster-*.dyn.redhatworkshops.io/*` is
+  // rejected outright with "Invalid host wildcard", and the extension will not
+  // load at all. Do not "tighten" it back to that.
+  //
+  // So the manifest matches every RHDP host and this narrows it here instead.
+  // The AAP gateway Route on this catalog item is always `aap-<namespace>`, so
+  // anything else — the OpenShift console, Cockpit, a demo web server — bails
+  // before touching the page.
+  const AAP_HOST = /^aap-/;
+
   // Below this width the masthead's own controls crowd the middle. Hide rather
   // than overlap: a badge sitting on top of the nav toggle is worse than none,
   // especially on a shared screen.
@@ -88,6 +101,8 @@
     const env = config.environments[location.hostname] || config.unknown;
     render(env, box);
   }
+
+  if (!AAP_HOST.test(location.hostname)) return;
 
   fetch(chrome.runtime.getURL("envs.json"))
     .then((r) => r.json())

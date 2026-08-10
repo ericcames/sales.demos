@@ -37,9 +37,27 @@ anywhere.
 2. Turn on **Developer mode**
 3. **Load unpacked** → select this directory
 
-It applies to `https://aap-aap.apps.cluster-*.dyn.redhatworkshops.io/*`, so both
-environments are covered by the one load, and it keeps working when RHDP hands
-you a new cluster ID.
+Both environments are covered by the one load, and it keeps working when RHDP
+hands you a new cluster ID.
+
+### Why the manifest matches all of `*.dyn.redhatworkshops.io`
+
+It looks too broad, and it is deliberate. **Chrome match patterns allow `*` only
+as an entire leading subdomain** (`*.example.com`) or as the whole host — never
+inside a hostname label. The obvious pattern
+
+```
+https://aap-aap.apps.cluster-*.dyn.redhatworkshops.io/*
+```
+
+is rejected with `Invalid value for 'content_scripts[0].matches[0]': Invalid
+host wildcard` and the extension will not load at all. Do not "tighten" it back
+to that.
+
+So the manifest matches every RHDP host and `content.js` narrows it in one line:
+the AAP gateway Route on this catalog item is always `aap-<namespace>`, so
+anything else — the OpenShift console, Cockpit, a demo web server — returns
+before touching the page.
 
 ## An unrecognized environment is a feature
 

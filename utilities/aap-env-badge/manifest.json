@@ -1,12 +1,12 @@
 {
   "manifest_version": 3,
   "name": "AAP environment badge (sales.demos)",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Paints a SANDBOX / DEMO pill in the AAP masthead. The sign-in page marks the environment; after login AAP does not, and no gateway setting can. See issue #54.",
   "content_scripts": [
     {
       "matches": [
-        "https://aap-aap.apps.cluster-*.dyn.redhatworkshops.io/*"
+        "https://*.dyn.redhatworkshops.io/*"
       ],
       "js": ["content.js"],
       "run_at": "document_idle"
@@ -16,7 +16,7 @@
     {
       "resources": ["envs.json"],
       "matches": [
-        "https://aap-aap.apps.cluster-*.dyn.redhatworkshops.io/*"
+        "https://*.dyn.redhatworkshops.io/*"
       ]
     }
   ]
