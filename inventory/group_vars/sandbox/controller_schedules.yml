@@ -1,0 +1,44 @@
+---
+# ============================================================================
+# group_vars/sandbox/controller_schedules.yml — nightly teardown for sandbox (#6)
+# ============================================================================
+# LIVES IN THE PER-ENVIRONMENT DIRECTORY, and that is what scopes it. The
+# `_sandbox` suffix only tells dispatch's wildcard merge how to COMBINE variables;
+# it does not filter by environment. A suffixed variable placed in group_vars/aap/
+# loads for EVERY environment regardless of its name — which is exactly the bug
+# this file was split to fix: demo picked up sandbox's 10 PM sweep as well as its
+# own 6 PM one, because both were declared in the shared directory.
+#
+# Same pattern as gateway_settings.yml, which has lived split this way since #21.
+#
+# Demo VMs should never run overnight. On RHDP that is a capacity question, not
+# a cost one: these VMs share a node with AAP and CNV, and terraform/ocpvirt
+# enforces a memory budget against roughly 14 GiB of headroom. A VM left running
+# from yesterday is memory the next demo cannot have.
+#
+# TIMEZONE: America/Phoenix observes NO daylight saving, so times there are a
+# fixed UTC offset year-round and a schedule written once never drifts by an
+# hour twice a year. TZID makes AAP render and fire them as local Phoenix time
+# regardless of the server's timezone.
+#
+# The teardown job template is idempotent: with no VMs in state, terraform
+# destroy is a no-op, so a schedule firing against an already-clean environment
+# costs nothing and reports success.
+#
+# DTSTART is the date the rule starts counting from, not a one-off run date.
+# ============================================================================
+
+# TWO SWEEPS. sandbox is the environment being actively built against and work
+# sessions run late: 6 PM is the real one, 10 PM catches VMs created after it.
+controller_schedules_sandbox:
+  - name: "Sales Demos - Nightly teardown (6 PM)"
+    unified_job_template: "Sales Demos - Teardown VMs"
+    description: "Destroy sandbox demo VMs every day at 6 PM America/Phoenix."
+    rrule: "DTSTART;TZID=America/Phoenix:20260810T180000 RRULE:FREQ=DAILY;INTERVAL=1"
+    enabled: true
+
+  - name: "Sales Demos - Nightly teardown (10 PM safety net)"
+    unified_job_template: "Sales Demos - Teardown VMs"
+    description: "Second sweep at 10 PM America/Phoenix — catches VMs created after the 6 PM run."
+    rrule: "DTSTART;TZID=America/Phoenix:20260810T220000 RRULE:FREQ=DAILY;INTERVAL=1"
+    enabled: true
