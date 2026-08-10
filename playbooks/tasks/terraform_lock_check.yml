@@ -40,6 +40,11 @@
   # regex_findall rather than regex_search: with a capture group it returns a
   # plain list, so `| first | default()` is safe when there is no match.
   # regex_search returns None, and `None | first` is an error.
+  #
+  # FIELD-ORDER INDEPENDENT ON PURPOSE. Terraform 1.15.8 prints Path, Created
+  # and Info lines that the report in #46 does not show, and the order differs
+  # between them. Anchoring on the individual labels survives that; parsing the
+  # block positionally would not. Verified against a lock produced live.
   ansible.builtin.set_fact:
     tf_lock_id: "{{ tf_lock_blob | regex_findall('ID:\\s+([0-9a-fA-F-]{8,})') | first | default('(not in the message)') }}"
     tf_lock_who: "{{ tf_lock_blob | regex_findall('Who:\\s+(\\S+)') | first | default('(not in the message)') }}"

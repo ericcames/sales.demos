@@ -129,7 +129,14 @@ oc get lease lock-tfstate-default-sandbox -n sales-demos-tfstate \
 ```
 
 Empty output means no lock is held, and the failure is something else. A held
-lock shows the same identity the error printed.
+lock shows the same value as the `ID:` line in the error. The full record —
+operation, who, terraform version, when it was taken — is on the Lease as an
+annotation:
+
+```bash
+oc get lease lock-tfstate-default-sandbox -n sales-demos-tfstate \
+  -o jsonpath='{.metadata.annotations.app\.terraform\.io/lock-info}{"\n"}'
+```
 
 To clear it, first confirm in AAP that no Provision or Teardown job is genuinely
 running — force-unlocking a live apply corrupts state. Then:
