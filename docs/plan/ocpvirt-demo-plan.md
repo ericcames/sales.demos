@@ -26,8 +26,10 @@ throwaway debug pod to check for hardware virtualization.
 
 1. **Single node ⇒ no live migration.** Drop it from the demo narrative. Everything else
    (VM lifecycle, snapshots, console, hotplug) works.
-2. **~35 GB RAM is the real budget.** Sizing tiers must fit a full small+medium+large run
-   with Windows in the mix.
+2. **~~~35 GB RAM is the real budget.~~ Corrected in #2: ~14 GiB.** The 35 GB figure was
+   measured *before* CNV was installed; CNV's own components now run on the node, leaving
+   **~14.2 GiB free of 61.7 GiB** — and that moves as AAP and CNV pods come and go. Sizing
+   tiers must fit inside that, which is why `large` is 6 GiB. See *Sizing design*.
 3. **No Windows boot source.** CNV ships RHEL/Fedora DataSources; Red Hat cannot
    redistribute Windows. Build a golden image once, publish it, clone thereafter.
 4. **AAP is co-resident on the only node.** A standard CNV install does *not* reboot the node
@@ -179,19 +181,37 @@ that verify each prerequisite before doing anything.
 
 ## Sizing design
 
-Map t-shirt tiers to **CNV cluster instance types + preferences**, not raw CPU/memory
-numbers. This is native OpenShift Virt functionality and demos better than hand-rolled specs.
-`u1.*` instance types ship with CNV.
+Map t-shirt tiers to **cluster instance types + preferences**, not raw CPU/memory numbers.
+This is native OpenShift Virt functionality and demos better than hand-rolled specs.
+
+> **Revised in #2 after measuring the cluster.** The tiers are now repo-owned `sd1.*`
+> instance types created by `terraform/ocpvirt/instancetypes.tf`, not Red Hat's shipped
+> `u1.*`, and `large` is 6 GiB rather than 8. Red Hat's `u1.*` remain on the cluster
+> untouched; reverting a tier to them is a one-line change in `locals.tf`.
 
 | Tier | Instance type | vCPU / RAM | Root disk |
 |---|---|---|---|
-| `small-1cpu-2gb` | `u1.small` | 1 / 2 GB | 30 GB |
-| `medium-1cpu-4gb` | `u1.medium` | 1 / 4 GB | 30 GB |
-| `large-2cpu-8gb` | `u1.large` | 2 / 8 GB | 50 GB |
+| `small-1cpu-2gb` | `sd1.small` | 1 / 2 GiB | 30 Gi |
+| `medium-1cpu-4gb` | `sd1.medium` | 1 / 4 GiB | 30 Gi |
+| `large-2cpu-6gb` | `sd1.large` | 2 / 6 GiB | 50 Gi |
 
-Budget check: `both` OS at `large` = 16 GB, inside the ~35 GB free. All three tiers × both OS
-= 28 GB — fits, but that is the ceiling; document it. Windows uses the same tiers with
-`preference: windows.2k22` and a 60 GB disk minimum.
+**Why not `u1.large` at 8 GiB.** Post-CNV the node has ~14.2 GiB free, not the ~35 GiB the
+pre-install probe showed, so `both` at 8 GiB needs ~16.6 GiB and never schedules. 7 GiB does
+not fit either (~14.6). At 6 GiB, `both` + `large` is ~12.7 GiB — **measured, not estimated:
+`terraform plan` reports `requested_memory_gb = 12.68`** — and every tier/OS combination fits.
+There is no `u1` type at 6 GiB (the series is 2 / 4 / 8 / 16), which is why the tiers are
+repo-owned rather than hand-rolling `spec.domain.memory.guest` and losing the instance-type
+mechanism entirely.
+
+The tier string says `large-2cpu-6gb` rather than `-8gb` deliberately: those strings are the
+contract shared with the AAP survey and the skill, so they must not promise memory the tier
+does not give.
+
+A `terraform plan` precondition enforces the budget against `available_memory_gb` (default
+14), so an over-budget request fails in the plan instead of leaving a VM `Pending` with an
+`Insufficient memory` event while Terraform reports success.
+
+Windows uses the same tiers with `preference: windows.2k22` and a 60 Gi disk minimum.
 
 ---
 

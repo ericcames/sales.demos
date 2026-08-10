@@ -200,6 +200,52 @@ verify step is the point: `ansible-galaxy` reports success without installing
 anything when it believes a collection is already present, and it silently
 refuses to downgrade, so its exit code does not tell you what you actually have.
 
+## Terraform: the `ocpvirt` module
+
+`terraform/ocpvirt/` builds the VMs — Linux and Windows, sized by `sd1.*` cluster
+instance types, each with a headless Service. Phase 3 will drive this same module
+from AAP; until then it is run by hand.
+
+State and `terraform.tfvars` are gitignored and must stay that way. Rather than
+writing a token to disk, pass the variables as `TF_VAR_*` straight from the vault:
+
+```bash
+cd terraform/ocpvirt
+
+export TF_VAR_openshift_api_token=$(
+  ansible-vault view ../../inventory/group_vars/aap/secrets.yml \
+    --vault-id sales.demos@~/secrets/.vault_pass_sales_demos \
+  | python3 -c 'import sys,yaml;print(yaml.safe_load(sys.stdin)["env_secrets"]["sandbox"]["openshift_api_token"])')
+
+export TF_VAR_openshift_api_url=https://api.cluster-<id>.dyn.redhatworkshops.io:6443
+export TF_VAR_openshift_insecure=true
+export TF_VAR_namespace=sales-demos-sandbox
+export TF_VAR_vm_size_tier=small-1cpu-2gb   # | medium-1cpu-4gb | large-2cpu-6gb
+export TF_VAR_os_type=linux                 # | windows | both
+
+terraform init && terraform apply
+```
+
+**`apply` finishing does not mean the guest is up.** The default StorageClass is
+`WaitForFirstConsumer`, so the disk clones only once the VM first schedules —
+apply returns in about 10s, and the VM reports `Ready` well after. Budget ~6
+minutes on a cold cluster, where CDI imports the boot source for real; repeat
+builds against a warm boot source have come up in ~30s. Watch the VM, not the
+Ansible or Terraform recap:
+
+```bash
+oc get vm,vmi,pvc -n sales-demos-sandbox -w
+```
+
+Tiers are repo-owned `sd1.*` instance types, not Red Hat's `u1.*`, and `large` is
+6 GiB rather than 8. Post-CNV this node has ~14 GiB free, so `u1.large` would make
+`os_type=both` need ~16.6 GiB and never schedule. A precondition enforces that
+budget, so an over-budget request fails in `plan` instead of leaving a VM `Pending`
+while Terraform reports success. The `u1.*` types are left untouched.
+
+Windows is wired but cannot boot until [#3](https://github.com/ericcames/sales.demos/issues/3) —
+CNV ships `win2k22` as an empty DataSource placeholder.
+
 ## Running a phase
 
 **Nothing deploys from CI.** GitHub Actions is a pull-request gate only — lint,

@@ -8,6 +8,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- `terraform/ocpvirt/` — Phase 1. Provisions Linux and Windows VMs sized by
+  `sd1.*` cluster instance types, each with a headless Service giving a stable
+  in-cluster DNS name, since an OpenShift Virt VM has no plan-time-knowable
+  address. The `linux_inventory` / `windows_inventory` output shape is preserved
+  field-for-field from `dc1.azure/terraform`, which Phases 3 and 4 consume. A
+  precondition enforces the guest-memory budget so an over-budget request fails
+  in `plan` rather than leaving a VM `Pending`. Verified on the sandbox: VM
+  `Running` and `Ready` in 5m47s, PVC `Bound`, `terraform plan` clean. (#2)
+
+### Fixed
+- `terraform/ocpvirt/` — `terraform plan` could never come back clean, so the
+  module could not be trusted to report real drift. Two independent causes, both
+  cases of the cluster owning fields Terraform believed were its own:
+  - The namespace drifted forever. OpenShift's SCC controller stamps every
+    namespace with the UID/GID/MCS ranges it allocated plus the derived
+    pod-security level; Terraform planned to strip all four on every run and the
+    controller put them straight back. Applying it would also have handed the
+    guests a different UID range than the one their pods were admitted under.
+    Now ignored via `lifecycle`, as cluster-owned.
+  - `spec.template.metadata` is `x-kubernetes-preserve-unknown-fields`, so the
+    provider has no schema and infers the object type from the manifest — making
+    the key set load-bearing. KubeVirt's webhook adds
+    `kubevirt.io/pci-topology-version` and a null `creationTimestamp`, which the
+    manifest never declared, so plan failed reading the refreshed object back and
+    apply failed with "Provider produced inconsistent result". `computed_fields`
+    does not help here: it can override a value but cannot add a missing
+    attribute. Both keys are now declared, with `computed_fields` still covering
+    their values.
 - `playbooks/install_cnv.yml` — installs OpenShift Virtualization: namespace,
   OperatorGroup, `kubevirt-hyperconverged` Subscription on the `stable` channel,
   and the `HyperConverged` CR, then waits for the operator to report `Available`
