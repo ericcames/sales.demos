@@ -46,6 +46,10 @@
           - "Memory:    {{ ansible_memtotal_mb | default('?') }} MB"
           - "vCPU:      {{ ansible_processor_vcpus | default('?') }}"
           - "Size tier: {{ vm_size_tier | default('(not set)') }} -> {{ vm_size_chosen | default('(not set)') }}"
+          # Host variables from provision_vm.yml (#49), so the smoke test also
+          # answers "and where do I open it / log in?" without a second lookup.
+          - "Web URL:   {{ web_url | default('(not set — re-provision to record it)', true) }}"
+          - "Laptop:    {{ ssh_command | default('(not set — re-provision to record it)', true) }}"
 
     - name: Confirm the guest matches the size tier it was provisioned as
       # Catches the failure where a tier maps to an instance type that the

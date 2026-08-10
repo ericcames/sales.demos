@@ -91,7 +91,10 @@ is for, and it is the difference between "a VM exists" and "the demo will work".
   cluster and each VM has a headless Service. No bastion, and no `virtctl` —
   that is the laptop path, and the execution environment does not ship it.
 - **From a laptop, use `virtctl ssh`.** The `ssh_command` Terraform output gives
-  you the exact line.
+  you the exact line, and the Provision, Configure and Check job logs print it
+  too. If a line you kept from before #49 fails with `unknown flag:
+  --local-ssh`, that flag was removed in virtctl v1.x — drop it, and keep the
+  `vm/` prefix on the target.
 - **`demo_ssh_public_key` must not be empty.** cloud-init then emits
   `ssh_pwauth: true` with no key *and* no password, and the guest has no
   credentials at all. It writes authorized keys on **first boot only**, so a VM

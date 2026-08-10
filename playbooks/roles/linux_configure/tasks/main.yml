@@ -248,6 +248,13 @@
     - linux_configure_needs_restarting.rc | default(0) == 1
 
 - name: Report where the demo page is
+  # THE URL IS THE POINT OF THIS ROLE, so it is printed here rather than
+  # described (#49). It used to say "comes from the terraform output web_url",
+  # which meant the one job that turns the Route from 503 into a live page was
+  # also the one job whose log could not tell you where to look.
+  #
+  # web_url and ssh_command arrive as HOST VARIABLES set by provision_vm.yml.
+  # A guest provisioned before #49 does not carry them, hence the fallback.
   ansible.builtin.debug:
     msg:
       - "{{ inventory_hostname }} is serving on port 80."
@@ -256,4 +263,9 @@
            if (linux_configure_patch | bool) and (linux_configure_needs_restarting.rc | default(0) == 1)
               and not (linux_configure_reboot | bool)
            else 'No reboot pending.' }}
-      - "Public URL comes from the terraform output `web_url`."
+      - >-
+        {{ 'Open it:  ' ~ web_url if (web_url | default('', true) | length > 0)
+           else 'Open it:  run `terraform output -raw web_url`; re-provision to have it printed here.' }}
+      - >-
+        {{ 'Log in:   ' ~ ssh_command if (ssh_command | default('', true) | length > 0)
+           else 'Log in:   run `terraform output -raw ssh_command`; re-provision to have it printed here.' }}
