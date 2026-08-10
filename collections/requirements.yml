@@ -27,6 +27,13 @@ collections:
   # Legacy — prefer ansible.platform. Kept until the replacement is proven.
   - name: ansible.controller
     version: "4.8.0"
+  # Private Automation Hub. Drives the EE registry/repository/sync objects that
+  # mirror the execution environment into PAH (#35). Pinned to 1.1.0 to match
+  # what ee-supported-rhel9 already ships — 1.0.4 was installed locally, and a
+  # laptop resolving different code from the EE is exactly the drift this file
+  # exists to stop.
+  - name: ansible.hub
+    version: "1.1.0"
 
   # OpenShift / KubeVirt. kubernetes.core drives the Phase 0 CNV install;
   # redhat.openshift_virtualization drives VM lifecycle in Phases 1-4.

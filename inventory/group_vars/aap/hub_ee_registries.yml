@@ -1,0 +1,38 @@
+---
+# ============================================================================
+# group_vars/aap/hub_ee_registries.yml — where PAH fetches the EE from (#35)
+# ============================================================================
+# Tells Private Automation Hub that quay.io exists as a remote registry. The
+# image to mirror is named in hub_ee_repositories.yml; this only supplies the
+# endpoint and, if it were ever needed, the credentials to reach it.
+#
+# Defining this variable is what makes dispatch run three roles, in order:
+#   hub_ee_registry -> hub_ee_registry_index -> hub_ee_registry_sync
+#
+# WHY PAH AT ALL, when quay.io already works (#31). The demo stops depending on
+# quay being reachable and on a public repository staying public, and the pull
+# becomes cluster-local instead of an internet round trip — which is the kind of
+# thing that decides whether a cold environment is demo-ready (#30).
+#
+# VERIFIED ON THIS PLATFORM, so the usual objections do not apply here:
+#   - PAH is deployed (`hub disabled=False`; five hub pods running).
+#   - AAP 2.6's gateway proxies it by PATH, at /api/galaxy/ — there is no
+#     separate hub route, and ansible.hub's ah_path_prefix already defaults to
+#     `galaxy`, so nothing needs overriding.
+#   - It works as a container registry: `podman login` against the AAP hostname
+#     succeeds.
+#   - The cluster can pull from it with NO insecure-registry and NO extra CA:
+#     the *.apps certificate is issued by Google Trust Services, publicly
+#     trusted. `insecureRegistries` and `additionalTrustedCA` are both empty on
+#     this cluster and must stay that way.
+# ============================================================================
+
+hub_ee_registries_all:
+  # Name allows alphanumerics and underscores only — a Hub requirement, which is
+  # why this is not "quay.io".
+  - name: quay_io
+    url: https://quay.io
+    tls_validation: true
+    # No credentials. quay.io/zigfreed/sales-demos-ee is deliberately PUBLIC
+    # (#31) — it holds only pinned open-source collections and the terraform
+    # binary. Add username/password here if it ever moves to a private org.
