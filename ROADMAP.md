@@ -17,16 +17,27 @@ both driving the same playbook.
 
 ## Sizing tiers
 
-Mapped to native CNV cluster instance types rather than hand-rolled CPU/memory.
+Mapped to cluster instance types rather than hand-rolled CPU/memory — but to
+**repo-owned `sd1.*` types**, not Red Hat's shipped `u1.*` series (#2,
+`terraform/ocpvirt/instancetypes.tf`).
 
 | Tier | Instance type | vCPU / RAM | Root disk |
 |---|---|---|---|
-| `small-1cpu-2gb` | `u1.small` | 1 / 2 GB | 30 GB |
-| `medium-1cpu-4gb` | `u1.medium` | 1 / 4 GB | 30 GB |
-| `large-2cpu-8gb` | `u1.large` | 2 / 8 GB | 50 GB |
+| `small-1cpu-2gb` | `sd1.small` | 1 / 2 GiB | 30 GB |
+| `medium-1cpu-4gb` | `sd1.medium` | 1 / 4 GiB | 30 GB |
+| `large-2cpu-6gb` | `sd1.large` | 2 / 6 GiB | 50 GB |
 
-The target is a single-node cluster with roughly 35 GB free. All three tiers ×
-both operating systems is about 28 GB — that is the ceiling.
+**Why not `u1.*`.** That series has no 6 GiB size — it goes 2 / 4 / 8 / 16. At
+`u1.large`'s 8 GiB, `os_type=both` needs about 16.6 GiB against the ~14.2 GiB
+this node actually has free once AAP and CNV are running, so it would never
+schedule. The `sd1.*` types keep every tier/OS combination inside that budget
+while preserving the mechanism: sizing still comes from a cluster instance type.
+The `u1.*` types are left untouched.
+
+The real ceiling is enforced in code, not by this table:
+`terraform/ocpvirt/locals.tf` fails `plan` when a run exceeds
+`available_memory_gb` (default 14), so an over-budget request is caught before
+it schedules and sits Pending.
 
 ## Not scheduled
 

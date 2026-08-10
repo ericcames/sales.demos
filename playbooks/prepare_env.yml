@@ -1,0 +1,366 @@
+---
+# ===========================================================================
+# prepare_env.yml — make a fresh RHDP environment demo-ready. Issue #30.
+#
+#   ansible-playbook playbooks/prepare_env.yml -i inventory --limit sandbox \
+#     -e target_env=sandbox \
+#     --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
+#
+# THE PROBLEM THIS SOLVES. Creating a VM measured 5m47s on a cold cluster and
+# ~30s on a warm one. That gap is not Terraform's doing — the module is already
+# on the fast path (csi-clone, snapshot boot sources). The slow case is building
+# against a cluster whose boot source has not finished importing, so the fix
+# belongs in environment spin-up, not in the VM definition.
+#
+# Run this after playbooks/setup.yml on a new environment, and before promising
+# anyone a live build.
+#
+# IT ASSERTS RATHER THAN ASSUMES, because every check here corresponds to a way
+# the environment can look fine and still be slow:
+#
+#   - The rhel9 DataSource can report Ready while the VolumeSnapshot behind it
+#     is still materialising. That is precisely the state that produces a slow
+#     first build, so the snapshot is checked by name, not inferred.
+#   - A StorageProfile reporting `copy` instead of `csi-clone` makes every
+#     create pay a full disk copy. Fail loudly with that as the stated reason
+#     rather than let the demo be mysteriously slow.
+#   - Routes need the ingress controller actually admitting them (#29).
+#
+# AND IT BUILDS A REAL VM. A playbook that has verified everything except
+# "can this cluster make a VM" is the failure mode this exists to prevent, so it
+# builds one, times it, and destroys it.
+# ===========================================================================
+
+- name: Phase 0.5 — verify a fresh environment is genuinely demo-ready
+  hosts: aap
+  gather_facts: false
+
+  environment:
+    K8S_AUTH_HOST: "{{ openshift_api_url }}"
+    K8S_AUTH_API_KEY: "{{ openshift_api_token }}"
+    K8S_AUTH_VERIFY_SSL: "{{ openshift_validate_certs | default(false) | bool }}"
+
+  vars:
+    # Empty means "discover the default" — see tasks/resolve_storage_class.yml.
+    cnv_storage_class: ""
+    prep_datasource_name: "{{ ocpvirt_linux_datasource | default('rhel9') }}"
+    prep_datasource_namespace: "openshift-virtualization-os-images"
+    # Its own namespace, deleted at the end. Never the demo namespace: this must
+    # not disturb, or be disturbed by, whatever a demo has running.
+    prep_smoke_namespace: "{{ smoke_namespace | default('sales-demos-smoke', true) }}"
+    prep_smoke_vm: "sd-smoke"
+    # Red Hat's shipped types, NOT the repo's sd1.* ones. Those are created by
+    # terraform/ocpvirt and will not exist on a cluster that has never run it —
+    # which is exactly the cluster this playbook is for.
+    prep_smoke_instancetype: "u1.small"
+    prep_smoke_preference: "rhel.9"
+    prep_smoke_timeout: 600
+    prep_smoke_retries: 60
+    prep_smoke_delay: 10
+    # The whole point is measuring a WARM build. Anything near the cold figure
+    # means the boot source is not really ready, whatever its conditions say.
+    prep_warm_threshold_seconds: 120
+
+  tasks:
+    - name: Assert exactly one environment is targeted
+      ansible.builtin.include_tasks: tasks/assert_target_environment.yml
+
+    - name: Assert the OpenShift connection is set
+      ansible.builtin.assert:
+        that:
+          - openshift_api_url | default('') | length > 0
+          - openshift_api_token | default('') | length > 0
+        fail_msg: >-
+          openshift_api_url and openshift_api_token are required. They come from
+          group_vars/<env>/connection.yml plus the vaulted secrets; pass
+          --vault-id so the token resolves.
+        quiet: true
+
+    # --- 1. CNV itself ------------------------------------------------------
+    - name: Check OpenShift Virtualization is installed and Available
+      kubernetes.core.k8s_info:
+        api_version: hco.kubevirt.io/v1beta1
+        kind: HyperConverged
+        namespace: openshift-cnv
+      register: prep_hco
+
+    - name: Assert CNV is Available
+      ansible.builtin.assert:
+        that:
+          - prep_hco.resources | length > 0
+          - prep_hco.resources[0].status.conditions
+            | selectattr('type', 'equalto', 'Available')
+            | map(attribute='status') | first == 'True'
+        fail_msg: >-
+          OpenShift Virtualization is not installed or not Available. Run
+          playbooks/setup.yml first — that is Phase 0, and this playbook only
+          verifies readiness on top of it.
+        quiet: true
+
+    # --- 2. Storage: the clone strategy is what makes builds fast -----------
+    - name: Resolve the cluster's StorageClass
+      ansible.builtin.include_tasks: tasks/resolve_storage_class.yml
+
+    - name: Look up the StorageProfile for that StorageClass
+      # StorageProfiles are named after their StorageClass, so this is a direct
+      # lookup rather than a search.
+      kubernetes.core.k8s_info:
+        api_version: cdi.kubevirt.io/v1beta1
+        kind: StorageProfile
+        name: "{{ cnv_effective_storage_class }}"
+      register: prep_storageprofile
+
+    - name: Assert the StorageProfile clones with CSI rather than copying
+      # THE SINGLE BIGGEST LEVER ON BUILD TIME. csi-clone asks the storage
+      # backend to clone the volume, which is near-instant. Anything else —
+      # `copy`, or host-assisted — streams the whole disk through a pod for
+      # every VM, and no amount of pre-warming makes that fast.
+      ansible.builtin.assert:
+        that:
+          - prep_storageprofile.resources | length > 0
+          - prep_storageprofile.resources[0].status.cloneStrategy | default('') == 'csi-clone'
+        fail_msg: >-
+          StorageProfile '{{ cnv_effective_storage_class }}' reports
+          cloneStrategy
+          '{{ prep_storageprofile.resources[0].status.cloneStrategy | default("(none)") }}',
+          not 'csi-clone'. Every VM create will pay a full disk copy and live
+          builds will be slow no matter how warm the boot source is. Check that
+          the default StorageClass is the CSI one — on RHDP that is the ceph-rbd
+          class, not noobaa, which reports 'copy'.
+        quiet: true
+
+    # --- 3. The boot source, checked properly -------------------------------
+    - name: Look up the Linux boot-source DataSource
+      kubernetes.core.k8s_info:
+        api_version: cdi.kubevirt.io/v1beta1
+        kind: DataSource
+        namespace: "{{ prep_datasource_namespace }}"
+        name: "{{ prep_datasource_name }}"
+      register: prep_datasource
+
+    - name: Assert the DataSource exists and reports Ready
+      ansible.builtin.assert:
+        that:
+          - prep_datasource.resources | length > 0
+          - prep_datasource.resources[0].status.conditions
+            | selectattr('type', 'equalto', 'Ready')
+            | map(attribute='status') | first == 'True'
+        fail_msg: >-
+          DataSource '{{ prep_datasource_name }}' in
+          {{ prep_datasource_namespace }} is missing or not Ready. CNV imports
+          boot sources in the background after install; on a fresh cluster this
+          can take several minutes. Wait and re-run.
+        quiet: true
+
+    - name: Find what actually backs the DataSource
+      # Either a VolumeSnapshot or a PVC, depending on the cluster's
+      # dataImportCronSourceFormat. Read it from the DataSource rather than
+      # guessing, so this works on both.
+      ansible.builtin.set_fact:
+        prep_backing_kind: >-
+          {{ 'VolumeSnapshot' if (prep_datasource.resources[0].spec.source.snapshot is defined) else 'PersistentVolumeClaim' }}
+        prep_backing_name: >-
+          {{ (prep_datasource.resources[0].spec.source.snapshot
+              | default(prep_datasource.resources[0].spec.source.pvc)).name }}
+        prep_backing_namespace: >-
+          {{ (prep_datasource.resources[0].spec.source.snapshot
+              | default(prep_datasource.resources[0].spec.source.pvc)).namespace
+             | default(prep_datasource_namespace) }}
+
+    - name: Look up the backing volume
+      kubernetes.core.k8s_info:
+        api_version: "{{ 'snapshot.storage.k8s.io/v1' if prep_backing_kind == 'VolumeSnapshot' else 'v1' }}"
+        kind: "{{ prep_backing_kind }}"
+        namespace: "{{ prep_backing_namespace }}"
+        name: "{{ prep_backing_name }}"
+      register: prep_backing
+
+    - name: Assert the backing volume is actually usable
+      # THIS IS THE CHECK THAT MATTERS, and the reason the DataSource condition
+      # alone is not enough: a DataSource happily reports Ready while the
+      # snapshot behind it is still being created. Cloning from a snapshot that
+      # is not readyToUse is exactly the slow first build this playbook exists
+      # to catch.
+      ansible.builtin.assert:
+        that:
+          - prep_backing.resources | length > 0
+          - >-
+            (prep_backing.resources[0].status.readyToUse | default(false))
+            if prep_backing_kind == 'VolumeSnapshot'
+            else (prep_backing.resources[0].status.phase | default('') == 'Bound')
+        fail_msg: >-
+          {{ prep_backing_kind }} '{{ prep_backing_name }}' backing DataSource
+          '{{ prep_datasource_name }}' is not ready yet. The DataSource says
+          Ready, but the volume behind it is still materialising — builds
+          against it will be slow. Wait for the import to finish and re-run.
+        quiet: true
+
+    # --- 4. Ingress, needed for the Route-based web access from #29 ---------
+    - name: Look up the cluster ingress domain
+      kubernetes.core.k8s_info:
+        api_version: config.openshift.io/v1
+        kind: Ingress
+        name: cluster
+      register: prep_ingress
+
+    - name: Look up the default ingress controller
+      kubernetes.core.k8s_info:
+        api_version: operator.openshift.io/v1
+        kind: IngressController
+        namespace: openshift-ingress-operator
+        name: default
+      register: prep_ingresscontroller
+
+    - name: Assert ingress is admitting Routes
+      ansible.builtin.assert:
+        that:
+          - prep_ingress.resources[0].spec.domain | default('') | length > 0
+          - (prep_ingresscontroller.resources[0].status.availableReplicas | default(0)) > 0
+          - prep_ingresscontroller.resources[0].status.conditions
+            | selectattr('type', 'equalto', 'Available')
+            | map(attribute='status') | first == 'True'
+        fail_msg: >-
+          The default IngressController is not Available, so the Routes that
+          give demo VMs their web URL (#29) will not be admitted.
+        quiet: true
+
+    - name: Warn if connection.yml disagrees with the cluster's ingress domain
+      # Not fatal — the Route is only skipped when the value is empty — but a
+      # stale domain from a previous RHDP environment silently produces URLs
+      # that resolve nowhere, which is worse than no URL at all.
+      ansible.builtin.debug:
+        msg: >-
+          WARNING: openshift_apps_domain is
+          '{{ openshift_apps_domain | default("(unset)") }}' but the cluster
+          reports '{{ prep_ingress.resources[0].spec.domain }}'. Update this
+          environment's connection.yml or the demo web URLs will not resolve.
+      when: (openshift_apps_domain | default('')) != prep_ingress.resources[0].spec.domain
+
+    # --- 5. Actually build one, because everything above is inference -------
+    - name: Smoke-test a real VM build
+      block:
+        - name: Create the smoke-test namespace
+          kubernetes.core.k8s:
+            state: present
+            definition:
+              apiVersion: v1
+              kind: Namespace
+              metadata:
+                name: "{{ prep_smoke_namespace }}"
+                labels:
+                  app.kubernetes.io/managed-by: sales.demos
+                  sales.demos/purpose: smoke-test
+
+        - name: Note the start time
+          ansible.builtin.set_fact:
+            prep_started_at: "{{ now(utc=true).strftime('%s') | int }}"
+
+        - name: Create the smoke-test VM
+          # Deliberately the same shape terraform/ocpvirt uses — a DataSource
+          # clone driven by a cluster instance type — so the thing being timed
+          # is the path a real demo takes.
+          kubernetes.core.k8s:
+            state: present
+            definition:
+              apiVersion: kubevirt.io/v1
+              kind: VirtualMachine
+              metadata:
+                name: "{{ prep_smoke_vm }}"
+                namespace: "{{ prep_smoke_namespace }}"
+              spec:
+                running: true
+                instancetype:
+                  kind: VirtualMachineClusterInstancetype
+                  name: "{{ prep_smoke_instancetype }}"
+                preference:
+                  kind: VirtualMachineClusterPreference
+                  name: "{{ prep_smoke_preference }}"
+                dataVolumeTemplates:
+                  - metadata:
+                      name: "{{ prep_smoke_vm }}-disk"
+                    spec:
+                      sourceRef:
+                        kind: DataSource
+                        name: "{{ prep_datasource_name }}"
+                        namespace: "{{ prep_datasource_namespace }}"
+                      storage:
+                        resources:
+                          requests:
+                            storage: 30Gi
+                template:
+                  metadata:
+                    labels:
+                      kubevirt.io/domain: "{{ prep_smoke_vm }}"
+                  spec:
+                    # Required by the VirtualMachine CRD even though the
+                    # instance type supplies CPU and memory, and it must stay
+                    # EMPTY — setting cpu or memory here conflicts with the
+                    # instancetype and the webhook rejects it. Omitting it
+                    # entirely is rejected too:
+                    #   admission webhook "virtualmachines-mutator.kubevirt.io"
+                    #   denied the request: spec.template.spec.domain in body is
+                    #   required
+                    # Same shape as terraform/ocpvirt/main.tf:128.
+                    domain:
+                      devices: {}
+                    volumes:
+                      - name: rootdisk
+                        dataVolume:
+                          name: "{{ prep_smoke_vm }}-disk"
+
+        - name: Wait for it to reach Running
+          kubernetes.core.k8s_info:
+            api_version: kubevirt.io/v1
+            kind: VirtualMachine
+            namespace: "{{ prep_smoke_namespace }}"
+            name: "{{ prep_smoke_vm }}"
+          register: prep_smoke_status
+          until: >-
+            (prep_smoke_status.resources | default([]) | length > 0)
+            and (prep_smoke_status.resources[0].status.printableStatus | default('') == 'Running')
+          retries: "{{ prep_smoke_retries }}"
+          delay: "{{ prep_smoke_delay }}"
+
+        - name: Work out how long that took
+          ansible.builtin.set_fact:
+            prep_elapsed: "{{ (now(utc=true).strftime('%s') | int) - (prep_started_at | int) }}"
+
+        - name: Report the build time
+          ansible.builtin.debug:
+            msg:
+              - "Smoke VM reached Running in {{ prep_elapsed }}s."
+              - >-
+                {{ 'WARM — this environment is demo-ready.'
+                   if (prep_elapsed | int) <= (prep_warm_threshold_seconds | int)
+                   else 'SLOW. Everything above reported ready, so the boot source is probably still settling. Wait a few minutes and re-run before promising a live build.' }}
+              - "Storage: {{ cnv_effective_storage_class }} (cloneStrategy=csi-clone)"
+              - "Boot source: {{ prep_datasource_name }} via {{ prep_backing_kind }} {{ prep_backing_name }}"
+              - "Ingress: {{ prep_ingress.resources[0].spec.domain }}"
+
+        - name: Fail if the build was slow
+          # Reported first, so the numbers are visible either way. This is the
+          # acceptance criterion: a fresh environment is not demo-ready until a
+          # real build lands near the warm figure.
+          ansible.builtin.assert:
+            that:
+              - (prep_elapsed | int) <= (prep_warm_threshold_seconds | int)
+            fail_msg: >-
+              Smoke build took {{ prep_elapsed }}s, over the
+              {{ prep_warm_threshold_seconds }}s threshold. The environment
+              works but is not warm; a live build in front of a customer would
+              be slow. Raise the threshold with
+              -e prep_warm_threshold_seconds=<n> only if you have decided the
+              wait is acceptable.
+            quiet: true
+
+      always:
+        # Always, so a failed or slow smoke test does not leave a VM sitting on
+        # a node eating the memory budget the real demo needs.
+        - name: Remove the smoke-test namespace
+          kubernetes.core.k8s:
+            state: absent
+            api_version: v1
+            kind: Namespace
+            name: "{{ prep_smoke_namespace }}"
+            wait: true
+            wait_timeout: "{{ prep_smoke_timeout }}"

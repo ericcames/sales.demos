@@ -358,7 +358,17 @@ multi-OS pattern:
 - `outputs.tf` — port the `windows_inventory` / `linux_inventory` output shape from
   `dc1.azure/terraform/outputs.tf` unchanged. The daily-demo layer depends on that shape.
 
-Backend: local state initially; optionally the NooBaa S3 endpoint later.
+Backend: **the `kubernetes` backend** — superseding this plan's original "local
+state initially; optionally the NooBaa S3 endpoint later", which #4 found to be
+unworkable. Local state is fine on a laptop and fatal from AAP: an execution
+environment pod is ephemeral, so state vanishes with the job and teardown has
+nothing to destroy from.
+
+State lives in a Secret in a long-lived namespace of its own
+(`sales-demos-tfstate`), deliberately **not** the VM namespace — `oc delete
+project sales-demos-<env>` is the obvious way to clean up a demo and must not
+take the state with it. `secret_suffix` keys `sandbox` and `demo` apart. See
+`terraform/ocpvirt/backend.tf`.
 
 ### Phase 2 — `ocpvirt-windows-image`: golden image (one time, ~45 min)
 

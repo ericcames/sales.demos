@@ -89,40 +89,12 @@
           OpenShift {{ cnv_clusterversion.resources[0].status.desired.version }}
           — installing {{ cnv_package }} from channel {{ cnv_channel }}.
 
-    - name: Use the StorageClass the caller pinned
-      ansible.builtin.set_fact:
-        cnv_effective_storage_class: "{{ cnv_storage_class }}"
-      when: cnv_storage_class | length > 0
-
-    - name: Look up the cluster's StorageClasses
-      kubernetes.core.k8s_info:
-        api_version: storage.k8s.io/v1
-        kind: StorageClass
-      register: cnv_storageclasses
-      when: cnv_storage_class | length == 0
-
     - name: Resolve the StorageClass CNV will use for scratch space
-      # A loop with a `when`, not a selectattr chain: the marker is an
-      # annotation key containing dots and slashes, which Jinja's dotted
-      # attribute syntax cannot address.
-      ansible.builtin.set_fact:
-        cnv_effective_storage_class: "{{ item.metadata.name }}"
-      loop: "{{ cnv_storageclasses.resources | default([]) }}"
-      loop_control:
-        label: "{{ item.metadata.name }}"
-      when:
-        - cnv_storage_class | length == 0
-        - (item.metadata.annotations | default({}))['storageclass.kubernetes.io/is-default-class'] | default('false') == 'true'
-
-    - name: Assert a StorageClass was resolved
-      ansible.builtin.assert:
-        that:
-          - cnv_effective_storage_class | default('') | length > 0
-        fail_msg: >-
-          No default StorageClass on this cluster and cnv_storage_class was not
-          set. CNV needs one for CDI scratch space. Pass
-          -e cnv_storage_class=<name>.
-        quiet: true
+      # Shared with prepare_env.yml (#30), which needs the same answer to look
+      # up the StorageProfile and check the clone strategy. One definition
+      # rather than two that drift — same reasoning as
+      # assert_target_environment.yml.
+      ansible.builtin.include_tasks: tasks/resolve_storage_class.yml
 
     - name: Create the OpenShift Virtualization namespace
       kubernetes.core.k8s:
