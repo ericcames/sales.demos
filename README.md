@@ -201,6 +201,49 @@ verify step is the point: `ansible-galaxy` reports success without installing
 anything when it believes a collection is already present, and it silently
 refuses to downgrade, so its exit code does not tell you what you actually have.
 
+## Running from AAP
+
+Every phase runs two ways — from a skill on your laptop and from an AAP job
+template — driving the same `playbooks/<phase>.yml`. The AAP objects are
+config-as-code in `inventory/group_vars/aap/`, applied by `playbooks/config.yml`
+like everything else.
+
+| Job template | Runs | Against |
+|---|---|---|
+| `Sales Demos - Provision VM` | `playbooks/provision_vm.yml` | `Sales Demo VMs`, `limit: sandbox` |
+| `Sales Demos - Check VMs` | `playbooks/check_vm.yml` | `Sales Demo VMs`, `limit: linuxweb` |
+
+**One working inventory, not two.** `Sales Demo VMs` holds both populations:
+`sandbox-local` / `demo-local`, synced from this repo's own `inventory/hosts.yml`
+by an SCM inventory source, and the demo VMs registered at run time. That sync is
+what lets a job template use `connection.yml` instead of a second copy of every
+hostname. `Sales Demo VMs - Control` stays **empty** and is reserved for teardown
+(#6), which cannot run in the inventory whose hosts it deletes.
+
+**How AAP reaches the VMs: plain `ssh` on port 22.** AAP runs on the same
+cluster, each VM has a headless Service giving it stable in-cluster DNS, and
+there is no NetworkPolicy between the namespaces. No bastion is involved, and
+`virtctl` is not either — that is the laptop path, and the execution environment
+does not ship the binary. The only thing required is the `Sales Demos - Linux
+Machine` credential, holding the private half of `demo_ssh_public_key`.
+
+> **`demo_ssh_public_key` must not be empty.** cloud-init then emits
+> `ssh_pwauth: true` with no authorized key *and* no password, and the guest has
+> no credentials at all. Because cloud-init writes authorized keys only on first
+> boot, a VM created that way must be **re-created**, not restarted.
+
+To test a job template before its playbook has merged, override the project's
+branch — a job template validates `playbook:` against the project's current
+checkout, so an unmerged playbook cannot otherwise be wired up:
+
+```bash
+ansible-playbook playbooks/config.yml -i inventory --limit sandbox \
+  -e target_env=sandbox -e sales_demos_branch=my-branch \
+  --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
+```
+
+Re-apply without the override before calling anything done.
+
 ## Execution environment
 
 AAP runs this repo's playbooks on a custom image,

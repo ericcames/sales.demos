@@ -7,6 +7,73 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added -- Phase 3: run playbooks from AAP, and against the VMs (#4)
+- `playbooks/provision_vm.yml` — ported from `dc1.azure`. Asserts inputs, runs
+  `terraform init`/`apply` against `terraform/ocpvirt/`, and registers the VMs
+  into AAP (`linuxweb` with SSH vars, `windemo` with WinRM vars). The output
+  shape is preserved field-for-field, so Phase 4 needs no adaptation.
+- `terraform/ocpvirt/backend.tf` — state moves to the **kubernetes backend**.
+  Local state is fatal from AAP: an execution-environment pod is ephemeral, so
+  state would vanish with the job and teardown (#6) would have nothing to
+  destroy from. State lives in a Secret in a long-lived namespace of its own,
+  deliberately **not** the VM namespace — `oc delete project
+  sales-demos-sandbox` is the obvious way to clean up a demo and must not take
+  the state with it. `secret_suffix` keys `sandbox` and `demo` apart.
+- `playbooks/check_vm.yml` and the `Sales Demos - Check VMs` job template —
+  the proof that AAP can run playbooks *against* a VM, not merely create one.
+- Config-as-code in `inventory/group_vars/aap/`: project, both inventories, the
+  inventory source, credentials, and both job templates.
+
+### Changed -- the vaulted secrets file moved (#4)
+- `inventory/group_vars/aap/secrets.yml` → **`playbooks/group_vars/aap/secrets.yml`**.
+  Ansible loads `group_vars/` beside the playbook as well as beside the
+  inventory, so playbooks resolve it identically. AAP does not: an SCM inventory
+  source runs `ansible-inventory`, which parses every `group_vars` file next to
+  the inventory. Verified against live AAP 2.6 — the vaulted file under
+  `inventory/group_vars/` makes the sync die with `ERROR! Attempting to decrypt
+  but no vault secrets found`; it cannot be given the password, because AAP
+  rejects Vault credentials on SCM sources outright; and a custom credential
+  type injecting `ANSIBLE_VAULT_PASSWORD_FILE` *would* work but is the wrong
+  answer, since the sync would then write `env_secrets` and the SSH private key
+  into AAP's inventory variables in plaintext. Moving it keeps secrets out of
+  the inventory tree while `connection.yml` still syncs freely.
+- `inventory/group_vars/{sandbox,demo}/connection.yml` — `demo_ssh_public_key`
+  filled in. Both were empty, which made cloud-init emit `ssh_pwauth: true` with
+  no authorized key *and* no password: the guest had no credentials at all and
+  was unreachable by SSH, by `virtctl`, by anything.
+- `inventory/group_vars/aap/controller_projects.yml` — `scm_branch` accepts a
+  `sales_demos_branch` override. A job template validates its `playbook:`
+  against the project's current checkout, so without this no config-as-code
+  referencing a new playbook can be tested before merging.
+
+### Fixed -- the private-key check never worked (#4)
+- `utilities/check-no-secrets.sh` — the private-key pattern starts with
+  `-----`, which `grep` parsed as an option bundle. `grep` errored, the error
+  was swallowed by `2>/dev/null || true`, `hits` came back empty, and the check
+  reported **pass** on files that plainly matched. Fixed with `-e`, and verified
+  by planting a real key in a tracked file and watching the check fail. This is
+  the guard that stops a private key reaching a public repo; it had been inert.
+- `.ansible-lint` — `yaml[line-length]` moved to `warn_list`, matching what
+  `.yamllint` already declared. An SSH public key is a single 575-character
+  token that cannot be wrapped without risking silent base64 corruption.
+
+### Notes -- how AAP reaches the VMs (#4)
+- **No bastion and no `virtctl`.** AAP runs on the same cluster as the VMs, each
+  VM has a headless Service giving stable in-cluster DNS, and there is no
+  NetworkPolicy between the namespaces — so it is plain `ssh` to port 22 at the
+  address `provision_vm.yml` already registers. `virtctl ssh` is the *laptop*
+  path, because a laptop is outside the cluster; the execution environment does
+  not ship the binary.
+- The kubernetes backend will **not** accept a bare host + token despite
+  advertising those keys — it builds its client through client-go's `clientcmd`,
+  where they are only overrides on a base config. The playbook synthesises a
+  kubeconfig and passes `config_path`; `insecure` must be passed separately
+  because the backend ignores `insecure-skip-tls-verify` from the file.
+- `ansible.controller` 4.8.0 has no `controller_oauthtoken`; the parameter is
+  `aap_token`. A gateway token from `ansible.platform.token` returns 401 against
+  `/api/controller/v2/` on AAP 2.6, so the playbook uses basic auth like
+  `playbooks/config.yml` — and then has no token to leak or clean up.
+
 ### Added -- execution environment with terraform (#31)
 - `execution-environment.yml` — the image AAP runs this repo's playbooks on,
   built on `ee-supported-rhel9` (AAP 2.6). It exists for one reason: Phase 3

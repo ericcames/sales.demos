@@ -23,7 +23,17 @@ controller_projects_all:
     organization: "IT Service Automation"
     scm_type: git
     scm_url: "https://github.com/ericcames/sales.demos.git"
-    scm_branch: main
+    # `main` unless deliberately overridden. The override exists because a job
+    # template validates its `playbook:` against the project's CURRENT checkout,
+    # so a playbook that has not merged yet cannot be wired up at all — there is
+    # no way to test config-as-code end to end before merging without it:
+    #
+    #   ansible-playbook playbooks/config.yml -i inventory --limit sandbox \
+    #     -e target_env=sandbox -e sales_demos_branch=my-branch ...
+    #
+    # Always re-apply without the override before calling anything done; a
+    # demo environment left pointing at a branch is drift waiting to bite.
+    scm_branch: "{{ sales_demos_branch | default('main', true) }}"
     # The EE built by utilities/build-ee.sh (#31). Terraform is in this image
     # and in no stock one, which is the entire reason it exists.
     default_environment: "Sales Demos - OCP Virt EE"
