@@ -474,4 +474,4 @@ project-local `ansible.cfg`, issues before code.
 
 ## License
 
-[Apache 2.0](LICENSE)
+[MIT](LICENSE)
