@@ -134,6 +134,38 @@ the install command's exit code.
 Report the audit output verbatim. If anything is still `DRIFT` or `MISSING`,
 say so plainly rather than describing the install as done.
 
+## A pin change is not finished until the EE is rebuilt
+
+**This is the step that gets forgotten, and forgetting it recreates exactly the
+drift this file exists to prevent.**
+
+`collections/requirements.yml` feeds two places:
+
+| Consumer | How it gets the collections |
+|---|---|
+| Your laptop | `ansible-galaxy collection install -r ...` — this skill |
+| AAP | **baked into the execution environment** at build time (#31) |
+
+Change a pin and only run this skill, and the laptop resolves one version while
+every AAP job resolves another — a demo that works locally and fails from the
+controller, or worse, behaves subtly differently. Nothing detects it: both are
+internally consistent.
+
+So after any pin change:
+
+```
+/sales-demos-ee-build
+```
+
+then publish a **new tag** and bump the reference in
+`inventory/group_vars/aap/controller_execution_environments.yml`. Never re-push
+an existing tag — a job template pinned to it would silently change underneath a
+running demo.
+
+`ansible.hub` (pinned in #35) is a live example of the drift: it was unpinned
+and resolving 1.0.4 locally against 1.1.0 in the EE, until #35 pinned it to
+match the image.
+
 ## When a pin changes
 
 A version bump is a behaviour change, not housekeeping. Per `CLAUDE.md`:

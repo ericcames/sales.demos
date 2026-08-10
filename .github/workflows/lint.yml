@@ -88,6 +88,18 @@ jobs:
               echo "::error::README.md does not list skill: $dir"; bad=1
             fi
           done
+
+          # ...AND THE REVERSE. This check used to run one way only, which is
+          # how #4 shipped a job template and a playbook but never its
+          # `ocpvirt-provision` skill: the README row said Done, no skill
+          # directory existed, and CI passed. A row may name a skill that does
+          # not exist ONLY if it is explicitly marked "Not started".
+          while IFS= read -r name; do
+            [ -d ".claude/skills/$name" ] && continue
+            if grep -q "\`$name\`.*Not started" README.md; then continue; fi
+            echo "::error::README.md lists skill '$name' with no .claude/skills/$name/ — create it, or mark the row 'Not started'"
+            bad=1
+          done < <(grep -oE '^\| `[a-z0-9-]+`' README.md | tr -d '|` ' | sort -u)
           if [ "$bad" -ne 0 ]; then
             echo "See CLAUDE.md -> 'Skills and playbooks' for the contract."
             exit 1

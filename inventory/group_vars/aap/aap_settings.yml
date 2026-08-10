@@ -9,15 +9,20 @@
 # because this directory is named for that group. No include_vars needed.
 #
 # Connection credentials (aap_hostname, aap_username, aap_password,
-# aap_validate_certs) are NOT here. In this repo EVERY environment-specific
-# value lives in the gitignored inventory/group_vars/<env>/secrets.yml —
-# hostnames and URLs included, not just the strictly secret ones — so that
-# re-pointing at a fresh RHDP environment is a one-file edit. Committed
-# connection.yml holds structure only.
+# aap_validate_certs) are NOT here. They split two ways:
 #
-# That differs from aap_config, which splits hostname into a committed
-# connection.yml and vaults only the credentials. Do not reintroduce that split
-# here; see CLAUDE.md -> Secrets.
+#   credentials only      playbooks/group_vars/aap/secrets.yml
+#                         VAULT-ENCRYPTED AND COMMITTED, keyed per environment
+#                         under env_secrets
+#   everything else       inventory/group_vars/<env>/connection.yml
+#                         committed PLAINTEXT — hostnames, API URLs, usernames,
+#                         namespaces, the SSH public key
+#
+# This paragraph used to say the opposite: that every environment-specific value
+# including hostnames lived in a gitignored per-environment secrets.yml. That was
+# the original design and it changed in #18; the file also moved out of
+# inventory/ in #4 so the AAP inventory sync can parse inventory/ without a vault
+# password. See CLAUDE.md -> Secrets.
 # ============================================================================
 
 # Let the dispatch role merge suffix-named variables so shared objects
