@@ -146,10 +146,10 @@ in this repo, which for repo-specific skills is the correct scope.
 | Skill | Playbook | Does | Status |
 |---|---|---|---|
 | `ocpvirt-setup` | `playbooks/setup.yml` | Bootstrap AAP and install OpenShift Virtualization | CNV install done; AAP bootstrap open ([#1](https://github.com/ericcames/sales.demos/issues/1)) |
-| `ocpvirt-provision` | `playbooks/provision_vm.yml` | Run Terraform, register the new VMs in AAP | Not started |
+| `ocpvirt-provision` | `playbooks/provision_vm.yml` | Run Terraform, register the new VMs in AAP | Done ([#4](https://github.com/ericcames/sales.demos/issues/4)) |
 | `ocpvirt-windows-image` | `playbooks/build_windows_golden.yml` | Build and publish the Windows golden image | Not started |
 | `ocpvirt-demo` | `playbooks/run_demo.yml` | Launch the layered daily demo | Not started |
-| `ocpvirt-teardown` | `playbooks/teardown.yml` | Destroy VMs; keep CNV and the golden image | Not started |
+| `ocpvirt-teardown` | `playbooks/teardown.yml` | Destroy VMs; keep CNV and the golden image | Done ([#6](https://github.com/ericcames/sales.demos/issues/6)) |
 
 See the [roadmap](ROADMAP.md) and the open issues. CI enforces that every skill
 added here appears in this table.

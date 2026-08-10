@@ -43,13 +43,20 @@ controller_templates_all:
     # target_env makes the run fail closed if the two ever disagree — see
     # playbooks/tasks/assert_target_environment.yml.
     #
-    # ONE TEMPLATE PER ENVIRONMENT ON PURPOSE. A survey question for the
-    # environment would let someone provision into the customer-facing `demo`
-    # env by mis-clicking a dropdown mid-demo. Copy this entry with both values
-    # changed to `demo` when that environment is wanted.
-    limit: sandbox
+    # BOTH ARE TEMPLATED OFF aap_env_name, and that matters. Each RHDP
+    # environment has its OWN AAP, and this `_all` entry is created in every one
+    # of them. A literal `sandbox` here would put a sandbox-limited template
+    # inside demo's AAP — and because both environments sync the same
+    # hosts.yml, `sandbox-local` exists there too, so it would happily run
+    # against sandbox's cluster from demo's controller. aap_env_name comes from
+    # each environment's connection.yml, so every AAP gets a template pointed at
+    # itself.
+    #
+    # There is deliberately no survey question for the environment: a dropdown
+    # is one mis-click away from provisioning into the customer-facing env.
+    limit: "{{ aap_env_name }}"
     extra_vars:
-      target_env: sandbox
+      target_env: "{{ aap_env_name }}"
       provision_inventory: "Sales Demo VMs"
     survey_enabled: true
     survey_spec:
@@ -80,6 +87,40 @@ controller_templates_all:
             - small-1cpu-2gb
             - medium-1cpu-4gb
             - large-2cpu-6gb
+
+  # ---------------------------------------------------------------------
+  # Teardown (#6). The ONLY template that runs against the control inventory,
+  # because it deletes hosts from "Sales Demo VMs" and AAP locks the hosts of
+  # the inventory a running job is using.
+  #
+  # Scheduled nightly — see controller_schedules.yml.
+  # ---------------------------------------------------------------------
+  - name: "Sales Demos - Teardown VMs"
+    description: "Destroy the demo VMs and deregister them. Leaves CNV, the boot-source DataSources, and the Terraform state namespace intact."
+    job_type: run
+    organization: "IT Service Automation"
+    inventory: "Sales Demo VMs - Control"
+    project: "Sales Demos"
+    playbook: playbooks/teardown.yml
+    execution_environment: "Sales Demos - OCP Virt EE"
+    credentials:
+      - "Sales Demos - Vault"
+    limit: "{{ aap_env_name }}"
+    extra_vars:
+      # teardown.yml REQUIRES target_env explicitly — stricter than every other
+      # playbook here, because a mistyped limit on a destroy is the difference
+      # between rebuilding a sandbox VM and wiping the environment a customer is
+      # about to be shown.
+      target_env: "{{ aap_env_name }}"
+      provision_inventory: "Sales Demo VMs"
+      # Must match what was provisioned, or destroy plans a different shape than
+      # was built. These are the defaults; a run that used another tier should
+      # pass its own on launch.
+      os_type: linux
+      vm_size_tier: small-1cpu-2gb
+    # So a teardown of a non-default tier can be launched without editing the
+    # template. The scheduled runs use the extra_vars above.
+    ask_variables_on_launch: true
 
   # ---------------------------------------------------------------------
   # Reach the VMs. This is the one that proves AAP can run playbooks AGAINST

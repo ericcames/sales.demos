@@ -43,14 +43,18 @@ controller_inventories_all:
     organization: "IT Service Automation"
 
   # ---------------------------------------------------------------------
-  # Empty on purpose, and it stays empty. Teardown (#6) runs against this so it
-  # can delete hosts from "Sales Demo VMs" — AAP locks the hosts of the
-  # inventory a running job is using, so a teardown job cannot remove hosts from
-  # the inventory it is itself running in.
+  # The control hosts ONLY — `sandbox-local` / `demo-local`, synced from the
+  # same hosts.yml. No VM is ever registered here.
   #
-  # Nothing else should reference this. If a job template other than teardown
-  # points here, that is a bug.
+  # Teardown (#6) runs against this because AAP locks the hosts of the inventory
+  # a running job is using: a teardown job cannot delete hosts from the
+  # inventory it is itself running in. It still needs `sandbox-local` to exist
+  # here, because teardown.yml is `hosts: aap` like everything else — an empty
+  # inventory would give the play no hosts and it would silently do nothing.
+  #
+  # Nothing but teardown should reference this. If another job template points
+  # here, that is a bug.
   # ---------------------------------------------------------------------
   - name: "Sales Demo VMs - Control"
-    description: "Empty. Teardown runs here so it can delete hosts from Sales Demo VMs without AAP's running-job lock."
+    description: "Control hosts only. Teardown runs here so it can delete VM hosts from Sales Demo VMs without AAP's running-job lock."
     organization: "IT Service Automation"
