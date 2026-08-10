@@ -76,15 +76,14 @@
   }
   .notice strong { display: block; margin-bottom: .15rem; }
   footer { color: #6a6e73; font-size: .85rem; text-align: center; margin-top: 1.5rem; }
+  footer a { color: #06c; text-decoration: none; }
+  footer a:hover { text-decoration: underline; }
+  @media (prefers-color-scheme: dark) { footer a { color: #73bcf7; } }
+  .notice { margin-top: 1.5rem; }
 </style>
 </head>
 <body>
 <div class="wrap">
-
-  <h1>{{ linux_configure_message }}</h1>
-  <div class="bar"></div>
-
-  <p class="host"><span class="dot"></span>{{ inventory_hostname_short }}</p>
 
   <div class="logos">
     <img src="logos/rhel.svg" alt="Red Hat Enterprise Linux">
@@ -92,11 +91,10 @@
     <img src="logos/aap.svg" alt="Red Hat Ansible Automation Platform">
   </div>
 
-  <div class="notice">
-    <strong>This VM is temporary.</strong>
-    It is decommissioned automatically at {{ linux_configure_teardown_time }} by a
-    scheduled job in Ansible Automation Platform, along with everything on it.
-  </div>
+  <h1>{{ linux_configure_message }}</h1>
+  <div class="bar"></div>
+
+  <p class="host"><span class="dot"></span>{{ inventory_hostname_short }}</p>
 
   <div class="card">
     <table>
@@ -116,9 +114,18 @@
     </table>
   </div>
 
+  <div class="notice">
+    <strong>This VM is temporary.</strong>
+    It is decommissioned automatically at {{ linux_configure_teardown_time }} by a
+    scheduled job in Ansible Automation Platform, along with everything on it.
+  </div>
+
   <footer>
     Provisioned by Terraform on Red Hat OpenShift Virtualization &middot;
-    configured by Red Hat Ansible Automation Platform
+    configured by Red Hat Ansible Automation Platform<br>
+    {# The close for a technical audience: everything on this page is
+       inspectable. The repository is public and holds no customer data. #}
+    <a href="{{ linux_configure_repo_url }}">{{ linux_configure_repo_url | replace('https://', '') }}</a>
   </footer>
 </div>
 </body>

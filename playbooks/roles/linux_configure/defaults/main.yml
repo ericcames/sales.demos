@@ -12,6 +12,11 @@ linux_configure_message: >-
 # schedules change, change this too; the page has no way to read them.
 linux_configure_teardown_time: "6 PM America/Phoenix"
 
+# Linked in the page footer. The close for a technical audience: everything the
+# demo just did is inspectable, in public, as code. Safe to publish — the repo
+# holds no customer data, and its only credentials are vault-encrypted.
+linux_configure_repo_url: "https://github.com/ericcames/sales.demos"
+
 # Apply security updates. On by default — "patching" is one of the demo stories
 # #5 names, and a freshly cloned image always has some.
 linux_configure_patch: true
