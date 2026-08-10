@@ -1,0 +1,121 @@
+---
+# ============================================================================
+# group_vars/aap/controller_workflows.yml — the one-button demo build (#47)
+# ============================================================================
+# NOTE THE VARIABLE NAME. The dispatch role reads workflows from
+# `controller_workflows`, not `controller_workflow_job_templates` — the same
+# class of quirk as `controller_templates` for job templates. Naming it the
+# obvious way means the object is silently never created, with no error.
+#
+# WHY A WORKFLOW AT ALL. Every step already worked, but building a demo VM took
+# three launches in the right order, and the order is not guessable: register
+# has to precede configure because the CNV rhel9 image has no repositories, so
+# every dnf task fails on an unregistered guest. Encoding the sequence here
+# means it cannot be got wrong at 9am in front of a customer.
+#
+# THE NODES ARE CHAINED ON success_nodes, so a failure stops the chain rather
+# than cascading. There are deliberately NO failure_nodes: this repo has no
+# ServiceNow incident path, and a failure node that does nothing useful is worse
+# than an obvious stop.
+#
+# THE SURVEY LIVES HERE as well as on the provision template. A workflow survey
+# feeds its answers to every node, so one prompt drives the whole chain; the
+# nodes that ignore os_type simply ignore it.
+# ============================================================================
+
+controller_workflows_all:
+  - name: "Sales Demos - Build Demo VM"
+    description: >-
+      Provision a demo VM, register it to the Red Hat CDN, configure the web
+      server, and verify it — one button, in the only order that works.
+    organization: "IT Service Automation"
+    # The inventory the nodes run against. Each job template also carries its
+    # own, and the node-level template wins; this is the workflow's default.
+    inventory: "Sales Demo VMs"
+    survey_enabled: true
+    survey_spec:
+      name: ""
+      description: "Pick an OS and a VM size tier"
+      spec:
+        - question_name: Operating system
+          question_description: >-
+            Which guests to provision. Windows needs the golden image from Phase
+            2 (#3) and will not boot until that lands, so the configure steps
+            only act on Linux.
+          variable: os_type
+          type: multiplechoice
+          required: true
+          default: linux
+          choices:
+            - linux
+            - windows
+            - both
+        - question_name: VM size tier
+          question_description: >-
+            T-shirt size. Small tiers on purpose — these VMs share a node with
+            AAP and CNV, and terraform/ocpvirt enforces a memory budget.
+          variable: vm_size_tier
+          type: multiplechoice
+          required: true
+          default: small-1cpu-2gb
+          choices:
+            - small-1cpu-2gb
+            - medium-1cpu-4gb
+            - large-2cpu-6gb
+
+    related:
+      workflow_nodes:
+        # 1. Terraform creates the VM and registers it as a managed host.
+        #    Note this returns BEFORE the guest's sshd is up — the next node
+        #    handles that, see below.
+        - identifier: provision
+          unified_job_template:
+            name: "Sales Demos - Provision VM"
+            type: job_template
+            organization:
+              name: "IT Service Automation"
+          related:
+            success_nodes:
+              - identifier: register
+
+        # 2. Waits for SSH, then attaches to the Red Hat CDN.
+        #
+        #    THE WAIT IS THE REASON THIS WORKFLOW IS NOT NAIVE. provision
+        #    returns as soon as terraform apply finishes, and the guest takes
+        #    roughly another minute to accept connections — observed twice as
+        #    "Connection refused" on a job run immediately after provisioning.
+        #    In a workflow the nodes run back to back with no human pause, so
+        #    the gate lives in register_vm.yml itself rather than here, where it
+        #    also protects the one-shot and by-hand paths.
+        - identifier: register
+          unified_job_template:
+            name: "Sales Demos - Register VMs"
+            type: job_template
+            organization:
+              name: "IT Service Automation"
+          related:
+            success_nodes:
+              - identifier: configure
+
+        # 3. httpd, firewalld, Cockpit, the demo page and its logos, security
+        #    patching, and facts.json. Fails on an unregistered guest, which is
+        #    why it is chained rather than run in parallel with register.
+        - identifier: configure
+          unified_job_template:
+            name: "Sales Demos - Configure VMs"
+            type: job_template
+            organization:
+              name: "IT Service Automation"
+          related:
+            success_nodes:
+              - identifier: check
+
+        # 4. Logs in and gathers facts, so the workflow ends by proving the VM
+        #    is genuinely reachable and configured rather than that the tasks
+        #    merely ran. Caches facts into AAP, where they show on the host.
+        - identifier: check
+          unified_job_template:
+            name: "Sales Demos - Check VMs"
+            type: job_template
+            organization:
+              name: "IT Service Automation"

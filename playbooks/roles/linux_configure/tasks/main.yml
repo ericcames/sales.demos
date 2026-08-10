@@ -81,6 +81,49 @@
     mode: "0644"
     directory_mode: "0755"
 
+- name: Publish the gathered facts as JSON
+  # ON DISK AND REACHABLE, at <web_url>/facts.json — the raw data behind the
+  # page, for the part of a demo where someone asks "where is that coming
+  # from?". AAP also caches facts in its database (use_fact_cache on the Check
+  # VMs template), which is the same information in the controller UI; this is
+  # the copy you can curl.
+  #
+  # CURATED, NOT A DUMP. `ansible_facts` in full is roughly a megabyte
+  # including every interface, mount and environment variable — noise on a demo
+  # page, and it changes shape between runs. These are the fields the page
+  # itself uses, plus the provisioning metadata that proves the chain.
+  ansible.builtin.copy:
+    dest: /var/www/html/facts.json
+    owner: apache
+    group: apache
+    mode: "0644"
+    content: |
+      {{
+        {
+          'hostname': inventory_hostname,
+          'gathered': ansible_date_time.iso8601,
+          'os': {
+            'distribution': ansible_distribution,
+            'version': ansible_distribution_version,
+            'kernel': ansible_kernel,
+          },
+          'resources': {
+            'vcpus': ansible_processor_vcpus,
+            'memory_mb': ansible_memtotal_mb,
+          },
+          'virtualization': {
+            'type': ansible_virtualization_type,
+            'role': ansible_virtualization_role,
+          },
+          'provisioning': {
+            'vm_size_tier': vm_size_tier | default(none),
+            'instance_type': vm_size_chosen | default(none),
+            'in_cluster_address': ansible_host | default(inventory_hostname),
+            'repository': linux_configure_repo_url,
+          },
+        } | to_nice_json
+      }}
+
 - name: Apply security updates
   # Security-only and update_only: patch what is installed, never pull new
   # packages, and skip the much larger bugfix set that has little demo value.

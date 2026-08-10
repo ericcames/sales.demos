@@ -1,0 +1,48 @@
+---
+# ===========================================================================
+# register_vm.yml — attach the demo guests to the Red Hat CDN.
+#
+# Split out of run_demo.yml so the workflow can run it as its own node
+# (`Sales Demos - Register VMs`), gated on provisioning having succeeded.
+# run_demo.yml still imports this and configure_vm.yml, so the one-shot path is
+# unchanged.
+#
+# WHY IT WAITS FIRST. provision_vm.yml returns as soon as terraform apply
+# completes and the hosts are registered in AAP — which is BEFORE the guest's
+# sshd is accepting connections. Observed twice: a job run immediately after
+# provisioning failed with
+#
+#   Failed to connect to the host via ssh: ... port 22: Connection refused
+#
+# and the same job passed ~90 seconds later. In a workflow the two nodes run
+# back to back with no human pause in between, so without this gate the chain
+# fails on its second step every time it builds a VM from scratch.
+#
+# The wait lives HERE rather than as a separate workflow node so it protects
+# every caller — the workflow, the one-shot template, and anyone running the
+# playbook by hand.
+# ===========================================================================
+
+- name: Register the demo VMs with the Red Hat CDN
+  hosts: "{{ demo_group | default('linuxweb') }}"
+  become: true
+  # Deliberately AFTER the wait below. Fact gathering is itself a connection,
+  # so with gather_facts on it would fail before wait_for_connection ever ran.
+  gather_facts: false
+
+  tasks:
+    - name: Wait for the guest to accept SSH
+      # A freshly cloned VM takes roughly a minute to finish first boot. The
+      # timeout is generous because the alternative — failing a demo build on a
+      # cold cluster — costs far more than waiting.
+      ansible.builtin.wait_for_connection:
+        timeout: "{{ register_vm_ssh_timeout | default(300) }}"
+        delay: 5
+        sleep: 5
+
+    - name: Gather facts now the guest is reachable
+      ansible.builtin.setup:
+
+    - name: Register the guest with the Red Hat CDN
+      ansible.builtin.include_role:
+        name: linux_register

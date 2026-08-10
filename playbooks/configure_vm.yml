@@ -1,0 +1,34 @@
+---
+# ===========================================================================
+# configure_vm.yml — install and configure the demo web server.
+#
+# Split out of run_demo.yml so the workflow can run it as its own node
+# (`Sales Demos - Configure VMs`), gated on registration having succeeded.
+# run_demo.yml still imports register_vm.yml and this, so the one-shot path is
+# unchanged.
+#
+# REQUIRES A REGISTERED GUEST. Every dnf task in the role fails on an
+# unregistered CNV rhel9 image, which has no repositories at all. That is why
+# the workflow chains this behind registration rather than running the two in
+# parallel — they look independent and are not.
+#
+# No wait_for_connection here: by the time this runs, register_vm.yml has
+# already proved the guest is reachable.
+# ===========================================================================
+
+- name: Configure the demo web server
+  hosts: "{{ demo_group | default('linuxweb') }}"
+  become: true
+  gather_facts: true
+
+  tasks:
+    - name: Configure the demo web server
+      ansible.builtin.include_role:
+        name: linux_configure
+
+    - name: Summarize
+      ansible.builtin.debug:
+        msg:
+          - "{{ inventory_hostname }} is configured and serving."
+          - "Check it from outside the cluster with the terraform output `web_url`;"
+          - "it returned 503 before this ran, and should now return the demo page."
