@@ -11,7 +11,7 @@
 #
 # The variable names are deliberately the ones install_cnv.yml already used.
 # Renaming them here would have meant touching every reference in that playbook
-# for no behavioural gain, and this file is the definition of those names now.
+# for no behavioral gain, and this file is the definition of those names now.
 # ===========================================================================
 
 - name: Use the StorageClass the caller pinned

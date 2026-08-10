@@ -10,7 +10,7 @@
 # The kubernetes backend keeps state in a Secret in `namespace`, with Lease-based
 # locking. It needs no extra infrastructure: the cluster is already what we
 # authenticate to, so the SAME bearer token drives both the provider and the
-# backend, and behaviour is identical from a laptop and from an EE pod. NooBaa
+# backend, and behavior is identical from a laptop and from an EE pod. NooBaa
 # S3 was the alternative and is deliberately not used — it needs ODF present, an
 # ObjectBucketClaim, and S3 credentials in the vault, all of which are more to
 # set up and more to be missing on a fresh RHDP environment.

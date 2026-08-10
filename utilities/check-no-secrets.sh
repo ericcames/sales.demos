@@ -106,7 +106,7 @@ done < <(git ls-files '*/secrets.yml' 'secrets.yml')
 if [ "$fail" -ne 0 ]; then
   echo
   echo "Secret-hygiene check failed. See CONTRIBUTING.md -> 'Audit before every push'."
-  echo "Credentials belong in the vault-encrypted playbooks/group_vars/aap/secrets.yml,"
+  echo "Credentials belong in the vault-encrypted playbooks/group_vars/all/secrets.yml,"
   echo "never in plaintext. Hostnames and API URLs are fine in connection.yml."
   exit 1
 fi

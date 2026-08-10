@@ -1,0 +1,27 @@
+---
+# THE HEADLINE on the demo page — the point of the whole thing, not a caption.
+# American spelling: this is a US-facing sales demo.
+linux_configure_message: >-
+  Running on Red Hat Enterprise Linux, virtualized by Red Hat OpenShift
+  Virtualization, provisioned by Terraform and configured by Red Hat Ansible
+  Automation Platform.
+
+# Shown in the "this VM is temporary" notice. Kept in step BY HAND with the
+# schedules in inventory/group_vars/<env>/controller_schedules.yml — sandbox
+# tears down at 6 PM and 10 PM, demo at 6 PM, both America/Phoenix. If those
+# schedules change, change this too; the page has no way to read them.
+linux_configure_teardown_time: "6 PM America/Phoenix"
+
+# Linked in the page footer. The close for a technical audience: everything the
+# demo just did is inspectable, in public, as code. Safe to publish — the repo
+# holds no customer data, and its only credentials are vault-encrypted.
+linux_configure_repo_url: "https://github.com/ericcames/sales.demos"
+
+# Apply security updates. On by default — "patching" is one of the demo stories
+# #5 names, and a freshly cloned image always has some.
+linux_configure_patch: true
+
+# Reboot when patching updates the kernel or core libraries. OFF by default: a
+# reboot mid-demo takes the page away with someone watching, and these VMs are
+# rebuilt nightly anyway. Turn it on when patching IS the demo.
+linux_configure_reboot: false

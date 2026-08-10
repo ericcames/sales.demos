@@ -13,7 +13,7 @@
 # isolation is load-bearing rather than theoretical: `--limit demo` and
 # `--limit sandbox` reach two different clusters.
 #
-#   ansible-vault edit playbooks/group_vars/aap/secrets.yml \
+#   ansible-vault edit playbooks/group_vars/all/secrets.yml \
 #     --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
 # ===========================================================================
 

@@ -37,7 +37,7 @@ Customer data remains forbidden. The exception is narrow: RHDP addresses only.
 
 | | Where | State |
 |---|---|---|
-| Credentials | `playbooks/group_vars/aap/secrets.yml` | **vault-encrypted and committed** |
+| Credentials | `playbooks/group_vars/all/secrets.yml` | **vault-encrypted and committed** |
 | Everything else per-environment — hostnames, API URLs, usernames, namespaces | `inventory/group_vars/<env>/connection.yml` | committed plaintext |
 | The vault password | `~/secrets/.vault_pass_sales_demos` | outside the repo, `600` |
 

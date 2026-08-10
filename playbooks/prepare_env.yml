@@ -19,7 +19,7 @@
 # the environment can look fine and still be slow:
 #
 #   - The rhel9 DataSource can report Ready while the VolumeSnapshot behind it
-#     is still materialising. That is precisely the state that produces a slow
+#     is still materializing. That is precisely the state that produces a slow
 #     first build, so the snapshot is checked by name, not inferred.
 #   - A StorageProfile reporting `copy` instead of `csi-clone` makes every
 #     create pay a full disk copy. Fail loudly with that as the stated reason
@@ -190,7 +190,7 @@
         fail_msg: >-
           {{ prep_backing_kind }} '{{ prep_backing_name }}' backing DataSource
           '{{ prep_datasource_name }}' is not ready yet. The DataSource says
-          Ready, but the volume behind it is still materialising — builds
+          Ready, but the volume behind it is still materializing — builds
           against it will be slow. Wait for the import to finish and re-run.
         quiet: true
 
@@ -361,7 +361,7 @@
         # 44s/45s build produced a total runtime of ~2.3 min on a warm cluster
         # and ~17.5 min on a fresh one, because deleting the namespace blocks on
         # DataVolume and PVC teardown — which on a fresh cluster contends with
-        # the CSI clone still materialising underneath. The playbook made you
+        # the CSI clone still materializing underneath. The playbook made you
         # wait a quarter of an hour to be told something it established after 44
         # seconds, and it was slowest on exactly the environment where the
         # answer matters most (#39).

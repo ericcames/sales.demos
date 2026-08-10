@@ -67,8 +67,9 @@ The post-login masthead is a bundled UI asset, not a setting — verified on AAP
 
 ## Secrets: one vaulted file, both environments
 
-`playbooks/group_vars/aap/secrets.yml` is **vault-encrypted and committed**. It
-sits in the `aap` group directory, so it loads for `sandbox` and `demo` alike —
+`playbooks/group_vars/all/secrets.yml` is **vault-encrypted and committed**. It
+sits in the `all` group directory, so it loads for `sandbox`, `demo` and the
+demo VMs alike —
 one file, no per-environment copy to keep in step.
 
 On a fresh clone you do not create it. You already have it; you need the vault
@@ -78,7 +79,7 @@ files. **Back that password up** — losing it makes the committed file
 unrecoverable.
 
 ```bash
-ansible-vault edit playbooks/group_vars/aap/secrets.yml \
+ansible-vault edit playbooks/group_vars/all/secrets.yml \
   --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
 ```
 
@@ -149,7 +150,7 @@ in this repo, which for repo-specific skills is the correct scope.
 | `ocpvirt-new-env` | `playbooks/prepare_env.yml` | Verify a fresh environment is warm, and time a real VM build | Done ([#30](https://github.com/ericcames/sales.demos/issues/30)) |
 | `ocpvirt-provision` | `playbooks/provision_vm.yml` | Run Terraform, register the new VMs in AAP | Done ([#4](https://github.com/ericcames/sales.demos/issues/4)) |
 | `ocpvirt-windows-image` | `playbooks/build_windows_golden.yml` | Build and publish the Windows golden image | Not started |
-| `ocpvirt-demo` | `playbooks/run_demo.yml` | Launch the layered daily demo | Not started |
+| `ocpvirt-demo` | `playbooks/run_demo.yml` | Register the VMs and configure the web server | Done ([#5](https://github.com/ericcames/sales.demos/issues/5)) |
 | `ocpvirt-teardown` | `playbooks/teardown.yml` | Destroy VMs; keep CNV and the golden image | Done ([#6](https://github.com/ericcames/sales.demos/issues/6)) |
 
 See the [roadmap](ROADMAP.md) and the open issues. CI enforces that every skill
@@ -317,7 +318,7 @@ writing a token to disk, pass the variables as `TF_VAR_*` straight from the vaul
 cd terraform/ocpvirt
 
 export TF_VAR_openshift_api_token=$(
-  ansible-vault view ../../playbooks/group_vars/aap/secrets.yml \
+  ansible-vault view ../../playbooks/group_vars/all/secrets.yml \
     --vault-id sales.demos@~/secrets/.vault_pass_sales_demos \
   | python3 -c 'import sys,yaml;print(yaml.safe_load(sys.stdin)["env_secrets"]["sandbox"]["openshift_api_token"])')
 

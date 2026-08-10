@@ -7,6 +7,59 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added -- Phase 4: the demo itself (#5)
+- `playbooks/run_demo.yml` with `playbooks/roles/linux_register` and
+  `playbooks/roles/linux_configure`, the `ocpvirt-demo` skill, and a
+  `Sales Demos - Run Demo` job template. **Verified from AAP: the demo URL went
+  from `503 Service Unavailable` to `200 OK`**, serving a page built from the
+  guest's own facts (`sd1.small`, 1 vCPU, 1620 MB). That closes the loop #29
+  opened — the Route existed from provisioning and had nothing behind it.
+- **Registration is the first step, not an afterthought.** The CNV `rhel9`
+  image ships with no repositories and no subscription: `dnf repolist` reports
+  none and `dnf install` fails outright, so every demo story — webserver,
+  patching, compliance — is dead on arrival. It is invisible until you try,
+  because the VM boots and answers SSH perfectly. `linux_register` uses the
+  certified `redhat.rhel_system_roles.rhc` role and then **verifies
+  repositories actually appeared**, since registration can succeed while no
+  entitlement matched and the resulting `dnf` failure points nowhere near the
+  cause.
+- `rhsm_org_id` and `rhsm_activation_key` added to the vault. The org ID is
+  there too, bending the file's "credentials only" rule: the only global
+  plaintext file is committed to a public repo and an org ID identifies a Red
+  Hat account, so splitting one logical pair across two files would be worse.
+- Ported from `dc1.azure` and trimmed — the MOTD/issue/SSH banner set and the
+  two bundled images (a Red Hat logo and a personal QR code) are dropped rather
+  than carry personal assets into a public repo. The page is **self-contained**:
+  no external images, fonts or CDN, because it is served from a cluster whose
+  egress you do not control, in front of a customer.
+- **Reboot-after-patching is off by default**, unlike `dc1.azure`. A reboot
+  mid-demo takes the page away with someone watching, and these VMs are rebuilt
+  nightly anyway. `-e linux_configure_reboot=true` when patching *is* the demo.
+- Firewalld inside the guest is opened explicitly. It is separate from anything
+  OpenShift does, and without it the Route still returns 503 with httpd running
+  perfectly.
+
+### Fixed -- three layout assumptions this exposed (#5)
+- **Roles must live playbook-adjacent.** Ansible resolves roles relative to the
+  playbook directory, so `playbooks/roles/` is searched and repo-root `roles/`
+  is not — and it cannot be added to the search path without a project-local
+  `ansible.cfg`, which this repo forbids. The root `roles/.gitkeep` from the
+  original skeleton was aspirational and is removed rather than left to mislead.
+- **The secrets file moved from `group_vars/aap/` to `group_vars/all/`.**
+  `aap` scopes it to hosts in that group; every playbook until now targeted
+  `hosts: aap`, which made it indistinguishable from `all`. `run_demo.yml` is
+  the first to target the VMs, and they never received the vars — failing an
+  assert that blamed a missing Vault credential which *was* attached. This is
+  the file's third location today, so the reasoning now lives beside it:
+  `inventory/` broke the AAP inventory sync (#4), `aap/` misses VM-targeted
+  plays.
+- `.ansible-lint` — mock `ansible.posix.firewalld` and the
+  `redhat.rhel_system_roles.rhc` role. CI lints offline, and this is the second
+  time that gap has only surfaced there. `ANSIBLE_COLLECTIONS_PATH` does **not**
+  reliably reproduce it; cross-checking every FQCN in `playbooks/` against the
+  mock lists does. Also fixed a duplicate `mock_roles:` key that silently
+  dropped the new entry.
+
 ### Added -- the ocpvirt-provision skill that #4 never shipped (#42)
 - `.claude/skills/ocpvirt-provision/` — #4 named it as a deliverable and shipped
   the playbook and job template without it. `README.md` listed it as Done, so the
@@ -77,7 +130,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   environments, an identical 44s/45s build produced a total runtime of ~2.3 min
   on a warm cluster and **~17.5 min on a fresh one**, because deleting the
   namespace blocks on DataVolume and PVC teardown, which on a freshly installed
-  cluster contends with the CSI clone still materialising underneath. The
+  cluster contends with the CSI clone still materializing underneath. The
   playbook was slowest on exactly the environment where the answer matters most.
   Now `wait: false` — **42s total on the environment that previously took
   17m29s**, a 25× reduction with the same verdict. The namespace still goes
@@ -109,7 +162,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **It asserts rather than assumes**, because every check corresponds to a way
   an environment looks fine and is still slow:
   - The `rhel9` DataSource can report `Ready` while the **VolumeSnapshot behind
-    it** is still materialising — the actual slow-build state. The snapshot is
+    it** is still materializing — the actual slow-build state. The snapshot is
     resolved from `spec.source` by name and checked for `readyToUse`, rather
     than inferred from the DataSource condition. Handles the PVC form too.
   - A StorageProfile reporting `copy` instead of `csi-clone` makes every create
@@ -206,7 +259,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   inventory source, credentials, and both job templates.
 
 ### Changed -- the vaulted secrets file moved (#4)
-- `inventory/group_vars/aap/secrets.yml` → **`playbooks/group_vars/aap/secrets.yml`**.
+- `inventory/group_vars/aap/secrets.yml` → **`playbooks/group_vars/all/secrets.yml`**.
   Ansible loads `group_vars/` beside the playbook as well as beside the
   inventory, so playbooks resolve it identically. AAP does not: an SCM inventory
   source runs `ansible-inventory`, which parses every `group_vars` file next to

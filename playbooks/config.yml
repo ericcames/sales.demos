@@ -62,7 +62,7 @@
       ansible.builtin.include_role:
         name: infra.aap_configuration.dispatch
 
-    - name: Summarise what was applied
+    - name: Summarize what was applied
       ansible.builtin.debug:
         msg:
           - "Applied to {{ aap_env_name }}."

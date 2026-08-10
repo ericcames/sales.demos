@@ -1,0 +1,9 @@
+---
+# Connect the guest to Red Hat Insights as part of registration. On by default:
+# it costs nothing at registration time and gives the demo a "now look at it in
+# console.redhat.com" beat. Set false for an air-gapped or noise-sensitive run.
+linux_register_insights: true
+
+# Re-run registration even when the guest already reports an identity. Off by
+# default so a re-run of the demo is a fast no-op.
+linux_register_force: false

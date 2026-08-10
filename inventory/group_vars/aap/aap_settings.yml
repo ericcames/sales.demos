@@ -11,7 +11,7 @@
 # Connection credentials (aap_hostname, aap_username, aap_password,
 # aap_validate_certs) are NOT here. They split two ways:
 #
-#   credentials only      playbooks/group_vars/aap/secrets.yml
+#   credentials only      playbooks/group_vars/all/secrets.yml
 #                         VAULT-ENCRYPTED AND COMMITTED, keyed per environment
 #                         under env_secrets
 #   everything else       inventory/group_vars/<env>/connection.yml
