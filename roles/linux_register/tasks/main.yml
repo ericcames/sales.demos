@@ -1,0 +1,93 @@
+---
+# ===========================================================================
+# linux_register — attach the guest to the Red Hat CDN so dnf works at all.
+#
+# WHY THIS EXISTS, AND WHY IT RUNS FIRST. The demo guests are cloned from the
+# CNV `rhel9` DataSource, which ships with NO repositories and no subscription.
+# Probed on a live VM:
+#
+#   dnf repolist       -> No repositories available
+#   dnf install httpd  -> Error: There are no enabled repositories in
+#                         "/etc/yum.repos.d", ...
+#
+# So every piece of demo content — webserver setup, patching, compliance — is
+# dead on arrival until this runs. The VM boots fine and answers SSH, which is
+# what makes the failure surprising if you meet it inside a demo.
+#
+# It delegates to the CERTIFIED redhat.rhel_system_roles.rhc role rather than
+# calling subscription-manager directly, which is the pattern
+# aap.lightspeed.patching settled on. That role is idempotent: on an
+# already-registered host it is a no-op.
+# ===========================================================================
+
+- name: Assert the registration credentials are present
+  # Fails here with a useful message rather than deep inside the rhc role with
+  # an opaque one. These come from the vaulted playbooks/group_vars/aap/secrets.yml,
+  # so the usual cause is a missing --vault-id (locally) or a missing Vault
+  # credential on the job template (from AAP).
+  ansible.builtin.assert:
+    that:
+      - rhsm_org_id | default('') | length > 0
+      - rhsm_activation_key | default('') | length > 0
+    fail_msg: >-
+      rhsm_org_id and rhsm_activation_key are required to register the guest.
+      They live in the vault-encrypted playbooks/group_vars/aap/secrets.yml —
+      pass --vault-id locally, or attach the 'Sales Demos - Vault' credential to
+      the job template.
+    quiet: true
+  run_once: true
+
+- name: Check whether this guest is already registered
+  # Cheap, and it makes the report below honest about whether this run actually
+  # changed anything.
+  ansible.builtin.command: subscription-manager identity
+  register: linux_register_identity
+  changed_when: false
+  failed_when: false
+
+- name: Register with the Red Hat CDN
+  ansible.builtin.include_role:
+    name: redhat.rhel_system_roles.rhc
+  vars:
+    rhc_state: present
+    rhc_organization: "{{ rhsm_org_id }}"
+    rhc_auth:
+      activation_keys:
+        keys:
+          - "{{ rhsm_activation_key }}"
+    # Insights comes along for free and is worth having in a demo — it is what
+    # makes the "now look at it in console.redhat.com" beat possible. Set
+    # linux_register_insights: false to skip it.
+    rhc_insights:
+      state: "{{ 'present' if linux_register_insights | bool else 'absent' }}"
+  when: linux_register_identity.rc != 0 or linux_register_force | bool
+
+- name: Confirm repositories actually appeared
+  # THE CHECK THAT MATTERS. Registration can report success while no repository
+  # is enabled — a subscription with no matching entitlement, or an activation
+  # key attached to the wrong product. Everything downstream then fails on
+  # `dnf install` with a message that points nowhere near the real cause.
+  ansible.builtin.command: dnf repolist --quiet
+  register: linux_register_repolist
+  changed_when: false
+  failed_when: false
+
+- name: Fail if the guest still has no repositories
+  ansible.builtin.assert:
+    that:
+      - linux_register_repolist.rc == 0
+      - linux_register_repolist.stdout | trim | length > 0
+      - "'No repositories available' not in linux_register_repolist.stdout"
+    fail_msg: >-
+      {{ inventory_hostname }} reports no enabled repositories after
+      registration. The activation key is probably not attached to a RHEL
+      subscription, or has no matching entitlement. Check it at
+      console.redhat.com; nothing further in this demo can install packages.
+    quiet: true
+
+- name: Report registration state
+  ansible.builtin.debug:
+    msg: >-
+      {{ inventory_hostname }}:
+      {{ 'already registered' if linux_register_identity.rc == 0 else 'registered' }},
+      {{ linux_register_repolist.stdout_lines | length }} repository line(s) available.

@@ -123,6 +123,31 @@ controller_templates_all:
     ask_variables_on_launch: true
 
   # ---------------------------------------------------------------------
+  # Phase 4 (#5) — the demo itself. Registers the guest to the Red Hat CDN,
+  # then installs and configures the web server.
+  #
+  # THE REGISTRATION STEP IS NOT OPTIONAL. The CNV rhel9 image ships with no
+  # repositories, so every dnf task fails without it.
+  #
+  # Needs BOTH credentials: Machine to log in to the guest, and Vault to
+  # decrypt the registration credentials out of secrets.yml.
+  # ---------------------------------------------------------------------
+  - name: "Sales Demos - Run Demo"
+    description: "Register the demo VMs and configure the web server. Turns the web_url Route from 503 into the demo page."
+    job_type: run
+    organization: "IT Service Automation"
+    inventory: "Sales Demo VMs"
+    project: "Sales Demos"
+    playbook: playbooks/run_demo.yml
+    execution_environment: "Sales Demos - OCP Virt EE"
+    credentials:
+      - "Sales Demos - Linux Machine"
+      - "Sales Demos - Vault"
+    limit: linuxweb
+    # So a single misbehaving VM can be targeted without editing the template.
+    ask_limit_on_launch: true
+
+  # ---------------------------------------------------------------------
   # Reach the VMs. This is the one that proves AAP can run playbooks AGAINST
   # a demo VM, rather than merely create it.
   #

@@ -1,0 +1,14 @@
+---
+# Shown on the demo page. Override per demo to make the point you want to make.
+linux_configure_message: >-
+  Running on Red Hat Enterprise Linux, virtualised by OpenShift Virtualization,
+  provisioned by Terraform and configured by Ansible Automation Platform.
+
+# Apply security updates. On by default — "patching" is one of the demo stories
+# #5 names, and a freshly cloned image always has some.
+linux_configure_patch: true
+
+# Reboot when patching updates the kernel or core libraries. OFF by default: a
+# reboot mid-demo takes the page away with someone watching, and these VMs are
+# rebuilt nightly anyway. Turn it on when patching IS the demo.
+linux_configure_reboot: false

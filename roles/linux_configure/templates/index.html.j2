@@ -1,0 +1,75 @@
+{# ==========================================================================
+   The demo page. Deliberately self-contained: no external images, no CDN, no
+   webfonts. It is served from a VM on a cluster whose egress you do not
+   control, in front of a customer — anything fetched from elsewhere is a blank
+   box waiting to happen.
+
+   Every value comes from facts or from variables the provisioning run already
+   set, so the page proves the chain it is describing rather than asserting it.
+   ========================================================================== #}
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ inventory_hostname_short }} — sales.demos</title>
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 2.5rem 1.5rem;
+    font: 16px/1.6 "Red Hat Text", system-ui, -apple-system, sans-serif;
+    background: #f4f4f4; color: #151515;
+    display: flex; justify-content: center;
+  }
+  @media (prefers-color-scheme: dark) {
+    body { background: #151515; color: #e0e0e0; }
+    .card { background: #1f1f1f !important; border-color: #3d3d3d !important; }
+    td { border-color: #3d3d3d !important; }
+    .k { color: #a0a0a0 !important; }
+  }
+  .wrap { width: 100%; max-width: 46rem; }
+  h1 { margin: 0 0 .25rem; font-size: 1.6rem; font-weight: 600; }
+  h1 .dot {
+    display: inline-block; width: .6rem; height: .6rem; border-radius: 50%;
+    background: #3e8635; margin-right: .55rem; vertical-align: middle;
+  }
+  .lede { margin: 0 0 1.75rem; color: #6a6e73; }
+  .card {
+    background: #fff; border: 1px solid #d2d2d2; border-radius: .4rem;
+    padding: 1.25rem 1.5rem; margin-bottom: 1rem;
+  }
+  .bar { height: 3px; background: #ee0000; border-radius: 2px; margin-bottom: 1.25rem; }
+  table { width: 100%; border-collapse: collapse; }
+  td { padding: .5rem 0; border-bottom: 1px solid #ebebeb; vertical-align: top; }
+  tr:last-child td { border-bottom: 0; }
+  .k { width: 12rem; color: #6a6e73; }
+  .v { font-family: "Red Hat Mono", ui-monospace, SFMono-Regular, monospace; word-break: break-all; }
+  footer { color: #6a6e73; font-size: .85rem; text-align: center; margin-top: 1.5rem; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="bar"></div>
+  <h1><span class="dot"></span>{{ inventory_hostname_short }}</h1>
+  <p class="lede">{{ linux_configure_message }}</p>
+
+  <div class="card">
+    <table>
+      <tr><td class="k">Operating system</td><td class="v">{{ ansible_distribution }} {{ ansible_distribution_version }}</td></tr>
+      <tr><td class="k">Kernel</td><td class="v">{{ ansible_kernel }}</td></tr>
+      <tr><td class="k">Size tier</td><td class="v">{{ vm_size_tier | default('n/a') }}{% if vm_size_chosen is defined %} &rarr; {{ vm_size_chosen }}{% endif %}</td></tr>
+      <tr><td class="k">vCPU / memory</td><td class="v">{{ ansible_processor_vcpus }} vCPU &middot; {{ ansible_memtotal_mb }} MB</td></tr>
+      <tr><td class="k">Virtualisation</td><td class="v">{{ ansible_virtualization_type | default('kvm') }} ({{ ansible_virtualization_role | default('guest') }})</td></tr>
+      <tr><td class="k">In-cluster address</td><td class="v">{{ ansible_host | default(inventory_hostname) }}</td></tr>
+      <tr><td class="k">Configured</td><td class="v">{{ ansible_date_time.iso8601 }}</td></tr>
+    </table>
+  </div>
+
+  <footer>
+    Provisioned by Terraform on OpenShift Virtualization &middot;
+    configured by Ansible Automation Platform
+  </footer>
+</div>
+</body>
+</html>

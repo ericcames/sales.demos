@@ -42,6 +42,20 @@ collections:
   - name: redhat.openshift_virtualization
     version: "2.3.0"
 
+  # Demo content (Phase 4, #5). Both are ALREADY IN THE EXECUTION ENVIRONMENT at
+  # these versions — verified against the published image — so pinning them here
+  # changes nothing about AAP. It exists so the laptop resolves the same code the
+  # image does, which is the whole job of this file. No EE rebuild needed.
+  #
+  # rhel_system_roles supplies the certified `rhc` role that registers the guest
+  # to the Red Hat CDN. That is not optional decoration: the CNV rhel9 image
+  # ships with NO repositories, so nothing installs until it registers.
+  - name: redhat.rhel_system_roles
+    version: "1.120.5"
+  # ansible.posix supplies firewalld, used by roles/linux_configure.
+  - name: ansible.posix
+    version: "2.2.0"
+
   # Terraform. Phase 3 drives the terraform CLI through ansible.builtin.command,
   # so the binary — not this collection — is the hard requirement; the custom
   # execution environment exists to supply it (#31, execution-environment.yml).

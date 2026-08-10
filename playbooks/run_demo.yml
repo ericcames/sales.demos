@@ -1,0 +1,54 @@
+---
+# ===========================================================================
+# run_demo.yml — Phase 4. Layer the daily-demo content on the provisioned VMs.
+# Issue #5.
+#
+# Launch it from the `Sales Demos - Run Demo` job template, or via the
+# `ocpvirt-demo` skill, which launches that template.
+#
+# THIS RUNS FROM AAP, NOT FROM A LAPTOP, and that is deliberate rather than a
+# limitation to work around. It targets `linuxweb`, a group that exists only in
+# AAP's inventory — playbooks/provision_vm.yml registers the VMs there at run
+# time, and this repo's file inventory has no VM hosts at all. A laptop cannot
+# resolve `*.svc.cluster.local` in any case; AAP runs on the same cluster and
+# reaches the guests directly over the pod network on port 22.
+#
+# WHAT IT DOES, IN ORDER, AND WHY THE ORDER MATTERS:
+#
+#   1. linux_register   Attach to the Red Hat CDN. The CNV rhel9 image has NO
+#                       repositories, so nothing below can install anything
+#                       until this succeeds. This is the step that surprises
+#                       people: the VM boots and answers SSH perfectly.
+#   2. linux_configure  httpd, firewalld, Cockpit, chrony, the demo page, and
+#                       security patching.
+#
+# THE PAYOFF IS `web_url`. terraform/ocpvirt wires a Service and a Route to port
+# 80 (#29), and until something serves there the Route correctly returns 503.
+# After this run it returns the demo page. That is the check worth making.
+# ===========================================================================
+
+- name: Phase 4 — configure the demo VMs
+  hosts: "{{ demo_group | default('linuxweb') }}"
+  become: true
+  gather_facts: true
+
+  # No environment guard here, unlike every other playbook in this repo. This
+  # one does not target `hosts: aap` and takes no --limit environment: its hosts
+  # ARE the VMs, and which environment they belong to was already decided when
+  # provision_vm.yml registered them into that AAP's inventory.
+
+  tasks:
+    - name: Register the guest with the Red Hat CDN
+      ansible.builtin.include_role:
+        name: linux_register
+
+    - name: Configure the demo web server
+      ansible.builtin.include_role:
+        name: linux_configure
+
+    - name: Summarise
+      ansible.builtin.debug:
+        msg:
+          - "{{ inventory_hostname }} is configured and serving."
+          - "Check it from outside the cluster with the terraform output `web_url`;"
+          - "it returned 503 before this ran, and should now return the demo page."

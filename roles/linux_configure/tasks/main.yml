@@ -1,0 +1,114 @@
+---
+# ===========================================================================
+# linux_configure — turn a bare RHEL guest into the demo web server.
+#
+# Ported from dc1.azure/playbooks/roles/linux_configure, trimmed to what this
+# demo actually needs. Dropped in the port: the MOTD/issue/SSH banner set and
+# the bundled images (a Red Hat logo and a personal QR code), which are cosmetic
+# and would mean carrying personal assets in a public repo. The page below is
+# self-contained — no external images, no CDN, nothing to 404.
+#
+# THIS IS WHAT MAKES web_url STOP RETURNING 503. terraform/ocpvirt wires a
+# Service and a Route to port 80 (#29), and until something serves there the
+# Route correctly reports 503. Installing and starting httpd is the other half
+# of that story.
+#
+# REQUIRES A REGISTERED GUEST. Every dnf task here fails on an unregistered
+# CNV rhel9 image, which has no repositories at all — run roles/linux_register
+# first, as playbooks/run_demo.yml does.
+# ===========================================================================
+
+- name: Install the demo packages
+  # One transaction rather than several: dnf resolves and downloads once, which
+  # matters on a small VM. install_weak_deps skips recommended-but-unneeded
+  # packages. dnf-utils supplies `needs-restarting`, used by the reboot gate.
+  ansible.builtin.dnf:
+    name:
+      - httpd
+      - firewalld
+      - cockpit
+      - chrony
+      - dnf-utils
+    state: present
+    update_cache: true
+    install_weak_deps: false
+
+- name: Start and enable the services
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    state: started
+    enabled: true
+  loop:
+    - chronyd
+    - firewalld
+    - httpd
+    # Socket-activated, so the console is reachable without a resident daemon.
+    - cockpit.socket
+
+- name: Open the firewall for HTTP and Cockpit
+  # firewalld runs INSIDE the guest and is separate from anything OpenShift
+  # does. The Route reaches the VM over the pod network, so without this the
+  # Route still returns 503 with httpd running perfectly — a confusing failure
+  # worth avoiding.
+  ansible.posix.firewalld:
+    service: "{{ item }}"
+    zone: public
+    permanent: true
+    immediate: true
+    state: enabled
+  loop:
+    - http
+    - cockpit
+
+- name: Publish the demo page
+  ansible.builtin.template:
+    src: index.html.j2
+    dest: /var/www/html/index.html
+    owner: apache
+    group: apache
+    mode: "0644"
+
+- name: Apply security updates
+  # Security-only and update_only: patch what is installed, never pull new
+  # packages, and skip the much larger bugfix set that has little demo value.
+  # Reuses the metadata cache warmed above.
+  ansible.builtin.dnf:  # noqa: package-latest
+    name: "*"
+    state: latest
+    security: true
+    update_only: true
+    skip_broken: true
+  when: linux_configure_patch | bool
+
+- name: Check whether a reboot is required
+  # `needs-restarting -r` returns 0 = no reboot needed, 1 = reboot needed. The
+  # Debian-ism of stat-ing /var/run/reboot-required never fires on RHEL, which
+  # is a trap dc1.azure hit and fixed.
+  ansible.builtin.command: needs-restarting -r
+  register: linux_configure_needs_restarting
+  changed_when: false
+  failed_when: linux_configure_needs_restarting.rc not in [0, 1]
+  when: linux_configure_patch | bool
+
+- name: Reboot if the kernel or core libraries were updated
+  # OFF BY DEFAULT, unlike dc1.azure. A reboot mid-demo takes the web page away
+  # for a minute or two with someone watching, and these VMs are rebuilt daily
+  # by the nightly teardown anyway — an unpatched-until-tomorrow kernel is a
+  # smaller problem than a blank screen. Set linux_configure_reboot: true when
+  # the patching story is the point of the demo.
+  ansible.builtin.reboot:
+  when:
+    - linux_configure_patch | bool
+    - linux_configure_reboot | bool
+    - linux_configure_needs_restarting.rc | default(0) == 1
+
+- name: Report where the demo page is
+  ansible.builtin.debug:
+    msg:
+      - "{{ inventory_hostname }} is serving on port 80."
+      - >-
+        {{ 'Reboot pending — a kernel or core library was updated (linux_configure_reboot is false).'
+           if (linux_configure_patch | bool) and (linux_configure_needs_restarting.rc | default(0) == 1)
+              and not (linux_configure_reboot | bool)
+           else 'No reboot pending.' }}
+      - "Public URL comes from the terraform output `web_url`."
