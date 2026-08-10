@@ -1,0 +1,31 @@
+{#
+  Pre-authentication notice. Rendered to /etc/issue (console) and
+  /etc/issue.net (network, via sshd's Banner directive).
+
+  DELIBERATELY NOT THE ASCII ART. This is the legal notice shown to anyone who
+  can reach the machine BEFORE they have proved who they are, so it carries no
+  branding, no product story and no demo URL — just the warning. The art is the
+  MOTD, which prints after authentication succeeds.
+
+  BOILERPLATE, NOT LEGAL ADVICE. The wording below is the conventional
+  authorized-use form. Override linux_configure_banner_owner, or replace this
+  template, if your organization has approved text of its own.
+-#}
+###############################################################################
+#                                                                             #
+#                           AUTHORIZED ACCESS ONLY                            #
+#                                                                             #
+#  This system is the property of {{ "%-44s" | format(linux_configure_banner_owner) }}#
+#  and is provided for demonstration and evaluation purposes. Access is       #
+#  permitted only to authorized users, for authorized purposes.               #
+#                                                                             #
+#  By continuing past this notice you acknowledge that:                       #
+#                                                                             #
+#    * Your use of this system may be monitored, recorded and audited.        #
+#    * You have no expectation of privacy in your use of this system.         #
+#    * Unauthorized access or use may result in disciplinary action and       #
+#      civil or criminal penalties under applicable law.                      #
+#                                                                             #
+#  If you are not an authorized user, disconnect now.                         #
+#                                                                             #
+###############################################################################
