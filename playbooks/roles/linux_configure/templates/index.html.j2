@@ -60,7 +60,14 @@
       <tr><td class="k">Kernel</td><td class="v">{{ ansible_kernel }}</td></tr>
       <tr><td class="k">Size tier</td><td class="v">{{ vm_size_tier | default('n/a') }}{% if vm_size_chosen is defined %} &rarr; {{ vm_size_chosen }}{% endif %}</td></tr>
       <tr><td class="k">vCPU / memory</td><td class="v">{{ ansible_processor_vcpus }} vCPU &middot; {{ ansible_memtotal_mb }} MB</td></tr>
-      <tr><td class="k">Virtualisation</td><td class="v">{{ ansible_virtualization_type | default('kvm') }} ({{ ansible_virtualization_role | default('guest') }})</td></tr>
+      {# `| default()` is not enough here: on a KubeVirt guest these facts come
+         back as the literal string "NA", which is defined and therefore keeps
+         the default from firing. It rendered "NA (NA)" on the page until this
+         was caught. Treat "NA" as unset explicitly. #}
+      <tr><td class="k">Virtualisation</td><td class="v">
+        {{- (ansible_virtualization_type | default('') | trim) if (ansible_virtualization_type | default('NA')) not in ['NA', ''] else 'KVM' -}}
+        {{- ' (' ~ ansible_virtualization_role ~ ')' if (ansible_virtualization_role | default('NA')) not in ['NA', ''] else ' (guest)' -}}
+      </td></tr>
       <tr><td class="k">In-cluster address</td><td class="v">{{ ansible_host | default(inventory_hostname) }}</td></tr>
       <tr><td class="k">Configured</td><td class="v">{{ ansible_date_time.iso8601 }}</td></tr>
     </table>
