@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed -- prepare_env no longer waits 15 minutes to report a 44s answer (#39)
+- `playbooks/prepare_env.yml` — the smoke-namespace cleanup ran with
+  `wait: true` and dominated the whole playbook. Measured across two live
+  environments, an identical 44s/45s build produced a total runtime of ~2.3 min
+  on a warm cluster and **~17.5 min on a fresh one**, because deleting the
+  namespace blocks on DataVolume and PVC teardown, which on a freshly installed
+  cluster contends with the CSI clone still materialising underneath. The
+  playbook was slowest on exactly the environment where the answer matters most.
+  Now `wait: false` — **42s total on the environment that previously took
+  17m29s**, a 25× reduction with the same verdict. The namespace still goes
+  away; it was observed gone within a minute, unattended.
+
+### Changed -- the real end-to-end timings are written down (#39)
+- The docs quoted "5m47s cold, ~30s warm" for a VM build, but never said how
+  long a fresh RHDP environment takes to become demo-ready. Now stated in
+  `README.md` and the `ocpvirt-new-env` skill: **~4 min to install CNV, ~2 min
+  to verify, and roughly 20 minutes end to end from a bare RHDP environment** —
+  most of which is the environment provisioning itself.
+- Two corrections recorded rather than quietly dropped:
+  - **The 5m47s cold build did not reproduce.** A brand-new environment built in
+    44s, the same as a day-old one: all six boot-source VolumeSnapshots were
+    `readyToUse` before CNV finished installing, because the import runs
+    alongside the install. The original figure most likely came from building
+    immediately after install and catching the import mid-flight.
+  - **The CNV install is ~4 minutes**, not the ~15 stated while #30 was in
+    progress — that was inferred from a background task's apparent runtime
+    rather than measured.
+
 ### Added -- fresh-environment readiness (#30)
 - `playbooks/prepare_env.yml` and the `ocpvirt-new-env` skill. Answers one
   question — would a live VM build in front of a customer be fast? Measured on

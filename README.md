@@ -332,10 +332,21 @@ terraform init && terraform apply
 
 **`apply` finishing does not mean the guest is up.** The default StorageClass is
 `WaitForFirstConsumer`, so the disk clones only once the VM first schedules —
-apply returns in about 10s, and the VM reports `Ready` well after. Budget ~6
-minutes on a cold cluster, where CDI imports the boot source for real; repeat
-builds against a warm boot source have come up in ~30s. Watch the VM, not the
-Ansible or Terraform recap:
+apply returns in about 10s, and the VM reports `Ready` well after.
+
+**Budget ~45 seconds for the build, and roughly 20 minutes from a bare RHDP
+environment** — the latter being mostly the environment provisioning itself,
+plus ~4 minutes to install CNV. A fresh cluster is usually already warm: the
+boot-source import runs alongside the CNV install, so by the time Phase 0
+returns, all six VolumeSnapshots are typically `readyToUse`.
+
+An older ~6 minute "cold cluster" figure appears in earlier notes. It is a real
+measurement, but it did **not** reproduce on a genuinely fresh environment,
+which built in 44s — the same as a warm one. It most likely came from building
+immediately after the install, catching the import mid-flight. Rather than trust
+either number, run `ocpvirt-new-env`, which proves it in about a minute.
+
+Watch the VM, not the Ansible or Terraform recap:
 
 ```bash
 oc get vm,vmi,pvc -n sales-demos-sandbox -w
