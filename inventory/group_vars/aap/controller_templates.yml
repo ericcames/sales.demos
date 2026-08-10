@@ -105,6 +105,11 @@ controller_templates_all:
     execution_environment: "Sales Demos - OCP Virt EE"
     credentials:
       - "Sales Demos - Vault"
+      # Teardown now CONNECTS to the guests before destroying them, to release
+      # the Red Hat subscription and remove the Insights host (#47). Without
+      # this credential those steps fail silently-ish — they are best-effort by
+      # design — and every cycle leaks an entitlement.
+      - "Sales Demos - Linux Machine"
     limit: "{{ aap_env_name }}"
     extra_vars:
       # teardown.yml REQUIRES target_env explicitly — stricter than every other
