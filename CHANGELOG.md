@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added -- the environment is now marked AFTER login too (#54)
+- `utilities/aap-env-badge/`, an unpacked MV3 Chrome extension painting a
+  `SANDBOX` / `DEMO` pill in the middle of the AAP masthead. The sign-in logo
+  from `make-env-logo.py` marks the environment you are *entering*; it
+  disappears the moment you log in, which is when you start clicking things.
+- **No gateway setting can do this, and that is now measured rather than
+  assumed.** On the live 2.6 gateway, `/api/gateway/v1/settings/all/` returns 44
+  settings and only `custom_login_info` and `custom_logo` are branding-related
+  — and `custom_logo` was *already applied* (26 KB of base64 PNG) while the
+  masthead still rendered the stock lockup. Anything further server-side means
+  patching a bundled asset in the gateway container, which the operator
+  reconciles away. So: browser-side, and it touches nothing on the cluster.
+- **An overlay, not DOM surgery.** One `position: fixed` element appended to
+  `<body>`; AAP's own markup is never modified. The masthead is PatternFly with
+  version-prefixed class names, so anchoring inside it would break on a gateway
+  upgrade. All it depends on is a `<header>` existing.
+- **An unrecognized RHDP AAP host gets a neutral `UNRECOGNIZED ENV` pill.** Not
+  a fallback — a freshly built environment nobody has recorded yet is exactly
+  when you are most likely to act on the wrong cluster.
+- `envs.json` is generated from `aap_hostname` in each
+  `group_vars/<env>/connection.yml` by `utilities/make-env-badge-config.py`, so
+  a new RHDP environment does not become a third place to edit. A stale
+  hand-maintained map would not error; it would label the wrong cluster with the
+  right colour, which is the exact mistake the badge exists to prevent.
+- `utilities/env_colors.py` — the colour convention lifted out of
+  `make-env-logo.py` now that two things paint an environment marker. The
+  sign-in logo and the masthead pill cannot drift apart. Kept dependency-free:
+  the badge generator needs neither Pillow nor ImageMagick.
+- The three places stating the environment could not be marked post-login are
+  corrected to say what is actually true — no *setting* can, and here is what
+  does.
+
 ### Fixed -- a stale Terraform state lock now says how to clear it (#46)
 - Hit for real: a `Sales Demos - Provision VM` job was cancelled mid-apply, and
   every run afterwards failed with `Error acquiring the state lock`. The

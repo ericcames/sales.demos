@@ -17,12 +17,17 @@
 # custom_logo is the logo on the AAP SIGN-IN PAGE, shown next to
 # custom_login_info. It does NOT change the masthead after login — that is a
 # bundled UI asset rather than a setting. Verified on AAP 2.6: 44 gateway
-# settings exist and none of them mark the environment post-login.
+# settings exist and none of them mark the environment post-login. Re-measured
+# in #54 with custom_logo already applied — 26 KB of base64 PNG — and the
+# masthead still rendered the stock lockup. No setting will change that.
 #
 # So this is a sign-in-time environment marker. You see which environment you
-# are entering before you touch anything, and nothing after — which is still
-# the moment the warning is most useful, because both environments are
-# otherwise identical at the login page.
+# are entering before you touch anything.
+#
+# THE POST-LOGIN HALF IS utilities/aap-env-badge/, a browser extension that
+# paints a matching pill in the masthead using the same colors. It has to be
+# browser-side precisely because of the paragraph above; it changes nothing on
+# the cluster, and this file is unaffected by it.
 #
 # Green for sandbox, red for demo: the environment you break, and the one you
 # show customers. Reuses aap_config's severity convention. Regenerate with:
