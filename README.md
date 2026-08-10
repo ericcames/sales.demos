@@ -373,8 +373,15 @@ Prerequisites: `virtctl` (download from the cluster's ConsoleCLIDownload) and
 `oc` logged in. Then:
 
 ```bash
-virtctl ssh -n sales-demos-sandbox -l cloud-user vm/sd-lnx-small-1cpu-2gb
+virtctl ssh -n sales-demos-sandbox cloud-user@vm/sd-lnx-small-1cpu-2gb
 ```
+
+> **No `--local-ssh`.** Older notes and anything copied from a pre-#49
+> `ssh_command` output carry that flag. virtctl v1.x removed its built-in SSH
+> client, so local ssh became the only mode and the flag was deleted rather than
+> defaulted — it now fails with `unknown flag: --local-ssh` before connecting.
+> Pass ssh options with `-t/--local-ssh-opts` instead. Keep the `vm/` prefix:
+> virtctl takes a `(VM|VMI)` resource, not a bare name.
 
 The key is injected via cloud-init's `ssh_authorized_keys`. Set
 `TF_VAR_demo_ssh_public_key` to your public key; when set, password-based SSH is

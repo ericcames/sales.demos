@@ -27,8 +27,16 @@
         name: linux_configure
 
     - name: Summarize
+      # web_url and ssh_command are host variables registered by
+      # provision_vm.yml (#49). Guests provisioned before that fall back to the
+      # terraform outputs.
       ansible.builtin.debug:
         msg:
           - "{{ inventory_hostname }} is configured and serving."
-          - "Check it from outside the cluster with the terraform output `web_url`;"
-          - "it returned 503 before this ran, and should now return the demo page."
+          - "It returned 503 before this ran, and should now return the demo page."
+          - >-
+            {{ 'Open it:  ' ~ web_url if (web_url | default('', true) | length > 0)
+               else 'Open it:  run `terraform output -raw web_url` (re-provision to have it printed here).' }}
+          - >-
+            {{ 'Log in from your laptop:  ' ~ ssh_command if (ssh_command | default('', true) | length > 0)
+               else 'Log in from your laptop:  run `terraform output -raw ssh_command`.' }}

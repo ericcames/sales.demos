@@ -191,9 +191,10 @@ variable "demo_ssh_public_key" {
 # OpenShift ingress domain — used to construct Route hostnames at plan time.
 #
 # NodePort was spiked on RHDP and is FILTERED (high ports are blocked by the
-# RHDP firewall), so SSH access uses `virtctl ssh --local-ssh` (rides port
-# 6443, confirmed open). HTTP access uses a Route, which needs the *.apps
-# ingress domain to construct a plan-time-known hostname.
+# RHDP firewall), so SSH access uses `virtctl ssh` (rides port 6443, confirmed
+# open; the `--local-ssh` flag it once took was removed in virtctl v1.x — see
+# outputs.tf). HTTP access uses a Route, which needs the *.apps ingress domain
+# to construct a plan-time-known hostname.
 #
 # Find it with:
 #   oc get ingresses.config.openshift.io cluster -o jsonpath='{.spec.domain}'

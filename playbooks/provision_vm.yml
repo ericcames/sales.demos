@@ -333,9 +333,22 @@
           # demo content in Phase 4 needs no changes. `host` and `ansible_host` are
           # the headless Service DNS name rather than a public IP — stable, known at
           # plan time, and resolvable from AAP because AAP is on the same cluster.
+          #
+          # Decoded ONCE into `tf`. The same `from_json` ran six times below before
+          # #49 added a seventh and eighth caller; one fact keeps the parse in a
+          # single place and the callers readable.
           ansible.builtin.set_fact:
-            win_inventory: "{{ (tf_output.stdout | from_json).windows_inventory.value | default(false, true) }}"
-            linux_inventory: "{{ (tf_output.stdout | from_json).linux_inventory.value | default(false, true) }}"
+            tf: "{{ tf_output.stdout | from_json }}"
+
+        - name: Split the outputs into their per-OS parts
+          ansible.builtin.set_fact:
+            win_inventory: "{{ tf.windows_inventory.value | default(false, true) }}"
+            linux_inventory: "{{ tf.linux_inventory.value | default(false, true) }}"
+            # The laptop-facing pair. Empty rather than undefined when the Route
+            # was skipped (no openshift_apps_domain) or os_type excludes linux, so
+            # every consumer can use one `| default('(none)', true)` idiom.
+            web_url: "{{ tf.web_url.value | default('', true) }}"
+            ssh_command: "{{ tf.ssh_command.value | default('', true) }}"
 
         - name: Ensure the AAP inventory exists (idempotent guard)
           # Same create-if-absent reasoning as the namespaces above: a fresh RHDP
@@ -446,6 +459,18 @@
                   vm_name: "{{ linux_inventory.vm_name }}"
                   vm_size_tier: "{{ linux_inventory.vm_size_tier }}"
                   vm_size_chosen: "{{ linux_inventory.vm_size_chosen }}"
+                  # #49. Carried on the HOST because the later jobs cannot derive
+                  # them: configure_vm.yml and check_vm.yml target `linuxweb`, a
+                  # group created here at run time, while ocpvirt_namespace and
+                  # openshift_apps_domain live in group_vars/<env>/connection.yml
+                  # and load only for the sandbox-local/demo-local hosts in the
+                  # `aap` group. set_stats does not reach them either — it feeds
+                  # workflow nodes, not a job someone re-runs on its own.
+                  #
+                  # Neither is a secret: an RHDP Route hostname and a virtctl
+                  # command line, both already committed in the clear.
+                  web_url: "{{ web_url }}"
+                  ssh_command: "{{ ssh_command }}"
 
             - name: Associate the Linux host with its group
               ansible.controller.group:
@@ -483,8 +508,8 @@
               linux_fqdn: "{{ linux_inventory.host }}"
               linux_vm_name: "{{ linux_inventory.vm_name }}"
               linux_admin_username: "{{ linux_inventory.ansible_user }}"
-              web_url: "{{ (tf_output.stdout | from_json).web_url.value | default('', true) }}"
-              ssh_command: "{{ (tf_output.stdout | from_json).ssh_command.value | default('', true) }}"
+              web_url: "{{ web_url }}"
+              ssh_command: "{{ ssh_command }}"
           when: linux_inventory is mapping
 
         - name: Summarize
@@ -494,8 +519,8 @@
               - "Registered in AAP inventory '{{ ocpvirt_aap_inventory }}'."
               - "Linux: {{ linux_inventory.host | default('(none)') }}"
               - "Windows: {{ win_inventory.host | default('(none)') }}"
-              - "SSH: {{ (tf_output.stdout | from_json).ssh_command.value | default('(none)', true) }}"
-              - "Web: {{ (tf_output.stdout | from_json).web_url.value | default('(none)', true) }} (503 until Phase 4 installs httpd)"
+              - "SSH: {{ ssh_command | default('(none)', true) }}"
+              - "Web: {{ web_url | default('(none)', true) }} (503 until Phase 4 installs httpd)"
 
       always:
         # CLAUDE.md: any playbook that creates a token must delete it in an

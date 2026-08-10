@@ -72,8 +72,14 @@ output "memory_budget" {
 # Public access — SSH and HTTP endpoints added in #29.
 #
 # NodePort was spiked on RHDP and is FILTERED (high ports blocked by the RHDP
-# firewall). SSH uses `virtctl ssh --local-ssh` which rides port 6443
-# (confirmed open). HTTP uses a Route.
+# firewall). SSH uses `virtctl ssh`, which rides port 6443 (confirmed open).
+# HTTP uses a Route.
+#
+# NO `--local-ssh` FLAG. It existed while virtctl shipped its own SSH client and
+# the flag chose the system `ssh` binary instead. v1.x removed that client, so
+# local ssh is the only mode and the flag was DELETED rather than defaulted —
+# passing it now fails with `unknown flag: --local-ssh` before anything
+# connects. `-t/--local-ssh-opts` is the surviving way to pass ssh options.
 # ---------------------------------------------------------------------------
 
 output "web_url" {
@@ -83,5 +89,8 @@ output "web_url" {
 
 output "ssh_command" {
   description = "SSH command for the Linux VM using virtctl (rides port 6443, no NodePort needed). Null when os_type excludes linux."
-  value = local.create_linux ? "virtctl ssh -n ${var.namespace} --local-ssh ${var.linux_admin_username}@${local.linux_vm_name}" : null
+  # `vm/` is not decoration — virtctl takes a (VM|VMI) resource, and every
+  # example in `virtctl ssh --help` carries the prefix. Without it the bare name
+  # is ambiguous between a VM and a VMI.
+  value = local.create_linux ? "virtctl ssh -n ${var.namespace} ${var.linux_admin_username}@vm/${local.linux_vm_name}" : null
 }
