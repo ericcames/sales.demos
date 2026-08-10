@@ -51,7 +51,7 @@
     ocpvirt_name_suffix: "{{ name_suffix | default('') }}"
 
     # --- AAP inventory the new hosts land in --------------------------------
-    ocpvirt_aap_inventory: "{{ provision_inventory | default('Demo VMs') }}"
+    ocpvirt_aap_inventory: "{{ provision_inventory | default('Sales Demo VMs') }}"
     ocpvirt_windows_group: windemo
     ocpvirt_linux_group: linuxweb
 

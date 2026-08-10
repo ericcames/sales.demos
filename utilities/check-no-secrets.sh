@@ -27,8 +27,16 @@ fail=0
 check() {
   local label="$1" pattern="$2"
   local hits
-  # Only tracked files — gitignored secrets.yml is expected to hold real values.
-  hits=$(git ls-files -z | xargs -0 grep -nEI "$pattern" 2>/dev/null || true)
+  # Only tracked files — the committed secrets.yml is vault-encrypted, and the
+  # separate check below is what enforces that.
+  #
+  # `-e` IS LOAD-BEARING. Without it, a pattern starting with a dash — like the
+  # private-key block, `-----BEGIN ...` — is parsed by grep as an option bundle.
+  # grep then errors out, `2>/dev/null || true` swallows the error, `hits` is
+  # empty, and the check reports PASS on a file that plainly matches. That is
+  # how the private-key check silently did nothing at all until it was caught
+  # while adding an SSH key to the vault. Do not remove `-e`.
+  hits=$(git ls-files -z | xargs -0 grep -nEI -e "$pattern" 2>/dev/null || true)
   if [ -n "$hits" ]; then
     echo "::error::$label"
     printf '%s\n' "$hits" | sed 's/^/    /'
@@ -83,7 +91,7 @@ done < <(git ls-files '*/secrets.yml' 'secrets.yml')
 if [ "$fail" -ne 0 ]; then
   echo
   echo "Secret-hygiene check failed. See CONTRIBUTING.md -> 'Audit before every push'."
-  echo "Credentials belong in the vault-encrypted inventory/group_vars/aap/secrets.yml,"
+  echo "Credentials belong in the vault-encrypted playbooks/group_vars/aap/secrets.yml,"
   echo "never in plaintext. Hostnames and API URLs are fine in connection.yml."
   exit 1
 fi

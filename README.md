@@ -67,7 +67,7 @@ The post-login masthead is a bundled UI asset, not a setting — verified on AAP
 
 ## Secrets: one vaulted file, both environments
 
-`inventory/group_vars/aap/secrets.yml` is **vault-encrypted and committed**. It
+`playbooks/group_vars/aap/secrets.yml` is **vault-encrypted and committed**. It
 sits in the `aap` group directory, so it loads for `sandbox` and `demo` alike —
 one file, no per-environment copy to keep in step.
 
@@ -78,7 +78,7 @@ files. **Back that password up** — losing it makes the committed file
 unrecoverable.
 
 ```bash
-ansible-vault edit inventory/group_vars/aap/secrets.yml \
+ansible-vault edit playbooks/group_vars/aap/secrets.yml \
   --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
 ```
 
@@ -256,7 +256,7 @@ writing a token to disk, pass the variables as `TF_VAR_*` straight from the vaul
 cd terraform/ocpvirt
 
 export TF_VAR_openshift_api_token=$(
-  ansible-vault view ../../inventory/group_vars/aap/secrets.yml \
+  ansible-vault view ../../playbooks/group_vars/aap/secrets.yml \
     --vault-id sales.demos@~/secrets/.vault_pass_sales_demos \
   | python3 -c 'import sys,yaml;print(yaml.safe_load(sys.stdin)["env_secrets"]["sandbox"]["openshift_api_token"])')
 

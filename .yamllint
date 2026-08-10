@@ -5,9 +5,10 @@ extends: default
 
 ignore: |
   collections/ansible_collections/
-  # secrets.yml is gitignored, but ignore it here too so a local copy never
-  # trips the linter mid-work.
-  inventory/group_vars/*/secrets.yml
+  # secrets.yml is vault-encrypted ciphertext, which is not YAML. It moved to
+  # playbooks/group_vars/ so the AAP inventory sync can parse inventory/ without
+  # a vault password — see CLAUDE.md.
+  playbooks/group_vars/*/secrets.yml
 
 rules:
   # Kubernetes/KubeVirt manifests and long env-var lookups run past 80. Keep

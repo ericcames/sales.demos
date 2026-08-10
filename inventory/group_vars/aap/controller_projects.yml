@@ -1,0 +1,39 @@
+---
+# ============================================================================
+# group_vars/aap/controller_projects.yml — the AAP project (#4)
+# ============================================================================
+# The git checkout AAP runs playbooks from. Applied by playbooks/config.yml via
+# infra.aap_configuration.dispatch, like every other object here.
+#
+# NOTE THE VARIABLE NAME, as in aap_organizations.yml: dispatch reads this
+# object type from `controller_projects`, plus the _all suffix that
+# dispatch_include_wildcard_vars merges on. `_all` because the project is the
+# same repository for sandbox and demo — only the environment it targets
+# differs, and that is decided by the job template's inventory and limit.
+#
+# NO SCM CREDENTIAL. This repository is public, so AAP clones it anonymously.
+# That is a deliberate property of the design, not an oversight: nothing in the
+# repo is secret except the vault-encrypted secrets.yml, which stays encrypted
+# in the checkout and is decrypted at runtime by the Vault credential.
+# ============================================================================
+
+controller_projects_all:
+  - name: "Sales Demos"
+    description: "sales.demos — OpenShift Virtualization demo platform"
+    organization: "IT Service Automation"
+    scm_type: git
+    scm_url: "https://github.com/ericcames/sales.demos.git"
+    scm_branch: main
+    # The EE built by utilities/build-ee.sh (#31). Terraform is in this image
+    # and in no stock one, which is the entire reason it exists.
+    default_environment: "Sales Demos - OCP Virt EE"
+    # Wipe local modifications before each update, so a job never runs against
+    # a checkout someone poked at.
+    scm_clean: true
+    # THE KEY IS scm_update_on_launch, NOT update_on_launch. Set explicitly
+    # rather than omitted: the config-as-code role only changes fields it is
+    # given, so leaving it out means "whatever AAP already had" rather than
+    # "false". False on purpose — a demo should run the revision that was
+    # tested, not whatever landed on main five minutes ago. Sync deliberately
+    # from the UI or by re-running config.yml.
+    scm_update_on_launch: false
