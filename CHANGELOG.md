@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed -- setup.yml is now the one-command path (#1)
+- `playbooks/setup.yml` imports three stages in order: `install_cnv.yml`,
+  `config.yml`, `prepare_env.yml`. A bare RHDP environment becomes demo-ready in
+  one command, which is what #1 asked for — CNV installed, AAP configured, and a
+  real VM built and timed to prove it. **Roughly 10 minutes**, on top of RHDP
+  provisioning the environment itself.
+- Each stage stays runnable on its own. `setup.yml` is a convenience, not a
+  bottleneck: `install_cnv.yml` when only a cluster needs CNV, `config.yml` when
+  only AAP objects changed, `prepare_env.yml` to re-check an idle environment.
+- **The AAP half is config-as-code rather than a ported bootstrap path.** #1
+  described porting one from `aap.as.code` and flagged the cost itself: "the
+  bootstrap step duplicates logic aap-skills/aap.as.code already owns and can
+  drift." Applying `inventory/group_vars/aap/*.yml` through the dispatch role
+  avoids that second copy and is idempotent — re-running converges rather than
+  re-bootstraps.
+- **Automation Hub credentials are deliberately not created**, closing #1's
+  remaining bullet as obsolete rather than unbuilt. AAP would use them to install
+  `collections/requirements.yml` at project sync, and the execution environment
+  already carries every pinned collection (#31). Verified on the live sandbox: no
+  organization has a Galaxy credential, the sync's collection play reports
+  `ok=3, changed=0`, and job templates run green regardless. Adding one would only
+  make every sync re-install what is already baked in.
+
 ### Fixed -- prepare_env no longer waits 15 minutes to report a 44s answer (#39)
 - `playbooks/prepare_env.yml` — the smoke-namespace cleanup ran with
   `wait: true` and dominated the whole playbook. Measured across two live

@@ -1,20 +1,22 @@
 ---
 name: ocpvirt-setup
-description: "Phase 0 of the sales.demos OpenShift Virtualization demo — install OpenShift Virtualization (CNV) on a fresh RHDP cluster and leave it able to create VMs. Checks prerequisites, confirms the cluster is reachable, then runs playbooks/setup.yml. TRIGGER when: the user asks to set up or prepare a new RHDP environment for the ocpvirt demo, says OpenShift Virtualization or KubeVirt is missing, hits a missing kubevirt.io API, or asks to install CNV. SKIP: if CNV is already installed and the user wants to create VMs — that is Phase 1, terraform/ocpvirt."
+description: "Phase 0 of the sales.demos OpenShift Virtualization demo — take a bare RHDP environment to demo-ready in one command: install OpenShift Virtualization, apply the AAP configuration, then prove it by building and timing a real VM. Checks prerequisites, confirms the cluster is reachable, then runs playbooks/setup.yml. TRIGGER when: the user has a new or rebuilt RHDP environment, asks to set one up or prepare it for the ocpvirt demo, says OpenShift Virtualization or KubeVirt is missing, hits a missing kubevirt.io API, or asks to install CNV. SKIP: if the environment is already set up and the user wants to create demo VMs — that is ocpvirt-provision — or only wants to re-check readiness, which is ocpvirt-new-env."
 ---
 
 # ocpvirt-setup
 
-Phase 0 of the OpenShift Virtualization demo. Takes a bare RHDP "Ansible
-Product Demo" cluster and installs OpenShift Virtualization on it.
+Phase 0. Takes a bare RHDP "Ansible Product Demo" environment to demo-ready in
+**one command**.
 
 This skill contains **no logic**. All the work is in
-[`playbooks/setup.yml`](../../../playbooks/setup.yml), which imports
-`playbooks/install_cnv.yml`. The same playbook runs from an AAP job template
-with survey answers mapped to the same variable names. See `CLAUDE.md` →
+[`playbooks/setup.yml`](../../../playbooks/setup.yml), which imports three
+playbooks in order. The same playbooks run from AAP job templates with survey
+answers mapped to the same variable names. See `CLAUDE.md` →
 *Skills and playbooks*.
 
 ## What it does
+
+**1. Install OpenShift Virtualization** (`install_cnv.yml`)
 
 1. Creates the `openshift-cnv` namespace and its OperatorGroup.
 2. Subscribes to `kubevirt-hyperconverged` on the `stable` channel from the
@@ -25,11 +27,48 @@ with survey answers mapped to the same variable names. See `CLAUDE.md` →
 5. Waits for `HyperConverged` to report `Available`, then for the `rhel9`
    boot-source DataSource to be `Ready`.
 
-Expect 10–20 minutes. CNV pulls several large images.
+**2. Apply the AAP configuration** (`config.yml`)
+
+Organization, project, credentials, both inventories and their sync, the job
+templates and their surveys, the nightly teardown schedules, and the execution
+environment — mirrored from quay into *this environment's* Private Automation
+Hub, so the demo does not depend on quay.io at run time.
+
+**3. Prove it** (`prepare_env.yml`)
+
+Checks the boot source is genuinely backed by a ready snapshot, that storage
+clones with `csi-clone` rather than copying, and that ingress admits Routes —
+then builds one real VM, times it, and destroys it.
+
+## How long
+
+**Roughly 10 minutes**: about 4 for CNV, a few for the AAP objects and the first
+Hub image mirror, about 1 to verify. That is on top of RHDP provisioning the
+environment itself, so **budget ~20 minutes from ordering an environment to
+demoing on it**.
+
+## Each stage is still runnable on its own
+
+`setup.yml` is a convenience, not a bottleneck:
+
+- `install_cnv.yml` — only a cluster needs CNV
+- `config.yml` — only the AAP objects changed
+- `prepare_env.yml` — re-check an environment that has been sitting idle
+  (this one has its own skill, `ocpvirt-new-env`)
+
+## What it does not do
 
 It does **not** enable hugepages, KSM, or workload partitioning. Each of those
 writes a MachineConfig and reboots the node — and on this catalog item AAP runs
 on the only node, so a reboot would take the demo down mid-install.
+
+It does **not** create Automation Hub credentials in AAP, and that is
+deliberate. AAP would use them to install `collections/requirements.yml` at
+project sync, and the execution environment already carries every pinned
+collection (#31). Verified on the live sandbox: no organization has a Galaxy
+credential, the sync's collection play reports `ok=3, changed=0`, and job
+templates run green anyway. Adding one would only make every sync re-install
+what is already baked in.
 
 ## Preflight Check
 
