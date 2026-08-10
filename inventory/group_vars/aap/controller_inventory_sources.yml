@@ -52,3 +52,31 @@ controller_inventory_sources_all:
     # with update_on_launch true, is immediately before every job runs.
     overwrite: false
     overwrite_vars: false
+
+  # ---------------------------------------------------------------------
+  # The SAME hosts.yml, synced a second time into the control inventory (#6).
+  #
+  # This is not redundancy. Teardown deletes the VM hosts from `Sales Demo VMs`,
+  # and AAP locks the hosts of the inventory a running job is using — a job
+  # cannot delete hosts out from under itself. So teardown has to run somewhere
+  # else. But teardown.yml is `hosts: aap` like every other playbook here, so
+  # "somewhere else" still has to contain `sandbox-local` and its group_vars: an
+  # empty inventory would give the play no hosts and it would silently do
+  # nothing at all.
+  #
+  # Hence: control gets the control hosts and NOTHING ELSE. No VMs are ever
+  # registered here, so there is nothing for teardown to lock.
+  #
+  # overwrite: true here, unlike above — this inventory has exactly one
+  # population, so anything not in hosts.yml is drift and should go.
+  # ---------------------------------------------------------------------
+  - name: "sales.demos repo inventory (control)"
+    description: "The same hosts.yml, synced into the control inventory so teardown has hosts to run on."
+    inventory: "Sales Demo VMs - Control"
+    organization: "IT Service Automation"
+    source: scm
+    source_project: "Sales Demos"
+    source_path: "inventory/hosts.yml"
+    update_on_launch: true
+    overwrite: true
+    overwrite_vars: true

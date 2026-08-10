@@ -1,0 +1,60 @@
+---
+# ============================================================================
+# group_vars/aap/controller_schedules.yml — nightly teardown (#6)
+# ============================================================================
+# Demo VMs should never run overnight. On RHDP that is not a money question the
+# way it was on Azure — it is a capacity one: these VMs share a node with AAP and
+# CNV, and terraform/ocpvirt enforces a memory budget against roughly 14 GiB of
+# headroom. A VM left running from yesterday is memory the next demo cannot have.
+#
+# THESE ARE THE ONLY PER-ENVIRONMENT SUFFIXED VARIABLES IN THIS DIRECTORY, and
+# that is the point of the suffix mechanism: sandbox and demo genuinely differ
+# here, where everything else is shared. dispatch_include_wildcard_vars merges
+# `_sandbox` or `_demo` with `_all` depending on --limit, so each environment's
+# AAP gets only its own schedules.
+#
+# TIMEZONE: America/Phoenix, which observes NO daylight saving. Times there are
+# a fixed UTC offset year-round, so a schedule written once does not drift by an
+# hour twice a year. TZID makes AAP render and fire them as local Phoenix time
+# regardless of the server's timezone.
+#
+# The teardown job template is idempotent: with no VMs in state, terraform
+# destroy is a no-op, so a schedule that fires against an already-clean
+# environment costs nothing and reports success.
+#
+# DTSTART is the date the rule starts counting from, not a one-off run date. It
+# is in the past on purpose; FREQ=DAILY takes over from there.
+# ============================================================================
+
+# --- sandbox: 6 PM primary, 10 PM safety net --------------------------------
+# Two runs because sandbox is the environment being actively built against, and
+# work sessions run late. The 6 PM sweep is the real one; the 10 PM sweep
+# catches VMs created after it.
+controller_schedules_sandbox:
+  - name: "Sales Demos - Nightly teardown (6 PM)"
+    unified_job_template: "Sales Demos - Teardown VMs"
+    description: "Destroy sandbox demo VMs every day at 6 PM America/Phoenix."
+    rrule: "DTSTART;TZID=America/Phoenix:20260810T180000 RRULE:FREQ=DAILY;INTERVAL=1"
+    enabled: true
+
+  - name: "Sales Demos - Nightly teardown (10 PM safety net)"
+    unified_job_template: "Sales Demos - Teardown VMs"
+    description: "Second sweep at 10 PM America/Phoenix — catches VMs created after the 6 PM run."
+    rrule: "DTSTART;TZID=America/Phoenix:20260810T220000 RRULE:FREQ=DAILY;INTERVAL=1"
+    enabled: true
+
+# --- demo: 6 PM only --------------------------------------------------------
+# One run, deliberately. `demo` is the environment customers are shown, and a
+# second late-evening sweep buys little there while adding one more thing that
+# could fire in the middle of an evening session with someone watching.
+#
+# NOTE: this is only applied when config.yml is run with `--limit demo`, which
+# requires a real demo environment — group_vars/demo/connection.yml still holds
+# placeholders. Until then these objects are simply never created, rather than
+# created and failing nightly.
+controller_schedules_demo:
+  - name: "Sales Demos - Nightly teardown (6 PM)"
+    unified_job_template: "Sales Demos - Teardown VMs"
+    description: "Destroy demo VMs every day at 6 PM America/Phoenix."
+    rrule: "DTSTART;TZID=America/Phoenix:20260810T180000 RRULE:FREQ=DAILY;INTERVAL=1"
+    enabled: true

@@ -1,0 +1,284 @@
+---
+# ===========================================================================
+# teardown.yml — Phase 3's other half. Destroy the demo VMs and deregister
+# them from AAP, without touching the expensive one-time setup. Issue #6.
+#
+#   ansible-playbook playbooks/teardown.yml -i inventory --limit sandbox \
+#     -e target_env=sandbox \
+#     --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
+#
+# WHAT THIS DELIBERATELY DOES NOT DESTROY, because rebuilding either is roughly
+# a 45-minute cost:
+#
+#   - The OpenShift Virtualization install (Phase 0, namespace openshift-cnv).
+#   - The boot-source DataSources, including the Windows golden image from
+#     Phase 2 (namespace openshift-virtualization-os-images) and its published
+#     quay containerdisk.
+#
+# Neither is at risk, and not by luck: terraform/ocpvirt/ does not manage them.
+# `terraform destroy` can only remove what is in its state — the demo namespace,
+# the VMs, their Services and Routes, and the sd1.* instance types. Scoping is a
+# property of the module, so the safe thing here is to keep using `destroy` and
+# resist the temptation to "clean up" anything by hand afterwards.
+#
+# THE STATE NAMESPACE MUST SURVIVE TOO. sales-demos-tfstate holds the Secret
+# describing every VM Terraform tracks, for BOTH environments. It is not managed
+# by Terraform, so destroy leaves it alone; nothing here should delete it
+# either. Deleting it orphans everything.
+#
+# WHY THIS RUNS AGAINST THE CONTROL INVENTORY IN AAP. It removes hosts from
+# `Sales Demo VMs`, and AAP locks the hosts of the inventory a running job is
+# using — a job cannot delete hosts out from under itself. `Sales Demo VMs -
+# Control` exists empty for exactly this. dc1.azure hit the same wall as AB#73.
+# ===========================================================================
+
+- name: Phase 3 — destroy the demo VMs and deregister them from AAP
+  hosts: aap
+  gather_facts: false
+
+  environment:
+    K8S_AUTH_HOST: "{{ ocpvirt_api_url }}"
+    K8S_AUTH_API_KEY: "{{ ocpvirt_api_token }}"
+    K8S_AUTH_VERIFY_SSL: "{{ openshift_validate_certs | default(false) | bool }}"
+
+  vars:
+    ocpvirt_terraform_dir: "{{ playbook_dir }}/../terraform/ocpvirt"
+
+    # Must match what provision_vm.yml applied, or destroy plans against a
+    # different shape than the one that was built.
+    ocpvirt_size_tier: "{{ vm_size_tier | default('small-1cpu-2gb') }}"
+    ocpvirt_os_type: "{{ os_type | default('linux') }}"
+    ocpvirt_name_suffix: "{{ name_suffix | default('') }}"
+
+    ocpvirt_aap_inventory: "{{ provision_inventory | default('Sales Demo VMs') }}"
+
+    ocpvirt_api_url: >-
+      {{ openshift_api_url | default(lookup('ansible.builtin.env', 'K8S_AUTH_HOST'), true) }}
+    ocpvirt_api_token: >-
+      {{ openshift_api_token | default(lookup('ansible.builtin.env', 'K8S_AUTH_API_KEY'), true) }}
+    ocpvirt_namespace_resolved: "{{ ocpvirt_namespace | default('sales-demos-' ~ aap_env_name, true) }}"
+    ocpvirt_state_namespace: "{{ tf_state_namespace | default('sales-demos-tfstate', true) }}"
+
+    ocpvirt_aap_host: >-
+      {{ aap_hostname | default(lookup('ansible.builtin.env', 'CONTROLLER_HOST'), true) }}
+    ocpvirt_aap_user: >-
+      {{ aap_username | default(lookup('ansible.builtin.env', 'CONTROLLER_USERNAME'), true) }}
+    ocpvirt_aap_pass: >-
+      {{ aap_password | default(lookup('ansible.builtin.env', 'CONTROLLER_PASSWORD'), true) }}
+    ocpvirt_aap_url: >-
+      {{ ocpvirt_aap_host if ocpvirt_aap_host is match('^https?://') else 'https://' ~ ocpvirt_aap_host }}
+    ocpvirt_request_timeout: "{{ aap_request_timeout | default(30) }}"
+
+  tasks:
+    - name: Assert exactly one environment is targeted
+      ansible.builtin.include_tasks: tasks/assert_target_environment.yml
+
+    - name: Require target_env to be stated explicitly
+      # STRICTER THAN EVERY OTHER PLAYBOOK HERE, on purpose. The shared guard
+      # above only compares target_env against the inventory WHEN target_env is
+      # supplied; omit it and a mistyped --limit passes silently. That is an
+      # acceptable risk for an apply and an unacceptable one for a destroy —
+      # the difference between rebuilding a sandbox VM and wiping the
+      # environment a customer is about to be shown. Saying the environment
+      # out loud costs one flag.
+      ansible.builtin.assert:
+        that:
+          - target_env is defined
+          - target_env | length > 0
+        fail_msg: >-
+          teardown.yml requires -e target_env=<sandbox|demo>, stated explicitly
+          and matching --limit. This playbook destroys VMs; it will not guess
+          which environment you meant.
+        quiet: true
+
+    - name: Assert the OpenShift connection is resolved
+      ansible.builtin.assert:
+        that:
+          - ocpvirt_api_url | length > 0
+          - ocpvirt_api_token | length > 0
+        fail_msg: >-
+          No OpenShift connection. Locally this comes from
+          group_vars/<env>/connection.yml with --vault-id passed; from AAP,
+          attach an OpenShift API Bearer Token credential.
+        quiet: true
+
+    - name: Report what is about to be destroyed
+      ansible.builtin.debug:
+        msg:
+          - "Destroying {{ ocpvirt_os_type }} / {{ ocpvirt_size_tier }} in namespace {{ ocpvirt_namespace_resolved }} on {{ aap_env_name }}."
+          - "PRESERVED: OpenShift Virtualization, the boot-source DataSources (including the Windows golden image), and the {{ ocpvirt_state_namespace }} state namespace."
+
+    - name: Destroy the VMs and deregister them
+      # One block so the always: below removes the kubeconfig even when destroy
+      # fails — it holds a bearer token, and a failed destroy is exactly the run
+      # where a leaked one would go unnoticed.
+      block:
+        - name: Create a temporary kubeconfig for the Terraform backend
+          # Same reasoning as provision_vm.yml: the kubernetes backend will not
+          # take a bare host + token, because it builds its client through
+          # client-go's clientcmd where those are only overrides on a base
+          # config. Synthesise the base config instead.
+          ansible.builtin.tempfile:
+            state: file
+            suffix: .kubeconfig
+          register: ocpvirt_kubeconfig
+          changed_when: false
+
+        - name: Write the kubeconfig
+          ansible.builtin.copy:
+            dest: "{{ ocpvirt_kubeconfig.path }}"
+            mode: "0600"
+            content: |
+              apiVersion: v1
+              kind: Config
+              clusters:
+                - name: demo
+                  cluster:
+                    server: {{ ocpvirt_api_url }}
+                    insecure-skip-tls-verify: {{ (not (openshift_validate_certs | default(false) | bool)) | lower }}
+              users:
+                - name: demo
+                  user:
+                    token: {{ ocpvirt_api_token }}
+              contexts:
+                - name: demo
+                  context:
+                    cluster: demo
+                    user: demo
+              current-context: demo
+          no_log: true
+          changed_when: false
+
+        - name: Initialize Terraform against the kubernetes backend
+          # Same backend and the same secret_suffix provision_vm.yml wrote to.
+          # Point this anywhere else and destroy finds an empty state, reports
+          # success, and leaves every VM running.
+          ansible.builtin.command:
+            argv:
+              - terraform
+              - init
+              - -input=false
+              - -no-color
+              - -reconfigure
+              - "-backend-config=secret_suffix={{ aap_env_name }}"
+              - "-backend-config=namespace={{ ocpvirt_state_namespace }}"
+              - "-backend-config=config_path={{ ocpvirt_kubeconfig.path }}"
+              - "-backend-config=insecure={{ (not (openshift_validate_certs | default(false) | bool)) | lower }}"
+            chdir: "{{ ocpvirt_terraform_dir }}"
+          changed_when: false
+          register: tf_init_result
+          failed_when: false
+
+        - name: Fail with the Terraform init error
+          when: tf_init_result.rc != 0
+          ansible.builtin.fail:
+            msg: >-
+              terraform init exited {{ tf_init_result.rc }}:
+              {{ tf_init_result.stderr | default(tf_init_result.stdout) | default('no output') }}
+
+        - name: Read the Terraform outputs BEFORE destroying
+          # The hostnames are needed to deregister the AAP hosts afterwards, and
+          # after destroy they are gone from state. `failed_when: false` because
+          # an already-empty state is a legitimate teardown of nothing.
+          ansible.builtin.command:
+            argv: [terraform, output, -json]
+            chdir: "{{ ocpvirt_terraform_dir }}"
+          changed_when: false
+          failed_when: false
+          register: tf_output
+
+        - name: Remember which hosts to deregister
+          ansible.builtin.set_fact:
+            teardown_hosts: >-
+              {{ [
+                   (tf_output.stdout | default('{}') | from_json).linux_inventory.value | default(None, true),
+                   (tf_output.stdout | default('{}') | from_json).windows_inventory.value | default(None, true)
+                 ] | select('mapping') | map(attribute='host') | list }}
+
+        - name: Report what was found in state
+          ansible.builtin.debug:
+            msg: >-
+              {{ teardown_hosts | length }} host(s) in state:
+              {{ teardown_hosts | join(', ') if teardown_hosts else '(none — nothing to destroy)' }}
+
+        - name: Destroy the VMs
+          # Scoped by the module, not by -target. terraform destroy removes only
+          # what is in state: the demo namespace, the VMs, their Services and
+          # Routes, and the sd1.* instance types. CNV and the boot-source
+          # DataSources are not managed here and cannot be touched.
+          #
+          # The sd1.* instance types ARE cluster-scoped and DO go — see
+          # instancetypes.tf, which flags this: on a shared cluster a concurrent
+          # run loses its sizing. Fine for a sandbox; worth knowing before
+          # pointing teardown at a cluster someone else is demoing on.
+          ansible.builtin.command:
+            argv:
+              - terraform
+              - destroy
+              - -input=false
+              - -auto-approve
+              - -no-color
+              - "-var=vm_size_tier={{ ocpvirt_size_tier }}"
+              - "-var=os_type={{ ocpvirt_os_type }}"
+              - "-var=namespace={{ ocpvirt_namespace_resolved }}"
+              - "-var=name_suffix={{ ocpvirt_name_suffix }}"
+              - "-var=linux_admin_username={{ linux_admin_username | default('cloud-user') }}"
+              - "-var=windows_admin_username={{ windows_admin_username | default('demoadmin') }}"
+              - "-var=openshift_apps_domain={{ openshift_apps_domain | default('') }}"
+            chdir: "{{ ocpvirt_terraform_dir }}"
+          environment:
+            TF_VAR_openshift_api_url: "{{ ocpvirt_api_url }}"
+            TF_VAR_openshift_api_token: "{{ ocpvirt_api_token }}"
+            TF_VAR_openshift_insecure: "{{ (not (openshift_validate_certs | default(false) | bool)) | lower }}"
+            TF_VAR_demo_ssh_public_key: "{{ demo_ssh_public_key | default('') }}"
+            TF_IN_AUTOMATION: "1"
+          no_log: true
+          changed_when: "'0 destroyed' not in (tf_destroy_result.stdout | default(''))"
+          register: tf_destroy_result
+          ignore_errors: true
+
+        - name: Show the Terraform error
+          when: tf_destroy_result is failed
+          ansible.builtin.debug:
+            msg: "{{ tf_destroy_result.stderr_lines | default([tf_destroy_result.stderr | default('no stderr')]) }}"
+
+        - name: Fail if the destroy failed
+          # Deliberately BEFORE deregistering. Removing hosts from AAP while the
+          # VMs are still running would leave the cluster holding resources that
+          # nothing points at any more — the worst of both states.
+          when: tf_destroy_result is failed
+          ansible.builtin.fail:
+            msg: "terraform destroy exited {{ tf_destroy_result.rc | default('?') }}"
+
+        - name: Deregister the VMs from the AAP inventory
+          # Only the hosts that were in Terraform state. The control hosts
+          # (sandbox-local / demo-local) come from the inventory sync and are
+          # left alone — they are how the next provisioning run finds its
+          # connection variables.
+          ansible.controller.host:
+            controller_host: "{{ ocpvirt_aap_url }}"
+            controller_username: "{{ ocpvirt_aap_user }}"
+            controller_password: "{{ ocpvirt_aap_pass }}"
+            validate_certs: "{{ aap_validate_certs | default(false) }}"
+            request_timeout: "{{ ocpvirt_request_timeout }}"
+            name: "{{ item }}"
+            inventory: "{{ ocpvirt_aap_inventory }}"
+            state: absent
+          loop: "{{ teardown_hosts }}"
+          loop_control:
+            label: "{{ item }}"
+
+        - name: Summarise
+          ansible.builtin.debug:
+            msg:
+              - "Destroyed the demo VMs in {{ ocpvirt_namespace_resolved }} on {{ aap_env_name }}."
+              - "Deregistered {{ teardown_hosts | length }} host(s) from '{{ ocpvirt_aap_inventory }}'."
+              - "Left intact: OpenShift Virtualization, the boot-source DataSources, and {{ ocpvirt_state_namespace }}."
+
+      always:
+        - name: Remove the temporary kubeconfig
+          ansible.builtin.file:
+            path: "{{ ocpvirt_kubeconfig.path }}"
+            state: absent
+          when: ocpvirt_kubeconfig.path is defined
+          changed_when: false
