@@ -146,6 +146,7 @@ in this repo, which for repo-specific skills is the correct scope.
 | Skill | Playbook | Does | Status |
 |---|---|---|---|
 | `ocpvirt-setup` | `playbooks/setup.yml` | Bootstrap AAP and install OpenShift Virtualization | CNV install done; AAP bootstrap open ([#1](https://github.com/ericcames/sales.demos/issues/1)) |
+| `ocpvirt-new-env` | `playbooks/prepare_env.yml` | Verify a fresh environment is warm, and time a real VM build | Done ([#30](https://github.com/ericcames/sales.demos/issues/30)) |
 | `ocpvirt-provision` | `playbooks/provision_vm.yml` | Run Terraform, register the new VMs in AAP | Done ([#4](https://github.com/ericcames/sales.demos/issues/4)) |
 | `ocpvirt-windows-image` | `playbooks/build_windows_golden.yml` | Build and publish the Windows golden image | Not started |
 | `ocpvirt-demo` | `playbooks/run_demo.yml` | Launch the layered daily demo | Not started |

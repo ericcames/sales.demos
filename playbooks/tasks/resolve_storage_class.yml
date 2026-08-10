@@ -1,0 +1,50 @@
+---
+# ===========================================================================
+# resolve_storage_class.yml — work out which StorageClass this cluster uses.
+#
+# Extracted from install_cnv.yml so prepare_env.yml can reuse it rather than
+# carry a second copy that drifts (#30) — the same reasoning that pulled
+# assert_target_environment.yml out in #24.
+#
+# IN:   cnv_storage_class            optional override; empty means "discover"
+# OUT:  cnv_effective_storage_class  the resolved name
+#
+# The variable names are deliberately the ones install_cnv.yml already used.
+# Renaming them here would have meant touching every reference in that playbook
+# for no behavioural gain, and this file is the definition of those names now.
+# ===========================================================================
+
+- name: Use the StorageClass the caller pinned
+  ansible.builtin.set_fact:
+    cnv_effective_storage_class: "{{ cnv_storage_class }}"
+  when: cnv_storage_class | default('') | length > 0
+
+- name: Look up the cluster's StorageClasses
+  kubernetes.core.k8s_info:
+    api_version: storage.k8s.io/v1
+    kind: StorageClass
+  register: cnv_storageclasses
+  when: cnv_storage_class | default('') | length == 0
+
+- name: Resolve the default StorageClass
+  # A loop with a `when`, not a selectattr chain: the marker is an annotation
+  # key containing dots and slashes, which Jinja's dotted attribute syntax
+  # cannot address.
+  ansible.builtin.set_fact:
+    cnv_effective_storage_class: "{{ item.metadata.name }}"
+  loop: "{{ cnv_storageclasses.resources | default([]) }}"
+  loop_control:
+    label: "{{ item.metadata.name }}"
+  when:
+    - cnv_storage_class | default('') | length == 0
+    - (item.metadata.annotations | default({}))['storageclass.kubernetes.io/is-default-class'] | default('false') == 'true'
+
+- name: Assert a StorageClass was resolved
+  ansible.builtin.assert:
+    that:
+      - cnv_effective_storage_class | default('') | length > 0
+    fail_msg: >-
+      No default StorageClass on this cluster and cnv_storage_class was not
+      set. CNV needs one for CDI scratch space, and the boot-source clone path
+      depends on its StorageProfile. Pass -e cnv_storage_class=<name>.
+    quiet: true

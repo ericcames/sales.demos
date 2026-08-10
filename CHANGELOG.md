@@ -7,6 +7,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added -- fresh-environment readiness (#30)
+- `playbooks/prepare_env.yml` and the `ocpvirt-new-env` skill. Answers one
+  question — would a live VM build in front of a customer be fast? Measured on
+  the sandbox: **5m47s cold versus ~30s warm**, and that gap is not Terraform's
+  doing. The module is already on the fast path; the slow case is building
+  against a cluster whose boot source has not finished importing, so the fix
+  belongs in environment spin-up rather than the VM definition.
+- **It asserts rather than assumes**, because every check corresponds to a way
+  an environment looks fine and is still slow:
+  - The `rhel9` DataSource can report `Ready` while the **VolumeSnapshot behind
+    it** is still materialising — the actual slow-build state. The snapshot is
+    resolved from `spec.source` by name and checked for `readyToUse`, rather
+    than inferred from the DataSource condition. Handles the PVC form too.
+  - A StorageProfile reporting `copy` instead of `csi-clone` makes every create
+    pay a full disk copy, which no amount of pre-warming fixes. On RHDP the
+    default StorageClass must be the ceph-rbd one; **noobaa reports `copy`**.
+  - The IngressController must actually be Available, or the Routes giving demo
+    VMs their web URL (#29) are never admitted. A mismatch between
+    `openshift_apps_domain` and the cluster's real domain warns rather than
+    fails — a stale value produces URLs that resolve nowhere.
+- **And it builds a real VM**, times it, and destroys it. A playbook that has
+  verified everything except "can this cluster make a VM" is the failure mode it
+  exists to prevent. The smoke VM lives in its own namespace, removed in an
+  `always:` block so a slow or failed run leaves nothing eating the memory
+  budget. It uses Red Hat's `u1.small` rather than the repo's `sd1.*` types,
+  which do not exist until `terraform/ocpvirt` has run — and this playbook is
+  for clusters where it has not.
+- `playbooks/tasks/resolve_storage_class.yml` — the StorageClass discovery
+  extracted out of `install_cnv.yml` so both use one definition rather than two
+  that drift, the same reasoning that extracted `assert_target_environment.yml`
+  in #24.
+
+### Changed -- documentation caught up with the code (#30)
+- `ROADMAP.md` — the sizing table still listed `u1.small` / `u1.medium` /
+  `u1.large`. #2 moved to repo-owned `sd1.*` types because `u1.*` has no 6 GiB
+  size: at `u1.large`'s 8 GiB, `os_type=both` needs ~16.6 GiB against the
+  ~14.2 GiB actually free once AAP and CNV are running, so it would never
+  schedule. Also notes that the real ceiling is enforced in `locals.tf` at plan
+  time, not by the table.
+- `docs/plan/ocpvirt-demo-plan.md` — the state backend said "local state
+  initially; optionally the NooBaa S3 endpoint later", which #4 found
+  unworkable. Now records the `kubernetes` backend and why state lives in its
+  own long-lived namespace.
+- `inventory/group_vars/demo/connection.yml` — the `demo` environment is live
+  rather than placeholders, so #16's environment isolation is now load-bearing
+  instead of theoretical: `--limit demo` and `--limit sandbox` reach two
+  different clusters.
+
 ### Changed -- the EE is pulled from Private Automation Hub (#35)
 - `inventory/group_vars/aap/hub_ee_registries.yml` and
   `hub_ee_repositories.yml` — PAH mirrors `quay.io/zigfreed/sales-demos-ee` into
