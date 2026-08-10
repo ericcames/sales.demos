@@ -89,11 +89,16 @@
     }
     const box = mastheadBox();
     if (!box) {
-      // No masthead yet — the sign-in page, or the SPA still booting. The
-      // sign-in page already has the badged logo, so nothing to add there.
+      // The SPA has not rendered a header yet. Nothing to anchor to.
       remove();
       return;
     }
+    // IT ALSO PAINTS ON THE SIGN-IN PAGE, which has a header of its own. That
+    // was not the goal — the sign-in page already carries the badged logo — but
+    // it is left alone on purpose: it is redundant rather than wrong, and it
+    // doubles as confirmation the extension is loaded before you log in.
+    // Suppressing it would mean sniffing the route, which is exactly the kind
+    // of coupling to AAP's internals this design avoids.
     // An RHDP AAP host that is not in either connection.yml gets the neutral
     // pill. That is the point, not a fallback: a freshly built environment
     // nobody has recorded yet is exactly when you are most likely to act on the

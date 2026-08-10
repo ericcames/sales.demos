@@ -90,4 +90,8 @@ right color.
   particularly on a shared screen.
 - **No theme detection.** A light outline on the pill keeps it legible against
   both the dark masthead and AAP's light theme.
-- **Nothing on the sign-in page.** That page already has the badged logo.
+- **It paints on the sign-in page too.** Not the goal — that page already
+  carries the badged logo — but the sign-in page has a header of its own and the
+  pill anchors to it. Left as-is: redundant rather than wrong, and it confirms
+  the extension is loaded before you log in. Suppressing it would mean sniffing
+  the route, which is the coupling to AAP internals this design avoids.
