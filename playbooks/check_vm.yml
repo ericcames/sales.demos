@@ -49,7 +49,7 @@
 
     - name: Confirm the guest matches the size tier it was provisioned as
       # Catches the failure where a tier maps to an instance type that the
-      # cluster silently did not honour: terraform reports success, the VM runs,
+      # cluster silently did not honor: terraform reports success, the VM runs,
       # and the guest has the wrong shape. Only meaningful when the host carries
       # the vars provision_vm.yml set, so it is skipped otherwise.
       ansible.builtin.assert:

@@ -1,11 +1,16 @@
 {# ==========================================================================
-   The demo page. Deliberately self-contained: no external images, no CDN, no
-   webfonts. It is served from a VM on a cluster whose egress you do not
-   control, in front of a customer — anything fetched from elsewhere is a blank
-   box waiting to happen.
+   The demo page.
 
-   Every value comes from facts or from variables the provisioning run already
-   set, so the page proves the chain it is describing rather than asserting it.
+   SELF-CONTAINED ON PURPOSE: no CDN, no webfonts, and the logos are served
+   from this host rather than fetched from redhat.com. It is displayed from a
+   VM on a cluster whose egress you do not control, in front of a customer —
+   anything fetched at render time is a blank box waiting to happen.
+
+   Every value comes from the guest's own facts or from variables the
+   provisioning run already set, so the page proves the chain it describes
+   rather than asserting it.
+
+   American spelling throughout — this is a US-facing sales demo.
    ========================================================================== #}
 <!doctype html>
 <html lang="en">
@@ -27,32 +32,71 @@
     .card { background: #1f1f1f !important; border-color: #3d3d3d !important; }
     td { border-color: #3d3d3d !important; }
     .k { color: #a0a0a0 !important; }
+    h1 { color: #e0e0e0 !important; }
   }
-  .wrap { width: 100%; max-width: 46rem; }
-  h1 { margin: 0 0 .25rem; font-size: 1.6rem; font-weight: 600; }
-  h1 .dot {
+  .wrap { width: 100%; max-width: 48rem; }
+
+  /* Headline ABOVE the rule: it is the point of the demo, not a caption. */
+  h1 {
+    margin: 0 0 1rem; font-size: 1.5rem; line-height: 1.35;
+    font-weight: 700; color: #151515;
+  }
+  .bar { height: 4px; background: #ee0000; border-radius: 2px; margin-bottom: 1.5rem; }
+
+  .host { margin: 0 0 1.25rem; font-size: 1.05rem; font-weight: 600; }
+  .host .dot {
     display: inline-block; width: .6rem; height: .6rem; border-radius: 50%;
     background: #3e8635; margin-right: .55rem; vertical-align: middle;
   }
-  .lede { margin: 0 0 1.75rem; color: #6a6e73; }
   .card {
     background: #fff; border: 1px solid #d2d2d2; border-radius: .4rem;
     padding: 1.25rem 1.5rem; margin-bottom: 1rem;
   }
-  .bar { height: 3px; background: #ee0000; border-radius: 2px; margin-bottom: 1.25rem; }
   table { width: 100%; border-collapse: collapse; }
   td { padding: .5rem 0; border-bottom: 1px solid #ebebeb; vertical-align: top; }
   tr:last-child td { border-bottom: 0; }
   .k { width: 12rem; color: #6a6e73; }
   .v { font-family: "Red Hat Mono", ui-monospace, SFMono-Regular, monospace; word-break: break-all; }
+
+  /* Dark band so the three reverse-variant (white) marks read as one lockup. */
+  .logos {
+    background: #151515; border-radius: .4rem;
+    padding: 1.5rem; margin-bottom: 1rem;
+    display: flex; flex-wrap: wrap; gap: 2rem;
+    align-items: center; justify-content: center;
+  }
+  .logos img { height: 2.1rem; width: auto; max-width: 100%; }
+
+  .notice {
+    border-left: 4px solid #f0ab00; background: #fdf7e7; color: #3d2c00;
+    padding: .9rem 1.1rem; border-radius: .25rem; margin-bottom: 1rem;
+  }
+  @media (prefers-color-scheme: dark) {
+    .notice { background: #232323; color: #f0ab00; }
+  }
+  .notice strong { display: block; margin-bottom: .15rem; }
   footer { color: #6a6e73; font-size: .85rem; text-align: center; margin-top: 1.5rem; }
 </style>
 </head>
 <body>
 <div class="wrap">
+
+  <h1>{{ linux_configure_message }}</h1>
   <div class="bar"></div>
-  <h1><span class="dot"></span>{{ inventory_hostname_short }}</h1>
-  <p class="lede">{{ linux_configure_message }}</p>
+
+  <p class="host"><span class="dot"></span>{{ inventory_hostname_short }}</p>
+
+  <div class="logos">
+    <img src="logos/rhel.svg" alt="Red Hat Enterprise Linux">
+    <img src="logos/openshift.svg" alt="Red Hat OpenShift">
+    <img src="logos/aap.svg" alt="Red Hat Ansible Automation Platform">
+  </div>
+
+  <div class="notice">
+    <strong>This VM is temporary.</strong>
+    It is decommissioned automatically at {{ linux_configure_teardown_time }} by a
+    scheduled job in Ansible Automation Platform, along with everything on it.
+  </div>
 
   <div class="card">
     <table>
@@ -60,11 +104,10 @@
       <tr><td class="k">Kernel</td><td class="v">{{ ansible_kernel }}</td></tr>
       <tr><td class="k">Size tier</td><td class="v">{{ vm_size_tier | default('n/a') }}{% if vm_size_chosen is defined %} &rarr; {{ vm_size_chosen }}{% endif %}</td></tr>
       <tr><td class="k">vCPU / memory</td><td class="v">{{ ansible_processor_vcpus }} vCPU &middot; {{ ansible_memtotal_mb }} MB</td></tr>
-      {# `| default()` is not enough here: on a KubeVirt guest these facts come
-         back as the literal string "NA", which is defined and therefore keeps
-         the default from firing. It rendered "NA (NA)" on the page until this
-         was caught. Treat "NA" as unset explicitly. #}
-      <tr><td class="k">Virtualisation</td><td class="v">
+      {# `| default()` is not enough: on a KubeVirt guest these facts come back
+         as the literal string "NA", which is defined and therefore keeps the
+         default from firing. It rendered "NA (NA)" until this was caught. #}
+      <tr><td class="k">Virtualization</td><td class="v">
         {{- (ansible_virtualization_type | default('') | trim) if (ansible_virtualization_type | default('NA')) not in ['NA', ''] else 'KVM' -}}
         {{- ' (' ~ ansible_virtualization_role ~ ')' if (ansible_virtualization_role | default('NA')) not in ['NA', ''] else ' (guest)' -}}
       </td></tr>
@@ -74,8 +117,8 @@
   </div>
 
   <footer>
-    Provisioned by Terraform on OpenShift Virtualization &middot;
-    configured by Ansible Automation Platform
+    Provisioned by Terraform on Red Hat OpenShift Virtualization &middot;
+    configured by Red Hat Ansible Automation Platform
   </footer>
 </div>
 </body>

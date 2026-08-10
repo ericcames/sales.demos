@@ -268,7 +268,7 @@
           loop_control:
             label: "{{ item }}"
 
-        - name: Summarise
+        - name: Summarize
           ansible.builtin.debug:
             msg:
               - "Destroyed the demo VMs in {{ ocpvirt_namespace_resolved }} on {{ aap_env_name }}."

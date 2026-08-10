@@ -43,7 +43,7 @@ Every one corresponds to a way an environment looks fine and is still slow:
 | Check | The failure it catches |
 |---|---|
 | `rhel9` DataSource `Ready=True` | Boot source never imported |
-| **The VolumeSnapshot behind it is `readyToUse`** | DataSource reports Ready while the snapshot is still materialising — the actual slow-build state |
+| **The VolumeSnapshot behind it is `readyToUse`** | DataSource reports Ready while the snapshot is still materializing — the actual slow-build state |
 | StorageProfile `cloneStrategy: csi-clone` | `copy` or host-assisted means every create pays a full disk copy, and no amount of warming helps |
 | IngressController Available | Routes for demo web access (#29) are never admitted |
 | **A real VM built and timed** | Everything above passing while the cluster still cannot make a VM |

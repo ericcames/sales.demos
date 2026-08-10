@@ -68,6 +68,19 @@
     group: apache
     mode: "0644"
 
+- name: Publish the product logos
+  # SERVED FROM THIS HOST, not fetched from redhat.com at render time. The page
+  # is displayed from a cluster whose egress you do not control, in front of a
+  # customer; a hotlinked logo is a blank box waiting to happen. See
+  # files/logos/SOURCE.md for where they came from and how to refresh them.
+  ansible.builtin.copy:
+    src: logos/
+    dest: /var/www/html/logos/
+    owner: apache
+    group: apache
+    mode: "0644"
+    directory_mode: "0755"
+
 - name: Apply security updates
   # Security-only and update_only: patch what is installed, never pull new
   # packages, and skip the much larger bugfix set that has little demo value.

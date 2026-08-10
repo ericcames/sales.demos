@@ -217,7 +217,7 @@
           | selectattr('status', 'equalto', 'True') | list | length > 0
       when: cnv_wait_for_datasource | bool
 
-    - name: Summarise what is now on the cluster
+    - name: Summarize what is now on the cluster
       ansible.builtin.debug:
         msg:
           - "OpenShift Virtualization is installed and Available."

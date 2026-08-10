@@ -1,7 +1,7 @@
 # ---------------------------------------------------------------------------
 # outputs.tf — the inventory contract.
 #
-# The field names and null-when-absent behaviour are ported UNCHANGED from
+# The field names and null-when-absent behavior are ported UNCHANGED from
 # dc1.azure/terraform/outputs.tf. Phases 3 and 4 consume this shape to register
 # hosts in AAP; renaming a field here breaks them.
 #

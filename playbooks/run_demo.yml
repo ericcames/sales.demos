@@ -46,7 +46,7 @@
       ansible.builtin.include_role:
         name: linux_configure
 
-    - name: Summarise
+    - name: Summarize
       ansible.builtin.debug:
         msg:
           - "{{ inventory_hostname }} is configured and serving."

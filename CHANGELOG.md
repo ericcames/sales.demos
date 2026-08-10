@@ -130,7 +130,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   environments, an identical 44s/45s build produced a total runtime of ~2.3 min
   on a warm cluster and **~17.5 min on a fresh one**, because deleting the
   namespace blocks on DataVolume and PVC teardown, which on a freshly installed
-  cluster contends with the CSI clone still materialising underneath. The
+  cluster contends with the CSI clone still materializing underneath. The
   playbook was slowest on exactly the environment where the answer matters most.
   Now `wait: false` — **42s total on the environment that previously took
   17m29s**, a 25× reduction with the same verdict. The namespace still goes
@@ -162,7 +162,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **It asserts rather than assumes**, because every check corresponds to a way
   an environment looks fine and is still slow:
   - The `rhel9` DataSource can report `Ready` while the **VolumeSnapshot behind
-    it** is still materialising — the actual slow-build state. The snapshot is
+    it** is still materializing — the actual slow-build state. The snapshot is
     resolved from `spec.source` by name and checked for `readyToUse`, rather
     than inferred from the DataSource condition. Handles the PVC form too.
   - A StorageProfile reporting `copy` instead of `csi-clone` makes every create

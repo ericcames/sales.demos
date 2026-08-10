@@ -168,9 +168,9 @@ match the image.
 
 ## When a pin changes
 
-A version bump is a behaviour change, not housekeeping. Per `CLAUDE.md`:
+A version bump is a behavior change, not housekeeping. Per `CLAUDE.md`:
 
-- Open an issue first, labelled (`gh label list --repo ericcames/sales.demos`).
+- Open an issue first, labeled (`gh label list --repo ericcames/sales.demos`).
 - Re-run the affected phase against `sandbox` and verify against the cluster —
   the CI lint gate cannot tell you a collection bump broke a playbook.
 - Note the bump in `CHANGELOG.md`.
