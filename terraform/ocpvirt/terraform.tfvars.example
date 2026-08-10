@@ -1,0 +1,54 @@
+# ---------------------------------------------------------------------------
+# terraform.tfvars.example — copy to terraform.tfvars and fill in.
+#
+#   cp terraform.tfvars.example terraform.tfvars
+#
+# terraform.tfvars is GITIGNORED, along with all state. Never commit either.
+#
+# You do not need this file at all if you pass -var on the command line, which
+# is how Phase 3 drives it from AAP with values out of the vault.
+# ---------------------------------------------------------------------------
+
+# --- Cluster connection ----------------------------------------------------
+# Either point at a kubeconfig...
+# kubeconfig_path = "~/.kube/config"
+
+# ...or supply the API endpoint and a bearer token. These are the same values as
+# openshift_api_url in inventory/group_vars/<env>/connection.yml and
+# env_secrets.<env>.openshift_api_token in the vault. Read them with:
+#
+#   ansible -i inventory --limit sandbox aap -m debug \
+#     --vault-id sales.demos@~/secrets/.vault_pass_sales_demos \
+#     -a 'msg="{{ openshift_api_url }} {{ openshift_api_token }}"'
+#
+openshift_api_url   = "https://api.cluster-<id>.dyn.redhatworkshops.io:6443"
+openshift_api_token = "sha256~CHANGEME"
+openshift_insecure  = true
+
+namespace = "sales-demos-sandbox"
+
+# --- What to build ---------------------------------------------------------
+# vm_size_tier: small-1cpu-2gb | medium-1cpu-4gb | large-2cpu-6gb
+# os_type:      linux | windows | both
+#
+# windows and both cannot boot until Phase 2 (#3) populates the Windows
+# DataSource — CNV ships it as an empty placeholder.
+vm_size_tier = "small-1cpu-2gb"
+os_type      = "linux"
+
+# Appended to VM names so repeated runs, or several people on one cluster, do
+# not collide. Lowercase alphanumeric. Leave empty for deterministic names.
+name_suffix = ""
+
+# --- Guests ----------------------------------------------------------------
+linux_admin_username   = "cloud-user"
+windows_admin_username = "demoadmin"
+
+# Demo convenience only — the AAP layer normally connects with a key.
+# linux_admin_password = "CHANGEME"
+
+# --- Budget ----------------------------------------------------------------
+# The sandbox node is shared with AAP and CNV, leaving ~14 GiB. Raise this only
+# if the cluster genuinely has more headroom; the guard exists so an over-budget
+# request fails in `plan` instead of sitting Pending on the cluster.
+available_memory_gb = 14
