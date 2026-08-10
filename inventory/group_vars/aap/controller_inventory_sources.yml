@@ -45,6 +45,12 @@ controller_inventory_sources_all:
     # Sync before every launch, so editing connection.yml for a new RHDP
     # environment takes effect without anyone remembering to press a button.
     update_on_launch: true
+    # ...but not once per node. The Build Demo VM workflow has four nodes, and
+    # with a zero cache timeout each one triggers its own sync — roughly 6s of
+    # pure overhead apiece, re-reading a file that cannot have changed mid-run.
+    # 300s means the first node syncs and the rest reuse it, while a
+    # connection.yml edit still takes effect within five minutes.
+    update_cache_timeout: 300
     # OVERWRITE MUST STAY FALSE. This inventory holds two populations with
     # different lifecycles: `sandbox-local` / `demo-local` come from hosts.yml,
     # and the demo VMs are registered at run time by playbooks/provision_vm.yml.
@@ -78,5 +84,6 @@ controller_inventory_sources_all:
     source_project: "Sales Demos"
     source_path: "inventory/hosts.yml"
     update_on_launch: true
+    update_cache_timeout: 300
     overwrite: true
     overwrite_vars: true

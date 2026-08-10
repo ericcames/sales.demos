@@ -201,6 +201,14 @@ controller_templates_all:
     execution_environment: "Sales Demos - OCP Virt EE"
     credentials:
       - "Sales Demos - Linux Machine"
+      # THE VAULT CREDENTIAL IS REQUIRED EVEN THOUGH THIS PLAYBOOK USES NO
+      # SECRETS. group_vars/all/secrets.yml is loaded for every play, so Ansible
+      # parses the vaulted file whatever the playbook does with it. Without this
+      # the job dies before its first task with
+      #   ERROR! Attempting to decrypt but no vault secrets found
+      # which says nothing about credentials. That is the cost of `all` scope,
+      # and it applies to every job template in this repo.
+      - "Sales Demos - Vault"
     # Defaults to the linuxweb group; ask on launch so the same template can be
     # pointed at one host when a single VM is misbehaving.
     limit: linuxweb
