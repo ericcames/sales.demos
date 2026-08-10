@@ -72,10 +72,13 @@ locals {
   linux_fqdn   = "${local.linux_vm_name}.${var.namespace}.svc.cluster.local"
 
   # Web service and Route — HTTP access for the demo web server.
-  create_web_route       = local.create_linux && var.openshift_apps_domain != ""
-  linux_web_svc_name     = "${local.linux_vm_name}-web"
-  linux_web_route_host   = "${local.linux_web_svc_name}-${var.namespace}.${var.openshift_apps_domain}"
-  linux_web_url          = "http://${local.linux_web_route_host}"
+  create_web_route     = local.create_linux && var.openshift_apps_domain != ""
+  linux_web_svc_name   = "${local.linux_vm_name}-web"
+  linux_web_route_host = "${local.linux_web_svc_name}-${var.namespace}.${var.openshift_apps_domain}"
+  # https, matching the Route edge termination added in #45. It was http://
+  # while the Route had no TLS, which made every browser either warn about an
+  # insecure page or fail outright on auto-upgrade.
+  linux_web_url = "https://${local.linux_web_route_host}"
 }
 
 # ---------------------------------------------------------------------------

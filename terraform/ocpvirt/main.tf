@@ -404,6 +404,23 @@ resource "kubernetes_manifest" "linux_web_route" {
       port = {
         targetPort = "http"
       }
+      # TLS AT THE EDGE, WHICH IS NOT OPTIONAL POLISH (#45). Without a tls
+      # block the Route is HTTP-only, and every browser meets it badly:
+      # Chrome auto-upgrades to HTTPS, finds no matching TLS route, and shows
+      # "Application is not available" — the demo looks broken. Forcing http://
+      # works but paints "Not secure" in the address bar for the whole demo.
+      #
+      # `edge` terminates at the router using the cluster's *.apps wildcard
+      # certificate, which on RHDP is issued by Google Trust Services and
+      # publicly trusted (confirmed in #35) — so this needs no certificate
+      # management and produces a real padlock.
+      #
+      # `Redirect` keeps a bare http:// link working by sending it to https,
+      # rather than serving content over plaintext.
+      tls = {
+        termination                   = "edge"
+        insecureEdgeTerminationPolicy = "Redirect"
+      }
       wildcardPolicy = "None"
     }
   }
