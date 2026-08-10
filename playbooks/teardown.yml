@@ -305,6 +305,16 @@
           ansible.builtin.debug:
             msg: "{{ tf_destroy_result.stderr_lines | default([tf_destroy_result.stderr | default('no stderr')]) }}"
 
+        - name: Check whether a stale state lock caused it
+          # Same shared check the provision path uses (#46). Teardown is the more
+          # likely victim of the two: the nightly schedule can start while someone
+          # is still running a manual job.
+          ansible.builtin.include_tasks: tasks/terraform_lock_check.yml
+          vars:
+            tf_lock_result: "{{ tf_destroy_result }}"
+            tf_lock_operation: destroy
+          when: tf_destroy_result is failed
+
         - name: Fail if the destroy failed
           # Deliberately BEFORE deregistering. Removing hosts from AAP while the
           # VMs are still running would leave the cluster holding resources that
