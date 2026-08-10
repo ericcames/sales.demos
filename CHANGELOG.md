@@ -7,6 +7,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added -- the ocpvirt-provision skill that #4 never shipped (#42)
+- `.claude/skills/ocpvirt-provision/` — #4 named it as a deliverable and shipped
+  the playbook and job template without it. `README.md` listed it as Done, so the
+  gap was invisible. That broke the contract in `CLAUDE.md`: *"Every phase is
+  runnable as a skill and as an AAP job template."* Phase 3 had one entry point.
+- `.github/workflows/lint.yml` — the skills gate is now **bidirectional**. It
+  checked that every skill appears in the README, but not that every skill named
+  in the README exists, which is exactly how this slipped through green CI. A row
+  may name a missing skill only if explicitly marked "Not started".
+
+### Fixed -- contributor docs contradicted the repo's actual rules (#42)
+- `.github/SECURITY.md` and `.github/PULL_REQUEST_TEMPLATE.md` both told
+  contributors to put environment-specific values in a *gitignored* `secrets.yml`
+  rather than `connection.yml` — the reverse of the truth since #18 — and to
+  replace RHDP URLs with placeholders, which contradicts `CLAUDE.md`, where they
+  are **the documented exception** and committed on purpose. Anyone following
+  either would have broken both environments, and `check-no-secrets.sh`
+  deliberately does not flag RHDP hostnames, so CI would have stayed green.
+  SECURITY.md now states where each class of value lives and why the secrets file
+  is tracked rather than ignored.
+- `inventory/group_vars/aap/aap_settings.yml` — header still described the
+  pre-#18 model, including the claim that hostnames live in the secrets file.
+- `CLAUDE.md` — one leftover "gitignored `secrets.yml`" phrase.
+
+### Changed -- docs caught up with two live environments (#42)
+- `ROADMAP.md` — gains a status column and the `ocpvirt-new-env` row it never
+  had. It previously read as entirely unbuilt.
+- `docs/plan/ocpvirt-demo-plan.md` — "Tonight's scope" and "Implementation plan
+  (tomorrow)" are marked **historical**, pointing at `ROADMAP.md` for status.
+  The quay namespace open item is resolved (`quay.io/zigfreed`), leaving only the
+  private repository Phase 2 still needs.
+- `.claude/skills/sales-demos-first-time/` — added the command-line tools the
+  playbooks shell out to. It covered collections and the python client but not
+  `terraform`, `virtctl`, `podman` or `ansible-builder`, so a new machine could
+  complete every step and still not provision a VM.
+- `.claude/skills/collections-sync/` — **a pin change is not finished until the
+  EE is rebuilt.** `collections/requirements.yml` feeds both the laptop and the
+  execution environment; bumping a pin without rebuilding makes the two resolve
+  different code, which is the drift the pins exist to prevent, and nothing
+  detects it because both halves are internally consistent.
+
 ### Changed -- setup.yml is now the one-command path (#1)
 - `playbooks/setup.yml` imports three stages in order: `install_cnv.yml`,
   `config.yml`, `prepare_env.yml`. A bare RHDP environment becomes demo-ready in

@@ -116,7 +116,7 @@ portability. Do not add a deploy workflow — that was decided and closed in #7.
 
 Anything touching an environment runs via `ansible-playbook`, either wrapped by
 a skill or as an AAP job template. This is what keeps every environment-specific
-value in the gitignored `secrets.yml` instead of a second copy in GitHub
+value in the vault-encrypted `secrets.yml` instead of a second copy in GitHub
 Environment secrets.
 
 ## Ansible

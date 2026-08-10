@@ -217,6 +217,13 @@ Windows uses the same tiers with `preference: windows.2k22` and a 60 Gi disk min
 
 ## Tonight's scope — repo creation only
 
+> **Historical.** This section, and the implementation plan below, are the
+> original day-one framing. Phases 0, 1 and 3 plus teardown are **built,
+> merged, and verified against two live environments**; Phases 2 (#3) and 4 (#5)
+> are not. `ROADMAP.md` carries current status — read that first and treat what
+> follows as the reasoning behind the decisions, not a description of what
+> exists.
+
 **No code, no CNV install, no Terraform.** Tonight is only: create the repo and land the
 planning in it. Execution starts tomorrow with a fresh Claude instance, which will read the
 committed plan as its starting context.
@@ -262,6 +269,10 @@ Everything below is **tomorrow's work**, committed as the plan of record.
 ---
 
 ## Implementation plan (tomorrow)
+
+> **Historical — see the note above.** Kept because the *rationale* in each
+> phase is still the best record of why things are shaped the way they are.
+> Where a decision was later reversed, it is marked at the point of reversal.
 
 ### Phase 0 — `ocpvirt-setup`: bootstrap AAP and install CNV
 
@@ -461,7 +472,9 @@ one `dc1.azure` already produces.
 
 ## Open items
 
-- Quay.io namespace for the golden image needs choosing and a private repo created before
-  Phase 2 can complete. Nothing else depends on it.
+- ~~Quay.io namespace needs choosing~~ — **resolved: `quay.io/zigfreed`**, already
+  publishing the execution environment (#31). Phase 2 still needs a **private**
+  repository created under it for the Windows containerdisk, since Windows media
+  cannot be redistributed publicly. Nothing else depends on it.
 - Whether `sales.demos` becomes the home for the other ~12 demo repos is deliberately
   deferred. The layout admits them; nothing forces the decision now.

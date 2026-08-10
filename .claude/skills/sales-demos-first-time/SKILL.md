@@ -154,6 +154,38 @@ python3 -c "import kubernetes, sys; print('✅', sys.executable)" \
 The inventory pins `ansible_python_interpreter` to `{{ ansible_playbook_python }}`
 precisely so discovery cannot pick a different interpreter that lacks this.
 
+## Step 4.5 — Command-line tools the playbooks shell out to
+
+Ansible collections are not enough. Three binaries became hard requirements as
+Phases 1–3 landed, and a machine without them completes every other step here
+and still cannot provision a VM.
+
+```bash
+# terraform — provision_vm.yml and teardown.yml invoke it directly.
+command -v terraform >/dev/null && echo "✅ $(terraform version | head -1)" \
+  || echo "❌ terraform missing — https://developer.hashicorp.com/terraform/install"
+
+# virtctl — the ONLY way to SSH a demo VM from a laptop. AAP does not need it
+# (it reaches VMs over in-cluster DNS) which is why the execution environment
+# deliberately does not ship it. You are outside the cluster; you do.
+command -v virtctl >/dev/null && echo "✅ virtctl" \
+  || echo "❌ virtctl missing — download it from the OpenShift console's CLI tools page"
+
+# podman — only needed to BUILD the execution environment (/sales-demos-ee-build).
+# Skip if you never rebuild it.
+command -v podman >/dev/null && echo "✅ $(podman --version)" || echo "⚠️  podman missing (only needed to build the EE)"
+command -v ansible-builder >/dev/null && echo "✅ ansible-builder" || echo "⚠️  ansible-builder missing (only needed to build the EE)"
+
+# registry.redhat.io login — needed to pull the EE base image when building.
+podman login --get-login registry.redhat.io >/dev/null 2>&1 \
+  && echo "✅ logged in to registry.redhat.io" \
+  || echo "⚠️  not logged in — run: podman login registry.redhat.io"
+```
+
+`terraform` and `virtctl` are the two that block real work. The podman pair only
+matter if you are rebuilding the execution environment, which is rare — it is
+published to quay and mirrored into each environment's Private Automation Hub.
+
 ## Step 5 — Run-log directory
 
 Phase 0 takes 10–20 minutes. If it fails and the terminal is gone, so is the
