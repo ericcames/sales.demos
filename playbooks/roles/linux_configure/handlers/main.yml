@@ -1,0 +1,12 @@
+---
+# RELOAD, NEVER RESTART. AAP reaches every one of these guests over this sshd —
+# check_vm.yml, register_vm.yml and this role all arrive on port 22 — and the
+# connection running this very play is one of them. `reload` re-reads the
+# config in the listener without disturbing established sessions.
+#
+# It only ever fires behind `sshd -t` validation on the drop-in, so a broken
+# config fails the task instead of being handed to a running daemon.
+- name: Reload sshd
+  ansible.builtin.systemd_service:
+    name: sshd
+    state: reloaded

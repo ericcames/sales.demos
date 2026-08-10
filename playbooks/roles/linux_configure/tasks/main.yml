@@ -8,11 +8,14 @@
 # repo. The page below is self-contained — no external images, no CDN, nothing
 # to 404.
 #
-# The MOTD was dropped with them and came back in #50. The reason for dropping
-# it was the personal assets, which is an argument about images and not about
-# text: generic ASCII art carries none. Only /etc/motd, though — no
-# /etc/issue.net and no sshd `Banner`, because AAP reaches every one of these
-# guests over that same sshd.
+# The MOTD/issue/banner set was dropped with them and came back in #50. The
+# reason for dropping it was the personal assets, which is an argument about
+# images and not about text: generic ASCII art carries none.
+#
+# The pre-authentication half touches sshd, which is how AAP reaches every one
+# of these guests, so it is deliberately careful — a drop-in rather than an edit
+# to sshd_config, `sshd -t` validation before the file is installed, and a
+# reload rather than a restart. `linux_configure_ssh_banner: false` opts out.
 #
 # THIS IS WHAT MAKES web_url STOP RETURNING 503. terraform/ocpvirt wires a
 # Service and a Route to port 80 (#29), and until something serves there the
@@ -145,6 +148,60 @@
     group: root
     mode: "0644"
   when: linux_configure_motd | bool
+
+- name: Show the same banner before authentication
+  when: linux_configure_ssh_banner | bool
+  block:
+    # sshd is how AAP reaches this guest, so nothing here edits sshd_config
+    # itself and nothing restarts the daemon. RHEL 9 ships
+    # `Include /etc/ssh/sshd_config.d/*.conf` as the first line of sshd_config;
+    # if that is ever missing, a drop-in is silently ignored and the banner just
+    # never appears — which is why this checks rather than assumes.
+    - name: Confirm sshd reads config drop-ins
+      ansible.builtin.command: grep -qE '^\s*Include\s+/etc/ssh/sshd_config\.d/' /etc/ssh/sshd_config
+      register: linux_configure_sshd_include
+      changed_when: false
+      failed_when: false
+
+    - name: Write the pre-authentication banner
+      # The SAME template as /etc/motd, with the URL forced empty: this file is
+      # shown to anyone who can open port 22 before they have proved who they
+      # are. One copy of the art, two destinations.
+      ansible.builtin.template:
+        src: motd.j2
+        dest: /etc/issue.net
+        owner: root
+        group: root
+        mode: "0644"
+      vars:
+        linux_configure_motd_url: ""
+      when: linux_configure_sshd_include.rc == 0
+
+    - name: Point sshd at it
+      # A drop-in, not an edit to sshd_config. `validate` runs `sshd -t` against
+      # the candidate file and the task fails without installing it if the
+      # daemon would reject it, so the handler below can never be handed a
+      # broken config.
+      ansible.builtin.copy:
+        dest: /etc/ssh/sshd_config.d/99-sales-demos-banner.conf
+        owner: root
+        group: root
+        mode: "0600"
+        content: |
+          # Managed by sales.demos roles/linux_configure (#50).
+          Banner /etc/issue.net
+        validate: /usr/sbin/sshd -t -f %s
+      when: linux_configure_sshd_include.rc == 0
+      notify: Reload sshd
+
+    - name: Warn when the guest cannot take a drop-in
+      ansible.builtin.debug:
+        msg: >-
+          /etc/ssh/sshd_config has no `Include /etc/ssh/sshd_config.d/*.conf`
+          line, so a drop-in would be ignored. The pre-authentication banner was
+          skipped rather than editing sshd_config directly. /etc/motd is
+          unaffected.
+      when: linux_configure_sshd_include.rc != 0
 
 - name: Apply security updates
   # Security-only and update_only: patch what is installed, never pull new

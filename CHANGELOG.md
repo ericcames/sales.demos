@@ -7,16 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added -- an MOTD on the demo guests (#50)
-- `playbooks/roles/linux_configure/templates/motd.j2`, rendered to `/etc/motd`.
+### Added -- a login banner on the demo guests (#50)
+- `playbooks/roles/linux_configure/templates/motd.j2`, rendered to **both**
+  `/etc/motd` (after authentication) and `/etc/issue.net` (before it).
   `virtctl ssh` used to land on a bare prompt with nothing to say the host was
-  managed — a wasted beat in front of a customer. This partially reverses the
-  #5 port decision below: that dropped the MOTD alongside two bundled images to
-  keep personal assets out of a public repo, which is an argument about images,
-  not about text.
-- **Post-login only.** No `/etc/issue.net`, no sshd `Banner`, no sshd reload.
-  AAP reaches every one of these guests over that same sshd, and a cosmetic
-  change is not worth putting that path at risk.
+  managed — a wasted beat in front of a customer. This reverses the #5 port
+  decision below: that dropped the MOTD/issue/banner set alongside two bundled
+  images to keep personal assets out of a public repo, which is an argument
+  about images, not about text.
+- **The pre-authentication half touches sshd, so it is deliberately careful.**
+  sshd is how AAP reaches every one of these guests — including the connection
+  running the play itself. So: a drop-in at
+  `/etc/ssh/sshd_config.d/99-sales-demos-banner.conf` rather than an edit to
+  `sshd_config`; `validate: sshd -t` on the candidate file, so a config the
+  daemon would reject fails the task instead of reaching it; and a **reload,
+  never a restart**. If `sshd_config` has no `Include` line the drop-in would be
+  silently ignored, so the role checks and skips with a warning rather than
+  editing `sshd_config` directly. `linux_configure_ssh_banner: false` opts out.
+- **The demo URL is on the MOTD only.** `/etc/issue.net` is shown to anyone who
+  can open port 22 before they have proved who they are; the same template is
+  rendered there with the URL forced empty.
 - `/etc/motd` rather than `/etc/motd.d/` — `pam_motd` on RHEL 9 reads both, but
   `/etc/motd` needs no assumption about the guest's PAM stack. No `cowsay`
   package: the cow is static text in the template.
