@@ -273,6 +273,23 @@ a job as: `terraform version` must execute, and every pinned collection must be
 present at exactly its pinned version. `Complete!` from ansible-builder is not
 verification — `==> Verified` is.
 
+**AAP pulls it from Private Automation Hub, not from quay** (#35). quay stays
+the published artifact and the source of truth; PAH mirrors it into a local
+`sales_demos_ee` repository and Controller pulls that, which takes quay.io out
+of the demo's runtime dependencies and makes the pull cluster-local. The mirror
+is config-as-code in `hub_ee_registries.yml` and `hub_ee_repositories.yml`.
+
+> **The sync has two gates and needs both.** The repository item must carry
+> `sync: true`, *and* a variable named `hub_ee_repository_sync` must be
+> **defined** — dispatch includes that role on `... is defined` and never reads
+> the value. Miss either and there is no error: the repository is created, stays
+> empty, and Controller later fails to pull an image that was never mirrored.
+
+The image reference is `{{ aap_hostname }}/sales_demos_ee:v1.0.0` — templated
+because PAH is fronted by the AAP gateway on the AAP hostname, which differs per
+environment, and underscored because Hub repository names allow only
+alphanumerics and underscores.
+
 The image is registered in AAP by
 [`inventory/group_vars/aap/controller_execution_environments.yml`](inventory/group_vars/aap/controller_execution_environments.yml),
 applied by `playbooks/config.yml` like every other object. It is a **public**

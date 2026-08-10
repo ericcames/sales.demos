@@ -7,6 +7,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed -- the EE is pulled from Private Automation Hub (#35)
+- `inventory/group_vars/aap/hub_ee_registries.yml` and
+  `hub_ee_repositories.yml` — PAH mirrors `quay.io/zigfreed/sales-demos-ee` into
+  a local `sales_demos_ee` repository, and Controller pulls the local copy.
+  quay stays the published artifact and the source of truth; this removes
+  quay.io from the demo's *runtime* dependencies and makes the pull
+  cluster-local rather than an internet round trip.
+- **The sync has two gates and needs both**, which is invisible if you only read
+  one file: the repository item must carry `sync: true`, *and* a variable named
+  `hub_ee_repository_sync` must be **defined** (dispatch includes the role on
+  `... is defined` and never reads the value). Miss either and there is no
+  error — the repository is created, stays empty, and Controller later fails to
+  pull an image that was never mirrored. That flag is deliberately not suffixed
+  `_all`: it is a scalar, and dispatch's wildcard merge handles only lists and
+  dicts.
+- `controller_execution_environments.yml` — image is now
+  `{{ aap_hostname }}/sales_demos_ee:v1.0.0`. **Templated on purpose**: PAH is
+  fronted by the AAP gateway on the AAP hostname, which differs per environment,
+  so a literal would make this shared `_all` entry wrong for one of
+  sandbox/demo. The name uses underscores because Hub repository names allow
+  only alphanumerics and underscores.
+- `controller_credentials.yml` — `Sales Demos - PAH Registry` (Container
+  Registry). PAH requires authentication for container pulls even when the
+  repository is not private, so this is needed regardless of visibility.
+- `collections/requirements.yml` — `ansible.hub` pinned to 1.1.0. It drives the
+  Hub objects and was **unpinned and drifting**: 1.0.4 was installed locally
+  while the execution environment ships 1.1.0.
+
+### Notes -- why PAH works here without weakening the cluster (#35)
+- AAP 2.6's gateway proxies Hub **by path** at `/api/galaxy/`; there is no
+  separate hub route. `ansible.hub`'s `ah_path_prefix` already defaults to
+  `galaxy`, so nothing needs overriding.
+- The `*.apps` certificate is issued by Google Trust Services and is publicly
+  trusted, so the cluster pulls from PAH over TLS with **no**
+  `insecureRegistries` and **no** `additionalTrustedCA` — both verified still
+  empty after the change.
+- Verified end to end: `skopeo inspect` against PAH returns
+  `sha256:a6ee9e4b110bc12d47b222af93127f8fae9f8e3d02599dd8f1b35e3204d3559b`,
+  byte-identical to the quay original, and both job templates ran to success on
+  the PAH-sourced image.
+
 ### Added -- Phase 3: run playbooks from AAP, and against the VMs (#4)
 - `playbooks/provision_vm.yml` — ported from `dc1.azure`. Asserts inputs, runs
   `terraform init`/`apply` against `terraform/ocpvirt/`, and registers the VMs

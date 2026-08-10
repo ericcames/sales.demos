@@ -1,0 +1,51 @@
+---
+# ============================================================================
+# group_vars/aap/hub_ee_repositories.yml — mirror the EE into PAH (#35)
+# ============================================================================
+# Creates the Hub-side EE repository and syncs the image from the quay_io remote
+# registry defined in hub_ee_registries.yml, so the image is present in PAH by
+# the time controller_execution_environments.yml points Controller at it.
+# Dispatch ordering guarantees the registry is created first.
+#
+# THE SYNC HAS TWO GATES AND NEEDS BOTH. This was learned the hard way in
+# dc1.azure and is repeated here because half of it is invisible:
+#
+#   1. DISPATCH GATE — a variable named `hub_ee_repository_sync` must be
+#      DEFINED. Dispatch includes the role on `when: vars[...] is defined`, and
+#      the role never reads the value. Its only job is to exist.
+#   2. ROLE GATE — the repository item itself must carry `sync: true`.
+#
+# Miss either and there is no error: the repository is created, stays empty, and
+# Controller later fails to pull an image that was never mirrored.
+#
+# `wait: true` blocks until the sync finishes, so the EE object is not
+# registered against an image that has not landed yet.
+# ============================================================================
+
+hub_ee_repositories_all:
+  # Alphanumerics and underscores only — this name becomes the image name in
+  # Hub, which is why it is sales_demos_ee and not sales-demos-ee. The
+  # controller_execution_environments image reference must match it exactly.
+  - name: sales_demos_ee
+    description: >-
+      sales.demos EE — Terraform 1.15.8 · cloud.terraform · kubernetes.core ·
+      redhat.openshift_virtualization · infra.aap_configuration. Mirrored from
+      quay.io/zigfreed/sales-demos-ee.
+    registry: quay_io
+    upstream_name: zigfreed/sales-demos-ee
+    # Only the pinned immutable tag. Deliberately NOT `latest`: nothing in this
+    # repo publishes or references a floating tag, and mirroring one would
+    # create a second, moving copy of an image the whole design treats as
+    # immutable (see utilities/build-ee.sh — never re-push a tag).
+    include_tags:
+      - v1.0.0
+    sync: true   # ROLE GATE
+    wait: true
+
+# DISPATCH GATE. The value is ignored; only its existence matters. Removing this
+# silently skips the sync and leaves the Hub repository empty.
+#
+# Deliberately NOT suffixed `_all`. It is a scalar flag, and the wildcard merge
+# in dispatch's include_wildcard_vars.yml only handles lists and dicts — a
+# suffixed scalar would be fed to `[] + true` and blow up.
+hub_ee_repository_sync: true

@@ -30,21 +30,32 @@ controller_execution_environments_all:
       sales.demos EE v1.0.0 (base ee-supported-rhel9, AAP 2.6) — Terraform 1.15.8 · cloud.terraform · kubernetes.core · redhat.openshift_virtualization · infra.aap_configuration
       {%- endraw -%}
     organization: "IT Service Automation"
-    # PUBLIC quay repository on purpose, so the cluster pulls it with no image
-    # pull secret and no AAP registry credential — one less thing to rebuild on
-    # every fresh RHDP environment. The image contains only pinned open-source
-    # collections and the terraform binary; the Automation Hub token used at
-    # build time stays in the galaxy build stage and is not in the final image.
+    # PULLED FROM THIS ENVIRONMENT'S OWN PRIVATE AUTOMATION HUB (#35), not from
+    # quay.io directly. quay remains the published artifact and the source of
+    # truth; hub_ee_repositories.yml mirrors it into PAH, and Controller pulls
+    # the local copy. That removes quay.io from the demo's runtime dependencies
+    # and makes the pull cluster-local rather than an internet round trip.
     #
-    # Pinned to an immutable tag. Never re-push a tag that is referenced here —
-    # a job template would silently change underneath a running demo. Publish
-    # a new tag and bump this line instead.
+    # THE HOST IS TEMPLATED, and it has to be. PAH is fronted by the AAP gateway
+    # on the AAP hostname, which differs per environment — a literal here would
+    # make this `_all` entry wrong for one of sandbox/demo. `aap_hostname` comes
+    # from each environment's connection.yml, so one entry stays correct for
+    # both and a new RHDP environment remains a one-file edit.
     #
-    # The tag is used rather than the digest because that is what AAP shows an
-    # operator and what the aap_config quay entries already do. Quay tags are
-    # mutable, so the digest published under this tag is recorded here as the
-    # audit trail — if these ever disagree, someone re-pushed:
+    # The image NAME is sales_demos_ee, with underscores: Hub repository names
+    # allow only alphanumerics and underscores. It must match
+    # hub_ee_repositories.yml exactly.
+    #
+    # Pinned to an immutable tag. Never re-push a tag referenced here — a job
+    # template would silently change underneath a running demo. Publish a new
+    # tag, mirror it, and bump this line.
+    #
+    # Upstream audit trail — if the digest under the quay tag ever differs from
+    # this, someone re-pushed:
     #   sha256:a6ee9e4b110bc12d47b222af93127f8fae9f8e3d02599dd8f1b35e3204d3559b
     #   skopeo inspect --no-creds docker://quay.io/zigfreed/sales-demos-ee:v1.0.0
-    image: "quay.io/zigfreed/sales-demos-ee:v1.0.0"
+    image: "{{ aap_hostname }}/sales_demos_ee:v1.0.0"
+    # PAH requires authentication for container pulls even when the repository
+    # is not private, so this is required regardless of visibility.
+    credential: "Sales Demos - PAH Registry"
     pull: "missing"
