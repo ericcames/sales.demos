@@ -80,12 +80,27 @@ check "Quay/registry credential in a tracked file" \
 # ---------------------------------------------------------------------------
 while IFS= read -r f; do
   [ -n "$f" ] || continue
-  if ! git show ":$f" 2>/dev/null | head -c 15 | grep -q '^\$ANSIBLE_VAULT'; then
-    echo "::error::$f is tracked but NOT vault-encrypted"
-    echo "    Encrypt it before committing:"
-    echo "      ansible-vault encrypt $f --vault-id sales.demos@~/secrets/.vault_pass_sales_demos"
-    fail=1
-  fi
+  # Read the header into a variable FIRST, then test it. Testing the pipeline
+  # directly is what this used to do, and it was wrong: `head -c 15` exits as
+  # soon as it has its 15 bytes, `git show` then dies of SIGPIPE with status
+  # 141, and `set -o pipefail` propagates that as the pipeline's status. The
+  # condition therefore reported "not encrypted" for a file that was.
+  #
+  # It looked fine for a long time because it is a RACE: for a small blob git
+  # finishes writing into the pipe buffer and exits 0 before head closes it.
+  # Adding the SSH private key grew secrets.yml past that point and the check
+  # started failing on a correctly encrypted file. A command substitution has
+  # its own exit status, so pipefail cannot poison the comparison.
+  header=$(git show ":$f" 2>/dev/null | head -c 15 || true)
+  case "$header" in
+    '$ANSIBLE_VAULT'*) ;;
+    *)
+      echo "::error::$f is tracked but NOT vault-encrypted"
+      echo "    Encrypt it before committing:"
+      echo "      ansible-vault encrypt $f --vault-id sales.demos@~/secrets/.vault_pass_sales_demos"
+      fail=1
+      ;;
+  esac
 done < <(git ls-files '*/secrets.yml' 'secrets.yml')
 
 if [ "$fail" -ne 0 ]; then
