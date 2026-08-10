@@ -25,3 +25,37 @@ linux_configure_patch: true
 # reboot mid-demo takes the page away with someone watching, and these VMs are
 # rebuilt nightly anyway. Turn it on when patching IS the demo.
 linux_configure_reboot: false
+
+# --- MOTD (#50) -------------------------------------------------------------
+# Write the ASCII-art login banner to /etc/motd. On by default: `virtctl ssh`
+# used to land on a bare prompt with nothing to say the host was managed, which
+# is a wasted beat in front of a customer.
+#
+# POST-LOGIN ONLY. Deliberately not /etc/issue.net and no sshd `Banner`
+# directive — AAP reaches every one of these guests over the same sshd, and a
+# cosmetic change is not worth touching that config.
+linux_configure_motd: true
+
+# The boxed line under the figlet. Padded to the box width by the template, so
+# an override cannot knock the right border out of alignment — but keep it
+# under 59 characters or it is truncated by the padding, not wrapped.
+linux_configure_motd_tagline: "C V E   P A T C H I N G   E N G I N E"
+
+# The "Powered by" block, as data rather than markup so a different demo story
+# can swap it with -e without editing the template.
+#
+# THESE NAME WHAT THIS DEMO ACTUALLY RUNS. The art originally credited
+# Lightspeed, Event-Driven Ansible and ServiceNow ITSM; none of those are wired
+# up here yet, and a technical audience reads a login banner as a claim. Add
+# them back as each one becomes real. Max 62 characters per line.
+linux_configure_motd_credits:
+  - "OpenShift Virtualization    (host)"
+  - "Terraform                   (provision)"
+  - "Ansible Automation Platform (configure/patch)"
+  - "Red Hat Insights            (detect)"
+
+# Printed under the box when non-empty. BELOW the box on purpose: a Route
+# hostname runs to ~84 characters, wider than the box, and would tear the right
+# border apart. `web_url` is a host variable set by provision_vm.yml (#49); a
+# guest provisioned before that simply gets no URL line.
+linux_configure_motd_url: "{{ web_url | default('', true) }}"

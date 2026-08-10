@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added -- an MOTD on the demo guests (#50)
+- `playbooks/roles/linux_configure/templates/motd.j2`, rendered to `/etc/motd`.
+  `virtctl ssh` used to land on a bare prompt with nothing to say the host was
+  managed — a wasted beat in front of a customer. This partially reverses the
+  #5 port decision below: that dropped the MOTD alongside two bundled images to
+  keep personal assets out of a public repo, which is an argument about images,
+  not about text.
+- **Post-login only.** No `/etc/issue.net`, no sshd `Banner`, no sshd reload.
+  AAP reaches every one of these guests over that same sshd, and a cosmetic
+  change is not worth putting that path at risk.
+- `/etc/motd` rather than `/etc/motd.d/` — `pam_motd` on RHEL 9 reads both, but
+  `/etc/motd` needs no assumption about the guest's PAM stack. No `cowsay`
+  package: the cow is static text in the template.
+- The tagline and the "Powered by" block live in `defaults/main.yml` as data, so
+  another demo story can swap them with `-e`. They are padded to the box width
+  by the template's `format` filter, so an override cannot knock the right
+  border out of alignment. **They name what this demo actually runs** —
+  OpenShift Virtualization, Terraform, AAP, Insights — because a login banner
+  reads as a claim to a technical audience.
+- The demo URL is printed *below* the box, not inside it: a Route hostname runs
+  to roughly 84 characters and would tear the border apart. It comes from the
+  `web_url` host variable (#49), and is simply absent on a guest provisioned
+  before that.
+- `linux_configure_motd: true` turns the whole thing off.
+
 ### Added -- Phase 4: the demo itself (#5)
 - `playbooks/run_demo.yml` with `playbooks/roles/linux_register` and
   `playbooks/roles/linux_configure`, the `ocpvirt-demo` skill, and a
@@ -31,7 +56,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   two bundled images (a Red Hat logo and a personal QR code) are dropped rather
   than carry personal assets into a public repo. The page is **self-contained**:
   no external images, fonts or CDN, because it is served from a cluster whose
-  egress you do not control, in front of a customer.
+  egress you do not control, in front of a customer. *(The MOTD came back in
+  #50 — the personal-assets argument was about the images, not the text.)*
 - **Reboot-after-patching is off by default**, unlike `dc1.azure`. A reboot
   mid-demo takes the page away with someone watching, and these VMs are rebuilt
   nightly anyway. `-e linux_configure_reboot=true` when patching *is* the demo.

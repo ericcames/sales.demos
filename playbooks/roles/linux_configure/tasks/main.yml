@@ -3,10 +3,16 @@
 # linux_configure — turn a bare RHEL guest into the demo web server.
 #
 # Ported from dc1.azure/playbooks/roles/linux_configure, trimmed to what this
-# demo actually needs. Dropped in the port: the MOTD/issue/SSH banner set and
-# the bundled images (a Red Hat logo and a personal QR code), which are cosmetic
-# and would mean carrying personal assets in a public repo. The page below is
-# self-contained — no external images, no CDN, nothing to 404.
+# demo actually needs. Dropped in the port: the bundled images (a Red Hat logo
+# and a personal QR code), which would mean carrying personal assets in a public
+# repo. The page below is self-contained — no external images, no CDN, nothing
+# to 404.
+#
+# The MOTD was dropped with them and came back in #50. The reason for dropping
+# it was the personal assets, which is an argument about images and not about
+# text: generic ASCII art carries none. Only /etc/motd, though — no
+# /etc/issue.net and no sshd `Banner`, because AAP reaches every one of these
+# guests over that same sshd.
 #
 # THIS IS WHAT MAKES web_url STOP RETURNING 503. terraform/ocpvirt wires a
 # Service and a Route to port 80 (#29), and until something serves there the
@@ -123,6 +129,22 @@
           },
         } | to_nice_json
       }}
+
+- name: Write the login banner
+  # /etc/motd, not /etc/motd.d/. pam_motd on RHEL 9 reads both, but /etc/motd
+  # needs no assumption about the guest's PAM stack, and the CNV rhel9 image
+  # already ships an empty one.
+  #
+  # Placed before the patching tasks so the banner lands even when
+  # linux_configure_patch is false, and no package is required — the cow is
+  # static text in the template, not cowsay.
+  ansible.builtin.template:
+    src: motd.j2
+    dest: /etc/motd
+    owner: root
+    group: root
+    mode: "0644"
+  when: linux_configure_motd | bool
 
 - name: Apply security updates
   # Security-only and update_only: patch what is installed, never pull new
