@@ -105,6 +105,11 @@ controller_templates_all:
     execution_environment: "Sales Demos - OCP Virt EE"
     credentials:
       - "Sales Demos - Vault"
+      # Teardown now CONNECTS to the guests before destroying them, to release
+      # the Red Hat subscription and remove the Insights host (#47). Without
+      # this credential those steps fail silently-ish — they are best-effort by
+      # design — and every cycle leaks an entitlement.
+      - "Sales Demos - Linux Machine"
     limit: "{{ aap_env_name }}"
     extra_vars:
       # teardown.yml REQUIRES target_env explicitly — stricter than every other
@@ -121,6 +126,43 @@ controller_templates_all:
     # So a teardown of a non-default tier can be launched without editing the
     # template. The scheduled runs use the extra_vars above.
     ask_variables_on_launch: true
+
+  # ---------------------------------------------------------------------
+  # Phase 4, split into two templates so the Build Demo VM workflow can gate
+  # them separately (#47). `Sales Demos - Run Demo` below still does both in
+  # one shot for re-configuring VMs that already exist.
+  #
+  # REGISTER MUST SUCCEED BEFORE CONFIGURE. They look independent and are not:
+  # the CNV rhel9 image has no repositories, so every dnf task in configure
+  # fails on an unregistered guest.
+  # ---------------------------------------------------------------------
+  - name: "Sales Demos - Register VMs"
+    description: "Wait for SSH, then attach the demo VMs to the Red Hat CDN. Nothing can install packages until this succeeds."
+    job_type: run
+    organization: "IT Service Automation"
+    inventory: "Sales Demo VMs"
+    project: "Sales Demos"
+    playbook: playbooks/register_vm.yml
+    execution_environment: "Sales Demos - OCP Virt EE"
+    credentials:
+      - "Sales Demos - Linux Machine"
+      - "Sales Demos - Vault"
+    limit: linuxweb
+    ask_limit_on_launch: true
+
+  - name: "Sales Demos - Configure VMs"
+    description: "Install and configure the demo web server. Requires a registered guest."
+    job_type: run
+    organization: "IT Service Automation"
+    inventory: "Sales Demo VMs"
+    project: "Sales Demos"
+    playbook: playbooks/configure_vm.yml
+    execution_environment: "Sales Demos - OCP Virt EE"
+    credentials:
+      - "Sales Demos - Linux Machine"
+      - "Sales Demos - Vault"
+    limit: linuxweb
+    ask_limit_on_launch: true
 
   # ---------------------------------------------------------------------
   # Phase 4 (#5) — the demo itself. Registers the guest to the Red Hat CDN,
@@ -164,7 +206,20 @@ controller_templates_all:
     execution_environment: "Sales Demos - OCP Virt EE"
     credentials:
       - "Sales Demos - Linux Machine"
+      # THE VAULT CREDENTIAL IS REQUIRED EVEN THOUGH THIS PLAYBOOK USES NO
+      # SECRETS. group_vars/all/secrets.yml is loaded for every play, so Ansible
+      # parses the vaulted file whatever the playbook does with it. Without this
+      # the job dies before its first task with
+      #   ERROR! Attempting to decrypt but no vault secrets found
+      # which says nothing about credentials. That is the cost of `all` scope,
+      # and it applies to every job template in this repo.
+      - "Sales Demos - Vault"
     # Defaults to the linuxweb group; ask on launch so the same template can be
     # pointed at one host when a single VM is misbehaving.
     limit: linuxweb
     ask_limit_on_launch: true
+    # Persist the gathered facts in AAP's database, so they appear in the host's
+    # Facts tab and survive the job that collected them (#47). The same
+    # information is written to <web_url>/facts.json by linux_configure — this
+    # is the controller-side copy, that one is the curl-able copy.
+    use_fact_cache: true

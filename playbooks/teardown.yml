@@ -201,6 +201,69 @@
               {{ teardown_hosts | length }} host(s) in state:
               {{ teardown_hosts | join(', ') if teardown_hosts else '(none — nothing to destroy)' }}
 
+        - name: Add the Linux guest to the in-memory inventory
+          # BUILT FROM TERRAFORM OUTPUT, NOT FROM THE INVENTORY, and that is
+          # forced rather than clever: teardown runs against
+          # `Sales Demo VMs - Control`, which deliberately holds no VM hosts —
+          # AAP locks the hosts of the inventory a running job uses, so teardown
+          # cannot run in the inventory whose hosts it deletes. The guests
+          # therefore have to come from the state we just read.
+          #
+          # Linux only: unregistering is an RHSM concern, and the Windows guests
+          # are not registered.
+          ansible.builtin.add_host:
+            name: "{{ (tf_output.stdout | default('{}') | from_json).linux_inventory.value.host }}"
+            groups: teardown_guests
+            ansible_host: "{{ (tf_output.stdout | default('{}') | from_json).linux_inventory.value.ansible_host }}"
+            ansible_user: "{{ (tf_output.stdout | default('{}') | from_json).linux_inventory.value.ansible_user }}"
+            ansible_connection: ssh
+            ansible_port: 22
+          changed_when: false
+          when: (tf_output.stdout | default('{}') | from_json).linux_inventory.value | default(None, true) is mapping
+
+        # --- Give the entitlement back BEFORE destroying -------------------
+        # Registration is not free: every guest consumes a Red Hat subscription
+        # and appears in Insights. Destroying the VM does NOT release either, so
+        # without this every build/destroy cycle leaks one of each — and sandbox
+        # tears down twice a night, every night (#47).
+        #
+        # delegate_to rather than a separate play: the guest exists only in the
+        # in-memory inventory added above, and splitting plays here would strand
+        # the kubeconfig cleanup in the always: block below.
+        #
+        # NEITHER STEP MAY BLOCK THE TEARDOWN. If the guest is already dead,
+        # half-destroyed, or unreachable, unregistering fails — and a VM that
+        # cannot be unregistered must never become a VM that cannot be
+        # destroyed. Both are best-effort, and the result is reported.
+        - name: Disconnect the guest from Insights
+          ansible.builtin.command: insights-client --unregister
+          delegate_to: "{{ item }}"
+          become: true
+          loop: "{{ groups['teardown_guests'] | default([]) }}"
+          register: teardown_insights
+          changed_when: teardown_insights.rc == 0
+          failed_when: false
+
+        - name: Unregister the guest from the Red Hat CDN
+          # Releases the subscription. Runs after Insights, because
+          # unregistering from the CDN first can leave the Insights client
+          # unable to authenticate to remove itself.
+          ansible.builtin.command: subscription-manager unregister
+          delegate_to: "{{ item }}"
+          become: true
+          loop: "{{ groups['teardown_guests'] | default([]) }}"
+          register: teardown_unregister
+          changed_when: teardown_unregister.rc == 0
+          failed_when: false
+
+        - name: Report what was released
+          ansible.builtin.debug:
+            msg: >-
+              {{ 'Released the subscription and removed the Insights host.'
+                 if (teardown_unregister.results | default([]) | selectattr('rc', 'equalto', 0) | list | length) > 0
+                 else 'WARNING: could not unregister the guest — the subscription and Insights host will linger. Remove them at console.redhat.com.' }}
+          when: groups['teardown_guests'] | default([]) | length > 0
+
         - name: Destroy the VMs
           # Scoped by the module, not by -target. terraform destroy removes only
           # what is in state: the demo namespace, the VMs, their Services and
