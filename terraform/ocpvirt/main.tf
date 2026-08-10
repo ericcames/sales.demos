@@ -142,7 +142,8 @@ resource "kubernetes_manifest" "linux_vm" {
                   #cloud-config
                   user: ${var.linux_admin_username}
                   ${var.linux_admin_password != "" ? "password: ${var.linux_admin_password}\nchpasswd: { expire: False }" : ""}
-                  ssh_pwauth: true
+                  ssh_pwauth: ${var.demo_ssh_public_key != "" ? "false" : "true"}
+                  ${var.demo_ssh_public_key != "" ? "ssh_authorized_keys:\n  - ${var.demo_ssh_public_key}" : ""}
                 EOT
               }
             },
@@ -339,4 +340,76 @@ resource "kubernetes_service" "windows" {
   }
 
   depends_on = [kubernetes_namespace.demo]
+}
+
+# ---------------------------------------------------------------------------
+# Web Service and Route — HTTP access to the Linux VM.
+#
+# The headless Service above cannot back a Route (no ClusterIP to proxy to).
+# This adds a SEPARATE ClusterIP Service on port 80 as the Route target.
+# Both Services coexist: the headless one stays for in-cluster DNS and AAP
+# inventory, the web one exists only to give the Route something to target.
+#
+# The URL is live the moment apply finishes and returns 503 until httpd is
+# installed by the AAP demo content (#5). That is expected, not a bug.
+# ---------------------------------------------------------------------------
+
+resource "kubernetes_service" "linux_web" {
+  count = local.create_linux ? 1 : 0
+
+  metadata {
+    name      = local.linux_web_svc_name
+    namespace = var.namespace
+    labels    = local.common_labels
+  }
+
+  spec {
+    selector = {
+      "sales-demos/vm" = local.linux_vm_name
+    }
+
+    port {
+      name        = "http"
+      port        = 80
+      target_port = 80
+    }
+  }
+
+  depends_on = [kubernetes_namespace.demo]
+}
+
+resource "kubernetes_manifest" "linux_web_route" {
+  count = local.create_web_route ? 1 : 0
+
+  computed_fields = [
+    "metadata.annotations",
+    "metadata.labels",
+  ]
+
+  manifest = {
+    apiVersion = "route.openshift.io/v1"
+    kind       = "Route"
+    metadata = {
+      name      = local.linux_web_svc_name
+      namespace = var.namespace
+      labels    = local.common_labels
+    }
+    spec = {
+      host = local.linux_web_route_host
+      to = {
+        kind   = "Service"
+        name   = local.linux_web_svc_name
+        weight = 100
+      }
+      port = {
+        targetPort = "http"
+      }
+      wildcardPolicy = "None"
+    }
+  }
+
+  depends_on = [
+    kubernetes_namespace.demo,
+    kubernetes_service.linux_web,
+  ]
 }

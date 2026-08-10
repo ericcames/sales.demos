@@ -67,3 +67,21 @@ output "memory_budget" {
     instancetype = local.instancetype
   }
 }
+
+# ---------------------------------------------------------------------------
+# Public access — SSH and HTTP endpoints added in #29.
+#
+# NodePort was spiked on RHDP and is FILTERED (high ports blocked by the RHDP
+# firewall). SSH uses `virtctl ssh --local-ssh` which rides port 6443
+# (confirmed open). HTTP uses a Route.
+# ---------------------------------------------------------------------------
+
+output "web_url" {
+  description = "Public HTTP URL for the Linux VM. Returns 503 until httpd is installed by AAP demo content. Null when os_type excludes linux or openshift_apps_domain is not set."
+  value       = local.create_web_route ? local.linux_web_url : null
+}
+
+output "ssh_command" {
+  description = "SSH command for the Linux VM using virtctl (rides port 6443, no NodePort needed). Null when os_type excludes linux."
+  value = local.create_linux ? "virtctl ssh -n ${var.namespace} --local-ssh ${var.linux_admin_username}@${local.linux_vm_name}" : null
+}

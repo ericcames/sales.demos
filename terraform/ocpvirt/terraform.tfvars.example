@@ -47,6 +47,17 @@ windows_admin_username = "demoadmin"
 # Demo convenience only — the AAP layer normally connects with a key.
 # linux_admin_password = "CHANGEME"
 
+# --- SSH key injection -----------------------------------------------------
+# Public key injected into the Linux VM via the QEMU guest agent. When set,
+# password-based SSH is disabled. A public key is not a credential.
+# demo_ssh_public_key = "ssh-ed25519 AAAA... you@host"
+
+# --- HTTP access -----------------------------------------------------------
+# The *.apps ingress domain for this cluster, used to construct Route hostnames.
+# Find it with:
+#   oc get ingresses.config.openshift.io cluster -o jsonpath='{.spec.domain}'
+# openshift_apps_domain = "apps.cluster-<id>.dyn.redhatworkshops.io"
+
 # --- Budget ----------------------------------------------------------------
 # The sandbox node is shared with AAP and CNV, leaving ~14 GiB. Raise this only
 # if the cluster genuinely has more headroom; the guard exists so an over-budget

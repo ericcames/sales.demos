@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added -- public SSH and HTTP access (#29)
+- `terraform/ocpvirt/variables.tf` — `demo_ssh_public_key` variable. When set,
+  cloud-init injects the key via `ssh_authorized_keys` and disables password-based
+  SSH (`ssh_pwauth: false`). A public key is not a credential, so it lives in each
+  environment's `connection.yml` beside `linux_admin_username`, not in the vault.
+  The `accessCredentials` + `qemuGuestAgent` mechanism was tried first but the
+  RHEL 9 cloud image's guest agent fails with "failed to create directory
+  '/home/cloud-user/.ssh': File exists" — a QEMU guest agent `mkdir` bug —
+  and the `guest-exec` fallback is disabled by RHEL 9's security policy.
+  Cloud-init works reliably; the trade-off is that key rotation requires a VM
+  restart rather than a live push.
+- `terraform/ocpvirt/variables.tf` — `openshift_apps_domain` variable, the
+  `*.apps` ingress domain used to construct Route hostnames at plan time.
+  Required for HTTP access; without it the Route and web Service are skipped.
+- `terraform/ocpvirt/main.tf` — `-web` ClusterIP Service (port 80) and
+  `route.openshift.io/v1` Route per Linux VM. The headless Service is unchanged
+  (in-cluster DNS for AAP inventory). The Route returns 503 until httpd is
+  installed by the AAP demo content (#5); that is expected, not a bug.
+- `terraform/ocpvirt/outputs.tf` — `web_url` (the Route URL, null when
+  `openshift_apps_domain` is unset) and `ssh_command` (the `virtctl ssh` command
+  for the current VM, null when `os_type` excludes linux).
+- `inventory/group_vars/{sandbox,demo}/connection.yml` — `demo_ssh_public_key`
+  and `openshift_apps_domain` fields added to both environments.
+
+### Notes -- NodePort spike (#29)
+- NodePort was spiked on the RHDP sandbox cluster and is **filtered**. The RHDP
+  firewall blocks high ports — `ssh -p <nodePort> cloud-user@<public-ip>` returns
+  "No route to host". SSH access uses `virtctl ssh` instead, which tunnels over
+  the Kubernetes API (port 6443, confirmed open). The spike Service was created,
+  tested, and deleted in a single session; no residue remains.
+
 ### Added
 - `terraform/ocpvirt/` — Phase 1. Provisions Linux and Windows VMs sized by
   `sd1.*` cluster instance types, each with a headless Service giving a stable

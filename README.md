@@ -246,6 +246,44 @@ while Terraform reports success. The `u1.*` types are left untouched.
 Windows is wired but cannot boot until [#3](https://github.com/ericcames/sales.demos/issues/3) —
 CNV ships `win2k22` as an empty DataSource placeholder.
 
+### SSH access
+
+NodePort was spiked on RHDP and is **filtered** — the RHDP firewall blocks high
+ports, so a direct `ssh -p <nodePort>` from a laptop never connects. SSH access
+uses `virtctl ssh`, which tunnels over the Kubernetes API (port 6443, confirmed
+open).
+
+Prerequisites: `virtctl` (download from the cluster's ConsoleCLIDownload) and
+`oc` logged in. Then:
+
+```bash
+virtctl ssh -n sales-demos-sandbox -l cloud-user vm/sd-lnx-small-1cpu-2gb
+```
+
+The key is injected via cloud-init's `ssh_authorized_keys`. Set
+`TF_VAR_demo_ssh_public_key` to your public key; when set, password-based SSH is
+disabled on the guest. The `ssh_command` output gives the exact `virtctl` command
+for the current VM.
+
+```bash
+export TF_VAR_demo_ssh_public_key="$(cat ~/.ssh/id_rsa.pub)"
+```
+
+### HTTP access
+
+When `TF_VAR_openshift_apps_domain` is set, Terraform creates a `-web` ClusterIP
+Service on port 80 and an OpenShift Route targeting it. The `web_url` output
+gives the public URL.
+
+```bash
+export TF_VAR_openshift_apps_domain=apps.cluster-<id>.dyn.redhatworkshops.io
+# find it with: oc get ingresses.config.openshift.io cluster -o jsonpath='{.spec.domain}'
+```
+
+**The URL returns 503 until httpd is installed** by the AAP demo content
+([#5](https://github.com/ericcames/sales.demos/issues/5)). That is expected, not
+a bug.
+
 ## Running a phase
 
 **Nothing deploys from CI.** GitHub Actions is a pull-request gate only — lint,
