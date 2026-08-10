@@ -14,7 +14,14 @@ touched anything.
 It does not change the post-login masthead — that is a bundled UI asset, not a
 setting (verified upstream on AAP 2.7, where all 43 gateway settings were
 enumerated; AAP 2.6 exposes 44 and none of them mark the environment after
-login either). So this is a sign-in-time warning by design.
+login either). Re-measured on the live 2.6 gateway in #54: `custom_logo` was
+already applied, 26 KB of base64 PNG, and the masthead still rendered the stock
+lockup. So this really is a sign-in-time warning, and no setting will change
+that.
+
+Marking the environment AFTER login needs the browser, not the server — see
+utilities/aap-env-badge/, which paints a matching pill in the masthead using the
+same colors from env_colors.py.
 
     python3 utilities/make-env-logo.py --env sandbox
 
@@ -35,20 +42,13 @@ import sys
 
 from PIL import Image, ImageDraw, ImageFont
 
+# Shared with utilities/make-env-badge-config.py (#54). The sign-in logo and the
+# masthead badge must agree on what each color means.
+from env_colors import COLORS
+
 REPO = pathlib.Path(__file__).resolve().parent.parent
 IMAGES = REPO / "docs" / "images"
 SOURCE_SVG = IMAGES / "aap-logo-white.svg"
-
-# Red Hat brand palette, reusing aap_config's severity convention (green for
-# the one you break, red for the one that matters) so there is no new colour
-# language to learn:
-#
-#   sandbox — the environment you are actively building against and breaking
-#   demo    — the environment you show customers
-COLORS = {
-    "sandbox": ("#3E8635", "#FFFFFF"),
-    "demo": ("#EE0000", "#FFFFFF"),
-}
 FONT = "/usr/share/fonts/redhat/RedHatDisplay-SemiBold.otf"
 
 LOGO_HEIGHT = 56          # masthead-appropriate; lockup is 6.56:1 so ~367px wide

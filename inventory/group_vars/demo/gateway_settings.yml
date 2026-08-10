@@ -11,11 +11,14 @@
 #   - The two files MUST set disjoint keys — merging is per-key, so a scalar in
 #     both means this file wins rather than combines.
 #   - custom_logo changes the SIGN-IN PAGE only, never the post-login masthead.
+#     Re-measured in #54 and it holds; the masthead half is the browser
+#     extension in utilities/aap-env-badge/, which touches nothing here.
 #
 # Red for demo, green for sandbox: this is the environment you show customers,
 # so it gets the colour that means "think before you touch". Regenerate with:
 #
 #   python3 utilities/make-env-logo.py --env demo
+#   python3 utilities/make-env-badge-config.py
 # ===========================================================================
 
 gateway_settings_demo:

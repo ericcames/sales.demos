@@ -65,6 +65,31 @@ This sets the gateway's `custom_logo`, which changes the **sign-in page only**.
 The post-login masthead is a bundled UI asset, not a setting — verified on AAP
 2.6, where none of the 44 gateway settings mark the environment after login.
 
+### Telling them apart after login
+
+The sign-in badge is gone the moment you are logged in, which is when you are
+actually clicking things. No gateway setting fixes that (#54 re-measured it with
+`custom_logo` applied — the masthead still rendered stock), so the post-login
+half is a browser extension:
+
+```bash
+# chrome://extensions -> Developer mode -> Load unpacked
+utilities/aap-env-badge/
+```
+
+It paints a `SANDBOX` / `DEMO` pill in the middle of the masthead in the same
+colours, matches both environments in one load, and shows a neutral
+`UNRECOGNIZED ENV` pill for an RHDP AAP host that is not in either
+`connection.yml`. It changes nothing on the cluster. See
+[`utilities/aap-env-badge/README.md`](utilities/aap-env-badge/README.md).
+
+The hostname map is generated, so a new environment is still just a
+`connection.yml` edit plus:
+
+```bash
+python3 utilities/make-env-badge-config.py
+```
+
 ## Secrets: one vaulted file, both environments
 
 `playbooks/group_vars/all/secrets.yml` is **vault-encrypted and committed**. It
