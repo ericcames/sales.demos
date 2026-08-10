@@ -40,9 +40,14 @@ mock_modules:
   - ansible.controller.inventory
   - ansible.controller.group
   - ansible.controller.host
+  # Guest configuration (Phase 4, playbooks/run_demo.yml).
+  - ansible.posix.firewalld
 
 mock_roles:
   - infra.aap_configuration.dispatch
+  # Registers the guest to the Red Hat CDN. The CNV rhel9 image has no
+  # repositories, so nothing installs until this runs.
+  - redhat.rhel_system_roles.rhc
 
 exclude_paths:
   - collections/ansible_collections/
