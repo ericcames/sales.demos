@@ -1,0 +1,104 @@
+---
+# ============================================================================
+# group_vars/aap/controller_templates.yml — job templates and surveys (#4)
+# ============================================================================
+# THE VARIABLE IS controller_templates, NOT controller_job_templates. A known
+# quirk of infra.aap_configuration — the role reads job templates from
+# `controller_templates`, confirmed in dc1.azure and AMZL-dailydemo, both of
+# which carry the same note. Naming it the obvious way means the objects are
+# silently never created, with no error.
+#
+# SURVEY VARIABLE NAMES ARE THE CONTRACT. `vm_size_tier` and `os_type` here must
+# match playbooks/provision_vm.yml's extra_vars and the ocpvirt-provision skill
+# prompts exactly. The tier strings must also match the validation block in
+# terraform/ocpvirt/variables.tf. Changing one means changing all of them.
+#
+# BOTH TEMPLATES RUN AGAINST "Sales Demo VMs", which holds the synced control
+# hosts and the demo VMs together — see controller_inventories.yml. They differ
+# only in `limit`: provisioning targets `sandbox` (a control host, because
+# provision_vm.yml is `hosts: aap`), VM-facing work targets `linuxweb`.
+#
+# "Sales Demo VMs - Control" is NOT used here. It is reserved for teardown (#6),
+# which cannot run in the inventory whose hosts it deletes.
+# ============================================================================
+
+controller_templates_all:
+  # ---------------------------------------------------------------------
+  # Provision. The template that finally exercises the execution environment
+  # built in #31 — nothing had run on it before this.
+  # ---------------------------------------------------------------------
+  - name: "Sales Demos - Provision VM"
+    description: "Run terraform/ocpvirt and register the new VMs in the Sales Demo VMs inventory."
+    job_type: run
+    organization: "IT Service Automation"
+    inventory: "Sales Demo VMs"
+    project: "Sales Demos"
+    playbook: playbooks/provision_vm.yml
+    execution_environment: "Sales Demos - OCP Virt EE"
+    credentials:
+      # The only one needed. Everything else comes from connection.yml via the
+      # project-sourced inventory.
+      - "Sales Demos - Vault"
+    # `limit` selects the environment, exactly as --limit does on the CLI, and
+    # target_env makes the run fail closed if the two ever disagree — see
+    # playbooks/tasks/assert_target_environment.yml.
+    #
+    # ONE TEMPLATE PER ENVIRONMENT ON PURPOSE. A survey question for the
+    # environment would let someone provision into the customer-facing `demo`
+    # env by mis-clicking a dropdown mid-demo. Copy this entry with both values
+    # changed to `demo` when that environment is wanted.
+    limit: sandbox
+    extra_vars:
+      target_env: sandbox
+      provision_inventory: "Sales Demo VMs"
+    survey_enabled: true
+    survey_spec:
+      name: ""
+      description: "Pick an OS and a VM size tier"
+      spec:
+        - question_name: Operating system
+          question_description: >-
+            Which guests to provision. Windows needs the golden image from Phase
+            2 (#3) and will not boot until that lands.
+          variable: os_type
+          type: multiplechoice
+          required: true
+          default: linux
+          choices:
+            - linux
+            - windows
+            - both
+        - question_name: VM size tier
+          question_description: >-
+            T-shirt size. Small tiers on purpose — these VMs share a node with
+            AAP and CNV, and terraform/ocpvirt enforces a memory budget.
+          variable: vm_size_tier
+          type: multiplechoice
+          required: true
+          default: small-1cpu-2gb
+          choices:
+            - small-1cpu-2gb
+            - medium-1cpu-4gb
+            - large-2cpu-6gb
+
+  # ---------------------------------------------------------------------
+  # Reach the VMs. This is the one that proves AAP can run playbooks AGAINST
+  # a demo VM, rather than merely create it.
+  #
+  # Runs against the TARGET inventory with the Machine credential, connecting
+  # over in-cluster DNS on port 22. No bastion, no virtctl.
+  # ---------------------------------------------------------------------
+  - name: "Sales Demos - Check VMs"
+    description: "Smoke test: log in to the provisioned VMs over in-cluster DNS and gather facts."
+    job_type: run
+    organization: "IT Service Automation"
+    inventory: "Sales Demo VMs"
+    project: "Sales Demos"
+    playbook: playbooks/check_vm.yml
+    execution_environment: "Sales Demos - OCP Virt EE"
+    credentials:
+      - "Sales Demos - Linux Machine"
+    # Defaults to the linuxweb group; ask on launch so the same template can be
+    # pointed at one host when a single VM is misbehaving.
+    limit: linuxweb
+    ask_limit_on_launch: true

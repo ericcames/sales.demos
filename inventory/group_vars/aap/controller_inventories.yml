@@ -1,0 +1,56 @@
+---
+# ============================================================================
+# group_vars/aap/controller_inventories.yml — the two inventories (#4)
+# ============================================================================
+#   Sales Demo VMs             everything: the control hosts AND the demo VMs
+#   Sales Demo VMs - Control   EMPTY, and exists only for teardown
+#
+# `Sales Demo VMs` holds two populations with different lifecycles, and that is
+# deliberate. `sandbox-local` / `demo-local` arrive from an inventory source
+# syncing this repo's own inventory/hosts.yml, because playbooks here target
+# `hosts: aap` and select an environment with `--limit` — that is what makes
+# group_vars resolve to exactly one set of connection values (#16). The demo VMs
+# are registered into the same inventory at run time by provision_vm.yml. Both
+# provisioning and VM-facing jobs therefore run against this one inventory.
+#
+# THE CONTROL INVENTORY IS FOR TEARDOWN AND NOTHING ELSE. AAP locks the hosts of
+# the inventory a running job is using, so a teardown job cannot delete hosts
+# from the inventory it is itself running against — it would be deleting its own
+# inventory out from under itself. dc1.azure hit this as AB#73. Teardown (#6)
+# will run against this empty inventory so it is free to remove hosts from
+# `Sales Demo VMs`. Nothing else should use it.
+#
+# `_all` on both: the inventories exist in every environment. Which environment
+# a job acts on is decided by the job template's limit, not by having separate
+# inventories per environment.
+# ============================================================================
+
+controller_inventories_all:
+  # ---------------------------------------------------------------------
+  # The working inventory. Two populations, neither declared here:
+  #
+  #   sandbox-local / demo-local  synced from inventory/hosts.yml by
+  #                               controller_inventory_sources.yml
+  #   the demo VMs                registered at run time by provision_vm.yml
+  #                               into linuxweb (SSH) and windemo (WinRM)
+  #
+  # Deliberately NOT populated by config-as-code. Its contents are whatever
+  # Terraform last created, which is a runtime fact, not desired state — which
+  # is also why the inventory source runs with overwrite: false.
+  # ---------------------------------------------------------------------
+  - name: "Sales Demo VMs"
+    description: "Control hosts synced from inventory/hosts.yml, plus the demo VMs registered by playbooks/provision_vm.yml."
+    organization: "IT Service Automation"
+
+  # ---------------------------------------------------------------------
+  # Empty on purpose, and it stays empty. Teardown (#6) runs against this so it
+  # can delete hosts from "Sales Demo VMs" — AAP locks the hosts of the
+  # inventory a running job is using, so a teardown job cannot remove hosts from
+  # the inventory it is itself running in.
+  #
+  # Nothing else should reference this. If a job template other than teardown
+  # points here, that is a bug.
+  # ---------------------------------------------------------------------
+  - name: "Sales Demo VMs - Control"
+    description: "Empty. Teardown runs here so it can delete hosts from Sales Demo VMs without AAP's running-job lock."
+    organization: "IT Service Automation"

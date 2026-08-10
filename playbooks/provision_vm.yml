@@ -1,0 +1,511 @@
+---
+# ===========================================================================
+# provision_vm.yml — Phase 3. Run the ocpvirt Terraform module and register the
+# resulting VMs as managed hosts in AAP. Issue #4.
+#
+#   ansible-playbook playbooks/provision_vm.yml -i inventory --limit sandbox \
+#     -e target_env=sandbox -e vm_size_tier=small-1cpu-2gb -e os_type=linux \
+#     --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
+#
+# Ported from dc1.azure/playbooks/provision_vm.yml, which already asserts
+# inputs, runs terraform init/apply, and registers hosts into two groups
+# (`windemo` with WinRM vars, `linuxweb` with SSH vars). What changed:
+#
+#   - The Azure `arm_env` block became OpenShift host+token, resolved from this
+#     repo's connection.yml or from an AAP OpenShift credential (K8S_AUTH_*).
+#   - The azurerm backend became the kubernetes backend (see backend.tf).
+#   - The ServiceNow rescue path is dropped. There is no ServiceNow node in this
+#     repo's workflows; re-add it with the incident node, not before.
+#
+# TWO ENTRY POINTS, ONE CONTRACT. This runs identically from the
+# `ocpvirt-provision` skill and from an AAP job template. Every input arrives as
+# an extra_var and every required one is asserted below, so both fail the same
+# way. The names `vm_size_tier`, `os_type`, and `demo_ssh_public_key` are the
+# contract shared with the survey and the skill prompts — see CLAUDE.md.
+#
+# WHY hosts: aap. Every playbook here targets the `aap` group and relies on
+# `--limit <env>` to select one environment, which is what makes group_vars
+# resolve to exactly one set of connection values (#16). The host is local, so
+# terraform runs on the machine executing the playbook.
+# ===========================================================================
+
+- name: Phase 3 — provision demo VMs and register them in AAP
+  hosts: aap
+  gather_facts: false
+
+  # kubernetes.core reads these. Same approach as install_cnv.yml: it keeps the
+  # bearer token out of every task's args and out of any -vvv output.
+  environment:
+    K8S_AUTH_HOST: "{{ ocpvirt_api_url }}"
+    K8S_AUTH_API_KEY: "{{ ocpvirt_api_token }}"
+    K8S_AUTH_VERIFY_SSL: "{{ openshift_validate_certs | default(false) | bool }}"
+
+  vars:
+    ocpvirt_terraform_dir: "{{ playbook_dir }}/../terraform/ocpvirt"
+
+    # --- Inputs, with the same defaults the Terraform module declares --------
+    ocpvirt_size_tier: "{{ vm_size_tier | default('small-1cpu-2gb') }}"
+    ocpvirt_os_type: "{{ os_type | default('linux') }}"
+    # Empty on purpose. With persistent state a per-run suffix would destroy and
+    # re-create the VMs every apply rather than converge — see backend.tf.
+    ocpvirt_name_suffix: "{{ name_suffix | default('') }}"
+
+    # --- AAP inventory the new hosts land in --------------------------------
+    ocpvirt_aap_inventory: "{{ provision_inventory | default('Sales Demo VMs') }}"
+    ocpvirt_windows_group: windemo
+    ocpvirt_linux_group: linuxweb
+
+    # --- OpenShift, from connection.yml or an AAP OpenShift credential -------
+    # `default(..., true)` also rejects an empty string, so an injected-but-blank
+    # environment variable falls through to the other source instead of winning.
+    ocpvirt_api_url: >-
+      {{ openshift_api_url | default(lookup('ansible.builtin.env', 'K8S_AUTH_HOST'), true) }}
+    ocpvirt_api_token: >-
+      {{ openshift_api_token | default(lookup('ansible.builtin.env', 'K8S_AUTH_API_KEY'), true) }}
+    ocpvirt_namespace_resolved: "{{ ocpvirt_namespace | default('sales-demos-' ~ aap_env_name, true) }}"
+    # LONG-LIVED SHARED INFRA. Deliberately NOT the VM namespace: state must
+    # outlive everything it describes. Both environments share it — the
+    # backend's secret_suffix keys sandbox and demo apart inside it.
+    ocpvirt_state_namespace: "{{ tf_state_namespace | default('sales-demos-tfstate', true) }}"
+
+    # --- AAP, from connection.yml or an AAP Controller credential ------------
+    ocpvirt_aap_host: >-
+      {{ aap_hostname | default(lookup('ansible.builtin.env', 'CONTROLLER_HOST'), true) }}
+    ocpvirt_aap_user: >-
+      {{ aap_username | default(lookup('ansible.builtin.env', 'CONTROLLER_USERNAME'), true) }}
+    ocpvirt_aap_pass: >-
+      {{ aap_password | default(lookup('ansible.builtin.env', 'CONTROLLER_PASSWORD'), true) }}
+    # ansible.controller.* wants a URL; connection.yml stores a bare hostname
+    # because that is what ansible.platform.* and the dispatch role expect.
+    # Normalise here rather than storing it twice and letting the two drift.
+    ocpvirt_aap_url: >-
+      {{ ocpvirt_aap_host if ocpvirt_aap_host is match('^https?://') else 'https://' ~ ocpvirt_aap_host }}
+
+    # Ported verbatim from dc1.azure (AB#158). An AAP Controller credential
+    # injects EMPTY CONTROLLER_REQUEST_TIMEOUT / AAP_REQUEST_TIMEOUT into the job
+    # environment. Every ansible.controller.* `request_timeout` and
+    # ansible.platform.* token `request_timeout` is a float parameter with an
+    # env_fallback onto those names, so the empty string fails to coerce with
+    # "'' cannot be converted to a float". Passing it explicitly bypasses the
+    # fallback. It must be set on EVERY controller/platform task below — module
+    # action-group defaults cannot be used, because CI runs ansible-lint offline
+    # and cannot resolve action groups.
+    ocpvirt_request_timeout: "{{ aap_request_timeout | default(30) }}"
+
+  tasks:
+    - name: Assert exactly one environment is targeted
+      ansible.builtin.include_tasks: tasks/assert_target_environment.yml
+
+    - name: Assert provisioning inputs are present and valid
+      # The tier list is the ocpvirt module's, NOT dc1.azure's. These VMs share a
+      # node with AAP and CNV, so the tiers are deliberately smaller.
+      ansible.builtin.assert:
+        that:
+          - ocpvirt_size_tier in ['small-1cpu-2gb', 'medium-1cpu-4gb', 'large-2cpu-6gb']
+          - ocpvirt_os_type in ['windows', 'linux', 'both']
+          - ocpvirt_name_suffix is match('^[a-z0-9]*$')
+        fail_msg: >-
+          Need vm_size_tier (small-1cpu-2gb|medium-1cpu-4gb|large-2cpu-6gb) and
+          os_type (windows|linux|both). Got vm_size_tier={{ ocpvirt_size_tier }},
+          os_type={{ ocpvirt_os_type }}. name_suffix must be lowercase
+          alphanumeric.
+        quiet: true
+
+    - name: Warn that Windows cannot boot yet
+      # Phase 2 (#3) has not run: CNV ships win2k22 as an EMPTY DataSource
+      # placeholder and every win* DataSource reports Ready=False. Terraform will
+      # happily create the VM and it will never come up. Say so here rather than
+      # let it look like a provisioning bug.
+      ansible.builtin.debug:
+        msg: >-
+          os_type={{ ocpvirt_os_type }} includes Windows, but the Windows golden
+          image (#3) is not built yet — the VM will be created and will NOT boot.
+          Use os_type=linux until Phase 2 lands.
+      when: ocpvirt_os_type in ['windows', 'both']
+
+    - name: Assert the OpenShift connection is resolved
+      ansible.builtin.assert:
+        that:
+          - ocpvirt_api_url | length > 0
+          - ocpvirt_api_token | length > 0
+          - ocpvirt_namespace_resolved | length > 0
+        fail_msg: >-
+          No OpenShift connection. Locally this comes from
+          group_vars/<env>/connection.yml with --vault-id passed so
+          openshift_api_token resolves; from AAP, attach an OpenShift API Bearer
+          Token credential (it injects K8S_AUTH_HOST / K8S_AUTH_API_KEY).
+        quiet: true
+
+    - name: Assert the AAP connection is resolved
+      ansible.builtin.assert:
+        that:
+          - ocpvirt_aap_host | length > 0
+          - ocpvirt_aap_user | length > 0
+          - ocpvirt_aap_pass | length > 0
+        fail_msg: >-
+          No AAP connection for host registration. Locally this comes from
+          group_vars/<env>/connection.yml plus the vault; from AAP, attach a Red
+          Hat Ansible Automation Platform credential (it injects CONTROLLER_*).
+        quiet: true
+
+    - name: Report the target
+      ansible.builtin.debug:
+        msg: >-
+          Provisioning {{ ocpvirt_os_type }} / {{ ocpvirt_size_tier }} into
+          namespace {{ ocpvirt_namespace_resolved }} on {{ aap_env_name }},
+          registering into AAP inventory '{{ ocpvirt_aap_inventory }}'.
+
+    # --- Namespaces must exist before anything else -------------------------
+    - name: Ensure the Terraform state namespace exists (idempotent guard)
+      # The kubernetes backend stores state in a Secret in this namespace, and
+      # `terraform init` cannot write it into a namespace that is not there.
+      # Creating it here in Ansible rather than in the Terraform stack that uses
+      # it is what avoids the backend chicken-and-egg — same reasoning as
+      # AMZL-dailydemo/playbooks/provision_vm_aws.yml, which creates its S3 state
+      # bucket this way.
+      #
+      # TEARDOWN (#6) MUST NOT DELETE THIS NAMESPACE. It is long-lived shared
+      # infrastructure holding state for every run and both environments; the
+      # backend's secret_suffix keys sandbox and demo apart inside it. Deleting
+      # it orphans every VM Terraform is tracking.
+      #
+      # Idempotent: `state: present` on an existing namespace is a no-op.
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: v1
+          kind: Namespace
+          metadata:
+            name: "{{ ocpvirt_state_namespace }}"
+            labels:
+              app.kubernetes.io/managed-by: sales.demos
+              sales.demos/purpose: terraform-state
+
+    # The VM namespace is NOT created here. Terraform owns it
+    # (`kubernetes_namespace.demo`, main.tf:19), and creating it from Ansible as
+    # well makes apply fail with `namespaces "..." already exists` on a fresh
+    # cluster. The state namespace above is the only one Ansible creates,
+    # because it is the one Terraform cannot own — its backend needs it to
+    # exist before there is any state to describe it with.
+
+    # --- Terraform ---------------------------------------------------------
+    - name: Provision the VMs and register them in AAP
+      # One block so the always: below covers EVERYTHING that needs cleaning
+      # up — the kubeconfig holds a bearer token and must be removed even
+      # when terraform fails, which is exactly when it would otherwise leak.
+      block:
+        - name: Create a temporary kubeconfig for the Terraform backend
+          # THE BACKEND WILL NOT TAKE A BARE HOST + TOKEN, despite accepting `host`
+          # and `token` as backend-config keys. It builds its client through
+          # client-go's clientcmd, where those keys are only OVERRIDES on top of a
+          # base configuration. With no base config, init fails with:
+          #   invalid configuration: no configuration has been provided,
+          #   try setting KUBERNETES_MASTER environment variable
+          # KUBE_HOST / KUBE_TOKEN environment variables fail the same way.
+          #
+          # So synthesise the base config. This is also the only form that behaves
+          # identically on a laptop and in an EE pod, which is the property this repo
+          # cares about — `in_cluster_config=true` would work in AAP and nowhere else.
+          #
+          # 0600, and deleted in the always: block below.
+          ansible.builtin.tempfile:
+            state: file
+            suffix: .kubeconfig
+          register: ocpvirt_kubeconfig
+          changed_when: false
+
+        - name: Write the kubeconfig
+          ansible.builtin.copy:
+            dest: "{{ ocpvirt_kubeconfig.path }}"
+            mode: "0600"
+            content: |
+              apiVersion: v1
+              kind: Config
+              clusters:
+                - name: demo
+                  cluster:
+                    server: {{ ocpvirt_api_url }}
+                    insecure-skip-tls-verify: {{ (not (openshift_validate_certs | default(false) | bool)) | lower }}
+              users:
+                - name: demo
+                  user:
+                    token: {{ ocpvirt_api_token }}
+              contexts:
+                - name: demo
+                  context:
+                    cluster: demo
+                    user: demo
+              current-context: demo
+          no_log: true
+          changed_when: false
+
+        - name: Initialize Terraform against the kubernetes backend
+          # -reconfigure, not -migrate-state: in an EE the .terraform/ directory is
+          # fresh every run, so there is never a previous backend to migrate from.
+          # secret_suffix is keyed per environment so sandbox and demo never share
+          # state. See backend.tf for why the settings arrive here and not in HCL.
+          #
+          # `insecure` must be passed SEPARATELY even though the kubeconfig above
+          # already sets insecure-skip-tls-verify — the backend does not honour it
+          # from the file, and RHDP serves a self-signed certificate. Without it:
+          #   x509: certificate signed by unknown authority
+          ansible.builtin.command:
+            argv:
+              - terraform
+              - init
+              - -input=false
+              - -no-color
+              - -reconfigure
+              - "-backend-config=secret_suffix={{ aap_env_name }}"
+              - "-backend-config=namespace={{ ocpvirt_state_namespace }}"
+              - "-backend-config=config_path={{ ocpvirt_kubeconfig.path }}"
+              - "-backend-config=insecure={{ (not (openshift_validate_certs | default(false) | bool)) | lower }}"
+            chdir: "{{ ocpvirt_terraform_dir }}"
+          changed_when: false
+          register: tf_init_result
+          # NOT no_log. The kubeconfig keeps the token off this command line, so the
+          # output is safe to show — and an init failure is otherwise undiagnosable,
+          # which cost a debugging cycle the first time this ran.
+          failed_when: false
+
+        - name: Fail with the Terraform init error
+          when: tf_init_result.rc != 0
+          ansible.builtin.fail:
+            msg: >-
+              terraform init exited {{ tf_init_result.rc }}:
+              {{ tf_init_result.stderr | default(tf_init_result.stdout) | default('no output') }}
+
+        - name: Apply Terraform (create or converge the VMs)
+          # Sensitive values go in via TF_VAR_* rather than -var so they never reach
+          # the process table. The rest are -var so a failure message shows what was
+          # actually requested.
+          ansible.builtin.command:
+            argv:
+              - terraform
+              - apply
+              - -input=false
+              - -auto-approve
+              - -no-color
+              - "-var=vm_size_tier={{ ocpvirt_size_tier }}"
+              - "-var=os_type={{ ocpvirt_os_type }}"
+              - "-var=namespace={{ ocpvirt_namespace_resolved }}"
+              - "-var=name_suffix={{ ocpvirt_name_suffix }}"
+              - "-var=linux_admin_username={{ linux_admin_username | default('cloud-user') }}"
+              - "-var=windows_admin_username={{ windows_admin_username | default('demoadmin') }}"
+              - "-var=openshift_apps_domain={{ openshift_apps_domain | default('') }}"
+            chdir: "{{ ocpvirt_terraform_dir }}"
+          environment:
+            TF_VAR_openshift_api_url: "{{ ocpvirt_api_url }}"
+            TF_VAR_openshift_api_token: "{{ ocpvirt_api_token }}"
+            TF_VAR_openshift_insecure: "{{ openshift_validate_certs | default(false) | ternary('false', 'true') }}"
+            TF_VAR_demo_ssh_public_key: "{{ demo_ssh_public_key | default('') }}"
+            TF_IN_AUTOMATION: "1"
+          no_log: true
+          # dc1.azure hardcodes `changed_when: true`, which reports changed on
+          # every run forever and makes an idempotence check meaningless. Read
+          # terraform's own summary line instead. Evaluating it here does not
+          # print anything — the task stays no_log.
+          changed_when: "'0 added, 0 changed, 0 destroyed' not in (tf_apply_result.stdout | default(''))"
+          register: tf_apply_result
+          ignore_errors: true
+
+        - name: Show the Terraform error
+          # tf_apply_result is no_log, so nothing is printed unless this runs. Show
+          # stderr only — stdout can echo variable values.
+          when: tf_apply_result is failed
+          ansible.builtin.debug:
+            msg: "{{ tf_apply_result.stderr_lines | default([tf_apply_result.stderr | default('no stderr')]) }}"
+
+        - name: Fail if Terraform apply failed
+          when: tf_apply_result is failed
+          ansible.builtin.fail:
+            msg: "terraform apply exited {{ tf_apply_result.rc | default('?') }}"
+
+        - name: Read the Terraform outputs
+          ansible.builtin.command:
+            argv: [terraform, output, -json]
+            chdir: "{{ ocpvirt_terraform_dir }}"
+          changed_when: false
+          register: tf_output
+
+        - name: Parse the per-OS inventory outputs
+          # Field-for-field the same shape dc1.azure produced, which is why the daily
+          # demo content in Phase 4 needs no changes. `host` and `ansible_host` are
+          # the headless Service DNS name rather than a public IP — stable, known at
+          # plan time, and resolvable from AAP because AAP is on the same cluster.
+          ansible.builtin.set_fact:
+            win_inventory: "{{ (tf_output.stdout | from_json).windows_inventory.value | default(false, true) }}"
+            linux_inventory: "{{ (tf_output.stdout | from_json).linux_inventory.value | default(false, true) }}"
+
+        - name: Ensure the AAP inventory exists (idempotent guard)
+          # Same create-if-absent reasoning as the namespaces above: a fresh RHDP
+          # environment has no 'Demo VMs' inventory, and every group and host
+          # task below would fail against a missing one. The organization is the
+          # one this repo's config-as-code creates (group_vars/aap/main.yml).
+          ansible.controller.inventory:
+            controller_host: "{{ ocpvirt_aap_url }}"
+            controller_username: "{{ ocpvirt_aap_user }}"
+            controller_password: "{{ ocpvirt_aap_pass }}"
+            validate_certs: "{{ aap_validate_certs | default(false) }}"
+            request_timeout: "{{ ocpvirt_request_timeout }}"
+            name: "{{ ocpvirt_aap_inventory }}"
+            organization: "{{ aap_organization_name | default('IT Service Automation') }}"
+            description: "Demo VMs provisioned on OpenShift Virtualization by playbooks/provision_vm.yml"
+            state: present
+
+        # --- Both groups always exist ------------------------------------
+        # Created unconditionally so a workflow node with limit: windemo or
+        # linuxweb always resolves. An empty group is a no-op; a missing group
+        # fails the job.
+        #
+        # ansible.controller, not ansible.platform, and that is not an oversight:
+        # ansible.platform ships NO host or group module. Inventory membership is
+        # still a controller-scoped concern in AAP 2.6.
+        - name: Ensure the Windows group exists, with WinRM connection vars
+          ansible.controller.group:
+            controller_host: "{{ ocpvirt_aap_url }}"
+            controller_username: "{{ ocpvirt_aap_user }}"
+            controller_password: "{{ ocpvirt_aap_pass }}"
+            validate_certs: "{{ aap_validate_certs | default(false) }}"
+            request_timeout: "{{ ocpvirt_request_timeout }}"
+            name: "{{ ocpvirt_windows_group }}"
+            inventory: "{{ ocpvirt_aap_inventory }}"
+            state: present
+            variables:
+              ansible_connection: winrm
+              ansible_port: 5986
+              ansible_winrm_transport: ntlm
+              ansible_winrm_server_cert_validation: ignore
+
+        - name: Ensure the Linux group exists, with SSH connection vars
+          ansible.controller.group:
+            controller_host: "{{ ocpvirt_aap_url }}"
+            controller_username: "{{ ocpvirt_aap_user }}"
+            controller_password: "{{ ocpvirt_aap_pass }}"
+            validate_certs: "{{ aap_validate_certs | default(false) }}"
+            request_timeout: "{{ ocpvirt_request_timeout }}"
+            name: "{{ ocpvirt_linux_group }}"
+            inventory: "{{ ocpvirt_aap_inventory }}"
+            state: present
+            variables:
+              ansible_connection: ssh
+              ansible_port: 22
+
+        # --- Windows -------------------------------------------------------
+        - name: Register the Windows VM
+          when: win_inventory is mapping
+          block:
+            - name: Add the Windows VM as a host
+              ansible.controller.host:
+                controller_host: "{{ ocpvirt_aap_url }}"
+                controller_username: "{{ ocpvirt_aap_user }}"
+                controller_password: "{{ ocpvirt_aap_pass }}"
+                validate_certs: "{{ aap_validate_certs | default(false) }}"
+                request_timeout: "{{ ocpvirt_request_timeout }}"
+                name: "{{ win_inventory.host }}"
+                inventory: "{{ ocpvirt_aap_inventory }}"
+                enabled: true
+                state: present
+                variables:
+                  ansible_host: "{{ win_inventory.ansible_host }}"
+                  ansible_user: "{{ win_inventory.ansible_user }}"
+                  vm_name: "{{ win_inventory.vm_name }}"
+                  vm_size_tier: "{{ win_inventory.vm_size_tier }}"
+                  vm_size_chosen: "{{ win_inventory.vm_size_chosen }}"
+
+            - name: Associate the Windows host with its group
+              ansible.controller.group:
+                controller_host: "{{ ocpvirt_aap_url }}"
+                controller_username: "{{ ocpvirt_aap_user }}"
+                controller_password: "{{ ocpvirt_aap_pass }}"
+                validate_certs: "{{ aap_validate_certs | default(false) }}"
+                request_timeout: "{{ ocpvirt_request_timeout }}"
+                name: "{{ ocpvirt_windows_group }}"
+                inventory: "{{ ocpvirt_aap_inventory }}"
+                hosts: ["{{ win_inventory.host }}"]
+                state: present
+
+        # --- Linux ---------------------------------------------------------
+        - name: Register the Linux VM
+          when: linux_inventory is mapping
+          block:
+            - name: Add the Linux VM as a host
+              ansible.controller.host:
+                controller_host: "{{ ocpvirt_aap_url }}"
+                controller_username: "{{ ocpvirt_aap_user }}"
+                controller_password: "{{ ocpvirt_aap_pass }}"
+                validate_certs: "{{ aap_validate_certs | default(false) }}"
+                request_timeout: "{{ ocpvirt_request_timeout }}"
+                name: "{{ linux_inventory.host }}"
+                inventory: "{{ ocpvirt_aap_inventory }}"
+                enabled: true
+                state: present
+                variables:
+                  ansible_host: "{{ linux_inventory.ansible_host }}"
+                  ansible_user: "{{ linux_inventory.ansible_user }}"
+                  vm_name: "{{ linux_inventory.vm_name }}"
+                  vm_size_tier: "{{ linux_inventory.vm_size_tier }}"
+                  vm_size_chosen: "{{ linux_inventory.vm_size_chosen }}"
+
+            - name: Associate the Linux host with its group
+              ansible.controller.group:
+                controller_host: "{{ ocpvirt_aap_url }}"
+                controller_username: "{{ ocpvirt_aap_user }}"
+                controller_password: "{{ ocpvirt_aap_pass }}"
+                validate_certs: "{{ aap_validate_certs | default(false) }}"
+                request_timeout: "{{ ocpvirt_request_timeout }}"
+                name: "{{ ocpvirt_linux_group }}"
+                inventory: "{{ ocpvirt_aap_inventory }}"
+                hosts: ["{{ linux_inventory.host }}"]
+                state: present
+
+        # --- Workflow artifacts --------------------------------------------
+        - name: Pick the primary VM for the workflow artifacts
+          ansible.builtin.set_fact:
+            _primary: "{{ win_inventory if (win_inventory is mapping) else linux_inventory }}"
+
+        - name: Publish provisioning details to the rest of the workflow
+          # The my_* aliases are what the existing daily-demo content reads. Kept
+          # identical to dc1.azure so Phase 4 (#5) needs no changes.
+          ansible.builtin.set_stats:
+            data:
+              os_type: "{{ ocpvirt_os_type }}"
+              vm_fqdn: "{{ _primary.host }}"
+              vm_name: "{{ _primary.vm_name }}"
+              vm_size_chosen: "{{ _primary.vm_size_chosen }}"
+              my_server: "{{ _primary.host }}"
+              my_instance_id: "{{ _primary.vm_name }}"
+              my_instance_type: "{{ _primary.vm_size_chosen }}"
+
+        - name: Publish the Linux-specific artifacts
+          ansible.builtin.set_stats:
+            data:
+              linux_fqdn: "{{ linux_inventory.host }}"
+              linux_vm_name: "{{ linux_inventory.vm_name }}"
+              linux_admin_username: "{{ linux_inventory.ansible_user }}"
+              web_url: "{{ (tf_output.stdout | from_json).web_url.value | default('', true) }}"
+              ssh_command: "{{ (tf_output.stdout | from_json).ssh_command.value | default('', true) }}"
+          when: linux_inventory is mapping
+
+        - name: Summarise
+          ansible.builtin.debug:
+            msg:
+              - "Provisioned into {{ ocpvirt_namespace_resolved }} on {{ aap_env_name }}."
+              - "Registered in AAP inventory '{{ ocpvirt_aap_inventory }}'."
+              - "Linux: {{ linux_inventory.host | default('(none)') }}"
+              - "Windows: {{ win_inventory.host | default('(none)') }}"
+              - "SSH: {{ (tf_output.stdout | from_json).ssh_command.value | default('(none)', true) }}"
+              - "Web: {{ (tf_output.stdout | from_json).web_url.value | default('(none)', true) }} (503 until Phase 4 installs httpd)"
+
+      always:
+        # CLAUDE.md: any playbook that creates a token must delete it in an
+        # always: block, so stale tokens never accumulate.
+        - name: Remove the temporary kubeconfig
+          # It holds a bearer token. Removed here rather than after the terraform
+          # tasks so it also goes away when they FAIL — which is exactly the run
+          # where a leaked token would sit on disk unnoticed.
+          ansible.builtin.file:
+            path: "{{ ocpvirt_kubeconfig.path }}"
+            state: absent
+          when: ocpvirt_kubeconfig.path is defined
+          changed_when: false

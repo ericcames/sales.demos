@@ -100,7 +100,7 @@ installs. Set options via CLI flags or environment variables instead.
 
 ## Step 2 — Vault password (the one you cannot create)
 
-`inventory/group_vars/aap/secrets.yml` is committed to this public repo
+`playbooks/group_vars/aap/secrets.yml` is committed to this public repo
 **vault-encrypted**. Without the password, every playbook fails at the first
 templated credential.
 
@@ -120,7 +120,7 @@ chmod 600 ~/secrets/.vault_pass_sales_demos
 Verify it actually decrypts — do not assume:
 
 ```bash
-ansible-vault view inventory/group_vars/aap/secrets.yml \
+ansible-vault view playbooks/group_vars/aap/secrets.yml \
   --vault-id sales.demos@~/secrets/.vault_pass_sales_demos >/dev/null 2>&1 \
   && echo "✅ vault password works" \
   || echo "❌ wrong password — decryption failed"
@@ -187,7 +187,7 @@ If those still show `cluster-<id>`, paste the real values from your RHDP
 provisioning email. Then add that environment's credentials to the vault:
 
 ```bash
-ansible-vault edit inventory/group_vars/aap/secrets.yml \
+ansible-vault edit playbooks/group_vars/aap/secrets.yml \
   --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
 # set env_secrets.<env>.aap_password and .openshift_api_token
 ```

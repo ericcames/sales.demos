@@ -25,12 +25,33 @@ Only placeholder lines and the audit pattern itself may match.
 
 ## Secrets: exactly one mechanism
 
-`inventory/group_vars/aap/secrets.yml` is the only secrets file. It is
+`playbooks/group_vars/aap/secrets.yml` is the only secrets file. It is
 **vault-encrypted and committed**, and lives in the `aap` group directory so it
 loads for every environment — one file, both `sandbox` and `demo`.
 
+**It sits beside the PLAYBOOKS, not the inventory, and that is not cosmetic.**
+Ansible loads `group_vars/` adjacent to the playbook as well as adjacent to the
+inventory, so it resolves identically either way. What differs is AAP: a job
+template's inventory is synced from `inventory/hosts.yml` by an SCM inventory
+source, and that sync runs `ansible-inventory`, which parses every `group_vars`
+file next to the inventory. Three things follow, all verified against a live
+AAP 2.6 (#4):
+
+- With the vaulted file under `inventory/group_vars/`, the sync dies with
+  `ERROR! Attempting to decrypt but no vault secrets found`.
+- It cannot be given the password: AAP rejects Vault credentials on SCM
+  inventory sources outright — *"Credentials of type insights and vault are
+  disallowed for scm inventory sources."*
+- Smuggling the password in via a custom credential type **would** work and is
+  the wrong thing to do: the sync would then write `env_secrets` and the SSH
+  private key into AAP's inventory variables in plaintext, visible in the UI.
+
+Keeping secrets out of the inventory tree is what lets the sync parse
+`connection.yml` freely while the credentials stay encrypted and arrive at run
+time through the job template's Vault credential. Do not move it back.
+
 ```bash
-ansible-vault edit inventory/group_vars/aap/secrets.yml \
+ansible-vault edit playbooks/group_vars/aap/secrets.yml \
   --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
 ```
 

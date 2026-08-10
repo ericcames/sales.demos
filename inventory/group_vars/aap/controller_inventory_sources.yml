@@ -1,0 +1,54 @@
+---
+# ============================================================================
+# group_vars/aap/controller_inventory_sources.yml — sync the repo's own
+# inventory into AAP (#4)
+# ============================================================================
+# THIS IS WHAT LETS A JOB TEMPLATE USE connection.yml. AAP syncs
+# inventory/hosts.yml straight out of the project, so `sandbox-local` and
+# `demo-local` land in the inventory carrying the group_vars that hold every
+# connection value — hostnames, API URLs, namespaces, the SSH public key.
+#
+# The alternative was to re-declare all of that as AAP objects and job-template
+# extra_vars, dc1.azure style. Rejected: it makes a second copy of every
+# hostname that has to be updated alongside connection.yml on each fresh RHDP
+# environment, and a one-file edit is the property worth protecting.
+#
+# WHY THERE IS NO CREDENTIAL HERE, AND WHY THE VAULTED SECRETS FILE LIVES UNDER
+# playbooks/ RATHER THAN inventory/. This sync runs `ansible-inventory`, which
+# parses every group_vars file next to the inventory. All three of these were
+# verified against a live AAP 2.6:
+#
+#   1. With the vaulted secrets.yml under inventory/group_vars/, the sync fails:
+#      "ERROR! Attempting to decrypt but no vault secrets found".
+#   2. It cannot simply be given the password. AAP refuses: "Credentials of type
+#      insights and vault are disallowed for scm inventory sources."
+#   3. A custom credential type injecting ANSIBLE_VAULT_PASSWORD_FILE WOULD get
+#      round that, and must not be used — the sync would then write env_secrets
+#      and the SSH private key into AAP's inventory variables as plaintext,
+#      readable by anyone with access to the inventory.
+#
+# So secrets live beside the playbooks, where Ansible still loads them at run
+# time via the job template's Vault credential, and the sync never sees them.
+# ============================================================================
+
+controller_inventory_sources_all:
+  - name: "sales.demos repo inventory"
+    description: "Syncs inventory/hosts.yml from the Sales Demos project so group_vars resolve in AAP."
+    # The same inventory that holds the provisioned VMs. `sandbox-local` is what
+    # provisioning jobs run against (the playbooks are `hosts: aap`); the VMs
+    # registered at runtime live alongside it in linuxweb / windemo.
+    inventory: "Sales Demo VMs"
+    organization: "IT Service Automation"
+    source: scm
+    source_project: "Sales Demos"
+    source_path: "inventory/hosts.yml"
+    # Sync before every launch, so editing connection.yml for a new RHDP
+    # environment takes effect without anyone remembering to press a button.
+    update_on_launch: true
+    # OVERWRITE MUST STAY FALSE. This inventory holds two populations with
+    # different lifecycles: `sandbox-local` / `demo-local` come from hosts.yml,
+    # and the demo VMs are registered at run time by playbooks/provision_vm.yml.
+    # Overwriting would delete every provisioned VM on the next sync — which,
+    # with update_on_launch true, is immediately before every job runs.
+    overwrite: false
+    overwrite_vars: false

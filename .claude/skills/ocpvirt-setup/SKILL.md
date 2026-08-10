@@ -47,13 +47,13 @@ test -s "$HOME/secrets/.vault_pass_sales_demos" \
 
 # 2. The committed secrets file is vault-encrypted, not plaintext.
 #    (This repo is public and secrets.yml is deliberately tracked.)
-head -c 15 inventory/group_vars/aap/secrets.yml 2>/dev/null | grep -q '^\$ANSIBLE_VAULT' \
+head -c 15 playbooks/group_vars/aap/secrets.yml 2>/dev/null | grep -q '^\$ANSIBLE_VAULT' \
   && echo "✅ secrets.yml is vault-encrypted" \
   || echo "❌ secrets.yml is NOT encrypted — stop, do not commit"
 
 # 3. This environment's credentials are real, not placeholders.
 #    Read through the vault; never yaml.safe_load the file directly.
-ansible-vault view inventory/group_vars/aap/secrets.yml --vault-id "$VAULT_ID" 2>/dev/null \
+ansible-vault view playbooks/group_vars/aap/secrets.yml --vault-id "$VAULT_ID" 2>/dev/null \
   | python3 -c "
 import sys, yaml, os
 env = os.environ.get('ENV', 'sandbox')
@@ -236,7 +236,7 @@ for t-shirt-sized VMs
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| `401` / `Unauthorized` on the first task | RHDP bearer token expired — they are short-lived | Get a fresh token from the OpenShift console (*Copy login command*), then `ansible-vault edit inventory/group_vars/aap/secrets.yml --vault-id sales.demos@~/secrets/.vault_pass_sales_demos` and update `env_secrets.<env>.openshift_api_token` |
+| `401` / `Unauthorized` on the first task | RHDP bearer token expired — they are short-lived | Get a fresh token from the OpenShift console (*Copy login command*), then `ansible-vault edit playbooks/group_vars/aap/secrets.yml --vault-id sales.demos@~/secrets/.vault_pass_sales_demos` and update `env_secrets.<env>.openshift_api_token` |
 | `Attempting to decrypt but no vault secrets found` | `--vault-id` missing from the command | Add `--vault-id sales.demos@~/secrets/.vault_pass_sales_demos` |
 | `Decryption failed` | Wrong or missing vault password file | Confirm `~/secrets/.vault_pass_sales_demos` exists and is the password the file was encrypted with |
 | ClusterServiceVersion never reaches `Succeeded` | Catalog source not ready, or no `kubevirt-hyperconverged` in `redhat-operators` | `oc get packagemanifest kubevirt-hyperconverged -n openshift-marketplace` |

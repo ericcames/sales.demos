@@ -8,6 +8,20 @@
 offline: true
 profile: basic
 
+# Keep ansible-lint's verdict on line length in step with .yamllint, which sets
+# `line-length: {max: 200, level: warning}` — "warn, don't fail" — but only for
+# its own runs. ansible-lint re-reports the same finding as an ERROR, so without
+# this the two tools disagree and CI fails on something the repo has already
+# decided is acceptable.
+#
+# What forced the issue: an SSH public key is a single 575-character token.
+# demo_ssh_public_key in each group_vars/<env>/connection.yml cannot be wrapped
+# — YAML escaped continuations would round-trip today, but a later reflow would
+# corrupt the base64 silently and the failure would surface as an SSH auth error
+# nowhere near the cause. Better a long line than a bomb.
+warn_list:
+  - yaml[line-length]
+
 mock_modules:
   # Platform gateway — token lifecycle. Any playbook creating a token must
   # delete it in an `always:` block.
@@ -19,6 +33,13 @@ mock_modules:
   # OpenShift Virtualization — VM lifecycle (Phases 1-4).
   - redhat.openshift_virtualization.kubevirt_vm
   - redhat.openshift_virtualization.kubevirt_vm_info
+  # AAP inventory membership — playbooks/provision_vm.yml registers the VMs it
+  # creates. These are ansible.controller rather than ansible.platform, which is
+  # NOT an oversight: ansible.platform ships no host, group, or inventory
+  # module. Inventory membership is still controller-scoped in AAP 2.6.
+  - ansible.controller.inventory
+  - ansible.controller.group
+  - ansible.controller.host
 
 mock_roles:
   - infra.aap_configuration.dispatch

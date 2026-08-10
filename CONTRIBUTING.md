@@ -12,12 +12,12 @@ Use generic placeholders in committed docs and examples:
 
 ## Where values live
 
-`inventory/group_vars/aap/secrets.yml` is **vault-encrypted and committed**, and
+`playbooks/group_vars/aap/secrets.yml` is **vault-encrypted and committed**, and
 is the only secrets mechanism in this repo. It sits in the `aap` group directory
 so it loads for every environment — one file, both `sandbox` and `demo`.
 
 ```bash
-ansible-vault edit inventory/group_vars/aap/secrets.yml \
+ansible-vault edit playbooks/group_vars/aap/secrets.yml \
   --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
 ```
 

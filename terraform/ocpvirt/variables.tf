@@ -99,7 +99,14 @@ variable "vm_memory_overhead_mb" {
 # random_string result is unknown until apply, which makes `terraform plan` fail
 # outright. A caller-supplied suffix keeps names unique across repeated
 # apply/destroy cycles and across people sharing one RHDP cluster, while staying
-# plan-time known. Phase 3 passes a unique value from AAP.
+# plan-time known.
+#
+# LEAVE IT EMPTY unless you are sharing a cluster. This comment used to say
+# "Phase 3 passes a unique value from AAP", which stopped being right when state
+# moved to the kubernetes backend in #4: with persistent state, a suffix that
+# changes per run makes every apply DESTROY and RE-CREATE the VMs instead of
+# converging on them. Phase 3 therefore passes whatever the caller set and
+# defaults to empty, i.e. deterministic names.
 # ---------------------------------------------------------------------------
 
 variable "name_suffix" {

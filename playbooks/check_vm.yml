@@ -1,0 +1,63 @@
+---
+# ===========================================================================
+# check_vm.yml — prove AAP can actually reach the demo VMs. Issue #4.
+#
+#   ansible-playbook playbooks/check_vm.yml -i inventory --limit linuxweb
+#
+# Deliberately small. Its whole job is to answer one question — can a job
+# template log in to a provisioned VM and run a task — with a real connection
+# rather than an inference. Phase 4 (#5) brings the actual demo content; this
+# stays as the smoke test you run first when that content misbehaves, so you
+# can tell "the VM is unreachable" apart from "the demo playbook is wrong".
+#
+# HOW THE CONNECTION WORKS. AAP runs on the same OpenShift cluster as the VMs,
+# each VM has a headless Service giving it stable in-cluster DNS, and there is
+# no NetworkPolicy between the namespaces. So this is plain ssh to port 22 at
+# `<vm>.<namespace>.svc.cluster.local`, which playbooks/provision_vm.yml already
+# registered as `ansible_host`.
+#
+# It is NOT `virtctl ssh`. That is the laptop path — it tunnels over the
+# Kubernetes API because a laptop is outside the cluster — and the execution
+# environment has no virtctl binary. There is no bastion in this path either.
+#
+# UNLIKE EVERY OTHER PLAYBOOK HERE, this one targets the VMs rather than
+# `hosts: aap`, so it takes no --limit environment and asserts no connection
+# variables. Its inventory is the runtime one, `Sales Demo VMs`, and its
+# credential is `Sales Demos - Linux Machine`.
+# ===========================================================================
+
+- name: Check the demo VMs are reachable and healthy
+  # linuxweb is the group provision_vm.yml creates, carrying ansible_connection:
+  # ssh and ansible_port: 22 as group variables.
+  hosts: "{{ check_vm_group | default('linuxweb') }}"
+  gather_facts: true
+
+  tasks:
+    - name: Report what answered
+      # If this prints, the whole chain worked: inventory registration, cluster
+      # DNS, the pod network, sshd, and the Machine credential's key.
+      ansible.builtin.debug:
+        msg:
+          - "Host:      {{ inventory_hostname }}"
+          - "Reached:   {{ ansible_host | default(inventory_hostname) }} as {{ ansible_user | default('?') }}"
+          - "OS:        {{ ansible_distribution | default('?') }} {{ ansible_distribution_version | default('') }}"
+          - "Kernel:    {{ ansible_kernel | default('?') }}"
+          - "Uptime:    {{ (ansible_uptime_seconds | default(0) / 60) | round(1) }} minutes"
+          - "Memory:    {{ ansible_memtotal_mb | default('?') }} MB"
+          - "vCPU:      {{ ansible_processor_vcpus | default('?') }}"
+          - "Size tier: {{ vm_size_tier | default('(not set)') }} -> {{ vm_size_chosen | default('(not set)') }}"
+
+    - name: Confirm the guest matches the size tier it was provisioned as
+      # Catches the failure where a tier maps to an instance type that the
+      # cluster silently did not honour: terraform reports success, the VM runs,
+      # and the guest has the wrong shape. Only meaningful when the host carries
+      # the vars provision_vm.yml set, so it is skipped otherwise.
+      ansible.builtin.assert:
+        that:
+          - ansible_memtotal_mb | int > 0
+          - ansible_processor_vcpus | int > 0
+        fail_msg: >-
+          {{ inventory_hostname }} answered but reports no memory or CPU, which
+          means fact gathering did not really complete.
+        quiet: true
+      when: vm_size_chosen is defined

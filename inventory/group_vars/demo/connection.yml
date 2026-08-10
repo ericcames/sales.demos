@@ -12,7 +12,7 @@
 # correct behaviour: it used to succeed by silently borrowing sandbox's values,
 # which is the bug fixed in #16.
 #
-#   ansible-vault edit inventory/group_vars/aap/secrets.yml \
+#   ansible-vault edit playbooks/group_vars/aap/secrets.yml \
 #     --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
 # ===========================================================================
 
@@ -39,10 +39,18 @@ windows_admin_username: "demoadmin"
 linux_admin_username: "cloud-user"
 quay_windows_image: "quay.io/<user>/windows2k22-golden:<date>"
 
-# SSH public key injected into demo VMs via the QEMU guest agent. Not a
-# credential — a public key is safe in plaintext. When set, password-based
-# SSH is disabled on the guest.
-demo_ssh_public_key: ""
+# SSH public key injected into demo VMs by cloud-init at first boot. Not a
+# credential — a public key is safe in plaintext. When set, password-based SSH
+# is disabled on the guest (main.tf:145).
+#
+# LEAVING THIS EMPTY MAKES THE VM UNREACHABLE. cloud-init then emits
+# ssh_pwauth: true with no authorized key and no password, so cloud-user has no
+# credentials at all — by SSH, by virtctl, by anything.
+#
+# The matching PRIVATE half is demo_ssh_private_key in the vaulted
+# group_vars/aap/secrets.yml, which feeds the "Sales Demos - Linux Machine"
+# credential in AAP. Change one and you must change the other.
+demo_ssh_public_key: "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQDs1ypf/MG+oNvFVWhWSxyFovYSEaJX3aGuiuzidCZsNs7eRbDQkJQe6/wDudxS45Xw2PCM77jjTArCbDiCnOtvZCJkRFvcLDXpzNMKRh4iIZdI120kEWkgDOvxE0If97K+oseT8JY0Ge10JJvrUk0ltw7LvxlOq1bqAGFaA6OMEwFRZlQYsp6U55ngpj15m/TU/jGoyRDQNBwwgr7rkXMUtGEFRd0gIZH6rTNIU3E4yX7/R5QmVKp4YYAaNOXQ9QdlZu2YNLxH1o9k9L41L/vXgaWxUXAe7P3DtCqozBulf3sMUgdOMvdpBTMTRE6Y4FAUoH9SttNg07TfJiVhqVOTspfwxJxnbnccxhXFTtlcl81pBPXDGsbXGV+o/z7/7TKWaaJ+N9qbYssbnnFQJhCkQkzehVGi0SaHUsajB2/M8ieUsCjgrxP/0fF5J1RhUvFne6t39ac81M3cx7rI5/5bvK5zSLtmDCkPcsI8JSWCg46rxVvoCTC8ld3e1TGJw4U="
 
 # The *.apps ingress domain for this cluster. Used to construct Route
 # hostnames for HTTP access to demo VMs.
