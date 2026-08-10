@@ -32,8 +32,12 @@ linux_configure_reboot: false
 # host was managed, which is a wasted beat in front of a customer.
 linux_configure_motd: true
 
-# Also show the same art BEFORE authentication, via /etc/issue.net and sshd's
-# Banner directive. On by default.
+# The pre-authentication notice: /etc/issue for the console, /etc/issue.net for
+# the network via sshd's Banner directive. On by default.
+#
+# NOT THE ART. This is the legal authorized-use warning, shown to anyone who can
+# reach the machine before they have proved who they are — no branding, no
+# product story, no demo URL. The art is the MOTD, after authentication.
 #
 # THIS ONE TOUCHES SSHD, which is how AAP reaches every one of these guests, so
 # it is deliberately careful: a drop-in under /etc/ssh/sshd_config.d/ rather
@@ -42,18 +46,26 @@ linux_configure_motd: true
 # sshd touched at all.
 linux_configure_ssh_banner: true
 
+# Named as the system's owner in the notice. Boilerplate, not legal advice —
+# replace templates/issue.j2 outright if your organization has approved wording.
+# Keep it under 44 characters or the box border shifts.
+linux_configure_banner_owner: "Red Hat, Inc."
+
 # The boxed line under the figlet. Padded to the box width by the template, so
 # an override cannot knock the right border out of alignment — but keep it
 # under 59 characters or it is truncated by the padding, not wrapped.
-linux_configure_motd_tagline: "C V E   P A T C H I N G   E N G I N E"
+#
+# SAY WHAT THIS DEMO IS. It read "CVE PATCHING ENGINE" for one commit, which is
+# a different demo story entirely — this one is RHEL guests on OpenShift
+# Virtualization, built by Terraform and configured by AAP.
+linux_configure_motd_tagline: "V I R T U A L I Z A T I O N   D E M O"
 
 # The "Powered by" block, as data rather than markup so a different demo story
 # can swap it with -e without editing the template.
 #
-# THESE NAME WHAT THIS DEMO ACTUALLY RUNS. The art originally credited
-# Lightspeed, Event-Driven Ansible and ServiceNow ITSM; none of those are wired
-# up here yet, and a technical audience reads a login banner as a claim. Add
-# them back as each one becomes real. Max 62 characters per line.
+# THESE NAME WHAT THIS DEMO ACTUALLY RUNS. A technical audience reads a login
+# banner as a claim, so nothing goes here until it is wired up. Max 62
+# characters per line.
 linux_configure_motd_credits:
   - "OpenShift Virtualization    (host)"
   - "Terraform                   (provision)"

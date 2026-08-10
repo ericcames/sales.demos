@@ -7,14 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added -- a login banner on the demo guests (#50)
-- `playbooks/roles/linux_configure/templates/motd.j2`, rendered to **both**
-  `/etc/motd` (after authentication) and `/etc/issue.net` (before it).
-  `virtctl ssh` used to land on a bare prompt with nothing to say the host was
-  managed — a wasted beat in front of a customer. This reverses the #5 port
-  decision below: that dropped the MOTD/issue/banner set alongside two bundled
-  images to keep personal assets out of a public repo, which is an argument
-  about images, not about text.
+### Added -- login banners on the demo guests (#50)
+- **Two different messages, for two different moments.**
+  `templates/issue.j2` is the legal authorized-use notice, rendered to
+  `/etc/issue` (console) and `/etc/issue.net` (network, via sshd's `Banner`) and
+  shown *before* anyone has proved who they are — no branding, no product
+  story, no demo URL. `templates/motd.j2` is the branded ASCII art, rendered to
+  `/etc/motd` and shown *after* authentication. `virtctl ssh` used to land on a
+  bare prompt for both. This reverses the #5 port decision below: that dropped
+  the MOTD/issue/banner set alongside two bundled images to keep personal
+  assets out of a public repo, which is an argument about images, not text.
+- The art says **what this demo actually is** — Red Hat OpenShift
+  Virtualization — rather than naming a different demo story.
 - **The pre-authentication half touches sshd, so it is deliberately careful.**
   sshd is how AAP reaches every one of these guests — including the connection
   running the play itself. So: a drop-in at
@@ -24,9 +28,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   never a restart**. If `sshd_config` has no `Include` line the drop-in would be
   silently ignored, so the role checks and skips with a warning rather than
   editing `sshd_config` directly. `linux_configure_ssh_banner: false` opts out.
-- **The demo URL is on the MOTD only.** `/etc/issue.net` is shown to anyone who
-  can open port 22 before they have proved who they are; the same template is
-  rendered there with the URL forced empty.
+- **Both `/etc/issue` and `/etc/issue.net`.** They are not interchangeable —
+  getty prints the first on the console, sshd sends the second over the
+  network. Writing only one leaves a login path with no notice on it.
 - `/etc/motd` rather than `/etc/motd.d/` — `pam_motd` on RHEL 9 reads both, but
   `/etc/motd` needs no assumption about the guest's PAM stack. No `cowsay`
   package: the cow is static text in the template.
@@ -36,6 +40,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   border out of alignment. **They name what this demo actually runs** —
   OpenShift Virtualization, Terraform, AAP, Insights — because a login banner
   reads as a claim to a technical audience.
+- `linux_configure_banner_owner` names the system's owner in the legal notice.
+  The wording is conventional boilerplate, not legal advice; replace
+  `templates/issue.j2` outright if there is approved text to use instead.
 - The demo URL is printed *below* the box, not inside it: a Route hostname runs
   to roughly 84 characters and would tear the border apart. It comes from the
   `web_url` host variable (#49), and is simply absent on a guest provisioned

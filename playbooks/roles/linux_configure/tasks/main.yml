@@ -12,6 +12,12 @@
 # reason for dropping it was the personal assets, which is an argument about
 # images and not about text: generic ASCII art carries none.
 #
+# TWO MESSAGES, TWO MOMENTS, AND THEY ARE NOT THE SAME FILE.
+#   templates/issue.j2  the legal authorized-use notice, /etc/issue and
+#                       /etc/issue.net, shown BEFORE authentication to anyone
+#                       who can reach the box. No branding, no URL.
+#   templates/motd.j2   the branded art, /etc/motd, AFTER authentication.
+#
 # The pre-authentication half touches sshd, which is how AAP reaches every one
 # of these guests, so it is deliberately careful — a drop-in rather than an edit
 # to sshd_config, `sshd -t` validation before the file is installed, and a
@@ -149,7 +155,7 @@
     mode: "0644"
   when: linux_configure_motd | bool
 
-- name: Show the same banner before authentication
+- name: Show the legal notice before authentication
   when: linux_configure_ssh_banner | bool
   block:
     # sshd is how AAP reaches this guest, so nothing here edits sshd_config
@@ -163,19 +169,22 @@
       changed_when: false
       failed_when: false
 
-    - name: Write the pre-authentication banner
-      # The SAME template as /etc/motd, with the URL forced empty: this file is
-      # shown to anyone who can open port 22 before they have proved who they
-      # are. One copy of the art, two destinations.
+    - name: Write the pre-authentication notice
+      # BOTH files, and they are not interchangeable: /etc/issue is what getty
+      # prints on the console, /etc/issue.net is what sshd sends over the
+      # network. Writing only one leaves a login path with no notice on it.
+      #
+      # Not the art — this is the legal warning, shown before anyone has proved
+      # who they are, so it carries no branding and no demo URL.
       ansible.builtin.template:
-        src: motd.j2
-        dest: /etc/issue.net
+        src: issue.j2
+        dest: "{{ item }}"
         owner: root
         group: root
         mode: "0644"
-      vars:
-        linux_configure_motd_url: ""
-      when: linux_configure_sshd_include.rc == 0
+      loop:
+        - /etc/issue
+        - /etc/issue.net
 
     - name: Point sshd at it
       # A drop-in, not an edit to sshd_config. `validate` runs `sshd -t` against
@@ -198,9 +207,10 @@
       ansible.builtin.debug:
         msg: >-
           /etc/ssh/sshd_config has no `Include /etc/ssh/sshd_config.d/*.conf`
-          line, so a drop-in would be ignored. The pre-authentication banner was
-          skipped rather than editing sshd_config directly. /etc/motd is
-          unaffected.
+          line, so a drop-in would be ignored. /etc/issue and /etc/issue.net are
+          written, but sshd was NOT pointed at the latter — set `Banner
+          /etc/issue.net` by hand, or accept console-only. Nothing was edited in
+          sshd_config, and /etc/motd is unaffected.
       when: linux_configure_sshd_include.rc != 0
 
 - name: Apply security updates
