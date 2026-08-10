@@ -1,6 +1,6 @@
 # ---------------------------------------------------------------------------
 # Secrets — the ONLY secrets mechanism in this repo is
-# inventory/group_vars/aap/secrets.yml, which is VAULT-ENCRYPTED AND COMMITTED.
+# playbooks/group_vars/aap/secrets.yml, which is VAULT-ENCRYPTED AND COMMITTED.
 # One file, both environments. Credentials only; hostnames and API URLs live in
 # the committed plaintext group_vars/<env>/connection.yml.
 #
