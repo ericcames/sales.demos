@@ -40,8 +40,8 @@ have to build this.
 
 ## Step 1 — Show it empty
 
-*Automation Content → Repositories*. Note the collection count on each row:
-`rh-certified`, `validated`, `community`, all **0**.
+*Automation Content → Repositories*. `rh-certified`, `validated`, `community`
+all show **Never synced**.
 
 ![Repositories — never synced](../../images/pah-repositories-empty.png)
 
