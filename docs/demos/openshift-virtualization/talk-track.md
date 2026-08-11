@@ -112,6 +112,8 @@ what makes it land.
 
 ## Beat 3 · The interface is two questions (6–8)
 
+![The launch survey — the entire interface a requester sees](../../images/aap-survey.png)
+
 | Question | Variable | Choices | Default |
 |---|---|---|---|
 | Operating system | `os_type` | `linux` · `windows` · `both` | `linux` |
@@ -140,23 +142,49 @@ skeptical sysadmin starts actually listening.
 
 ## Beat 4 · Behind the button (8–16)
 
-Show the workflow graph from [`architecture.md`](architecture.md). Name the four
-nodes, then slow down for three specific points. **Resist the urge to narrate
-every task** — you are teaching three ideas, not reading a playbook.
+**Start from empty.** Show the namespace with nothing in it — this is the "before"
+that makes everything after it mean something:
+
+![The demo namespace before the run — no VirtualMachines found](../../images/ocp-vms-before.png)
+
+> **"That's the project the VM is going to land in. Nothing in it. Watch."**
+
+Then the workflow, mid-run:
+
+![The workflow running — provision in progress, 43 seconds elapsed](../../images/aap-workflow-running.png)
+
+Four nodes, chained left to right, each one gated on the previous succeeding.
+Name them, then slow down for three specific points. **Resist the urge to
+narrate every task** — you are teaching three ideas, not reading a playbook.
 
 ### 4a · The Route returns 503, and that is correct
 
-> **"The moment Terraform finishes, the URL exists. And it returns 503, because
-> there's no web server on the machine yet. That's not a bug I'm apologizing
-> for — it's the design. Building the box and configuring the box are two
-> different jobs with two different failure modes, and this keeps them visibly
-> separate. When something breaks you know which half broke."**
+**Open the URL now, in front of them.** This is what you get:
+
+![The Route before the web server exists — Application is not available](../../images/route-503.png)
+
+> **"The moment Terraform finishes, that URL exists — the hostname resolves,
+> the route is live, TLS terminates. And there's nothing behind it, because
+> nobody's installed a web server yet."**
+>
+> **"That's not a bug I'm apologizing for, it's the design. Building the box and
+> configuring the box are two different jobs with two different failure modes,
+> and keeping them visibly separate means that when something breaks you already
+> know which half broke."**
+
+**Say the URL out loud while it is on screen** — it encodes the whole story:
+`sd-lnx-medium-1cpu-4gb` is the VM, named for the tier that was requested;
+`-web` is the Service backing the route; `sales-demos-sandbox` is the namespace.
 
 ```console
 $ curl -sI "$(terraform output -raw web_url)" | head -1
 HTTP/1.1 503 Service Unavailable     # after provision
 HTTP/1.1 200 OK                      # after configure
 ```
+
+Then come back to it after the configure node and reload. **The 503 → 200
+transition, live, is the single best proof in the demo** — nothing else you
+show makes the separation of concerns as concrete.
 
 **Why:** it reframes an apparent flaw as an architectural choice — and it is
 genuinely true, which is why it survives follow-up questions.
@@ -181,22 +209,70 @@ has their own version of this story.
 | "Done" means | Elapsed |
 |---|---|
 | `terraform apply` returns | ~10 seconds |
+| **The provision job goes green** | **36 seconds** |
 | The VM reports `Running` | ~45 seconds |
 | sshd actually accepts a connection | about a minute after that |
 
-> **"Three different answers to 'is it ready yet', and they're a minute and a
-> half apart. A person learns that by getting Connection refused twice and
-> assuming they broke something. The workflow just waits — and the wait is
-> written into the playbook rather than the workflow, so it protects you when
-> you run it by hand too."**
+> **"Four different answers to 'is it ready yet'. And look at the second one —
+> the provision job reports Success at thirty-six seconds, while the machine
+> is still booting. A green checkmark is not the same as a usable server."**
+>
+> **"A person learns that by getting Connection refused twice and assuming they
+> broke something. The workflow just waits — and the wait is written into the
+> playbook rather than into the workflow, so it protects you when you run it by
+> hand too."**
+
+**This is the beat where the job-timings screenshot pays off twice**: the
+provision node's 36 seconds is visible right there, and so is the fact that
+register took four and a half minutes partly *because* it spent the first stretch
+waiting for a machine the previous job had already called done.
 
 **Why:** it is a detail nobody fakes. It signals the thing has actually been run
 enough times to find the sharp edges.
 
-Close the beat with the honest total:
+### And the same namespace, after
 
-> **"End to end, about nine minutes. Most of that is registering to the CDN and
-> pulling patches — the machine itself is up in forty-five seconds."**
+![The demo namespace after the run — one VM, Running](../../images/ocp-vms-after.png)
+
+> *A `large-2cpu-6gb` run, so the name and the 6 GiB differ from the survey shot
+> above — they are two different launches, not one continuous sequence.*
+
+> **"Same view, one VM, running. Requested 2 CPU, using 6 gigs — which is
+> exactly the tier that was asked for. Nobody touched the console to make that
+> happen."**
+
+**Watch for `LiveMigratable=True` in that Conditions column.** A sharp sysadmin
+will spot it and ask why you said there was no live migration. The answer is
+precise and worth having ready:
+
+> **"Good catch — that condition means the VM is *eligible* to migrate: its
+> storage is shared, it has no local-only devices. It's a property of how the
+> machine was built. What it doesn't have is anywhere to go, because this
+> cluster is one node. Give it a second node and that condition becomes
+> useful."**
+
+### Close the beat with the real numbers
+
+You have them, from an actual run, so use them rather than rounding:
+
+![The controller's job list for a complete run](../../images/aap-job-timings.png)
+
+| Node | Duration |
+|---|---|
+| Provision VM | 36 s |
+| Register VMs | 4 m 25 s |
+| Configure VMs | 3 m 49 s |
+| Check VMs | 5 s |
+| **Whole workflow** | **9 m 9 s** |
+
+> **"Nine minutes and nine seconds, and look where it goes. Building the machine
+> is thirty-six seconds. Ninety percent of the run is registering to the CDN and
+> then pulling packages and patches over it — which is exactly the part you'd be
+> waiting on anyway if you did this by hand."**
+
+**This table is worth putting on screen.** A sysadmin trusts a job list with
+durations in it far more than a presenter saying "about nine minutes", and it
+pre-empts the suspicion that the fast part is the only part you showed.
 
 **Transition:** *"So nine minutes later, here's what you've actually got."*
 
@@ -456,6 +532,7 @@ Every claim in this track is checkable in the repo. If you get pushed on one:
 | The survey is two questions, no environment dropdown | `inventory/group_vars/aap/controller_workflows.yml`, `controller_templates.yml` |
 | Register must precede configure; the image has no repos | `controller_workflows.yml:10-14`, `playbooks/roles/linux_register/tasks/main.yml` |
 | 10 s / 45 s / +1 min | `README.md`, `playbooks/register_vm.yml` |
+| 36 s / 4 m 25 s / 3 m 49 s / 5 s, 9 m 9 s total | `docs/images/aap-job-timings.png` — one measured run |
 | Memory budget fails at plan time | `terraform/ocpvirt/locals.tf` |
 | Nightly teardown, preserving CNV and boot sources | `inventory/group_vars/<env>/controller_schedules.yml`, `playbooks/teardown.yml` |
 | Single node, no live migration | `docs/plan/ocpvirt-demo-plan.md` → Constraints |

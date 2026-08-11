@@ -43,6 +43,21 @@ Then offer the real next step: a multi-node environment where it can be shown.
 The single-node constraint is recorded in
 [`docs/plan/ocpvirt-demo-plan.md`](../../plan/ocpvirt-demo-plan.md) → Constraints.
 
+### The follow-up: "then why does it say `LiveMigratable=True`?"
+
+**They are reading the Conditions column in the console, and they are right to
+ask.** Do not wave it away — the precise answer is better than the vague one:
+
+> **"That condition means the VM is *eligible* to migrate — shared storage, no
+> local-only devices pinning it to a host. It's a property of how the machine
+> was built, and it's genuinely true. What it doesn't have is anywhere to go,
+> because this cluster is a single node. Add a second one and that condition
+> starts being useful."**
+
+Being able to answer this cleanly is worth more than the original limitation
+costs you. It shows you know the difference between a capability and a
+deployment.
+
 ---
 
 ## "Does this do Windows?"
