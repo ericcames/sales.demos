@@ -18,6 +18,13 @@ The full research findings, design decisions, and phase-by-phase plan are in
 [`docs/plan/ocpvirt-demo-plan.md`](docs/plan/ocpvirt-demo-plan.md). Read that
 first — it records *why* things are the way they are, not just what to do.
 
+**Presenting it rather than building it?**
+[`docs/demos/openshift-virtualization/`](docs/demos/openshift-virtualization/)
+is the talk track: a 30-minute run sheet, the narrative behind each beat, the
+questions this audience asks, and the answers. It needs no live environment —
+the demo page and login banners are rendered from the same templates the guests
+serve by `utilities/render-demo-assets.py`, and committed.
+
 ## Layout
 
 Two independent axes, kept separate so adding demos later does not multiply out:
