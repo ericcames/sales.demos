@@ -40,6 +40,17 @@ sales.demos   docs/demos/openshift-virtualization/talk-track.md
 sales.demos   docs/demos/openshift-virtualization/architecture.md
 sales.demos   docs/demos/openshift-virtualization/objections.md
 
+# Private Automation Hub (#68). Six files rather than five -- clickops.md holds
+# the manual UI procedure the demo contrasts against, and it is included because
+# "how would I do this by hand" is a question the notebook should be able to
+# answer from the real steps rather than by inferring them.
+sales.demos   docs/demos/private-automation-hub/README.md
+sales.demos   docs/demos/private-automation-hub/run-sheet.md
+sales.demos   docs/demos/private-automation-hub/talk-track.md
+sales.demos   docs/demos/private-automation-hub/architecture.md
+sales.demos   docs/demos/private-automation-hub/objections.md
+sales.demos   docs/demos/private-automation-hub/clickops.md
+
 # --- What this repo is and where it is going -------------------------------
 sales.demos   README.md
 sales.demos   ROADMAP.md
@@ -50,6 +61,7 @@ sales.demos   ROADMAP.md
 # have to satisfy -- secrets handling, the skill/playbook contract, the
 # environment model.
 sales.demos   docs/plan/ocpvirt-demo-plan.md
+sales.demos   docs/plan/pah-plan.md
 sales.demos   CLAUDE.md
 
 # --- Off by default --------------------------------------------------------

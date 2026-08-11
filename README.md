@@ -4,9 +4,17 @@ Sales demo automation, built as code. Each demo can be run two ways — as a
 Claude Code skill from your laptop, or as a job template inside Ansible
 Automation Platform — driving the same playbooks either way.
 
-> **Status:** early. Only the OpenShift Virtualization demo
-> (`demos/ocpvirt/`) is in scope right now. The layout admits more demos later;
-> nothing has been migrated yet and that decision is deliberately open.
+> **Status:** early. Two use cases: OpenShift Virtualization, and Private
+> Automation Hub as code (#68). The layout admits more demos later; nothing from
+> the other daily-demo repos has been migrated and that decision is
+> deliberately open.
+
+## Use cases
+
+| Use case | Audience | Plan | Talk track |
+|---|---|---|---|
+| **OpenShift Virtualization** | Linux / platform sysadmins | [`docs/plan/ocpvirt-demo-plan.md`](docs/plan/ocpvirt-demo-plan.md) | [`docs/demos/openshift-virtualization/`](docs/demos/openshift-virtualization/) |
+| **Private Automation Hub — ClickOps vs. config-as-code** | Sysadmins and automation leads | [`docs/plan/pah-plan.md`](docs/plan/pah-plan.md) | [`docs/demos/private-automation-hub/`](docs/demos/private-automation-hub/) |
 
 ## The demo: OpenShift Virtualization on the RHDP "Ansible Product Demo"
 
@@ -32,12 +40,18 @@ Two independent axes, kept separate so adding demos later does not multiply out:
 ```
 .claude/skills/<name>/SKILL.md   in-repo skills, discovered when the repo is open
 demos/ocpvirt/                   demo content — job templates, surveys
+hub/                             what Private Automation Hub SYNCS (generated)
 inventory/group_vars/
   aap/                             shared, demo-agnostic config
   sandbox/  demo/                  per-environment connection + secrets
 terraform/ocpvirt/               keyed by PLATFORM, not demo — demos reuse platforms
 playbooks/                       the work: one playbook per phase
 ```
+
+**`hub/` is not `collections/`.** `collections/requirements.yml` is what your
+laptop and the execution environment *install*. `hub/*-requirements.yml` is what
+PAH *syncs from upstream*. Different direction, different lifecycle — mixing
+them up is the likeliest mistake in the second use case.
 
 A **demo** is selected by extra-var or CI matrix. An **environment** is selected
 by inventory group.
@@ -161,6 +175,13 @@ Every phase runs as a Claude Code skill *and* as an AAP job template. The skill
 **never reimplements logic** — both entry points drive the same playbook through
 the same variable contract.
 
+**One documented exception: `pah-sync`.** The Red Hat offline token that syncs
+certified content lives in `~/.ansible.cfg`, and an AAP execution environment has
+no such file. A vaulted fallback was built and verified working, then removed —
+it bought one job template at the cost of a second copy of a rotating credential.
+So PAH work runs from a laptop, which is where `config.yml` has always been: you
+cannot use AAP to bootstrap itself. See [`docs/plan/pah-plan.md`](docs/plan/pah-plan.md).
+
 | Layer | Responsibility |
 |---|---|
 | `playbooks/<phase>.yml` | All the work. Idempotent, no prompts, every input via `extra_vars`. |
@@ -184,6 +205,7 @@ in this repo, which for repo-specific skills is the correct scope.
 | `ocpvirt-windows-image` | `playbooks/build_windows_golden.yml` | Build and publish the Windows golden image | Not started |
 | `ocpvirt-demo` | `playbooks/run_demo.yml` | Register the VMs and configure the web server | Done ([#5](https://github.com/ericcames/sales.demos/issues/5)) |
 | `ocpvirt-teardown` | `playbooks/teardown.yml` | Destroy VMs; keep CNV and the golden image | Done ([#6](https://github.com/ericcames/sales.demos/issues/6)) |
+| `pah-sync` | `playbooks/sync_hub.yml` | Populate Private Automation Hub — certified, validated, community | Done ([#68](https://github.com/ericcames/sales.demos/issues/68)) |
 
 See the [roadmap](ROADMAP.md) and the open issues. CI enforces that every skill
 added here appears in this table.

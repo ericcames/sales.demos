@@ -18,6 +18,32 @@ aap_organization_name: "IT Service Automation"
 # ---------------------------------------------------------------------------
 # Automation Hub token — read from ~/.ansible.cfg, NOT stored in the vault.
 #
+# PRECISELY: this is the Red Hat OFFLINE token, an SSO refresh token tied to your
+# Red Hat account's subscription entitlement. Two consumers, both presenting it
+# to console.redhat.com:
+#   - `ansible-galaxy collection install` for certified content (#22)
+#   - Private Automation Hub's rh-certified and validated remotes (#68,
+#     group_vars/aap/hub_collection_remotes.yml)
+#
+# IT IS ONE OF THREE CREDENTIALS CALLED "TOKEN" around Automation Hub, and
+# mixing them up is the most common day-one mistake. The other two are not
+# stored anywhere in this repo, on purpose:
+#
+#   PAH API token   — a client authenticating TO your own hub. Per-user and
+#                     short-lived, so a stored copy is a guaranteed stale value.
+#                     ansible.hub uses ah_username/ah_password instead, already
+#                     resolved from connection.yml plus the vault.
+#   galaxy.ansible.com token — only needed to PUBLISH to public Galaxy. Reading
+#                     public collections is anonymous, which is why the
+#                     community remote carries no credential at all.
+#
+# The full table, written for someone who has never run a PAH, is in
+# docs/demos/private-automation-hub/architecture.md.
+#
+# IT EXPIRES after 30 days of non-use, and regenerating it on the portal
+# invalidates the old one. The failure mode is not an auth error: a sync
+# authenticates fine and then returns zero collections.
+#
 # ~/.ansible.cfg already holds this token and is the authoritative copy: it is
 # what `ansible-galaxy collection install` uses for Red Hat certified content,
 # and it is shared across every one of Eric's repos. Vaulting a second copy
@@ -31,11 +57,22 @@ aap_organization_name: "IT Service Automation"
 # drift on the next rotation. aap-skills still points at the stale path — do
 # not copy that detail.
 #
-# KNOWN LIMITATION: this resolves on the controller, so it will NOT resolve
-# inside an AAP execution environment, where ~/.ansible.cfg does not exist.
-# That is acceptable because the only consumer is the AAP bootstrap, which is
-# inherently laptop-side — you cannot use AAP to bootstrap itself. A job
-# template needing Hub access gets an AAP credential instead of this variable.
+# ONE COPY, DELIBERATELY, AND THAT MAKES PAH WORK LAPTOP-ONLY. This lookup
+# resolves on the controller, so it does NOT resolve inside an AAP execution
+# environment, where ~/.ansible.cfg does not exist.
+#
+# A vaulted fallback was built and verified working, then removed on purpose
+# (#68). It bought exactly one thing — a hub-sync job template — at the cost of
+# a second copy of a rotating credential, which is the specific failure #22
+# above exists to prevent. PAH configuration therefore runs from a laptop, the
+# same as every other config-as-code object here: `config.yml` has never had a
+# job template either, because you cannot use AAP to bootstrap itself.
+#
+# The consequence is worth stating plainly, because it fails QUIETLY. Running
+# any of this inside an EE resolves this to an empty string, which is not an
+# error — the certified and validated remotes are then configured with no
+# credential, authenticate as anonymous, and sync nothing. playbooks/sync_hub.yml
+# asserts the token is non-empty up front for exactly that reason.
 # ---------------------------------------------------------------------------
 automation_hub_token: >-
   {{ lookup('ansible.builtin.ini',

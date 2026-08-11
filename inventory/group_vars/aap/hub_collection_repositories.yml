@@ -1,0 +1,93 @@
+---
+# ============================================================================
+# group_vars/aap/hub_collection_repositories.yml — the PAH repositories (#68)
+# ============================================================================
+# The three stock repositories, each bound to its remote in
+# hub_collection_remotes.yml. Dispatch ordering guarantees the remotes exist
+# first.
+#
+# THE SYNC HAS TWO GATES AND NEEDS BOTH — the same trap as hub_ee_repositories.yml,
+# with one difference worth knowing:
+#
+#   1. DISPATCH GATE — for EE repositories the gate is a separate scalar named
+#      `hub_ee_repository_sync`. For COLLECTION repositories it is this variable
+#      itself: dispatch feeds `hub_collection_repositories` to both
+#      hub_collection_repository AND hub_collection_repository_sync
+#      (roles/dispatch/defaults/main.yml:131-140). So there is no second scalar
+#      to forget here.
+#   2. ROLE GATE — the item must carry `sync: true`. The sync role loops the same
+#      list and skips any item where it is false.
+#
+# Miss the role gate and there is no error: the repository is created, stays
+# empty, and the demo shows a hub full of nothing.
+#
+# SYNC IS ON BY DEFAULT BUT DOES NOT BLOCK. `config.yml` runs on every
+# `setup.yml`, and a blocking sync would add its whole duration to an environment
+# build -- measured at 4.4 minutes, but unbounded on a cold cluster or slow link.
+# So the sync starts and the playbook moves on. The dedicated entry point —
+# playbooks/sync_hub.yml, wrapped by the pah-sync skill — passes
+# hub_sync_wait=true and blocks, which is what you want when the sync IS the
+# demo, and what makes the timing table honest.
+#
+# There is NO job template for it. The Red Hat offline token lives in
+# ~/.ansible.cfg and an execution environment has no such file (#68).
+#
+# Both knobs are plain extra_vars, so a quick AAP tweak stays quick:
+#   -e hub_sync_enabled=false    apply configuration, start no sync at all
+#   -e hub_sync_wait=true        block until every repository finishes
+#
+# `sync:` ALSO CARRIES `not ansible_check_mode`, AND THAT IS NOT BELT-AND-BRACES.
+# ansible.hub 1.1.0's collection_repository_sync module has a real bug: it reads
+#
+#     check_mode = module.params.get("check_mode")
+#
+# but `check_mode` is not in its argument_spec, so that is always None, the
+# guarded `if check_mode: exit_json(...)` branch is never taken, and the sync
+# RUNS FOR REAL under --check. (It should be `module.check_mode`.)
+#
+# Without this expression `playbooks/validate.yml` -- which exists to show what
+# WOULD change and is documented as safe -- would kick a live sync on every run.
+# Observed before the guard was added: three sync tasks appeared in Pulp during
+# check-mode runs, before any real apply had happened (#68).
+#
+# The role's own `when: item.sync | default(true)` gate is what saves us: making
+# it false in check mode means the buggy module is never reached at all.
+#
+# NEITHER IS SUFFIXED `_all`. They are scalars, and dispatch's wildcard merge
+# only handles lists and dicts — a suffixed scalar gets fed to `[] + true` and
+# blows up. Same reasoning as hub_ee_repository_sync.
+#
+# RETAIN_REPO_VERSIONS IS NOT A COLLECTION-VERSION CONTROL. It caps how many
+# repository SNAPSHOTS Pulp keeps, which is why the version windowing had to be
+# built in the requirements files instead. Set to 1 here because nothing in this
+# repo ever rolls a repository back to a previous snapshot, and every retained
+# one pins content that would otherwise be reclaimable.
+# ============================================================================
+
+hub_collection_repositories_all:
+  - name: rh-certified
+    description: >-
+      Red Hat certified collections. 214 collections, 3 newest versions of each,
+      per hub/certified-requirements.yml.
+    remote: rh-certified
+    retain_repo_versions: 1
+    sync: "{{ (hub_sync_enabled | default(true) | bool) and not ansible_check_mode }}"
+    wait: "{{ hub_sync_wait | default(false) | bool }}"
+
+  - name: validated
+    description: >-
+      Red Hat validated content. 47 collections, 3 newest versions of each,
+      per hub/validated-requirements.yml.
+    remote: validated
+    retain_repo_versions: 1
+    sync: "{{ (hub_sync_enabled | default(true) | bool) and not ansible_check_mode }}"
+    wait: "{{ hub_sync_wait | default(false) | bool }}"
+
+  - name: community
+    description: >-
+      Curated community collections — the ericcames and mlowcher61 namespaces,
+      current version only, per hub/community-requirements.yml.
+    remote: community
+    retain_repo_versions: 1
+    sync: "{{ (hub_sync_enabled | default(true) | bool) and not ansible_check_mode }}"
+    wait: "{{ hub_sync_wait | default(false) | bool }}"

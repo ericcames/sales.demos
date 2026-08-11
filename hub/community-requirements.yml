@@ -1,0 +1,50 @@
+---
+# ============================================================================
+# hub/community-requirements.yml — community collections PAH syncs (#68)
+# ============================================================================
+# GENERATED. Do not hand-edit; run the refresh and commit the diff:
+#
+#   python3 utilities/refresh-hub-requirements.py
+#   git diff hub/
+#
+# THIS IS NOT collections/requirements.yml. That file is what your laptop and
+# the execution environment INSTALL. This file is what Private Automation Hub
+# SYNCS from upstream. Confusing the two is the likeliest mistake here.
+#
+# Pinned to one exact version each — the current release at the last refresh,
+# not a floor. This is the whole "most current version only" requirement: a
+# bare `namespace.name` here would sync every version ever published.
+#
+# 15 collections across the namespaces: ericcames, mlowcher61.
+# ============================================================================
+collections:
+  - name: ericcames.aap_as_code
+    version: "1.0.2"
+  - name: ericcames.aap_as_code_start_kit
+    version: "1.0.0"
+  - name: ericcames.demo_datacenter
+    version: "1.0.0"
+  - name: ericcames.f5_daily_demo
+    version: "1.0.0"
+  - name: ericcames.f5dailydemo
+    version: "0.0.5"
+  - name: ericcames.hashicorp_daily_demo
+    version: "1.0.1"
+  - name: ericcames.linux_daily_demo
+    version: "0.0.1"
+  - name: ericcames.panos_daily_demo
+    version: "1.0.0"
+  - name: ericcames.satellite_dailydemo
+    version: "0.0.0"
+  - name: ericcames.windows_daily_demo
+    version: "1.0.0"
+  - name: mlowcher61.appviewx_certplus
+    version: "1.0.0"
+  - name: mlowcher61.ivanti_itsm
+    version: "0.2.2"
+  - name: mlowcher61.metricstream_grc
+    version: "0.1.0"
+  - name: mlowcher61.netskope
+    version: "0.3.1"
+  - name: mlowcher61.rapid7_vulnerability
+    version: "0.1.1"
