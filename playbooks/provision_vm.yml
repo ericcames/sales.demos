@@ -160,9 +160,9 @@
       # The kubernetes backend stores state in a Secret in this namespace, and
       # `terraform init` cannot write it into a namespace that is not there.
       # Creating it here in Ansible rather than in the Terraform stack that uses
-      # it is what avoids the backend chicken-and-egg — same reasoning as
-      # AMZL-dailydemo/playbooks/provision_vm_aws.yml, which creates its S3 state
-      # bucket this way.
+      # it is what avoids the backend chicken-and-egg — same reasoning as the
+      # AWS provisioning playbook in a sibling daily-demo repo, which creates
+      # its S3 state bucket this way.
       #
       # TEARDOWN (#6) MUST NOT DELETE THIS NAMESPACE. It is long-lived shared
       # infrastructure holding state for every run and both environments; the
