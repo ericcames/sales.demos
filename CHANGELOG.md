@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added -- stage the docs for NotebookLM (#64)
+- `utilities/collect-notebooklm-sources.sh` and its manifest
+  `utilities/notebooklm-sources.txt`. NotebookLM takes files rather than
+  repositories and answers only from what it is given, so the corpus is an
+  explicit allowlist and this script turns that list into `build/notebooklm/`,
+  ready to drag into a browser. `build/` is gitignored -- every staged file is
+  a copy of a tracked one.
+- **The manifest is an allowlist and never globs.** No directory is walked, so
+  a repo holding customer material cannot be swept into a Google product by a
+  pattern that was slightly too wide. Each source is a line someone wrote.
+- **Files are renamed on copy** to `<repo>--<flattened-path>.md`. Filenames are
+  the only handle NotebookLM shows in its source list and in every citation,
+  and several repos' worth of `README.md` would be indistinguishable at exactly
+  the moment you want to know where an answer came from.
+- **The staged bundle is grepped before it is declared ready**, using the same
+  real-value patterns as `check-no-secrets.sh`, and the copies are deleted if
+  anything matches. Placeholders (`sha256~CHANGEME`, `cluster-<id>.dyn...`) do
+  not trip it; a genuine token does, and then there is no bundle left to upload.
+- The corpus starts at this repo only, and deliberately includes
+  `docs/plan/ocpvirt-demo-plan.md` and `CLAUDE.md`: the notebook's first job is
+  working out what gets refactored into `sales.demos` over time, and that
+  judgement needs the design rationale and the conventions, not just the docs.
+
 ### Added -- a real demo page, and the restart-503 (#60)
 - `demo-page-live.png` -- the demo page **served by an actual guest**, not
   rendered. RHEL 9.8, `large-2cpu-6gb` resolving to `sd1.large`, 5642 MB, and

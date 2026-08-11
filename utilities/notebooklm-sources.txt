@@ -1,0 +1,57 @@
+# ===========================================================================
+# notebooklm-sources.txt -- the corpus manifest for collect-notebooklm-sources.sh
+#
+# One source file per line, two whitespace-separated fields:
+#
+#     <repo-directory-name>   <path within that repo>
+#
+# The repo name is resolved under the directory holding this checkout (override
+# with NOTEBOOKLM_REPOS_ROOT), except `sales.demos`, which always resolves to
+# this repo wherever it is cloned.
+#
+# ALLOWLIST, NOT A DENYLIST. Every file that reaches the notebook is named here.
+# Nothing is globbed and no directory is walked, so a repo holding customer
+# material cannot be swept in by a pattern that was slightly too wide. When a
+# new repo is added to this list, that is a deliberate line someone wrote.
+#
+# WHAT THIS CORPUS IS FOR
+#     Deciding what gets refactored into sales.demos over time. That makes the
+#     design rationale and the repo conventions first-class sources, not noise
+#     -- you cannot judge whether another repo should fold in here without
+#     knowing what this repo decided and why it decided it.
+#
+#     aap_config, aiops-workshop-prep and ansible.cli are staying independent
+#     and are deliberately absent.
+#
+# WHAT IS LEFT OUT, ON PURPOSE
+#     Retrieval quality degrades with noise: a long low-signal file becomes the
+#     citation for questions it cannot actually answer. CHANGELOG.md (900+
+#     lines of per-PR detail), CONTRIBUTING.md and CODE_OF_CONDUCT.md are
+#     commented out below rather than deleted, so turning one on is one edit.
+# ===========================================================================
+
+# --- The demo documentation ------------------------------------------------
+# Five documents, one job each. The README explains the structure itself, so it
+# earns its place ahead of the individual files.
+sales.demos   docs/demos/README.md
+sales.demos   docs/demos/openshift-virtualization/README.md
+sales.demos   docs/demos/openshift-virtualization/run-sheet.md
+sales.demos   docs/demos/openshift-virtualization/talk-track.md
+sales.demos   docs/demos/openshift-virtualization/architecture.md
+sales.demos   docs/demos/openshift-virtualization/objections.md
+
+# --- What this repo is and where it is going -------------------------------
+sales.demos   README.md
+sales.demos   ROADMAP.md
+
+# --- The decisions, which are the point for refactoring triage -------------
+# ocpvirt-demo-plan.md holds the environment research and *why* each choice was
+# made. CLAUDE.md is the statement of conventions any repo folded in here would
+# have to satisfy -- secrets handling, the skill/playbook contract, the
+# environment model.
+sales.demos   docs/plan/ocpvirt-demo-plan.md
+sales.demos   CLAUDE.md
+
+# --- Off by default --------------------------------------------------------
+# sales.demos   CHANGELOG.md
+# sales.demos   CONTRIBUTING.md
