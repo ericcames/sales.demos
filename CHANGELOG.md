@@ -7,6 +7,61 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added -- documentation you can present from (#56)
+- `docs/demos/`, a talk-track tree with one directory per use case. The first is
+  `openshift-virtualization/`, ready to present in a 30-minute slot. Everything
+  written down until now — `README.md`, the plan doc, the eight `SKILL.md`
+  files — is written for the person **building** the automation. Nothing was
+  written for the person **showing** it.
+- **Five documents per use case, and the split is the point.** `run-sheet.md` is
+  the live layer: minute markers, what is on screen, exact commands, recovery
+  moves, scannable by someone standing up with an audience waiting.
+  `talk-track.md` is the rehearsal layer: prose, the actual words, why each beat
+  exists. Then `architecture.md`, `objections.md`, and a `README.md` entry
+  point. One document trying to do the first two jobs is too long to present
+  from and too terse to learn from.
+- **It works with no cluster**, which was the requirement that shaped
+  everything else. A demo environment expires, a slot moves, a colleague reads
+  it on a plane.
+- `utilities/render-demo-assets.py` is what makes that possible. Two of the
+  three things a customer actually looks at are Jinja templates in
+  `linux_configure/templates/`, so they render on a laptop with nothing
+  running: it renders `index.html.j2` against a representative fixture,
+  screenshots it with headless Chrome to `docs/images/demo-page.png`, and prints
+  `motd.j2`, `issue.j2` and `facts.json` as text for the talk track. Same
+  convention as `make-env-logo.py` — a generated image committed under
+  `docs/images/` beside the script that regenerates it.
+- **The screenshot is rendered, not photographed**, and the script header, the
+  image caption and the use-case README all say so. It is accurate — the guest
+  serves that exact template — but it is not a capture of a live run, and a
+  public repo should not imply otherwise.
+- **`trim_blocks=True` is not optional in that script.** Ansible defaults it
+  True and Jinja defaults it False, so with Jinja's default the newline after
+  every `{% for %}` survives and `motd.j2`'s "Powered by" list renders with a
+  blank line between each credit, tearing the boxed banner apart.
+- **The fixture keeps `ansible_virtualization_type: "NA"` deliberately.** That
+  is what a KubeVirt guest genuinely reports, and it is why `index.html.j2`
+  cannot use `| default()` — "NA" is defined, so the default never fires. Using
+  the real value means the committed PNG exercises that branch instead of
+  hiding it.
+- **The logos must be staged beside the rendered HTML.** `index.html.j2`
+  references `logos/rhel.svg` relatively; render the file alone and the
+  screenshot shows three broken-image boxes where the product marks belong. The
+  script copies the directory into the temp dir, and the verification step is to
+  open the PNG and look.
+- **The AAP UI cannot be rendered**, so the workflow is a Mermaid graph and the
+  survey a table — arguably better than screenshots for a talk track, since both
+  survive dark mode and a gateway upgrade. The run sheet ends with a checklist
+  of screenshots worth capturing next time an environment is up.
+- `docs/demos/_template/` was extracted from the finished use case rather than
+  authored ahead of it, so it carries the shape that actually worked. Private
+  Automation Hub (ClickOps vs. configuration-as-code) is a named row in the
+  index with no stub directory — an empty folder is worse than a line in a
+  table.
+- `docs/plan/` is untouched: it answers *why the automation is built this way*,
+  `docs/demos/` answers *how to show it*. Different readers, different
+  lifecycles.
+
 ### Added -- the environment is now marked AFTER login too (#54)
 - `utilities/aap-env-badge/`, an unpacked MV3 Chrome extension painting a
   `SANDBOX` / `DEMO` pill in the middle of the AAP masthead. The sign-in logo
