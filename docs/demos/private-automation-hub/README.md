@@ -11,7 +11,7 @@ back when somebody changes it.
 | **Audience** | Systems administrators and automation leads. Assumes no Private Automation Hub experience whatsoever |
 | **Reader** | The Ansible pre-sales engineer presenting it |
 | **Needs a live environment?** | **Yes** for the full version. The `git diff` half and every artifact are committed, so a degraded version runs offline |
-| **Status** | Draft — community half verified live; certified and validated blocked on a token (see below) |
+| **Status** | Draft — screenshots captured; one rehearsal of the convergence beat before Ready |
 
 ---
 
@@ -105,8 +105,8 @@ defects:
 - **Dependency resolution failed the whole sync** on a 404 for a collection in
   neither list. `sync_dependencies` is now off everywhere.
 
-What is still missing before this moves from Draft to Ready: **screenshots**
-(`docs/images/pah-*.png`) and one rehearsal of the convergence beat.
+**Screenshots** are committed (`docs/images/pah-*.png`). What is still missing
+before this moves from Draft to Ready: one rehearsal of the convergence beat.
 
 ---
 
