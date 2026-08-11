@@ -56,7 +56,7 @@ python3 utilities/refresh-hub-requirements.py --audit-pins
 ## 0–3 · The hub you already own
 
 **Show:** PAH → *Collections → Repositories*. `rh-certified`, `validated`,
-`community`, all at zero.
+`community`, all **Never synced**.
 
 > "Every one of you with an AAP subscription already has this. It ships with the
 > platform. And on nearly every install I see, it looks exactly like this."
