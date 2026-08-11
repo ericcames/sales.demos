@@ -172,6 +172,31 @@ collections a laptop installs — so both entry points resolve identical code.
 
 ## Timing
 
+### One real workflow run, node by node
+
+![The controller's job list for a complete run](../../images/aap-job-timings.png)
+
+Measured, not estimated — this is workflow job 225, start to finish:
+
+| Node | Duration | Share |
+|---|---|---|
+| Source control update + inventory sync | 6 s + 9 s (parallel) | — |
+| **Provision VM** | 36 s | 7% |
+| **Register VMs** | 4 m 25 s | 48% |
+| **Configure VMs** | 3 m 49 s | 42% |
+| **Check VMs** | 5 s | 1% |
+| **Whole workflow** | **9 m 9 s** | |
+
+**Ninety percent of the run is register plus configure** — attaching to the CDN
+and then pulling packages and patches over it. The machine itself exists in
+under 40 seconds. That is the honest shape of the demo, and it is why "the VM
+built in 45 seconds" and "the demo takes nine minutes" are both true.
+
+Use `Check VMs` at 5 seconds when someone asks whether the verification step is
+real: it logs in, gathers facts and caches them, and that is all it needs to do.
+
+### Everything else
+
 | Step | Time |
 |---|---|
 | Bare environment → demo-ready | ~20 min (mostly platform provisioning) |
@@ -180,8 +205,6 @@ collections a laptop installs — so both entry points resolve identical code.
 | `terraform apply` returns | ~10 s |
 | VM reports `Running` | ~45 s |
 | Guest accepts ssh | ~1 min after that |
-| Register node | 4–5 min |
-| **Whole `Build Demo VM` workflow** | **~9 min** |
 | Windows golden image (one-time, not yet done) | ~45 min |
 
 ---

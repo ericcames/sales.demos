@@ -9,7 +9,7 @@ required. The narrative behind each beat, with the actual words, is in
 | **Length** | 30 minutes (25 + 5 for questions) |
 | **Audience** | Linux/platform sysadmins who want to run their estate with AAP |
 | **Needs an environment?** | **No.** Every artifact below is in this repo |
-| **Assets** | Six images in [`docs/images/`](../../images/), the two banners and `facts.json` in [`talk-track.md`](talk-track.md), the Mermaid graph in [`architecture.md`](architecture.md) |
+| **Assets** | Seven images in [`docs/images/`](../../images/), the two banners and `facts.json` in [`talk-track.md`](talk-track.md), the Mermaid graph in [`architecture.md`](architecture.md) |
 
 ---
 
@@ -20,8 +20,9 @@ required. The narrative behind each beat, with the actual words, is in
    2. `docs/images/aap-survey.png` — the interface
    3. `docs/images/ocp-vms-before.png` and `ocp-vms-after.png` — the pair
    4. `docs/images/aap-workflow-running.png` — the chain
-   5. `docs/demos/openshift-virtualization/talk-track.md` — for the banners
-   6. `https://github.com/ericcames/sales.demos` — the close
+   5. `docs/images/aap-job-timings.png` — the evidence
+   6. `docs/demos/openshift-virtualization/talk-track.md` — for the banners
+   7. `https://github.com/ericcames/sales.demos` — the close
 2. Have this run sheet on a second screen if you have one.
 3. Decide your close before you begin — see **Landing it** at the bottom.
 
@@ -37,7 +38,7 @@ first; it changes three beats and nothing else.
 | 0–3 | Cold open — the destination | `demo-page.png` |
 | 3–6 | The problem, in their words | nothing |
 | 6–8 | The whole interface is two questions | `aap-survey.png` |
-| 8–16 | What happens behind the button | `ocp-vms-before.png` → `aap-workflow-running.png` → `ocp-vms-after.png` |
+| 8–16 | What happens behind the button | `ocp-vms-before.png` → `aap-workflow-running.png` → `route-503.png` → `ocp-vms-after.png` → `aap-job-timings.png` |
 | 16–22 | What you get | `demo-page.png`, MOTD, `facts.json` |
 | 22–26 | Why a sysadmin should care | the repo |
 | 26–28 | The honest bits | nothing |
@@ -158,12 +159,15 @@ Draw this out loud; it is the most senior-sounding thing in the deck:
 | "Done" | When |
 |---|---|
 | `terraform apply` returns | ~10 s |
+| **The provision job goes green** | **36 s** |
 | VM reports `Running` | ~45 s |
 | sshd actually accepts a connection | ~1 more minute |
 
-> **"Three different answers to 'is it ready'. A human learns that by getting
-> Connection refused twice. The workflow just waits — the gate lives in the
-> playbook, so it protects the by-hand path too."**
+> **"Four answers to 'is it ready'. The provision job reports Success at
+> thirty-six seconds while the machine is still booting — a green checkmark is
+> not a usable server. A human learns that by getting Connection refused twice.
+> The workflow just waits, and the gate lives in the playbook, so it protects
+> the by-hand path too."**
 
 ### Close the loop — `ocp-vms-after.png`
 
@@ -176,7 +180,21 @@ that condition means the VM is *eligible* to migrate — shared storage, nothing
 pinning it to a host. It has nowhere to go on a single node. Full wording in
 [`objections.md`](objections.md#the-follow-up-then-why-does-it-say-livemigratabletrue).
 
-**Whole workflow: about nine minutes.** Say the number. Do not round it down.
+### The numbers — show `aap-job-timings.png`
+
+| Node | Duration |
+|---|---|
+| Provision VM | 36 s |
+| Register VMs | 4 m 25 s |
+| Configure VMs | 3 m 49 s |
+| Check VMs | 5 s |
+| **Whole workflow** | **9 m 9 s** |
+
+> **"Nine minutes nine. Building the machine is thirty-six seconds of it —
+> the rest is registering and pulling patches."**
+
+**Put the job list on screen rather than saying "about nine minutes".** Durations
+in a controller's own job list are evidence; a presenter's estimate is not.
 
 ---
 
@@ -321,14 +339,13 @@ interfaces cannot be rendered, so they were captured from a live run.
 - [x] The namespace before and after — `ocp-vms-before.png`, `ocp-vms-after.png`
 - [x] The badged sign-in page — `aap-login-badged.png`
 - [x] The Route before the web server exists — `route-503.png`
+- [x] Every node's real duration, all Success — `aap-job-timings.png`
 
 **Still worth grabbing next time an environment is up:**
 
 - [ ] **The same URL returning the demo page** — the 200 half of `route-503.png`,
       same browser, same frame, padlock visible. This is the highest-value shot
       left; the pair tells the whole story with no narration
-- [ ] The workflow with all four nodes **green** — the current shot is mid-run,
-      which is honest but leaves the ending unshown
 - [ ] `virtctl ssh` showing the pre-auth banner and the MOTD in one scrollback
 - [ ] The AAP host detail page with cached facts
 

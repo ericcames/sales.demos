@@ -31,6 +31,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   use-case README says so outright. They illustrate the mechanism; claiming they
   were one continuous run would be the kind of small dishonesty this repo's
   documentation does not do.
+- **`aap-job-timings.png` turns the timing table from estimate into evidence.**
+  One real workflow run, node by node: provision 36 s, register 4 m 25 s,
+  configure 3 m 49 s, check 5 s, **9 m 9 s** total. The "about nine minutes"
+  figure the docs have carried in four places is confirmed, and the shape behind
+  it is now visible — **90% of the run is register plus configure**, attaching
+  to the CDN and then pulling packages over it. The machine itself exists in
+  under 40 seconds.
+- **The 36-second provision job sharpens the "three definitions of done" beat
+  into four.** The provision node reports Success while the guest is still
+  booting: a green checkmark is not a usable server, which is exactly why
+  `register_vm.yml` opens with `wait_for_connection` and why register's 4 m 25 s
+  includes a stretch spent waiting on a machine the previous job already called
+  done.
+- Both the talk track and the run sheet now say to put the job list **on
+  screen** rather than assert a duration. Durations in a controller's own job
+  list are evidence; a presenter's estimate is not.
 - `route-503.png` was cropped to drop a visible bookmarks bar. The run sheet now
   says to hide it before shooting.
 - The run sheet's screenshot checklist is now split into captured and

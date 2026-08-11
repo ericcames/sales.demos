@@ -80,6 +80,7 @@ rendered:
 | `aap-workflow-running.png` | The four chained nodes, mid-run |
 | `ocp-vms-before.png` / `ocp-vms-after.png` | The namespace empty, then with one VM Running |
 | `route-503.png` | The URL live and correctly serving nothing yet |
+| `aap-job-timings.png` | Every node's measured duration, all Success |
 | `aap-login-badged.png` | The environment badge on the sign-in page |
 
 > **These come from several different launches, at different size tiers** —

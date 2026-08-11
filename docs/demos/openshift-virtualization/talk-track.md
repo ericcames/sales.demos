@@ -209,14 +209,23 @@ has their own version of this story.
 | "Done" means | Elapsed |
 |---|---|
 | `terraform apply` returns | ~10 seconds |
+| **The provision job goes green** | **36 seconds** |
 | The VM reports `Running` | ~45 seconds |
 | sshd actually accepts a connection | about a minute after that |
 
-> **"Three different answers to 'is it ready yet', and they're a minute and a
-> half apart. A person learns that by getting Connection refused twice and
-> assuming they broke something. The workflow just waits — and the wait is
-> written into the playbook rather than the workflow, so it protects you when
-> you run it by hand too."**
+> **"Four different answers to 'is it ready yet'. And look at the second one —
+> the provision job reports Success at thirty-six seconds, while the machine
+> is still booting. A green checkmark is not the same as a usable server."**
+>
+> **"A person learns that by getting Connection refused twice and assuming they
+> broke something. The workflow just waits — and the wait is written into the
+> playbook rather than into the workflow, so it protects you when you run it by
+> hand too."**
+
+**This is the beat where the job-timings screenshot pays off twice**: the
+provision node's 36 seconds is visible right there, and so is the fact that
+register took four and a half minutes partly *because* it spent the first stretch
+waiting for a machine the previous job had already called done.
 
 **Why:** it is a detail nobody fakes. It signals the thing has actually been run
 enough times to find the sharp edges.
@@ -242,10 +251,28 @@ precise and worth having ready:
 > cluster is one node. Give it a second node and that condition becomes
 > useful."**
 
-Close the beat with the honest total:
+### Close the beat with the real numbers
 
-> **"End to end, about nine minutes. Most of that is registering to the CDN and
-> pulling patches — the machine itself is up in forty-five seconds."**
+You have them, from an actual run, so use them rather than rounding:
+
+![The controller's job list for a complete run](../../images/aap-job-timings.png)
+
+| Node | Duration |
+|---|---|
+| Provision VM | 36 s |
+| Register VMs | 4 m 25 s |
+| Configure VMs | 3 m 49 s |
+| Check VMs | 5 s |
+| **Whole workflow** | **9 m 9 s** |
+
+> **"Nine minutes and nine seconds, and look where it goes. Building the machine
+> is thirty-six seconds. Ninety percent of the run is registering to the CDN and
+> then pulling packages and patches over it — which is exactly the part you'd be
+> waiting on anyway if you did this by hand."**
+
+**This table is worth putting on screen.** A sysadmin trusts a job list with
+durations in it far more than a presenter saying "about nine minutes", and it
+pre-empts the suspicion that the fast part is the only part you showed.
 
 **Transition:** *"So nine minutes later, here's what you've actually got."*
 
@@ -505,6 +532,7 @@ Every claim in this track is checkable in the repo. If you get pushed on one:
 | The survey is two questions, no environment dropdown | `inventory/group_vars/aap/controller_workflows.yml`, `controller_templates.yml` |
 | Register must precede configure; the image has no repos | `controller_workflows.yml:10-14`, `playbooks/roles/linux_register/tasks/main.yml` |
 | 10 s / 45 s / +1 min | `README.md`, `playbooks/register_vm.yml` |
+| 36 s / 4 m 25 s / 3 m 49 s / 5 s, 9 m 9 s total | `docs/images/aap-job-timings.png` — one measured run |
 | Memory budget fails at plan time | `terraform/ocpvirt/locals.tf` |
 | Nightly teardown, preserving CNV and boot sources | `inventory/group_vars/<env>/controller_schedules.yml`, `playbooks/teardown.yml` |
 | Single node, no live migration | `docs/plan/ocpvirt-demo-plan.md` → Constraints |
