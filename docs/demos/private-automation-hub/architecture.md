@@ -176,6 +176,49 @@ verification block is skipped there entirely. Check mode validates the
 `community` 15. `kubernetes.core` carries exactly `6.3.0, 6.4.0, 6.5.0` — the
 window, on a real collection. Community pins: 15/15 exact.
 
+### Two kinds of repository
+
+The hub holds four repositories this repo manages, and they are not the same
+kind of thing:
+
+| | `rh-certified`, `validated`, `community` | `approved` |
+|---|---|---|
+| Remote | yes — console.redhat.com / galaxy | **none** |
+| Populated by | a sync, bounded by a requirements file | copying content units in |
+| Adding | works | works |
+| **Removing** | **does nothing — a sync is additive** | **works** |
+| Declared in | `hub/{certified,validated,community}-requirements.yml` | `hub/approved-collections.yml` |
+| Reconciled by | `playbooks/sync_hub.yml` | `playbooks/curate_hub.yml` |
+| Point consumers at it? | no | **yes** |
+
+`approved` is seeded with the nine collections in `collections/requirements.yml`
+at their exact pinned versions — what this repo itself depends on. That is not
+arbitrary: it is what makes #69 safe, because AAP would be pointed at a
+repository containing precisely what a project sync needs.
+
+It also sidesteps the version window entirely. `ansible.platform` is pinned at
+`2.7.20260604`, and `approved` holds **exactly that one version** while
+`rh-certified` carries four.
+
+**Mechanics.** `ansible.hub` 1.1.0 has no repository-to-repository copy —
+`ah_collection` only uploads an artifact from a local path. So `curate_hub.yml`
+drives Pulp directly:
+
+```
+POST {repo_href}modify/   {"add_content_units": [...], "remove_content_units": [...]}
+```
+
+Both lists in one atomic call, so the repository is never briefly in a state that
+is neither the old contents nor the new.
+
+**Not the `move/` endpoint**, which is the obvious wrong turn:
+`/v3/collections/{ns}/{name}/versions/{v}/move/{src}/{dst}/` exists, but a *move*
+takes the collection out of the source — curating into `approved` would silently
+strip `rh-certified`.
+
+Verified: idempotent re-run reports `To add: 0, To remove: 0, changed=0`; removing
+a line took the repository 9 → 8; the `approved` distribution serves artifacts.
+
 ### Approval does not gate synced content
 
 `GALAXY_REQUIRE_CONTENT_APPROVAL` is `true` on this hub, which sounds like it

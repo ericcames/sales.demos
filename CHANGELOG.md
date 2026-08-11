@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added -- a curated repository, so removal actually works (#70)
+- `approved`: a fourth Hub repository with **no remote**, whose contents are
+  declared in `hub/approved-collections.yml` and reconciled by
+  `playbooks/curate_hub.yml`. Unlike the three mirrors, that reconcile **removes**
+  -- delete a line and the collection leaves the repository. Verified: populate
+  0 -> 9, idempotent re-run at `add 0, remove 0, changed=0`, and a real removal
+  taking it 9 -> 8.
+- **This is the repository consumers should point at.** The three synced ones are
+  mirrors whose contents Red Hat and the community decide; this one holds what
+  was approved, at exactly the declared versions -- `approved` carries one version
+  of `ansible.platform` where `rh-certified` carries four.
+- **Seeded with the nine collections this repo itself pins**, at exact versions.
+  Not arbitrary: it is what makes #69 safe, since AAP would resolve against a
+  repository containing precisely what a project sync needs.
+- **`ansible.hub` 1.1.0 has no repository-to-repository copy**, so this drives
+  Pulp directly with `POST {repo_href}modify/`, carrying `add_content_units` and
+  `remove_content_units` in one atomic call. **Deliberately not the `move/`
+  endpoint** -- a move takes the collection OUT of the source, so curating into
+  `approved` would have silently stripped `rh-certified`. The whole cycle was
+  proven on a scratch repository before the playbook was written.
+- **The first real run failed, and correctly.** `ansible.platform 2.7.20260604`
+  was absent from the hub entirely, sitting below the certified 3-version floor.
+  The generator now lowers a floor to any version this repo has pinned, which
+  costs two extra versions across the whole hub -- and `--audit-pins` now reports
+  "Every pinned collection is inside its window", closing gate 2 of #69.
+- Also corrected: this repo pins **nine** collections, not ten, in four files and
+  in #69.
+
 ### Added -- Private Automation Hub as code, the repo's second use case (#68)
 - Every environment now configures its Private Automation Hub on every build.
   `config.yml` applies three collection remotes and repositories and starts a

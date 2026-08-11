@@ -205,7 +205,7 @@ in this repo, which for repo-specific skills is the correct scope.
 | `ocpvirt-windows-image` | `playbooks/build_windows_golden.yml` | Build and publish the Windows golden image | Not started |
 | `ocpvirt-demo` | `playbooks/run_demo.yml` | Register the VMs and configure the web server | Done ([#5](https://github.com/ericcames/sales.demos/issues/5)) |
 | `ocpvirt-teardown` | `playbooks/teardown.yml` | Destroy VMs; keep CNV and the golden image | Done ([#6](https://github.com/ericcames/sales.demos/issues/6)) |
-| `pah-sync` | `playbooks/sync_hub.yml` | Populate Private Automation Hub — certified, validated, community | Done ([#68](https://github.com/ericcames/sales.demos/issues/68)) |
+| `pah-sync` | `playbooks/sync_hub.yml`, `playbooks/curate_hub.yml` | Populate Private Automation Hub, and reconcile the curated `approved` repository | Done ([#68](https://github.com/ericcames/sales.demos/issues/68), [#70](https://github.com/ericcames/sales.demos/issues/70)) |
 
 See the [roadmap](ROADMAP.md) and the open issues. CI enforces that every skill
 added here appears in this table.

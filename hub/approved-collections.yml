@@ -1,0 +1,43 @@
+---
+# ============================================================================
+# hub/approved-collections.yml — the curated repository's desired contents (#68)
+# ============================================================================
+# GENERATED. Do not hand-edit; run the refresh and commit the diff:
+#
+#   python3 utilities/refresh-hub-requirements.py
+#   git diff hub/
+#
+# THIS IS NOT collections/requirements.yml. That file is what your laptop and
+# the execution environment INSTALL. This file is what Private Automation Hub
+# SYNCS from upstream. Confusing the two is the likeliest mistake here.
+#
+# The curated set: what this repo itself installs, at the exact pinned
+# version. Derived from collections/requirements.yml -- bump a pin there
+# and re-run with --write-approved.
+#
+# UNLIKE THE OTHER THREE FILES, THIS ONE IS A TRUE DESIRED STATE. Delete a
+# line and playbooks/curate_hub.yml removes that collection from the
+# repository. A sync cannot do that; a curated repository can, which is the
+# whole reason it exists (#70).
+#
+# 9 collections, exact versions.
+# ============================================================================
+collections:
+  - name: ansible.controller
+    version: "4.8.0"
+  - name: ansible.hub
+    version: "1.1.0"
+  - name: ansible.platform
+    version: "2.7.20260604"
+  - name: ansible.posix
+    version: "2.2.0"
+  - name: cloud.terraform
+    version: "4.0.0"
+  - name: infra.aap_configuration
+    version: "4.7.0"
+  - name: kubernetes.core
+    version: "6.4.0"
+  - name: redhat.openshift_virtualization
+    version: "2.3.0"
+  - name: redhat.rhel_system_roles
+    version: "1.120.5"

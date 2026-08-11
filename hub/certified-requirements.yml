@@ -27,7 +27,7 @@ collections:
   - name: ansible.aap_snapshot
     version: ">=1.0.4"
   - name: ansible.controller
-    version: ">=4.8.2"
+    version: ">=4.8.0"
   - name: ansible.eda
     version: ">=2.12.0"
   - name: ansible.hub
@@ -43,7 +43,7 @@ collections:
   - name: ansible.network
     version: ">=3.0.0"
   - name: ansible.platform
-    version: ">=2.7.20260615"
+    version: ">=2.7.20260604"
   - name: ansible.posix
     version: ">=2.1.0"
   - name: ansible.receptor

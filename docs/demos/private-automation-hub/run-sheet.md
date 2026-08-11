@@ -46,7 +46,8 @@ python3 utilities/refresh-hub-requirements.py --audit-pins
 | 3–10 | **ClickOps.** Configure the community remote by hand | PAH Remotes → Edit |
 | 10–14 | Four questions the UI cannot answer | Nothing. Talk to them |
 | 14–22 | **As code.** Same result, from git | Editor, then terminal |
-| 22–26 | What is actually in there, and what it cost | PAH Repositories, populated |
+| 22–25 | What is actually in there, and what it cost | PAH Repositories, populated |
+| 25–26 | **Removal: mirrors cannot, curated can** | Editor + terminal |
 | 26–28 | The honest bits | Terminal |
 | 28–30 | Landing it | Close |
 
@@ -176,6 +177,37 @@ git diff hub/
 
 ---
 
+## 25–26 · The part a mirror cannot do
+
+**Rehearse this one too.** It looks like a failure for about five seconds, which
+is the point.
+
+```bash
+# 1. delete any line from hub/community-requirements.yml, then:
+ansible-playbook playbooks/sync_hub.yml -i inventory --limit sandbox \
+  -e target_env=sandbox --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
+```
+
+Count is **still 15**. Say why before anyone thinks it is broken:
+
+> "A sync is additive. It never removes. These three files are an allowlist for
+> what comes in, not a description of what is in there."
+
+Then the fourth repository:
+
+```bash
+# 2. delete a line from hub/approved-collections.yml, then:
+ansible-playbook playbooks/curate_hub.yml -i inventory --limit sandbox \
+  -e target_env=sandbox --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
+```
+
+**9 → 8.** Gone.
+
+> "Mirrors: you control what comes in. Curated: you control what is in. Your
+> teams point at the second one."
+
+---
+
 ## 26–28 · The honest bits
 
 Volunteer all of it. Do not wait to be asked.
@@ -186,7 +218,7 @@ Volunteer all of it. Do not wait to be asked.
 - **The window only widens.** Re-running raises the floor for future syncs; it
   does not remove what is already there.
 - **No signing.** `signed_only: false`. Configurable, not configured here.
-- **AAP is not pointed at this hub yet** — deliberately, and two of the ten
+- **AAP is not pointed at this hub yet** — deliberately, and two of the nine
   collections this repo pins are already outside the window. `--audit-pins`
   finds it offline, before it breaks anything.
 

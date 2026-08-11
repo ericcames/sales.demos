@@ -45,7 +45,7 @@
 # The step that WOULD invalidate it — pointing AAP's project syncs at PAH — is
 # tracked separately in #69, behind gates, precisely because a Galaxy credential
 # on the organization makes every project sync depend on the hub being complete.
-# It is already known to be incomplete: two of the ten collections this repo
+# It is already known to be incomplete: two of the nine collections this repo
 # pins sit below their version window and are not in the hub. Check it with
 # `python3 utilities/refresh-hub-requirements.py --audit-pins`.
 #
