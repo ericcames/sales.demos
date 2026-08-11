@@ -91,3 +91,39 @@ hub_collection_repositories_all:
     retain_repo_versions: 1
     sync: "{{ (hub_sync_enabled | default(true) | bool) and not ansible_check_mode }}"
     wait: "{{ hub_sync_wait | default(false) | bool }}"
+
+  # ---------------------------------------------------------------------
+  # THE CURATED REPOSITORY (#70). The only one of the four with NO REMOTE,
+  # and that is the entire point.
+  #
+  # The three above are mirrors: their contents are whatever upstream ships,
+  # bounded by a requirements file that can only ever add. A sync cannot remove
+  # anything — proven by dropping a collection from
+  # hub/community-requirements.yml, re-syncing, and watching all 15 stay.
+  #
+  # This one has no upstream at all. Its contents are set by copying specific
+  # collection versions in, which means they can also be copied OUT: delete a
+  # line from hub/approved-collections.yml, run playbooks/curate_hub.yml, and
+  # the collection leaves. That is a genuine desired state, and it is the thing
+  # consumers should point at rather than at a mirror Red Hat and the community
+  # control.
+  #
+  # SEEDED WITH WHAT THIS REPO ITSELF DEPENDS ON — the nine pins from
+  # collections/requirements.yml, at exact versions. Not arbitrary: it is what
+  # makes #69 safe. It also sidesteps the two collections (ansible.controller,
+  # ansible.platform) whose pins sit below the certified 3-version floor and are
+  # therefore absent from rh-certified entirely.
+  #
+  # `sync: false` because there is nothing to sync from. The distribution is what
+  # makes it reachable by a client — content in a repository with no distribution
+  # is invisible for install, search and download.
+  # ---------------------------------------------------------------------
+  - name: approved
+    description: >-
+      The curated set — collections this organization has approved for use.
+      Contents are declared in hub/approved-collections.yml and reconciled by
+      playbooks/curate_hub.yml, which adds AND removes. Not a mirror.
+    retain_repo_versions: 1
+    distribution:
+      name: approved
+    sync: false

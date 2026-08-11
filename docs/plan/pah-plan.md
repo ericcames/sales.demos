@@ -261,17 +261,45 @@ widening.
 This bounds what the second use case can honestly claim, and it is stated plainly
 in `objections.md` rather than left for a customer to find.
 
-**The fix is a curated repository, not a relabelled sync repository.** The three
-sync repos are mirrors of upstream and carry no `pipeline` label on a stock
-install; only `published` is labelled `approved`, and that is the destination of
-the upload pipeline for content you author. Neither is the right home for a
-vetted set. What is: a repository you create, into which specific collection
-versions are copied — an allowlist you can genuinely remove from.
+**Solved in #70 by a curated repository** — see below. Not by relabelling a sync
+repository.
 
-The primitive exists (`POST /api/galaxy/v3/collections/{ns}/{name}/versions/{v}/move/{src}/{dst}/`,
-confirmed present on this platform — 405 on GET, POST-only), but `ansible.hub`
-1.1.0 has no role for it, so it would be `ansible.builtin.uri`. Tracked
-separately rather than bolted onto #68.
+### The curated repository (#70), built and verified
+
+A fourth repository, `approved`, with **no remote**. Contents declared in
+`hub/approved-collections.yml` and reconciled by `playbooks/curate_hub.yml`,
+which adds *and removes*.
+
+| | the three mirrors | `approved` |
+|---|---|---|
+| Populated by | a sync | copying content units in |
+| Removing | does nothing | **works** |
+| Point consumers at it? | no | yes |
+
+**Seeded with what this repo depends on** — the nine pins from
+`collections/requirements.yml`, at exact versions. Not arbitrary: it is what
+makes #69 safe, and it sidesteps the version window (`approved` holds exactly one
+version of `ansible.platform`; `rh-certified` holds four).
+
+**Mechanics.** `ansible.hub` 1.1.0 has no repository-to-repository copy, so this
+drives Pulp directly: `POST {repo_href}modify/` with `add_content_units` and
+`remove_content_units` in one atomic call. **Not the `move/` endpoint** — a move
+takes the collection *out* of the source, which would silently strip
+`rh-certified`. Verified on a scratch repository (create, add 0→1, remove 1→0,
+delete) before a line of the playbook was written.
+
+Two things that cost time and are worth knowing:
+
+- **`pulp_href` is a path, not a URL.** `uri` fails with `unknown url type` until
+  the scheme and host are prepended.
+- **The first real run failed correctly.** `ansible.platform 2.7.20260604` was
+  not in the hub at all, being below the certified floor — the assert said so and
+  named the fix. The generator now lowers a floor to any version this repo pins,
+  which costs two extra versions across the whole hub and makes `--audit-pins`
+  report *"Every pinned collection is inside its window."*
+
+Verified: populate 0→9, idempotent re-run (`add 0, remove 0, changed=0`), removal
+(delete a line → 9→8), and the `approved` distribution serving artifacts.
 
 ### Two pinned collections are already outside the window
 

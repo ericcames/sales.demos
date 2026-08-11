@@ -171,6 +171,33 @@ group_vars guard uses `not ansible_check_mode`, which is only True for a CLI
 Note also that **check mode cannot validate content**: `uri` does not run under
 `--check`, so `sync_hub.yml` skips its verification block entirely there.
 
+## Curating the `approved` repository
+
+The three synced repositories are mirrors and **a sync cannot remove anything**.
+The fourth repository, `approved`, has no remote — its contents are reconciled
+from `hub/approved-collections.yml`, and that reconcile adds *and* removes.
+
+```bash
+# Regenerate the curated list from this repo's pins (no network)
+python3 utilities/refresh-hub-requirements.py --write-approved
+
+# Make the repository equal the file
+ansible-playbook playbooks/curate_hub.yml -i inventory --limit sandbox \
+  -e target_env=sandbox \
+  --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
+```
+
+Seeded with the nine collections in `collections/requirements.yml` at their exact
+pinned versions — what this repo itself depends on, which is what would make
+[#69](https://github.com/ericcames/sales.demos/issues/69) safe.
+
+**If it refuses with "not present anywhere in this hub"**, that version is
+missing — usually because it sits below the certified version window. Run
+`--audit-pins`, then regenerate and re-sync: the generator lowers a floor to any
+version this repo has pinned.
+
+**This is the repository to point consumers at**, not the mirrors.
+
 ## Verify against the hub, not the recap
 
 **A green playbook run is not proof.** The playbook already asserts all of this

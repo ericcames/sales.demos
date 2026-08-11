@@ -236,8 +236,27 @@ def floor_for(versions: list[str], keep: int) -> str | None:
     return releases[-keep]
 
 
+def approved_pins() -> dict[str, str]:
+    """The curated set's exact versions, if it has been generated yet.
+
+    Used to LOWER a version floor. A collection this repo has pinned below its
+    own window is otherwise absent from the hub entirely, and then it cannot be
+    curated into `approved` either — which is how the first real
+    playbooks/curate_hub.yml run failed, on ansible.platform 2.7.20260604 sitting
+    under a >=2.7.20260615 floor (#70).
+
+    The cost is small and worth stating: lowering the floor to the pin admits 4
+    versions of ansible.platform instead of 3, and 5 of ansible.controller
+    instead of 3. Two extra versions across the whole hub, in exchange for the
+    curated repository being seedable at all.
+    """
+    path = HUB / "approved-collections.yml"
+    return parse_requirements(path) if path.exists() else {}
+
+
 def build_entries(kind: str, keep: int, token: str | None, namespaces: list[str] | None) -> list[dict]:
     source = SOURCES[kind]
+    pinned = approved_pins() if SOURCES[kind]["auth"] else {}
 
     if namespaces:
         collections = []
@@ -272,6 +291,10 @@ def build_entries(kind: str, keep: int, token: str | None, namespaces: list[str]
         if not found:
             failures.append(f"{name}: no non-prerelease versions")
             return None
+        # Never exclude a version this repo has pinned. See approved_pins().
+        pin = pinned.get(name)
+        if pin and pin in versions and version_key(pin) < version_key(found):
+            found = pin
         return {"name": name, "version": f">={found}"}
 
     with ThreadPoolExecutor(max_workers=WORKERS) as pool:
@@ -393,6 +416,63 @@ def parse_requirements(path: pathlib.Path) -> dict[str, str]:
     return pins
 
 
+def write_approved() -> int:
+    """Regenerate hub/approved-collections.yml from collections/requirements.yml.
+
+    THE CURATED REPOSITORY IS SEEDED WITH WHAT THIS REPO ACTUALLY DEPENDS ON, and
+    that is not an arbitrary starting point — it is what makes #69 safe. Point AAP
+    at a repository containing exactly the collections a project sync needs and it
+    resolves by construction, rather than by hoping the version window happened to
+    include them.
+
+    It also closes the gap --audit-pins reports: ansible.controller 4.8.0 and
+    ansible.platform 2.7.20260604 sit BELOW the certified 3-version floor, so they
+    are not in rh-certified at all. Copying an exact version into a curated
+    repository does not care about the window.
+
+    DERIVED, NOT DUPLICATED. Bump a pin in collections/requirements.yml, re-run
+    this, and the curated set follows. The two are allowed to diverge later — that
+    is why this is a separate file rather than the playbook reading the pins
+    directly — but nothing has needed it to yet.
+    """
+    pins = parse_requirements(REPO / "collections" / "requirements.yml")
+    if not pins:
+        print("ERROR  no pins found in collections/requirements.yml", file=sys.stderr)
+        return 1
+
+    body = (
+        "# The curated set: what this repo itself installs, at the exact pinned\n"
+        "# version. Derived from collections/requirements.yml -- bump a pin there\n"
+        "# and re-run with --write-approved.\n"
+        "#\n"
+        "# UNLIKE THE OTHER THREE FILES, THIS ONE IS A TRUE DESIRED STATE. Delete a\n"
+        "# line and playbooks/curate_hub.yml removes that collection from the\n"
+        "# repository. A sync cannot do that; a curated repository can, which is the\n"
+        "# whole reason it exists (#70).\n"
+        "#\n"
+        f"# {len(pins)} collections, exact versions."
+    )
+    text = HEADER.format(
+        filename="approved-collections.yml",
+        title="the curated repository's desired contents",
+        body=body,
+    )
+    text += "collections:\n"
+    for name in sorted(pins):
+        text += f"  - name: {name}\n"
+        text += f"    version: \"{pins[name]}\"\n"
+    text = text.rstrip("\n")
+
+    path = HUB / "approved-collections.yml"
+    current = path.read_text() if path.exists() else None
+    if current == text:
+        print(f"ok     {path.relative_to(REPO)} — {len(pins)} collections, unchanged")
+        return 0
+    path.write_text(text)
+    print(f"wrote  {path.relative_to(REPO)} — {len(pins)} collections")
+    return 0
+
+
 def audit_pins() -> int:
     """Would every collection this repo pins actually resolve from the hub?
 
@@ -459,10 +539,18 @@ def main() -> int:
         action="store_true",
         help="check collections/requirements.yml against the windows; no network, no writes",
     )
+    parser.add_argument(
+        "--write-approved",
+        action="store_true",
+        help="regenerate hub/approved-collections.yml from the repo's pins; no network",
+    )
     args = parser.parse_args()
 
     if args.audit_pins:
         return audit_pins()
+    if args.write_approved:
+        HUB.mkdir(exist_ok=True)
+        return write_approved()
 
     namespaces = [n.strip() for n in args.namespaces.split(",") if n.strip()]
     HUB.mkdir(exist_ok=True)

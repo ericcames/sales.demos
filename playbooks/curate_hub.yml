@@ -1,0 +1,261 @@
+---
+# ===========================================================================
+# curate_hub.yml — reconcile the curated repository against git. Issue #70.
+#
+#   ansible-playbook playbooks/curate_hub.yml -i inventory --limit sandbox \
+#     -e target_env=sandbox \
+#     --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
+#
+# Makes the `approved` repository's contents equal hub/approved-collections.yml.
+# Adds what is missing, REMOVES what is not listed, and reports changed only when
+# it actually did something.
+#
+# WHY THIS EXISTS: A SYNC CANNOT REMOVE ANYTHING. The three mirror repositories
+# are populated by remotes with requirements files, and a Pulp sync is additive.
+# Verified by dropping a collection from hub/community-requirements.yml,
+# re-syncing, and finding all 15 still present. So those files are an allowlist
+# for what gets pulled IN, not a declaration of desired state — delete a line and
+# nothing happens.
+#
+# The curated repository has no remote. Its contents are put there by copying
+# collection versions in, which means they can be copied out again. That is what
+# makes hub/approved-collections.yml a real desired state and what makes this
+# repository the one worth pointing consumers at.
+#
+# WHY RAW `uri` RATHER THAN A ROLE. ansible.hub 1.1.0 has no repository-to-
+# repository copy. `ah_collection` only uploads an artifact from a local path
+# with optional auto-approve; there is nothing that moves existing content
+# between repositories. So this drives Pulp directly.
+#
+# NOT THE `move/` ENDPOINT, WHICH IS THE OBVIOUS WRONG TURN.
+# /v3/collections/{ns}/{name}/versions/{v}/move/{src}/{dst}/ exists, but a MOVE
+# takes the collection OUT of the source repository — curating into `approved`
+# would silently strip rh-certified. `POST {repo_href}modify/` with
+# add_content_units / remove_content_units is a copy, and takes both lists in one
+# atomic call.
+#
+# VERIFIED ON A SCRATCH REPOSITORY before this was written: create, add (0 -> 1),
+# remove (1 -> 0), delete. The remove is the half that matters.
+# ===========================================================================
+
+- name: Reconcile the curated Automation Hub repository
+  hosts: aap
+  gather_facts: false
+
+  vars:
+    hub_curated_repository: "{{ hub_curated_repository_override | default('approved') }}"
+    hub_approved_file: "{{ playbook_dir }}/../hub/approved-collections.yml"
+    hub_base: "https://{{ aap_hostname }}"
+    hub_pulp: "https://{{ aap_hostname }}/api/galaxy/pulp/api/v3"
+
+    # Shared by every uri call below. Basic auth against the gateway, which
+    # fronts Hub on the same hostname — no token is minted, so there is nothing
+    # to clean up in an `always:` block.
+    hub_auth: &hub_auth
+      url_username: "{{ aap_username }}"
+      url_password: "{{ aap_password }}"
+      force_basic_auth: true
+      validate_certs: "{{ aap_validate_certs | default(false) }}"
+
+  tasks:
+    - name: Assert the environment is unambiguous
+      ansible.builtin.include_tasks: tasks/assert_target_environment.yml
+
+    - name: Assert AAP connection variables are set
+      ansible.builtin.assert:
+        that:
+          - aap_hostname | default('') | length > 0
+          - aap_username | default('') | length > 0
+          - aap_password | default('') | length > 0
+        fail_msg: >-
+          aap_hostname / aap_username / aap_password are not set for
+          '{{ aap_env_name | default("?") }}'. Check that environment's
+          connection.yml, and that --vault-id was passed so env_secrets resolves.
+        quiet: true
+
+    - name: Load the desired contents
+      # No offline token needed anywhere in this playbook. Everything it touches
+      # is already inside the hub — unlike sync_hub.yml, which reaches out to
+      # console.redhat.com.
+      ansible.builtin.set_fact:
+        hub_desired: >-
+          {{ (lookup('ansible.builtin.file', hub_approved_file) | from_yaml).collections }}
+
+    - name: Assert the desired contents are usable
+      ansible.builtin.assert:
+        that:
+          - hub_desired | length > 0
+          - hub_desired | selectattr('version', 'undefined') | list | length == 0
+        fail_msg: >-
+          hub/approved-collections.yml is empty, or an entry has no version.
+          Every entry needs an EXACT version — this is a curated set, not a
+          version range. Regenerate it:
+          python3 utilities/refresh-hub-requirements.py --write-approved
+        quiet: true
+
+    - name: Report the target
+      ansible.builtin.debug:
+        msg:
+          - "Curating '{{ hub_curated_repository }}' on {{ aap_env_name }} ({{ aap_hostname }})."
+          - "Desired: {{ hub_desired | length }} collections from hub/approved-collections.yml."
+
+    - name: Find the curated repository
+      ansible.builtin.uri:
+        url: "{{ hub_pulp }}/repositories/ansible/ansible/?name={{ hub_curated_repository }}"
+        <<: *hub_auth
+      register: hub_repo_lookup
+
+    - name: Assert the curated repository exists
+      # Created by config.yml from hub_collection_repositories.yml. If it is
+      # missing, the config-as-code half has not been applied to this
+      # environment yet.
+      ansible.builtin.assert:
+        that:
+          - hub_repo_lookup.json.count | int == 1
+        fail_msg: >-
+          No '{{ hub_curated_repository }}' repository on this hub. Apply the
+          configuration first: ansible-playbook playbooks/config.yml -i inventory
+          --limit {{ aap_env_name }} -e target_env={{ aap_env_name }}
+        quiet: true
+
+    - name: Record the repository hrefs
+      ansible.builtin.set_fact:
+        hub_repo_href: "{{ hub_repo_lookup.json.results[0].pulp_href }}"
+        hub_repo_version: "{{ hub_repo_lookup.json.results[0].latest_version_href }}"
+
+    - name: Read what the curated repository holds today
+      ansible.builtin.uri:
+        url: "{{ hub_pulp }}/content/ansible/collection_versions/?repository_version={{ hub_repo_version }}&limit=500"
+        <<: *hub_auth
+      register: hub_current
+
+    - name: Resolve every desired collection version to a content unit
+      # One call per entry. A collection version that exists nowhere in the hub
+      # returns count 0 and is caught by the assert below rather than silently
+      # skipped — "we asked for it and it is not here" is exactly the failure
+      # this whole repository is meant to make visible.
+      ansible.builtin.uri:
+        url: >-
+          {{ hub_pulp }}/content/ansible/collection_versions/?namespace={{ item.name.split('.')[0] }}&name={{ item.name.split('.')[1] }}&version={{ item.version }}
+        <<: *hub_auth
+      register: hub_resolved
+      loop: "{{ hub_desired }}"
+      loop_control:
+        label: "{{ item.name }} {{ item.version }}"
+
+    - name: Assert every desired collection version was found in the hub
+      ansible.builtin.assert:
+        that:
+          - item.json.count | int > 0
+        fail_msg: >-
+          {{ item.item.name }} {{ item.item.version }} is not present anywhere in
+          this hub, so it cannot be curated into
+          '{{ hub_curated_repository }}'. Sync it first — that version may sit
+          below the certified version window, in which case widen the window or
+          pin differently. See utilities/refresh-hub-requirements.py --audit-pins.
+        quiet: true
+      loop: "{{ hub_resolved.results }}"
+      loop_control:
+        label: "{{ item.item.name }} {{ item.item.version }}"
+
+    - name: Work out what to add and what to remove
+      # The whole playbook in four lines. `desired` and `current` are sets of
+      # content-unit hrefs, so the difference in each direction is the change.
+      ansible.builtin.set_fact:
+        hub_desired_units: "{{ hub_resolved.results | map(attribute='json.results') | map('first') | map(attribute='pulp_href') | list }}"
+        hub_current_units: "{{ hub_current.json.results | map(attribute='pulp_href') | list }}"
+
+    - name: Compute the difference
+      ansible.builtin.set_fact:
+        hub_to_add: "{{ hub_desired_units | difference(hub_current_units) }}"
+        hub_to_remove: "{{ hub_current_units | difference(hub_desired_units) }}"
+
+    - name: Report the plan
+      ansible.builtin.debug:
+        msg:
+          - "Currently in '{{ hub_curated_repository }}': {{ hub_current_units | length }}"
+          - "Desired:                {{ hub_desired_units | length }}"
+          - "To add:                 {{ hub_to_add | length }}"
+          - "To remove:              {{ hub_to_remove | length }}"
+
+    - name: Reconcile the repository
+      # ONE call carrying both lists. Pulp applies them as a single repository
+      # version, so the repository is never briefly in a state that is neither
+      # the old contents nor the new.
+      #
+      # changed_when is explicit because uri always reports changed on a 202.
+      # Without it every run looks like a change and the idempotence claim this
+      # repository makes is worthless.
+      ansible.builtin.uri:
+        # pulp_href is a PATH, not an absolute URL — uri needs the scheme and
+        # host prepended or it fails with "unknown url type".
+        url: "{{ hub_base }}{{ hub_repo_href }}modify/"
+        method: POST
+        body_format: json
+        body:
+          add_content_units: "{{ hub_to_add }}"
+          remove_content_units: "{{ hub_to_remove }}"
+        status_code: [202]
+        <<: *hub_auth
+      register: hub_modify
+      changed_when: true
+      when: (hub_to_add | length + hub_to_remove | length) > 0
+
+    - name: Wait for the reconcile to finish
+      ansible.builtin.uri:
+        url: "{{ hub_base }}{{ hub_modify.json.task }}"
+        <<: *hub_auth
+      register: hub_task
+      until: hub_task.json.state in ['completed', 'failed', 'canceled']
+      retries: 60
+      delay: 2
+      when: hub_modify.changed | default(false)
+
+    - name: Fail loudly if the reconcile did not complete
+      ansible.builtin.assert:
+        that:
+          - hub_task.json.state == 'completed'
+        fail_msg: >-
+          The reconcile task ended in state '{{ hub_task.json.state }}':
+          {{ hub_task.json.error | default('no error reported') }}
+        quiet: true
+      when: hub_modify.changed | default(false)
+
+    # -------------------------------------------------------------------
+    # Verification. Ask the hub, not the recap.
+    # -------------------------------------------------------------------
+    - name: Re-read the curated repository
+      ansible.builtin.uri:
+        url: "{{ hub_pulp }}/repositories/ansible/ansible/?name={{ hub_curated_repository }}"
+        <<: *hub_auth
+      register: hub_repo_after
+
+    - name: Read the reconciled contents
+      ansible.builtin.uri:
+        url: >-
+          {{ hub_pulp }}/content/ansible/collection_versions/?repository_version={{ hub_repo_after.json.results[0].latest_version_href }}&limit=500
+        <<: *hub_auth
+      register: hub_after
+
+    - name: Assert the repository now equals the file, exactly
+      # THE CLAIM THIS PLAYBOOK MAKES, and the one a mirror cannot make. Not
+      # "everything in the file is present" — that would pass with extra content
+      # sitting in the repository, which is precisely the failure mode the sync
+      # repositories have.
+      ansible.builtin.assert:
+        that:
+          - (hub_after.json.results | map(attribute='pulp_href') | sort) == (hub_desired_units | sort)
+        fail_msg: >-
+          '{{ hub_curated_repository }}' does not match
+          hub/approved-collections.yml. It holds
+          {{ hub_after.json.count }} collection versions; the file declares
+          {{ hub_desired_units | length }}.
+        quiet: true
+
+    - name: Summarize
+      ansible.builtin.debug:
+        msg:
+          - "CURATED REPOSITORY VERIFIED on {{ aap_env_name }}."
+          - "'{{ hub_curated_repository }}' holds exactly the {{ hub_after.json.count }} collection versions declared in hub/approved-collections.yml."
+          - "Added {{ hub_to_add | length }}, removed {{ hub_to_remove | length }}."
+          - "Install from it: https://{{ aap_hostname }}/api/galaxy/content/{{ hub_curated_repository }}/"

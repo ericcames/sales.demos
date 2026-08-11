@@ -103,16 +103,27 @@ the old. Removing from it does nothing at all.
 The same root cause explains why the `>=` version floor only ever widens — a sync
 never subtracts.
 
-**What to say when someone catches this** (and a good sysadmin will):
+**But there is a fourth repository, and in that one it does work.** `approved`
+has no remote at all. Its contents are put there by copying collection versions
+in, so they can be copied out again — delete a line from
+`hub/approved-collections.yml`, run `playbooks/curate_hub.yml`, and the
+collection leaves.
 
-> "Right — and that is exactly why you would not point your teams at these
-> repositories. These three are mirrors of upstream. If you want a set you can
-> genuinely add to *and* remove from, you build a curated repository of your own
-> and copy approved versions into it. That is a repository you control, rather
-> than one Red Hat and the community control."
+Demonstrated live: dropped `cloud.terraform`, re-ran, repository went 9 → 8.
 
-That curated-repository pattern is the honest next step and is tracked
-separately. Do not claim this hub does it today.
+So the honest framing is that the hub holds two *kinds* of repository:
+
+| | The three mirrors | The curated repository |
+|---|---|---|
+| Contents decided by | upstream, filtered by a requirements file | you |
+| Adding | works | works |
+| **Removing** | **does nothing** | **works** |
+| What it is for | having the content | governing it |
+| Point your teams at it? | no | **yes** |
+
+> "These three are mirrors — Red Hat and the community decide what is in them,
+> and I filter. That one is mine. It contains what we approved, and when we
+> un-approve something it actually leaves."
 
 ---
 
@@ -131,8 +142,9 @@ lifecycles landing in one bucket.
 sends collections you author, and where the staging approval workflow puts them.
 Mirrored upstream content does not belong in it.
 
-The thing being reached for is a **curated repository you create** and copy
-approved versions into. See the answer above.
+What this hub does instead is a **separate `approved` repository with no remote**,
+reconciled from `hub/approved-collections.yml`. See the answer above — that is
+the one that gives you removal.
 
 ---
 
@@ -228,28 +240,37 @@ treats them differently.
 
 ## "So AAP now installs its collections from your hub?"
 
-**No, and that is deliberate.** No organization has a Galaxy credential; nothing
-in AAP resolves from this hub yet. The hub is populated; the platform is not
-pointed at it.
+**Not yet, and deliberately — but the blocker is gone.** No organization has a
+Galaxy credential, so nothing in AAP resolves from this hub today.
 
-The reason is worth giving in full, because it is the honest one. A Galaxy
-credential on the organization makes *every* project sync depend on the hub
-being complete. If one collection is missing, every job template breaks.
+The reason for the caution is worth giving in full. A Galaxy credential on the
+organization makes *every* project sync depend on the hub being complete, and if
+one collection is missing every job template breaks.
 
-And it is already known to be incomplete — two of the ten collections this repo
-pins are below their version window:
+It genuinely was incomplete. Two of the nine collections this repo pins sat
+*below* the certified 3-version window, so they were not in the hub at all:
 
 ```
 BELOW  ansible.controller  — pinned 4.8.0,        floor >=4.8.2
 BELOW  ansible.platform    — pinned 2.7.20260604, floor >=2.7.20260615
 ```
 
-That was found by writing a check (`--audit-pins`, offline, no cluster), not by
-having it fail in front of a customer. It is tracked as
-[#69](https://github.com/ericcames/sales.demos/issues/69) behind explicit gates.
+Found by writing an offline check (`--audit-pins`), not by having it fail in
+front of a customer — and then found *again*, for real, when the first attempt
+to build the curated repository refused to proceed because that exact version
+was missing.
+
+The fix: the generator now lowers a version floor to any version this repo has
+pinned. Cost, two extra versions across the whole hub. `--audit-pins` now reports
+**"Every pinned collection is inside its window."**
+
+**And this is what the curated repository is for.** When AAP is pointed at a hub,
+it should be pointed at `approved` — nine collections at exactly the versions
+this repo declares — not at a mirror whose contents Red Hat and the community
+control. Tracked as [#69](https://github.com/ericcames/sales.demos/issues/69).
 
 **This answer lands better than a yes would.** It shows the failure mode was
-found deliberately.
+found deliberately, twice, and closed.
 
 ---
 

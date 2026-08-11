@@ -219,6 +219,44 @@ git diff hub/
 > Galaxy. And that diff right there is a month of upstream releases, as a pull
 > request you can actually review before it lands in your hub."
 
+### 5b · The part a mirror cannot do
+
+**This is the second-strongest beat in the demo. Do not cut it for time before
+you cut Beat 5a.**
+
+*Open `hub/community-requirements.yml`. Delete a line. Re-run. Show the count:
+still 15.*
+
+> "Watch. I just removed a collection from the file, ran it again, and it is
+> still there. Fifteen."
+>
+> *(let that sit — it looks like the demo breaking)*
+>
+> "That is not a bug I am about to apologise for. A sync is additive. It pulls
+> what you ask for; it never removes. So these three files are an allowlist for
+> what comes *in* — they are not a description of what is in there."
+
+Then the turn:
+
+> "Which is exactly why you would not point your teams at these three
+> repositories. They are mirrors. Red Hat decides what is in certified, the
+> community decides what is in community, and I get to filter on the way in."
+
+*Switch to `hub/approved-collections.yml` and the `approved` repository.*
+
+> "This one is different. It has no upstream at all. Nine collections, put there
+> by copying them in — which means they can be copied back out."
+
+*Delete a line. Run `curate_hub.yml`. Show it go 9 → 8.*
+
+> "Gone. That is the difference between having a hub and governing one."
+
+**The honest framing to land:**
+
+> "Two kinds of repository. Mirrors, where you control what comes in. And a
+> curated set, where you control what *is* in. Your teams point at the second
+> one."
+
 ---
 
 ## Beat 6 · The honest bits (26–28)
@@ -253,7 +291,7 @@ Then the one they will ask anyway, so get ahead of it:
 > project sync depends on that hub being complete, and if one collection is
 > missing every job template breaks."
 >
-> "I already know mine is incomplete. Two of the ten collections this repo pins
+> "I already know mine is incomplete. Two of the nine collections this repo pins
 > are below the version window. I found that by writing a check that runs
 > offline, not by having it blow up in front of you."
 
