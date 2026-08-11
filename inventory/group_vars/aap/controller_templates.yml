@@ -4,9 +4,9 @@
 # ============================================================================
 # THE VARIABLE IS controller_templates, NOT controller_job_templates. A known
 # quirk of infra.aap_configuration — the role reads job templates from
-# `controller_templates`, confirmed in dc1.azure and AMZL-dailydemo, both of
-# which carry the same note. Naming it the obvious way means the objects are
-# silently never created, with no error.
+# `controller_templates`, confirmed in dc1.azure and a sibling daily-demo repo,
+# both of which carry the same note. Naming it the obvious way means the
+# objects are silently never created, with no error.
 #
 # SURVEY VARIABLE NAMES ARE THE CONTRACT. `vm_size_tier` and `os_type` here must
 # match playbooks/provision_vm.yml's extra_vars and the ocpvirt-provision skill

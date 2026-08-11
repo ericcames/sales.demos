@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed -- generic sibling-repo references in code comments (#65)
+- Three comments cited sibling repositories by directory name as precedent. One
+  of those names identified an external organisation, which this repo's own rule
+  does not allow in a tracked file. Replaced with "a sibling daily-demo repo",
+  which carries the same weight as evidence without naming anyone;
+  `inventory/group_vars/aap/controller_templates.yml`, `playbooks/provision_vm.yml`
+  and `terraform/ocpvirt/backend.tf`. Non-identifying references (`dc1.azure`)
+  are unchanged.
+- **The comments themselves were kept.** They record why a pattern was chosen
+  and where else it was verified, which is the kind of note that saves someone
+  an afternoon. Only the identifying token needed to go.
+- Found by a full history audit -- every blob in the object store, every commit
+  message, every ref. Everything else came back clean: no private keys, AWS
+  keys, GitHub or Slack tokens at any revision; every committed `secrets.yml`
+  vault-encrypted at every revision; no non-Red Hat email addresses; no routable
+  IPs.
+- **No history rewrite.** The name is also in one historical commit message, and
+  rewriting 82 commits would change every downstream SHA, break existing PR and
+  issue cross-references, and still not remove it from GitHub -- which serves
+  unreachable commits by SHA long after they leave every branch. Verified
+  directly: two commits reachable from no local ref still resolve through the
+  GitHub commits API. Real removal needs the rewrite plus a Support request, and
+  that is not worth it for a directory name in a comment.
+
 ### Added -- stage the docs for NotebookLM (#64)
 - `utilities/collect-notebooklm-sources.sh` and its manifest
   `utilities/notebooklm-sources.txt`. NotebookLM takes files rather than

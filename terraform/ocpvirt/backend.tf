@@ -43,9 +43,9 @@
 # NEITHER NAMESPACE IS CREATED BY TERRAFORM. The backend will not create its own,
 # and `kubernetes_manifest` does not create one for the VMs either.
 # playbooks/provision_vm.yml creates both with kubernetes.core.k8s before running
-# init — the same guard AMZL-dailydemo uses for its S3 state bucket, and the same
-# pattern install_cnv.yml uses for openshift-cnv. Running terraform by hand on a
-# fresh cluster means creating them yourself first:
+# init — the same guard a sibling daily-demo repo uses for its S3 state bucket,
+# and the same pattern install_cnv.yml uses for openshift-cnv. Running terraform
+# by hand on a fresh cluster means creating them yourself first:
 #
 #   oc create namespace sales-demos-tfstate     # long-lived; never delete
 #   oc create namespace sales-demos-sandbox     # disposable; holds the VMs
