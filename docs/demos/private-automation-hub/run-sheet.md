@@ -10,7 +10,7 @@ that, present from this. The full click-by-click for the ClickOps half is in
 | **Length** | 30 minutes (26 + 4 for questions) |
 | **Audience** | Systems administrators and automation leads. Assumes no Private Automation Hub experience |
 | **Needs an environment?** | **Yes** for the live version. A populated PAH plus the repo. The offline version is in [`architecture.md`](architecture.md) |
-| **Assets** | `hub/*-requirements.yml`, `inventory/group_vars/aap/hub_collection_*.yml`, `utilities/refresh-hub-requirements.py` |
+| **Assets** | `hub/*-requirements.yml`, `inventory/group_vars/aap/hub_collection_*.yml`, `utilities/refresh-hub-requirements.py`, five images in [`docs/images/`](../../images/) |
 
 ---
 
@@ -264,6 +264,10 @@ runs the preflight first.
 
 ## Screenshots
 
-Capture from a populated sandbox before presenting: the empty Repositories view,
-the community remote Edit dialog, and the populated Repositories view. They go in
-`docs/images/` as `pah-*.png`.
+Captured from the live sandbox and demo environments, committed in `docs/images/`:
+
+1. `docs/images/pah-repositories-empty.png` — Repositories, never synced (demo env)
+2. `docs/images/pah-repositories-populated.png` — Repositories, populated with `approved` (sandbox env)
+3. `docs/images/pah-remote-community.png` — Edit community remote dialog
+4. `docs/images/pah-remote-certified.png` — Edit rh-certified remote dialog
+5. `docs/images/pah-remote-validated.png` — Edit validated remote dialog

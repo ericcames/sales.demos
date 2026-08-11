@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- PAH demo screenshots committed to `docs/images/pah-*.png` (#74): the empty
+  and populated Repositories views plus all three remote Edit dialogs. Demo
+  README updated from "blocked on a token" to "one rehearsal away from Ready."
+
 ### Added -- a curated repository, so removal actually works (#70)
 - `approved`: a fourth Hub repository with **no remote**, whose contents are
   declared in `hub/approved-collections.yml` and reconciled by
