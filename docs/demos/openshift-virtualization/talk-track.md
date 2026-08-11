@@ -112,6 +112,8 @@ what makes it land.
 
 ## Beat 3 · The interface is two questions (6–8)
 
+![The launch survey — the entire interface a requester sees](../../images/aap-survey.png)
+
 | Question | Variable | Choices | Default |
 |---|---|---|---|
 | Operating system | `os_type` | `linux` · `windows` · `both` | `linux` |
@@ -140,23 +142,49 @@ skeptical sysadmin starts actually listening.
 
 ## Beat 4 · Behind the button (8–16)
 
-Show the workflow graph from [`architecture.md`](architecture.md). Name the four
-nodes, then slow down for three specific points. **Resist the urge to narrate
-every task** — you are teaching three ideas, not reading a playbook.
+**Start from empty.** Show the namespace with nothing in it — this is the "before"
+that makes everything after it mean something:
+
+![The demo namespace before the run — no VirtualMachines found](../../images/ocp-vms-before.png)
+
+> **"That's the project the VM is going to land in. Nothing in it. Watch."**
+
+Then the workflow, mid-run:
+
+![The workflow running — provision in progress, 43 seconds elapsed](../../images/aap-workflow-running.png)
+
+Four nodes, chained left to right, each one gated on the previous succeeding.
+Name them, then slow down for three specific points. **Resist the urge to
+narrate every task** — you are teaching three ideas, not reading a playbook.
 
 ### 4a · The Route returns 503, and that is correct
 
-> **"The moment Terraform finishes, the URL exists. And it returns 503, because
-> there's no web server on the machine yet. That's not a bug I'm apologizing
-> for — it's the design. Building the box and configuring the box are two
-> different jobs with two different failure modes, and this keeps them visibly
-> separate. When something breaks you know which half broke."**
+**Open the URL now, in front of them.** This is what you get:
+
+![The Route before the web server exists — Application is not available](../../images/route-503.png)
+
+> **"The moment Terraform finishes, that URL exists — the hostname resolves,
+> the route is live, TLS terminates. And there's nothing behind it, because
+> nobody's installed a web server yet."**
+>
+> **"That's not a bug I'm apologizing for, it's the design. Building the box and
+> configuring the box are two different jobs with two different failure modes,
+> and keeping them visibly separate means that when something breaks you already
+> know which half broke."**
+
+**Say the URL out loud while it is on screen** — it encodes the whole story:
+`sd-lnx-medium-1cpu-4gb` is the VM, named for the tier that was requested;
+`-web` is the Service backing the route; `sales-demos-sandbox` is the namespace.
 
 ```console
 $ curl -sI "$(terraform output -raw web_url)" | head -1
 HTTP/1.1 503 Service Unavailable     # after provision
 HTTP/1.1 200 OK                      # after configure
 ```
+
+Then come back to it after the configure node and reload. **The 503 → 200
+transition, live, is the single best proof in the demo** — nothing else you
+show makes the separation of concerns as concrete.
 
 **Why:** it reframes an apparent flaw as an architectural choice — and it is
 genuinely true, which is why it survives follow-up questions.
@@ -192,6 +220,27 @@ has their own version of this story.
 
 **Why:** it is a detail nobody fakes. It signals the thing has actually been run
 enough times to find the sharp edges.
+
+### And the same namespace, after
+
+![The demo namespace after the run — one VM, Running](../../images/ocp-vms-after.png)
+
+> *A `large-2cpu-6gb` run, so the name and the 6 GiB differ from the survey shot
+> above — they are two different launches, not one continuous sequence.*
+
+> **"Same view, one VM, running. Requested 2 CPU, using 6 gigs — which is
+> exactly the tier that was asked for. Nobody touched the console to make that
+> happen."**
+
+**Watch for `LiveMigratable=True` in that Conditions column.** A sharp sysadmin
+will spot it and ask why you said there was no live migration. The answer is
+precise and worth having ready:
+
+> **"Good catch — that condition means the VM is *eligible* to migrate: its
+> storage is shared, it has no local-only devices. It's a property of how the
+> machine was built. What it doesn't have is anywhere to go, because this
+> cluster is one node. Give it a second node and that condition becomes
+> useful."**
 
 Close the beat with the honest total:
 

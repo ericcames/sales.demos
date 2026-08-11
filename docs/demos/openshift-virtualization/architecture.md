@@ -31,6 +31,13 @@ flowchart TD
     C -.->|"httpd running, returns 200"| W
 ```
 
+As the controller draws it, mid-run:
+
+![The workflow visualizer, provision in progress](../../images/aap-workflow-running.png)
+
+The diagram above is a simplification: the real graph is left to right and
+carries an explicit `Start` node, with each edge labelled `Run on success`.
+
 **Chained on `success_nodes`, with no failure nodes at all.** A failure stops the
 chain rather than cascading — and there is deliberately no incident-creation
 path, because a failure node that does nothing useful is worse than an obvious
@@ -51,6 +58,8 @@ run-it-by-hand path.
 ---
 
 ## The survey
+
+![The launch survey](../../images/aap-survey.png)
 
 | Question | Variable | Choices | Default |
 |---|---|---|---|

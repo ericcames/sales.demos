@@ -9,18 +9,20 @@ required. The narrative behind each beat, with the actual words, is in
 | **Length** | 30 minutes (25 + 5 for questions) |
 | **Audience** | Linux/platform sysadmins who want to run their estate with AAP |
 | **Needs an environment?** | **No.** Every artifact below is in this repo |
-| **Assets** | [`demo-page.png`](../../images/demo-page.png), the two banners and `facts.json` in [`talk-track.md`](talk-track.md), the Mermaid graph in [`architecture.md`](architecture.md) |
+| **Assets** | Six images in [`docs/images/`](../../images/), the two banners and `facts.json` in [`talk-track.md`](talk-track.md), the Mermaid graph in [`architecture.md`](architecture.md) |
 
 ---
 
 ## Before you start (5 minutes, offline)
 
-1. Open these four in tabs, in this order — this **is** your slide deck:
-   1. `docs/images/demo-page.png`
-   2. `docs/demos/openshift-virtualization/architecture.md` (the workflow graph)
-   3. `inventory/group_vars/aap/controller_workflows.yml`
-   4. `https://github.com/ericcames/sales.demos`
-2. Have `talk-track.md` open on a second screen if you have one.
+1. Open these in tabs, in this order — this **is** your slide deck:
+   1. `docs/images/demo-page.png` — the destination
+   2. `docs/images/aap-survey.png` — the interface
+   3. `docs/images/ocp-vms-before.png` and `ocp-vms-after.png` — the pair
+   4. `docs/images/aap-workflow-running.png` — the chain
+   5. `docs/demos/openshift-virtualization/talk-track.md` — for the banners
+   6. `https://github.com/ericcames/sales.demos` — the close
+2. Have this run sheet on a second screen if you have one.
 3. Decide your close before you begin — see **Landing it** at the bottom.
 
 If you *do* have a live environment, read **[Running it live](#running-it-live)**
@@ -34,8 +36,8 @@ first; it changes three beats and nothing else.
 |---|---|---|
 | 0–3 | Cold open — the destination | `demo-page.png` |
 | 3–6 | The problem, in their words | nothing |
-| 6–8 | The whole interface is two questions | the survey table below |
-| 8–16 | What happens behind the button | the workflow graph |
+| 6–8 | The whole interface is two questions | `aap-survey.png` |
+| 8–16 | What happens behind the button | `ocp-vms-before.png` → `aap-workflow-running.png` → `ocp-vms-after.png` |
 | 16–22 | What you get | `demo-page.png`, MOTD, `facts.json` |
 | 22–26 | Why a sysadmin should care | the repo |
 | 26–28 | The honest bits | nothing |
@@ -81,7 +83,7 @@ Reflect it back, then:
 
 ## 6–8 · The entire interface is two questions
 
-Show the survey. This is the whole thing a requester sees:
+**Show `aap-survey.png`.** This is the whole thing a requester sees:
 
 | Question | Variable | Choices | Default |
 |---|---|---|---|
@@ -105,8 +107,11 @@ than the rest of the demo combined.
 
 ## 8–16 · What happens behind the button
 
-Show the workflow graph from [`architecture.md`](architecture.md). Four nodes,
-chained on success:
+**Start on `ocp-vms-before.png`** — the empty namespace.
+
+> **"That's where the VM lands. Nothing in it. Watch."**
+
+**Then `aap-workflow-running.png`.** Four nodes, chained on success:
 
 ```
 Provision VM  →  Register VMs  →  Configure VMs  →  Check VMs
@@ -116,16 +121,24 @@ Walk them in order. **Three beats matter here; everything else is detail.**
 
 ### Beat 1 — the Route 503s, and that is correct
 
+**Show `route-503.png`**, or open the real URL if you have one.
+
 > **"The second Terraform finishes, the URL exists and returns 503. That is not
 > a bug — there is no web server yet. Infrastructure and configuration are two
 > different jobs with two different failure modes, and this demo keeps them
 > visibly separate."**
+
+**Read the hostname out loud** — it encodes the story: the VM name carries the
+tier that was requested, `-web` is the Service, then the namespace.
 
 ```
 curl -sI $(terraform output -raw web_url) | head -1
 HTTP/1.1 503 Service Unavailable     # after provision
 HTTP/1.1 200 OK                      # after configure
 ```
+
+**Come back and reload after configure.** 503 → 200 live is the best proof in
+the demo.
 
 ### Beat 2 — the ordering you would not guess
 
@@ -151,6 +164,17 @@ Draw this out loud; it is the most senior-sounding thing in the deck:
 > **"Three different answers to 'is it ready'. A human learns that by getting
 > Connection refused twice. The workflow just waits — the gate lives in the
 > playbook, so it protects the by-hand path too."**
+
+### Close the loop — `ocp-vms-after.png`
+
+Same view, one VM, `Running`, using the memory of the tier that was asked for.
+
+> **"Nobody touched a console to make that happen."**
+
+**If they spot `LiveMigratable=True`** and ask why you said no live migration:
+that condition means the VM is *eligible* to migrate — shared storage, nothing
+pinning it to a host. It has nowhere to go on a single node. Full wording in
+[`objections.md`](objections.md#the-follow-up-then-why-does-it-say-livemigratabletrue).
 
 **Whole workflow: about nine minutes.** Say the number. Do not round it down.
 
@@ -254,8 +278,16 @@ If you have a warm environment, three beats change:
 | 8–16 | Cut to the running job's output instead of the graph. Narrate the node that is actually executing |
 | 16–22 | `curl -sI` the real URL, then open it. The 503 → 200 transition live is worth more than any slide |
 
-**Prove the environment before you rely on it.** `/ocpvirt-new-env` builds and
-times a real VM in about a minute and fails loudly if the cluster is cold.
+**Check which environment you are on before you touch anything.** The sign-in
+page is badged, and a pill sits in the masthead after login — green `SANDBOX`,
+red `DEMO`:
+
+![The badged sign-in page](../../images/aap-login-badged.png)
+
+Green is the one you break. Red is the one the customer is watching.
+
+**Then prove the environment is warm.** `/ocpvirt-new-env` builds and times a
+real VM in about a minute and fails loudly if the cluster is cold.
 
 **Keep the screenshot open in a tab regardless.** If the run stalls, do not
 debug in front of them:
@@ -277,16 +309,30 @@ work from the artifacts.
 
 ---
 
-## Screenshots still worth capturing
+## Screenshots
 
-The guest-facing artifacts render without a cluster and are committed. The AAP
-UI cannot be rendered — grab these next time an environment is up, and this run
-sheet stops needing a live cluster for *any* beat:
+The guest-facing artifacts render without a cluster. The AAP and OpenShift
+interfaces cannot be rendered, so they were captured from a live run.
 
-- [ ] The workflow visualizer showing all four nodes green
-- [ ] The survey modal as a requester sees it
-- [ ] A completed `Sales Demos - Build Demo VM` job, output pane visible
-- [ ] The host detail page in AAP showing cached facts
-- [ ] `oc get vm,vmi -n sales-demos-demo` mid-build
+**Captured and wired in:**
+
+- [x] The survey modal as a requester sees it — `aap-survey.png`
+- [x] The workflow mid-run, nodes chained — `aap-workflow-running.png`
+- [x] The namespace before and after — `ocp-vms-before.png`, `ocp-vms-after.png`
+- [x] The badged sign-in page — `aap-login-badged.png`
+- [x] The Route before the web server exists — `route-503.png`
+
+**Still worth grabbing next time an environment is up:**
+
+- [ ] **The same URL returning the demo page** — the 200 half of `route-503.png`,
+      same browser, same frame, padlock visible. This is the highest-value shot
+      left; the pair tells the whole story with no narration
+- [ ] The workflow with all four nodes **green** — the current shot is mid-run,
+      which is honest but leaves the ending unshown
+- [ ] `virtctl ssh` showing the pre-auth banner and the MOTD in one scrollback
+- [ ] The AAP host detail page with cached facts
+
+> **Hide the bookmarks bar before shooting** (`Ctrl+Shift+B`). `route-503.png`
+> had to be cropped to remove it.
 
 Commit them to `docs/images/` and link them here.

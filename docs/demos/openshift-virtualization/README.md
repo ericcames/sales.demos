@@ -56,22 +56,40 @@ control, in public, that converges instead of merely running.
 
 ## Why it works without a cluster
 
-Both guest-facing artifacts are Jinja templates, so they render on a laptop with
-nothing running. `utilities/render-demo-assets.py` renders the demo page and
-screenshots it with headless Chrome, and prints the two login banners and
-`facts.json` as text:
+Every image the talk track needs is committed, from two different sources.
+
+**Rendered, not photographed.** Both guest-facing artifacts are Jinja templates,
+so they render on a laptop with nothing running. `utilities/render-demo-assets.py`
+renders the demo page and screenshots it with headless Chrome, and prints the two
+login banners and `facts.json` as text:
 
 ```bash
 python3 utilities/render-demo-assets.py
 ```
 
-That writes [`docs/images/demo-page.png`](../../images/demo-page.png), which is
-committed. **It is rendered from the template, not photographed from a live
-run** — accurate, but say so if anyone asks.
+That writes [`demo-page.png`](../../images/demo-page.png). It is accurate — the
+guest serves that exact template — but it is **not** a capture of a live run.
+Say so if anyone asks.
 
-The AAP interface cannot be rendered, so the workflow is a Mermaid graph and the
-survey is a table in [`architecture.md`](architecture.md). The run sheet ends
-with a short list of screenshots worth capturing next time an environment is up.
+**Captured from a live run**, because the AAP and OpenShift interfaces cannot be
+rendered:
+
+| Image | Shows |
+|---|---|
+| `aap-survey.png` | The launch survey a requester sees |
+| `aap-workflow-running.png` | The four chained nodes, mid-run |
+| `ocp-vms-before.png` / `ocp-vms-after.png` | The namespace empty, then with one VM Running |
+| `route-503.png` | The URL live and correctly serving nothing yet |
+| `aap-login-badged.png` | The environment badge on the sign-in page |
+
+> **These come from several different launches, at different size tiers** —
+> `small` in the survey, `medium` in the 503, `large` in the namespace shot.
+> They illustrate the mechanism; they are not one continuous sequence, and the
+> talk track does not claim they are. If you want a matched set, capture one in
+> a single run and replace them.
+
+The run sheet ends with the shots still worth capturing — the most valuable
+being the 200 half of `route-503.png` in the same browser frame.
 
 ---
 

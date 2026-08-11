@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added -- live screenshots wired into the talk track (#58)
+- Six images captured from a real run, filling the gap `render-demo-assets.py`
+  cannot: `aap-survey.png`, `aap-workflow-running.png`, `ocp-vms-before.png`,
+  `ocp-vms-after.png`, `route-503.png`, `aap-login-badged.png`. The AAP and
+  OpenShift interfaces cannot be rendered from templates, so #56 shipped a
+  Mermaid graph and a checklist; this is that checklist cashed in.
+- **The before/after namespace pair is the strongest of them**, and it was not
+  on the requested list. Empty project, then one VM `Running` at the tier that
+  was asked for, gives Beat 4 a visual spine it did not have.
+- **`route-503.png` shows the Route live and correctly serving nothing.** In a
+  browser this lands harder than `curl -sI` output — the hostname is on screen,
+  and it encodes the whole story: VM name carrying the requested tier, the
+  `-web` Service, the namespace.
+- **`LiveMigratable=True` is visible in the namespace screenshot, and the talk
+  track says there is no live migration.** Both are true and the tension is
+  real: the condition means the VM is *eligible* to migrate — shared storage,
+  nothing pinning it to a host — it simply has nowhere to go on a single node.
+  A sysadmin reading that Conditions column will call it out, so `objections.md`
+  now carries the precise answer rather than leaving it to be improvised.
+- **The shots come from several different launches at different tiers** —
+  `small` in the survey, `medium` in the 503, `large` in the namespace shot. The
+  use-case README says so outright. They illustrate the mechanism; claiming they
+  were one continuous run would be the kind of small dishonesty this repo's
+  documentation does not do.
+- `route-503.png` was cropped to drop a visible bookmarks bar. The run sheet now
+  says to hide it before shooting.
+- The run sheet's screenshot checklist is now split into captured and
+  outstanding, the highest-value remaining shot being the 200 half of
+  `route-503.png` in the same browser frame.
+
 ### Added -- documentation you can present from (#56)
 - `docs/demos/`, a talk-track tree with one directory per use case. The first is
   `openshift-virtualization/`, ready to present in a 30-minute slot. Everything
