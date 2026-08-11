@@ -79,6 +79,15 @@ logs/
 # ---------------------------------------------------------------------------
 .ee-build/
 
+# ---------------------------------------------------------------------------
+# NotebookLM staging (#64). utilities/collect-notebooklm-sources.sh copies the
+# files named in utilities/notebooklm-sources.txt into build/notebooklm/ so
+# they can be dragged into a browser. Every one of them is a COPY of a tracked
+# file, so tracking the copies would only guarantee they go stale -- the same
+# reasoning that keeps .ee-build/ out.
+# ---------------------------------------------------------------------------
+build/
+
 # Editor / OS
 .vscode/
 .idea/
