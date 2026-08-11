@@ -9,14 +9,14 @@ required. The narrative behind each beat, with the actual words, is in
 | **Length** | 30 minutes (25 + 5 for questions) |
 | **Audience** | Linux/platform sysadmins who want to run their estate with AAP |
 | **Needs an environment?** | **No.** Every artifact below is in this repo |
-| **Assets** | Seven images in [`docs/images/`](../../images/), the two banners and `facts.json` in [`talk-track.md`](talk-track.md), the Mermaid graph in [`architecture.md`](architecture.md) |
+| **Assets** | Eight images in [`docs/images/`](../../images/), the two banners and `facts.json` in [`talk-track.md`](talk-track.md), the Mermaid graph in [`architecture.md`](architecture.md) |
 
 ---
 
 ## Before you start (5 minutes, offline)
 
 1. Open these in tabs, in this order — this **is** your slide deck:
-   1. `docs/images/demo-page.png` — the destination
+   1. `docs/images/demo-page-live.png` — the destination
    2. `docs/images/aap-survey.png` — the interface
    3. `docs/images/ocp-vms-before.png` and `ocp-vms-after.png` — the pair
    4. `docs/images/aap-workflow-running.png` — the chain
@@ -35,11 +35,11 @@ first; it changes three beats and nothing else.
 
 | Time | Beat | On screen |
 |---|---|---|
-| 0–3 | Cold open — the destination | `demo-page.png` |
+| 0–3 | Cold open — the destination | `demo-page-live.png` |
 | 3–6 | The problem, in their words | nothing |
 | 6–8 | The whole interface is two questions | `aap-survey.png` |
 | 8–16 | What happens behind the button | `ocp-vms-before.png` → `aap-workflow-running.png` → `route-503.png` → `ocp-vms-after.png` → `aap-job-timings.png` |
-| 16–22 | What you get | `demo-page.png`, MOTD, `facts.json` |
+| 16–22 | What you get | `demo-page-live.png`, MOTD, `facts.json` |
 | 22–26 | Why a sysadmin should care | the repo |
 | 26–28 | The honest bits | nothing |
 | 28–30 | Close | the page footer |
@@ -48,12 +48,13 @@ first; it changes three beats and nothing else.
 
 ## 0–3 · Cold open on the destination
 
-**Show `demo-page.png` before you say anything about how it got there.**
+**Show `demo-page-live.png` before you say anything about how it got there.**
+(`demo-page.png` is the rendered equivalent — same page, use either.)
 
 Point at three things and nothing else:
 
 - the hostname and the green dot — *"that's a RHEL 9 guest"*
-- **Size tier** `small-1cpu-2gb → sd1.small` — *"somebody asked for 'small'"*
+- **Size tier** `large-2cpu-6gb → sd1.large` — *"somebody asked for 'large'"*
 - the amber notice — *"and it deletes itself at 6 PM"*
 
 > **"This machine did not exist nine minutes before that screenshot was taken.
@@ -200,7 +201,7 @@ in a controller's own job list are evidence; a presenter's estimate is not.
 
 ## 16–22 · What you get
 
-Back to `demo-page.png`. Now walk the facts table and make the point that
+Back to `demo-page-live.png`. Now walk the facts table and make the point that
 **every value on that page came from the machine itself**:
 
 - OS, kernel, vCPU/memory — gathered facts
@@ -320,6 +321,8 @@ work from the artifacts.
 
 | Symptom | Move |
 |---|---|
+| **URL 503s but the VM says `Running`** | **Wait two minutes.** Most likely the VMI was re-created and the guest is still booting. The disk is persistent and httpd is `enabled`, so it comes back on its own — this was observed live, self-healing in about two minutes with no intervention. Narrate it as the "three definitions of done" beat rather than debugging it |
+| URL **times out** rather than 503ing | **Not the cluster.** The router answers a bad route instantly with 503; a timeout means the connection never established, so it is your network path — VPN, proxy, wifi. Check whether the AAP or console tab also hangs |
 | Job fails on `Error acquiring the state lock` | A cancelled run left a Lease held. Do not debug live — cut to the screenshot. The fix is in `playbooks/tasks/terraform_lock_check.yml` |
 | Job fails with a 401, or times out then 401s | The RHDP token expired. Not fixable mid-demo. Cut to the screenshot |
 | Register node runs long | Normal — it is 4–5 minutes of the nine. Fill with the "three definitions of done" beat |
@@ -340,12 +343,13 @@ interfaces cannot be rendered, so they were captured from a live run.
 - [x] The badged sign-in page — `aap-login-badged.png`
 - [x] The Route before the web server exists — `route-503.png`
 - [x] Every node's real duration, all Success — `aap-job-timings.png`
+- [x] The demo page served by a real guest — `demo-page-live.png`
 
 **Still worth grabbing next time an environment is up:**
 
-- [ ] **The same URL returning the demo page** — the 200 half of `route-503.png`,
-      same browser, same frame, padlock visible. This is the highest-value shot
-      left; the pair tells the whole story with no narration
+- [ ] The demo page **with the URL bar and padlock visible** — `demo-page-live.png`
+      has no browser chrome, so the "real certificate, no cert management" point
+      is still unillustrated. Minor; the page itself is captured
 - [ ] `virtctl ssh` showing the pre-auth banner and the MOTD in one scrollback
 - [ ] The AAP host detail page with cached facts
 

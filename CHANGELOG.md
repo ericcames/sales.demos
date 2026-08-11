@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added -- a real demo page, and the restart-503 (#60)
+- `demo-page-live.png` -- the demo page **served by an actual guest**, not
+  rendered. RHEL 9.8, `large-2cpu-6gb` resolving to `sd1.large`, 5642 MB, and
+  `KVM (guest)` coming out right in production rather than only against the
+  fixture. The cold open uses it now; `demo-page.png` stays as the regenerable
+  offline fallback and as what the render script verifies. Both are honest about
+  which they are.
+- **The `Configured` timestamp on that page predates the capture by 14 minutes**,
+  which is itself the proof that the page survived a VM restart on the
+  persistent disk.
+
+### Fixed -- two recovery moves that were learned the hard way (#60)
+- **A 503 with the VM reporting `Running` usually means the guest is still
+  booting.** Observed live: the VMI was re-created, and the route 503'd for
+  about two minutes before the guest finished coming up. It **self-healed** --
+  the disk is persistent and `linux_configure` sets httpd `enabled`, so the web
+  server returned with no intervention. A presenter who hits this would
+  otherwise start debugging something that is about to fix itself, so the run
+  sheet now says to wait and narrate it as the "three definitions of done" beat.
+- **A connection *timeout* is never a Route or cluster fault.** The router
+  answers a bad route with an instant 503; a timeout means the TCP connection
+  never established, which puts the problem on the local network path -- VPN,
+  proxy, wifi. This distinction cost real time to establish and is now in the
+  recovery table, along with the check that settles it: whether the AAP or
+  console tab also hangs.
+
 ### Added -- live screenshots wired into the talk track (#58)
 - Six images captured from a real run, filling the gap `render-demo-assets.py`
   cannot: `aap-survey.png`, `aap-workflow-running.png`, `ocp-vms-before.png`,
