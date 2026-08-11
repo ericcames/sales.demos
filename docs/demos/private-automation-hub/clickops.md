@@ -191,6 +191,53 @@ The honest full list, per environment:
 
 ---
 
+## Pointing your laptop at the hub
+
+Once the hub is populated, you still have to tell `ansible-galaxy` to use it.
+That lives in `~/.ansible.cfg` — **the home directory, not the project
+directory**. Ansible picks one config file and does not merge, so a project-local
+`ansible.cfg` shadows everything in `~/.ansible.cfg`, including the Red Hat
+offline token that syncs certified content. The home-directory file is the one
+authoritative location.
+
+```ini
+[galaxy]
+server_list = my_pah, galaxy
+
+[galaxy_server.my_pah]
+url = https://<aap_hostname>/api/galaxy/content/approved/
+token = <your PAH API token>
+
+[galaxy_server.galaxy]
+url = https://galaxy.ansible.com/api/
+
+[galaxy_server.rh_certified]
+url = https://console.redhat.com/api/automation-hub/content/published/
+auth_url = https://sso.redhat.com/auth/realms/redhat-external/protocol/openid-connect/token
+token = <your Red Hat offline token>
+```
+
+The order in `server_list` matters — Ansible tries them left to right. With
+`my_pah` first, `ansible-galaxy collection install` resolves from your hub
+before falling back to public Galaxy.
+
+Three things worth noting:
+
+- **Point at `approved`, not the mirrors.** `approved` holds exactly the
+  versions you declared, and it is the only repository where removal works.
+  `rh-certified` carries every version inside the window; `community` never
+  removes anything.
+- **The token here is Token 2** — your hub's API token, from *Collections →
+  API token* in the PAH UI. It is *not* the Red Hat offline token
+  (`rh_certified`), which points outward to sync content *into* the hub. See
+  the three-token table in [`architecture.md`](architecture.md).
+- **The `rh_certified` section is already there** if you have ever installed a
+  certified collection from `console.redhat.com`. That section stays — it is
+  what `sync_hub.yml` reads when populating the hub. The new section above it
+  is what makes your day-to-day installs resolve from *your* hub instead.
+
+---
+
 ## Restoring the demo afterwards
 
 The UI edits above are overwritten the next time the config-as-code runs, which
