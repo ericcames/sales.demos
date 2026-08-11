@@ -69,13 +69,18 @@ python3 utilities/render-demo-assets.py
 
 That writes [`demo-page.png`](../../images/demo-page.png). It is accurate — the
 guest serves that exact template — but it is **not** a capture of a live run.
-Say so if anyone asks.
+Say so if anyone asks, and prefer
+[`demo-page-live.png`](../../images/demo-page-live.png) when you are presenting:
+it is the same page, genuinely served, and a real capture is worth more in the
+cold open. The rendered one is what keeps this working when there is no cluster,
+and what the render script regenerates when the template changes.
 
 **Captured from a live run**, because the AAP and OpenShift interfaces cannot be
 rendered:
 
 | Image | Shows |
 |---|---|
+| `demo-page-live.png` | The demo page **served by a real guest** — use this for the cold open |
 | `aap-survey.png` | The launch survey a requester sees |
 | `aap-workflow-running.png` | The four chained nodes, mid-run |
 | `ocp-vms-before.png` / `ocp-vms-after.png` | The namespace empty, then with one VM Running |

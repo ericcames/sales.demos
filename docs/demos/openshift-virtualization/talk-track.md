@@ -47,18 +47,19 @@ number instead of listening.
 
 Open on the finished page. Say nothing about how it got there.
 
-![The demo page as a configured guest serves it](../../images/demo-page.png)
+![The demo page, served by a real guest](../../images/demo-page-live.png)
 
-> *Rendered from the same Jinja template the guest serves
-> (`playbooks/roles/linux_configure/templates/index.html.j2`), by
-> `utilities/render-demo-assets.py`. Accurate, but not a photograph of a live
-> run — say so if anyone asks.*
+> *A genuine capture — this page was served by a running VM over the Route.
+> There is also a [rendered copy](../../images/demo-page.png), produced from the
+> same template by `utilities/render-demo-assets.py`, which is what keeps this
+> talk track working when no cluster is available. Use the live one when you
+> have it.*
 
 Point at three things:
 
-> **"That's a RHEL 9 guest. Somebody asked for 'small' — that's the size tier
-> line, and it resolved to a cluster instance type called `sd1.small`. And it
-> deletes itself at 6 o'clock."**
+> **"That's a RHEL 9 guest. Somebody asked for 'large' — that's the size tier
+> line, and it resolved to a cluster instance type called `sd1.large`, two CPUs
+> and six gigs. And it deletes itself at 6 o'clock."**
 >
 > **"This machine did not exist nine minutes before that page was taken. Nobody
 > opened a hypervisor console. Nobody allocated an IP. Nobody logged into it —
