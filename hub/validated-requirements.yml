@@ -1,0 +1,114 @@
+---
+# ============================================================================
+# hub/validated-requirements.yml — Red Hat validated collections PAH syncs (#68)
+# ============================================================================
+# GENERATED. Do not hand-edit; run the refresh and commit the diff:
+#
+#   python3 utilities/refresh-hub-requirements.py
+#   git diff hub/
+#
+# THIS IS NOT collections/requirements.yml. That file is what your laptop and
+# the execution environment INSTALL. This file is what Private Automation Hub
+# SYNCS from upstream. Confusing the two is the likeliest mistake here.
+#
+# Every validated collection, windowed to the 3 newest releases of each by a
+# `>=` floor. Consumed by the validated remote in
+# inventory/group_vars/aap/hub_collection_remotes.yml.
+#
+# 47 collections.
+# ============================================================================
+collections:
+  - name: ansible.mcp_builder
+    version: ">=1.0.0"
+  - name: cisco.cvd_compute
+    version: ">=1.1.0"
+  - name: cisco.splunk_otel_collector
+    version: ">=1.0.0"
+  - name: cloud.aws_ops
+    version: ">=3.1.0"
+  - name: cloud.aws_troubleshooting
+    version: ">=2.0.0"
+  - name: cloud.azure_ops
+    version: ">=6.0.0"
+  - name: cloud.gcp_ops
+    version: ">=1.0.0"
+  - name: cloud.terraform_ops
+    version: ">=1.0.0"
+  - name: cloud.vmware_ops
+    version: ">=1.7.0"
+  - name: edge.microshift
+    version: ">=1.0.2"
+  - name: f5networks.f5_eda_security
+    version: ">=1.0.1"
+  - name: f5networks.f5_platform_modernization
+    version: ">=1.0.0"
+  - name: ibm.ibm_eda_zos
+    version: ">=1.0.0"
+  - name: infra.aap_configuration
+    version: ">=4.6.0"
+  - name: infra.aap_configuration_extended
+    version: ">=4.8.0"
+  - name: infra.aap_utilities
+    version: ">=3.3.0"
+  - name: infra.ah_configuration
+    version: ">=2.0.4"
+  - name: infra.ai
+    version: ">=1.0.0"
+  - name: infra.ansible_rekey_variables
+    version: ">=1.1.4"
+  - name: infra.controller_configuration
+    version: ">=3.2.6"
+  - name: infra.convert2rhel
+    version: ">=1.1.0"
+  - name: infra.eda_configuration
+    version: ">=1.1.0"
+  - name: infra.ee_utilities
+    version: ">=4.2.4"
+  - name: infra.leapp
+    version: ">=1.7.1"
+  - name: infra.lvm_snapshots
+    version: ">=2.1.1"
+  - name: infra.mecm_ops
+    version: ">=1.0.1"
+  - name: infra.middleware_ocpv
+    version: ">=1.0.0"
+  - name: infra.openshift_virtualization_migration
+    version: ">=1.23.0"
+  - name: infra.openshift_virtualization_ops
+    version: ">=1.0.1"
+  - name: infra.osbuild
+    version: ">=2.1.0"
+  - name: infra.rhacs_configuration
+    version: ">=2.0.1"
+  - name: infra.satellite_configuration
+    version: ">=1.3.0"
+  - name: infra.support_assist
+    version: ">=1.1.1"
+  - name: infra.windows_ops
+    version: ">=1.2.0"
+  - name: network.acls
+    version: ">=2.0.0"
+  - name: network.backup
+    version: ">=4.0.1"
+  - name: network.base
+    version: ">=6.0.0"
+  - name: network.bgp
+    version: ">=6.0.1"
+  - name: network.healthchecks
+    version: ">=1.0.0"
+  - name: network.interfaces
+    version: ">=5.0.0"
+  - name: network.inventory_reports
+    version: ">=1.0.0"
+  - name: network.meraki_ops
+    version: ">=1.0.0"
+  - name: network.offline_migration_sdn_to_ovnk
+    version: ">=1.0.2"
+  - name: network.ospf
+    version: ">=5.0.0"
+  - name: network.telemetry
+    version: ">=1.0.1"
+  - name: network.vpn
+    version: ">=4.0.0"
+  - name: paloaltonetworks.panos_policy_automation
+    version: ">=1.4.5"

@@ -7,6 +7,113 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added -- Private Automation Hub as code, the repo's second use case (#68)
+- Every environment now configures its Private Automation Hub on every build.
+  `config.yml` applies three collection remotes and repositories and starts a
+  sync without waiting, so `setup.yml` stays at roughly ten minutes;
+  `playbooks/sync_hub.yml` and the `pah-sync` skill are the blocking entry point
+  that waits and then verifies. Content: all Red Hat certified (214) and
+  validated (47) collections windowed to the 3 newest versions of each, plus 15
+  curated community collections at their current version only.
+- **Pulp has no "keep N versions" control, and `retain_repo_versions` is not
+  it** -- that prunes repository snapshots, not collection versions. A
+  requirements entry of a bare `namespace.name` syncs every version ever
+  published, and some certified collections have forty. So
+  `utilities/refresh-hub-requirements.py` computes a `>=` floor per collection
+  and writes `hub/{certified,validated,community}-requirements.yml`, all
+  committed. That generated diff is the reviewable artifact the whole use case
+  exists to produce.
+- **`hub/` is deliberately not `collections/`.** `collections/requirements.yml`
+  is what a laptop and the execution environment INSTALL; `hub/*.yml` is what PAH
+  SYNCS from upstream. Different direction, different lifecycle, and confusing
+  the two is the likeliest mistake here -- every generated file says so in its
+  header.
+- **A refresh is a script, not a playbook**, matching `utilities/build-ee.sh`:
+  it writes into the repo checkout so it must never run from AAP, and it is ~260
+  HTTP calls, which as sequential `uri` tasks would take minutes and produce
+  output nobody can read. Concurrent, stdlib-only: 25 seconds for all three
+  lists.
+- **The three-token table is the deliverable, not a footnote.** `ansible.hub` and
+  `ansible-galaxy` call three unrelated credentials "token", and this is where
+  people stall on day one. The Red Hat *offline* token syncs your hub FROM Red
+  Hat and lives in `~/.ansible.cfg`; your hub's own API token authenticates
+  clients TO it and is not stored at all; a galaxy.ansible.com token is only
+  needed to publish and is not needed here. Written out in
+  `docs/demos/private-automation-hub/architecture.md`.
+- **`sales.demos` now has six-file demo documentation for one use case.**
+  `clickops.md` holds the full click-by-click UI walkthrough, because the demo's
+  argument is a contrast with doing it by hand and that procedure has to be real
+  rather than a strawman -- and thirty clicks would have destroyed the run
+  sheet's one job, being scannable by someone standing up mid-sentence.
+- Deliberately **not** done: no organization Galaxy credential, so nothing in AAP
+  resolves from the hub yet. That is #69, held behind gates, because a Galaxy
+  credential makes every project sync depend on the hub being complete. It is
+  already known to be incomplete -- `--audit-pins` reports that
+  `ansible.controller` and `ansible.platform` are pinned below their version
+  window. Found by writing the check, not by having it fail in a demo.
+
+### Fixed -- three failure modes found by running the sync for real (#68)
+- **A Pulp sync is additive and the docs now say so.** Dropping a collection from
+  `hub/community-requirements.yml` and re-syncing left all 15 in the repository.
+  The requirements files are an allowlist for what gets pulled IN, not a
+  declaration of desired state: adding works, changing a version keeps the old
+  one, removing does nothing. `ansible.hub` POSTs to `{repo}/sync/` with no body,
+  so no `mirror` flag is sent and Pulp defaults to additive. Same root cause as
+  the `>=` floor only widening. The honest answer -- a curated repository you
+  create and copy approved versions into, which is a list you can genuinely
+  remove from -- is tracked in #70 rather than claimed here.
+- **`sync_dependencies` is now false on every remote.** It was true for certified
+  on the reasoning that certified collections only depend on each other, so the
+  dependency walk could not escape the curated set. Wrong: the first real sync
+  died on `404 .../collections/index/containers/podman/`, a collection in
+  neither generated list, pulled in by something that depends on it and absent
+  from console's `published` repo. **One unresolvable dependency fails the entire
+  sync task**, so the repository stays empty rather than partially filled.
+- **The `infra.aap_configuration` async defaults are far too short for a sync,
+  and misreport the failure.** Every role wraps its work in `async:` and polls
+  with `collect_async_status`; the defaults are 50 retries one second apart --
+  about fifty seconds. A certified sync runs for minutes, not seconds. Left
+  alone the playbook fails with `attempts: 50` and, because secure logging is on,
+  a `censored` message that says nothing, while the sync runs happily inside
+  Pulp. Confirmed by querying `/pulp/api/v3/tasks/` directly: state `running`,
+  not `failed`. `sync_hub.yml` sets 360 retries at 15s, and narrows secure
+  logging off for the sync role alone -- it carries repository names and no
+  credentials, unlike the remote role, which keeps it.
+- **A trailing newline made every remote report `changed`, forever.** Pulp stores
+  a remote's `requirements_file` with the trailing newline stripped, so a
+  generated file that has one differs by exactly that character on every
+  comparison and the module rewrites the remote each run. The sync worked and the
+  run was green -- it simply never reported `changed=0`, which is the precise
+  claim the config-as-code demo makes. Fixed with an `rstrip` in the generator
+  and a per-rule `.yamllint` exemption scoped to `hub/`; nothing else in the repo
+  is exempt, and both places carry the reason so nobody tidies the newline back.
+- **Two remotes still report `changed` and always will**, which the talk track
+  now addresses head-on rather than hoping nobody reads the recap.
+  `rh-certified` and `validated` carry a token the API never returns, so the
+  module has nothing to compare against; `community`, with no credential, reports
+  `changed=0`. Same behaviour `controller_settings.yml` documents for
+  `SUBSCRIPTIONS_CLIENT_SECRET` -- the platform refusing to hand back a secret,
+  not drift.
+- **`validate.yml` would have kicked three live PAH syncs**, while printing
+  "Nothing will be changed." `ansible.hub` 1.1.0's `collection_repository_sync`
+  reads `module.params.get("check_mode")`, but `check_mode` is not in its
+  argument_spec -- so it is always `None`, the guarded early-exit never fires,
+  and the sync runs for real under check mode. It should be `module.check_mode`.
+  Guarded in two places because one is not enough: the group_vars `sync:`
+  expression carries `not ansible_check_mode`, and `validate.yml` forces
+  `hub_sync_enabled: false`. **`ansible_check_mode` is only True for a CLI
+  `--check`** -- a play-level `check_mode: true`, which is exactly what
+  `validate.yml` uses, leaves it False. Verified both ways, and verified by
+  counting Pulp sync tasks either side of a validate run.
+- **Check mode cannot validate content, and said so confusingly.** `uri` does not
+  run under `--check`, so registered results come back as bare skip markers with
+  no `json` key and the first assertion dies on a missing attribute rather than
+  reporting anything about the hub. The verification block is now gated on `not
+  ansible_check_mode`. A related trap: **Ansible templates a `loop_control.label`
+  even for items the `when` skips**, so a label reaching into a skipped result
+  fails the task with an error unrelated to the assertion -- labels now reference
+  `item.item` only.
+
 ### Fixed -- generic sibling-repo references in code comments (#65)
 - Three comments cited sibling repositories by directory name as precedent. One
   of those names identified an external organisation, which this repo's own rule

@@ -1,0 +1,448 @@
+---
+# ============================================================================
+# hub/certified-requirements.yml — Red Hat certified collections PAH syncs (#68)
+# ============================================================================
+# GENERATED. Do not hand-edit; run the refresh and commit the diff:
+#
+#   python3 utilities/refresh-hub-requirements.py
+#   git diff hub/
+#
+# THIS IS NOT collections/requirements.yml. That file is what your laptop and
+# the execution environment INSTALL. This file is what Private Automation Hub
+# SYNCS from upstream. Confusing the two is the likeliest mistake here.
+#
+# Every certified collection, windowed to the 3 newest releases of each by a
+# `>=` floor. Consumed by the rh-certified remote in
+# inventory/group_vars/aap/hub_collection_remotes.yml.
+#
+# 214 collections.
+# ============================================================================
+collections:
+  - name: akeyless.secrets_management
+    version: ">=1.2.2"
+  - name: amazon.ai
+    version: ">=1.0.0"
+  - name: amazon.aws
+    version: ">=11.2.0"
+  - name: ansible.aap_snapshot
+    version: ">=1.0.4"
+  - name: ansible.controller
+    version: ">=4.8.2"
+  - name: ansible.eda
+    version: ">=2.12.0"
+  - name: ansible.hub
+    version: ">=1.0.5"
+  - name: ansible.mariadb
+    version: ">=6.0.2"
+  - name: ansible.mcp
+    version: ">=1.0.0"
+  - name: ansible.mysql
+    version: ">=5.0.1"
+  - name: ansible.netcommon
+    version: ">=8.5.3"
+  - name: ansible.network
+    version: ">=3.0.0"
+  - name: ansible.platform
+    version: ">=2.7.20260615"
+  - name: ansible.posix
+    version: ">=2.1.0"
+  - name: ansible.receptor
+    version: ">=2.0.5"
+  - name: ansible.scm
+    version: ">=3.1.0"
+  - name: ansible.security
+    version: ">=3.0.0"
+  - name: ansible.snmp
+    version: ">=2.0.0"
+  - name: ansible.tower
+    version: ">=3.8.4"
+  - name: ansible.utils
+    version: ">=6.0.1"
+  - name: ansible.windows
+    version: ">=3.6.0"
+  - name: ansible.yang
+    version: ">=2.0.0"
+  - name: arista.avd
+    version: ">=6.1.0"
+  - name: arista.cvp
+    version: ">=3.10.1"
+  - name: arista.dmf
+    version: ">=1.2.1"
+  - name: arista.eos
+    version: ">=12.1.1"
+  - name: arubanetworks.aoscx
+    version: ">=4.1.1"
+  - name: automatics_ai.automatics
+    version: ">=2.1.2"
+  - name: avantra.core
+    version: ">=24.0.0"
+  - name: azure.azcollection
+    version: ">=3.19.0"
+  - name: bigpanda.incident
+    version: ">=1.0.0"
+  - name: check_point.gaia
+    version: ">=5.0.1"
+  - name: check_point.mgmt
+    version: ">=6.7.0"
+  - name: chocolatey.chocolatey
+    version: ">=1.5.1"
+  - name: cisco.aci
+    version: ">=2.11.0"
+  - name: cisco.asa
+    version: ">=5.0.1"
+  - name: cisco.catalyst_center_iac
+    version: ">=1.0.0"
+  - name: cisco.catalystcenter
+    version: ">=2.3.1"
+  - name: cisco.dcnm
+    version: ">=3.7.0"
+  - name: cisco.dnac
+    version: ">=6.31.3"
+  - name: cisco.intersight
+    version: ">=2.19.0"
+  - name: cisco.ios
+    version: ">=11.4.1"
+  - name: cisco.iosxr
+    version: ">=12.3.1"
+  - name: cisco.ise
+    version: ">=2.4.0"
+  - name: cisco.meraki
+    version: ">=2.22.0"
+  - name: cisco.mso
+    version: ">=2.11.0"
+  - name: cisco.nd
+    version: ">=1.3.0"
+  - name: cisco.nxos
+    version: ">=11.2.0"
+  - name: citrix.adc
+    version: ">=1.3.0"
+  - name: cloud.common
+    version: ">=4.1.0"
+  - name: cloud.terraform
+    version: ">=3.0.0"
+  - name: cohesity.dataprotect
+    version: ">=1.4.2"
+  - name: confluent.platform
+    version: ">=8.2.1"
+  - name: crowdstrike.falcon
+    version: ">=4.11.2"
+  - name: cyberark.conjur
+    version: ">=1.3.12"
+  - name: cyberark.isp
+    version: ">=1.0.5"
+  - name: cyberark.pas
+    version: ">=1.0.37"
+  - name: datadog.dd
+    version: ">=6.3.1"
+  - name: delinea.pas
+    version: ">=1.0.4"
+  - name: delinea.ss
+    version: ">=1.0.0"
+  - name: dellemc.enterprise_sonic
+    version: ">=3.1.0"
+  - name: dellemc.openmanage
+    version: ">=10.0.1"
+  - name: dellemc.os10
+    version: ">=1.2.0"
+  - name: dellemc.powerflex
+    version: ">=2.6.0"
+  - name: dellemc.powermax
+    version: ">=4.0.1"
+  - name: dellemc.powerscale
+    version: ">=3.8.1"
+  - name: dellemc.powerstore
+    version: ">=3.7.0"
+  - name: dellemc.unity
+    version: ">=1.7.1"
+  - name: dellemc.vplex
+    version: ">=1.2.2"
+  - name: dynatrace.event_driven_ansible
+    version: ">=1.2.0"
+  - name: dynatrace.oneagent
+    version: ">=1.2.3"
+  - name: edb.epas_postgresql
+    version: ">=4.2.2"
+  - name: enfence.powerha_aix
+    version: ">=1.3.0"
+  - name: entrust.crypto
+    version: ">=1.0.1"
+  - name: everpure.flasharray
+    version: ">=1.44.0"
+  - name: everpure.flashblade
+    version: ">=1.27.0"
+  - name: everpure.pure1
+    version: ">=1.5.0"
+  - name: f5networks.f5_bigip
+    version: ">=3.10.1"
+  - name: f5networks.f5_modules
+    version: ">=1.37.1"
+  - name: f5networks.f5os
+    version: ">=1.18.0"
+  - name: f5networks.next
+    version: ">=1.3.1"
+  - name: fortinet.fmgdevice
+    version: ">=1.0.0"
+  - name: fortinet.fortianalyzer
+    version: ">=1.8.1"
+  - name: fortinet.fortiflexvm
+    version: ">=2.2.2"
+  - name: fortinet.fortimanager
+    version: ">=2.12.0"
+  - name: fortinet.fortios
+    version: ">=2.4.1"
+  - name: fortinet.fortisase
+    version: ">=1.1.0"
+  - name: fortinet.fortiswitch
+    version: ">=1.2.5"
+  - name: frr.frr
+    version: ">=1.0.4"
+  - name: gluware_inc.control
+    version: ">=1.2.1"
+  - name: google.cloud
+    version: ">=1.12.0"
+  - name: h3c_open.comware
+    version: ">=1.0.2"
+  - name: hashicorp.terraform
+    version: ">=1.2.0"
+  - name: hashicorp.vault
+    version: ">=1.1.1"
+  - name: hitachivantara.vspone_block
+    version: ">=4.7.0"
+  - name: hitachivantara.vspone_object
+    version: ">=1.1.0"
+  - name: hpe.ilo
+    version: ">=1.0.20"
+  - name: hpe.oneview
+    version: ">=11.0.0"
+  - name: ibm.ibm_zhmc
+    version: ">=1.9.3"
+  - name: ibm.ibm_zos_cics
+    version: ">=2.1.1"
+  - name: ibm.ibm_zos_core
+    version: ">=1.15.1"
+  - name: ibm.ibm_zos_ims
+    version: ">=1.3.0"
+  - name: ibm.ibm_zos_sysauto
+    version: ">=1.0.0"
+  - name: ibm.ibm_zosmf
+    version: ">=1.4.2"
+  - name: ibm.instana
+    version: ">=1.0.21"
+  - name: ibm.isam
+    version: ">=3.4.0"
+  - name: ibm.power_aix
+    version: ">=2.1.1"
+  - name: ibm.power_hmc
+    version: ">=1.14.0"
+  - name: ibm.power_ibmi
+    version: ">=3.2.1"
+  - name: ibm.power_vios
+    version: ">=1.2.1"
+  - name: ibm.qradar
+    version: ">=2.1.0"
+  - name: ibm.spectrum_virtualize
+    version: ">=1.11.0"
+  - name: ibm.storage_virtualize
+    version: ">=3.2.0"
+  - name: ibm.turbonomic_eda
+    version: ">=1.0.0"
+  - name: infinidat.infinibox
+    version: ">=1.4.4"
+  - name: infoblox.nios_modules
+    version: ">=1.7.0"
+  - name: infoblox.universal_ddi
+    version: ">=1.1.0"
+  - name: inspur.ispim
+    version: ">=1.3.0"
+  - name: juniper.apstra
+    version: ">=1.0.5"
+  - name: juniper.device
+    version: ">=1.0.8"
+  - name: juniper.eda
+    version: ">=1.4.4"
+  - name: junipernetworks.junos
+    version: ">=10.0.0"
+  - name: kentik.ansible_eda
+    version: ">=1.0.6"
+  - name: kubernetes.core
+    version: ">=6.3.0"
+  - name: lantronix.lmos
+    version: ">=1.0.1"
+  - name: lantronix.oob
+    version: ">=1.0.19"
+  - name: logicmonitor.edwin_ai
+    version: ">=1.0.1"
+  - name: logicmonitor.integration
+    version: ">=1.3.0"
+  - name: manageengine.sdp_cloud
+    version: ">=1.0.0"
+  - name: microsoft.ad
+    version: ">=1.11.0"
+  - name: microsoft.hyperv
+    version: ">=1.0.0"
+  - name: microsoft.iis
+    version: ">=1.1.0"
+  - name: microsoft.mecm
+    version: ">=1.0.0"
+  - name: microsoft.scom
+    version: ">=1.0.1"
+  - name: microsoft.scvmm
+    version: ">=1.0.1"
+  - name: microsoft.sql
+    version: ">=2.0.1"
+  - name: microsoft.wsl
+    version: ">=1.0.0"
+  - name: netapp.aws
+    version: ">=21.6.0"
+  - name: netapp.azure
+    version: ">=21.9.0"
+  - name: netapp.cloudmanager
+    version: ">=21.21.0"
+  - name: netapp.ontap
+    version: ">=23.1.0"
+  - name: netapp.storagegrid
+    version: ">=21.12.0"
+  - name: netapp.um_info
+    version: ">=21.7.0"
+  - name: netbox.netbox
+    version: ">=3.19.1"
+  - name: netscaler.adc
+    version: ">=2.15.0"
+  - name: netscaler.console
+    version: ">=1.0.0"
+  - name: networktocode.nautobot
+    version: ">=5.10.0"
+  - name: neubird.aap
+    version: ">=1.1.0"
+  - name: nokia.srlinux
+    version: ">=1.0.1"
+  - name: nutanix.ncp
+    version: ">=2.3.0"
+  - name: nvidia.nvue
+    version: ">=1.2.0"
+  - name: onepassword.connect
+    version: ">=2.2.4"
+  - name: opengear.om
+    version: ">=1.0.4"
+  - name: opensvc.cluster
+    version: ">=1.0.3"
+  - name: opensvc.cluster_v3
+    version: ">=1.0.0"
+  - name: os_migrate.os_migrate
+    version: ">=1.0.4"
+  - name: os_migrate.vmware_migration_kit
+    version: ">=2.2.5"
+  - name: paloaltonetworks.panos
+    version: ">=3.3.0"
+  - name: phoenixnap.bmc
+    version: ">=1.14.0"
+  - name: purestorage.flasharray
+    version: ">=1.42.0"
+  - name: purestorage.flashblade
+    version: ">=1.25.0"
+  - name: purestorage.pure1
+    version: ">=1.3.0"
+  - name: radware.alteon
+    version: ">=1.0.0"
+  - name: radware.radware_alteon
+    version: ">=1.0.1"
+  - name: redhat.ai
+    version: ">=1.0.0"
+  - name: redhat.amq_broker
+    version: ">=2.3.4"
+  - name: redhat.amq_streams
+    version: ">=1.0.0"
+  - name: redhat.artifact_signer
+    version: ">=1.4.1"
+  - name: redhat.data_grid
+    version: ">=1.3.2"
+  - name: redhat.eap
+    version: ">=1.5.11"
+  - name: redhat.edge_manager
+    version: ">=1.4.0"
+  - name: redhat.insights
+    version: ">=1.2.2"
+  - name: redhat.insights_eda
+    version: ">=1.2.0"
+  - name: redhat.jbcs
+    version: ">=1.1.2"
+  - name: redhat.jws
+    version: ">=2.1.2"
+  - name: redhat.leapp
+    version: ">=1.7.4"
+  - name: redhat.openshift
+    version: ">=4.0.1"
+  - name: redhat.openshift_virtualization
+    version: ">=2.2.3"
+  - name: redhat.quarkus
+    version: ">=1.0.4"
+  - name: redhat.redhat_csp_download
+    version: ">=1.2.0"
+  - name: redhat.rhbk
+    version: ">=2.4.3"
+  - name: redhat.rhel_idm
+    version: ">=1.15.0"
+  - name: redhat.rhel_system_roles
+    version: ">=1.95.7"
+  - name: redhat.rhv
+    version: ">=2.1.0"
+  - name: redhat.runtimes_common
+    version: ">=1.2.3"
+  - name: redhat.sap_infrastructure
+    version: ">=1.1.1"
+  - name: redhat.sap_install
+    version: ">=1.7.1"
+  - name: redhat.satellite
+    version: ">=5.9.0"
+  - name: redhat.satellite_operations
+    version: ">=2.1.0"
+  - name: redhat.sso
+    version: ">=2.0.0"
+  - name: redhat.trusted_profile_analyzer
+    version: ">=2.2.5"
+  - name: sap.sap_operations
+    version: ">=2.0.1"
+  - name: scale_computing.hypercore
+    version: ">=1.5.0"
+  - name: seiko.smartcs
+    version: ">=1.6.0"
+  - name: sensu.sensu_go
+    version: ">=1.13.0"
+  - name: servicenow.itsm
+    version: ">=2.13.2"
+  - name: splunk.enterprise
+    version: ">=1.0.0"
+  - name: splunk.es
+    version: ">=5.1.0"
+  - name: splunk.itsi
+    version: ">=1.0.1"
+  - name: styra.opa
+    version: ">=1.0.0"
+  - name: thalesgroup.ciphertrust
+    version: ">=1.0.1"
+  - name: trendmicro.deepsec
+    version: ">=2.1.0"
+  - name: trilio.trilio_kubernetes
+    version: ">=1.4.0"
+  - name: venafi.machine_identity
+    version: ">=1.0.2"
+  - name: verticetech.qingteng_host
+    version: ">=1.0.2"
+  - name: virsec.vsp
+    version: ">=1.0.2"
+  - name: vmware.alb
+    version: ">=31.2.2"
+  - name: vmware.vmware
+    version: ">=2.7.0"
+  - name: vmware.vmware_rest
+    version: ">=4.9.0"
+  - name: vyos.vyos
+    version: ">=4.1.0"
+  - name: wti.remote
+    version: ">=1.0.1"
+  - name: zabbix.zabbix
+    version: ">=1.4.0"
+  - name: zscaler.ziacloud
+    version: ">=2.2.1"
+  - name: zscaler.zpacloud
+    version: ">=2.2.9"

@@ -14,7 +14,7 @@ building the automation. For *why* something is built the way it is, read
 | Use case | Audience | Length | Status |
 |---|---|---|---|
 | [OpenShift Virtualization](openshift-virtualization/) | Linux / platform sysadmins | 30 min | **Ready** |
-| Private Automation Hub — ClickOps vs. configuration-as-code | Sysadmins and automation leads | TBD | Not written |
+| [Private Automation Hub — ClickOps vs. configuration-as-code](private-automation-hub/) | Sysadmins and automation leads | 30 min | **Draft** ([#68](https://github.com/ericcames/sales.demos/issues/68)) |
 
 ---
 
@@ -34,6 +34,19 @@ Copy [`_template/`](_template/) and fill it in. Five files, each with one job:
 audience waiting. The talk track is prose you read once the week before. Trying
 to make one document do both produces something too long to present from and too
 terse to learn from.
+
+### A sixth file, where a use case earns one
+
+`private-automation-hub/` adds [`clickops.md`](private-automation-hub/clickops.md)
+— the full click-by-click UI walkthrough, every field and value. That demo's
+whole argument is a contrast between doing something by hand and doing it from
+git, so the manual procedure has to be real and complete rather than a strawman.
+Thirty clicks with screenshots would have destroyed the run sheet's one job:
+being scannable by someone standing up mid-sentence.
+
+It sits in the same relationship to `run-sheet.md` that `architecture.md`
+already does — reference the run sheet cites. **Add a sixth file only for that
+reason**, not because a use case feels like it needs more room.
 
 ---
 

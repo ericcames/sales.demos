@@ -1,0 +1,333 @@
+---
+# ===========================================================================
+# sync_hub.yml — populate this environment's Private Automation Hub. Issue #68.
+#
+#   ansible-playbook playbooks/sync_hub.yml -i inventory --limit sandbox \
+#     -e target_env=sandbox \
+#     --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
+#
+# Applies the three collection remotes and repositories from
+# inventory/group_vars/aap/hub_collection_{remotes,repositories}.yml, waits for
+# the sync to finish, then asks the hub what actually landed.
+#
+# THE CONFIGURATION ALSO HAPPENS WITHOUT THIS PLAYBOOK. `config.yml` runs the
+# same objects through dispatch on every `setup.yml`, so every environment gets
+# PAH configured and a sync STARTED as part of a normal build. What this file
+# adds is `hub_sync_wait: true` — it blocks until the content is really there,
+# and then verifies it. That is what you want when the sync is the demo, and it
+# is the only way the timing table in architecture.md can be honest.
+#
+# LAPTOP-ONLY, ON PURPOSE, AND UNLIKE EVERY OTHER PHASE HERE THERE IS NO JOB
+# TEMPLATE. The Red Hat offline token lives in ~/.ansible.cfg and nowhere else
+# (#68), and an execution environment has no such file. A vaulted fallback was
+# built and verified working, then removed: it bought one job template at the
+# cost of a second copy of a rotating credential. This is the same position
+# config.yml has always been in — you cannot use AAP to bootstrap itself.
+#
+# WHY THIS INCLUDES THREE ROLES RATHER THAN dispatch. Running dispatch would
+# re-apply every AAP object in the repo — job templates, settings, schedules —
+# to sync some collections. The three hub roles are included directly instead,
+# in the order dispatch itself uses them (roles/dispatch/defaults/main.yml:126-140):
+# remote, then repository, then repository sync.
+#
+# The `_all` variables are passed through by hand because these roles read the
+# unsuffixed name and it is dispatch's wildcard merge that normally does that
+# translation. There are no per-environment hub variables today. IF ONE IS EVER
+# ADDED — a hub_collection_remotes_demo, say — this mapping silently ignores it,
+# and these two lines must change to a real merge.
+#
+# MEASURED 264 SECONDS (4.4 minutes) for all three repositories on sandbox --
+# 214 certified and 47 validated collections at three versions each, plus 15
+# community. That is the version window paying for itself: without it the same
+# sync is every version ever published of all 261.
+#
+# Treat it as a floor rather than a promise. That run followed earlier failed
+# attempts, so Pulp may have had artifacts cached; a genuinely cold cluster on a
+# slow link will take longer. The async budget below allows 90 minutes.
+# ===========================================================================
+
+- name: Populate Private Automation Hub
+  hosts: aap
+  gather_facts: false
+
+  vars:
+    # Both default to true here, which is the whole difference from config.yml.
+    hub_sync_enabled: "{{ hub_sync_enabled_override | default(true) | bool }}"
+    hub_sync_wait: "{{ hub_sync_wait_override | default(true) | bool }}"
+
+    # ---------------------------------------------------------------
+    # THE ASYNC DEFAULTS IN infra.aap_configuration ARE FAR TOO SHORT FOR THIS.
+    #
+    # Every role in that collection wraps its work in `async:` and then polls
+    # with collect_async_status. The defaults are 1000s of async budget and 50
+    # retries at 1s apart — about FIFTY SECONDS of waiting. That is fine for
+    # creating a job template. A first certified sync pulls 214 collections at
+    # three versions each and runs for minutes, not seconds.
+    #
+    # Left at the defaults the playbook fails with `attempts: 50` and, because
+    # secure logging is on, a censored message that says nothing. Meanwhile the
+    # sync is still running perfectly well inside Pulp — verified directly
+    # against /pulp/api/v3/tasks/, which showed state `running`, not `failed`
+    # (#68). It is a client-side timeout misreported as a sync failure.
+    #
+    # 360 retries at 15s is 90 minutes. The measured sync is 4.4 minutes, so
+    # that is a wide margin on purpose -- a slow link or a genuinely cold cluster
+    # must not turn into a spurious failure. The 15s spacing stops the poll
+    # hammering the API for the duration.
+    # ---------------------------------------------------------------
+    aap_configuration_async_timeout: 5400
+    aap_configuration_async_retries: 360
+    aap_configuration_async_delay: 15
+
+    # NARROWED ON PURPOSE, not disabled globally. group_vars/aap/aap_settings.yml
+    # sets aap_configuration_secure_logging: true, which is right — the remote
+    # tasks carry the Red Hat offline token and must never appear in a log.
+    #
+    # The SYNC task carries no credential at all, only repository names, and
+    # with no_log on it every failure is `censored`. That turned a simple
+    # timeout into a debugging session. The remote and repository roles keep
+    # secure logging; only this one gives up its output.
+    hub_configuration_collection_repository_sync_secure_logging: false
+
+    # See the header. Not a merge — a rename.
+    hub_collection_remotes: "{{ hub_collection_remotes_all }}"
+    hub_collection_repositories: "{{ hub_collection_repositories_all }}"
+
+    # AAP 2.6's gateway fronts Hub by PATH on the same hostname, at /api/galaxy/.
+    # There is no separate hub route — verified on this platform (#35).
+    hub_api: "https://{{ aap_hostname }}/api/galaxy/v3/plugin/ansible/content"
+
+    # An unwindowed sync of a long-lived certified collection yields 20-50+
+    # versions. Three is the window. This threshold sits well above the window
+    # and well below an unwindowed sync, so it distinguishes the two without
+    # being brittle about dependency-pulled extras.
+    hub_window_max_versions: 10
+    hub_window_sample:
+      - amazon.aws
+      - ansible.controller
+      - cisco.ios
+      - kubernetes.core
+      - redhat.rhel_system_roles
+
+  tasks:
+    - name: Assert the environment is unambiguous
+      ansible.builtin.include_tasks: tasks/assert_target_environment.yml
+
+    - name: Assert AAP connection variables are set
+      ansible.builtin.assert:
+        that:
+          - aap_hostname | default('') | length > 0
+          - aap_username | default('') | length > 0
+          - aap_password | default('') | length > 0
+        fail_msg: >-
+          aap_hostname / aap_username / aap_password are not set for
+          '{{ aap_env_name | default("?") }}'. Check that environment's
+          connection.yml, and that --vault-id was passed so env_secrets
+          resolves.
+        quiet: true
+
+    - name: Assert the Red Hat offline token resolved
+      # THE MOST IMPORTANT ASSERT IN THIS FILE. An empty token does not fail the
+      # sync — the remote is simply configured without a credential, syncs
+      # anonymously, and returns nothing. The run stays green and the hub stays
+      # empty. Fail here instead, where the message can say why.
+      ansible.builtin.assert:
+        that:
+          - automation_hub_token | default('') | length > 100
+        fail_msg: >-
+          The Red Hat offline token did not resolve from ~/.ansible.cfg
+          [galaxy_server.rh_certified]. Without it rh-certified and validated
+          sync nothing while reporting success. Add it from
+          https://console.redhat.com/ansible/automation-hub/token — and note
+          this playbook cannot run inside an execution environment, which has no
+          ~/.ansible.cfg at all.
+        quiet: true
+
+    - name: Assert the generated requirements files are present and parse
+      # These are what bound the sync. A missing file makes ansible.hub send a
+      # remote with no requirements at all, which syncs EVERY version of EVERY
+      # collection — the exact runaway the files exist to prevent.
+      ansible.builtin.assert:
+        that:
+          - (lookup('ansible.builtin.file', playbook_dir ~ '/../hub/' ~ item ~ '-requirements.yml')
+             | from_yaml).collections | length > 0
+        fail_msg: >-
+          hub/{{ item }}-requirements.yml is missing or empty. Regenerate it:
+          python3 utilities/refresh-hub-requirements.py
+        quiet: true
+      loop:
+        - certified
+        - validated
+        - community
+
+    - name: Report the target
+      ansible.builtin.debug:
+        msg:
+          - "Populating Private Automation Hub on {{ aap_env_name }} ({{ aap_hostname }})."
+          - "Sync enabled: {{ hub_sync_enabled }}   Wait for completion: {{ hub_sync_wait }}"
+          - "Measured 4.4 minutes for all three on sandbox; allow longer on a cold cluster."
+
+    - name: Record the start time
+      ansible.builtin.set_fact:
+        hub_sync_started_at: "{{ now(utc=true).strftime('%s') }}"
+
+    # No block/always pair and no cleanup task, deliberately: nothing here mints
+    # a token or writes a temporary file. ansible.hub authenticates with basic
+    # auth on every call, so there is nothing to leak and nothing to revoke.
+    - name: Configure the collection remotes
+      ansible.builtin.include_role:
+        name: infra.aap_configuration.hub_collection_remote
+
+    - name: Configure the collection repositories
+      ansible.builtin.include_role:
+        name: infra.aap_configuration.hub_collection_repository
+
+    - name: Sync the collection repositories
+      ansible.builtin.include_role:
+        name: infra.aap_configuration.hub_collection_repository_sync
+      when: hub_sync_enabled | bool
+
+    - name: Report how long the sync took
+      ansible.builtin.debug:
+        msg: >-
+          Sync finished in
+          {{ ((now(utc=true).strftime('%s') | int) - (hub_sync_started_at | int)) }}s
+          ({{ (((now(utc=true).strftime('%s') | int) - (hub_sync_started_at | int)) / 60) | round(1) }} minutes).
+      when:
+        - hub_sync_wait | bool
+        - not ansible_check_mode
+
+    # -------------------------------------------------------------------
+    # Verification. A green recap is not proof — ask the hub.
+    #
+    # Skipped when the sync did not block, because there is nothing to assert
+    # yet: the content is still arriving in the background.
+    #
+    # ALSO SKIPPED IN CHECK MODE, and not merely as an optimisation. `uri` does
+    # not run under --check, so every registered result comes back as a bare
+    # skip marker with no `json` key, and the first assert dies on a missing
+    # attribute rather than reporting anything about the hub. Found by running
+    # exactly that (#68). Check mode validates the CONFIGURATION; only a real
+    # run can validate the CONTENT.
+    # -------------------------------------------------------------------
+    - name: Verify against the hub, not the recap
+      when:
+        - hub_sync_enabled | bool
+        - hub_sync_wait | bool
+        - not ansible_check_mode
+      block:
+        - name: Count what landed in each repository
+          ansible.builtin.uri:
+            url: "{{ hub_api }}/{{ item }}/collections/index/?limit=1"
+            url_username: "{{ aap_username }}"
+            url_password: "{{ aap_password }}"
+            force_basic_auth: true
+            validate_certs: "{{ aap_validate_certs | default(false) }}"
+          register: hub_counts
+          loop:
+            - rh-certified
+            - validated
+            - community
+
+        - name: Assert every repository actually has content
+          ansible.builtin.assert:
+            that:
+              - item.json.meta.count | int > 0
+            fail_msg: >-
+              {{ item.item }} synced but is EMPTY. That is what an expired
+              offline token looks like — it authenticates, then returns nothing.
+              Regenerate it at
+              https://console.redhat.com/ansible/automation-hub/token
+            quiet: true
+          loop: "{{ hub_counts.results }}"
+          loop_control:
+            # Deliberately does not reference item.json. Ansible templates a
+            # loop label even for items the `when` skips, so a label reaching
+            # into a skipped uri result fails the task with a missing-attribute
+            # error that has nothing to do with the assertion (#68). The counts
+            # are in the summary at the end.
+            label: "{{ item.item }}"
+
+        - name: Load the community pin list
+          ansible.builtin.set_fact:
+            hub_community_pins: >-
+              {{ (lookup('ansible.builtin.file',
+                         playbook_dir ~ '/../hub/community-requirements.yml')
+                  | from_yaml).collections }}
+
+        - name: Fetch the synced versions of each pinned community collection
+          ansible.builtin.uri:
+            url: >-
+              {{ hub_api }}/community/collections/index/{{ item.name | replace('.', '/') }}/versions/?limit=100
+            url_username: "{{ aap_username }}"
+            url_password: "{{ aap_password }}"
+            force_basic_auth: true
+            validate_certs: "{{ aap_validate_certs | default(false) }}"
+          register: hub_community_versions
+          loop: "{{ hub_community_pins }}"
+          loop_control:
+            label: "{{ item.name }}"
+
+        - name: Assert each community collection is present at exactly its pinned version
+          # THE CLAIM THE DEMO MAKES. "Most current version only" is not proven
+          # by the collection being present — it is proven by nothing ELSE being
+          # present. A full-history sync would pass a mere existence check.
+          ansible.builtin.assert:
+            that:
+              - item.json.data | map(attribute='version') | list == [item.item.version]
+            fail_msg: >-
+              {{ item.item.name }} should be exactly [{{ item.item.version }}] but
+              the hub has
+              {{ item.json.data | map(attribute='version') | list }}.
+              Either the pin drifted from hub/community-requirements.yml, or the
+              remote lost its requirements_file and synced every version.
+            quiet: true
+          loop: "{{ hub_community_versions.results }}"
+          loop_control:
+            label: "{{ item.item.name }} == {{ item.item.version }}"
+
+        - name: Fetch the synced versions of the certified window sample
+          ansible.builtin.uri:
+            url: >-
+              {{ hub_api }}/rh-certified/collections/index/{{ item | replace('.', '/') }}/versions/?limit=100
+            url_username: "{{ aap_username }}"
+            url_password: "{{ aap_password }}"
+            force_basic_auth: true
+            validate_certs: "{{ aap_validate_certs | default(false) }}"
+            status_code: [200, 404]
+          register: hub_window_counts
+          loop: "{{ hub_window_sample }}"
+
+        - name: Assert the version window actually bounded the certified sync
+          # WITHOUT THIS THERE IS NO EVIDENCE THE WINDOW DID ANYTHING. A sync
+          # with no requirements_file also produces a green run and a populated
+          # hub — it just carries every version ever published. These are
+          # long-lived collections; unwindowed they land 20-50+ versions each.
+          #
+          # 404 is tolerated: the sample is hardcoded, and a collection can be
+          # renamed or withdrawn upstream without that being this repo's problem.
+          ansible.builtin.assert:
+            that:
+              - item.status == 404 or (item.json.meta.count | int) <= (hub_window_max_versions | int)
+            fail_msg: >-
+              {{ item.item }} has {{ item.json.meta.count | default('?') }} versions in
+              rh-certified, over the {{ hub_window_max_versions }} this check
+              allows. The window is not being applied — check that the
+              rh-certified remote still has its requirements_file.
+            quiet: true
+          loop: "{{ hub_window_counts.results }}"
+          loop_control:
+            label: "{{ item.item }}"
+
+        - name: Summarize what the hub actually holds
+          ansible.builtin.debug:
+            msg: >-
+              {{ ['HUB VERIFIED on ' ~ aap_env_name ~ '.']
+                 + (hub_counts.results
+                    | map(attribute='item')
+                    | zip(hub_counts.results | map(attribute='json.meta.count'))
+                    | map('join', ': ')
+                    | map('regex_replace', '$', ' collections')
+                    | list)
+                 + ['Community pins match hub/community-requirements.yml exactly.',
+                    'Certified version window is being applied.'] }}

@@ -13,8 +13,9 @@
 #                        wait until the rhel9 boot source is genuinely ready.
 #   2. config.yml        Apply the AAP objects — organization, project,
 #                        credentials, inventories, job templates, schedules,
-#                        and the execution environment mirrored into this
-#                        environment's Private Automation Hub.
+#                        the execution environment mirrored into this
+#                        environment's Private Automation Hub, and (#68) PAH's
+#                        own collection remotes and repositories.
 #   3. prepare_env.yml   Prove it. Checks the boot source, the storage clone
 #                        strategy and ingress, then builds one real VM, times
 #                        it, and destroys it.
@@ -33,6 +34,29 @@
 # credential, the sync's collection play reports `ok=3, changed=0`, and job
 # templates run green because the EE supplies the collections. Adding one would
 # only make every sync re-install what is already baked in.
+#
+# ^ STILL TRUE, AND STILL THE POSITION. #68 populates Private Automation Hub with
+# certified, validated and community content, and deliberately does NOT attach a
+# Galaxy credential to the organization — so the paragraph above is unchanged in
+# substance. What changed is only its scope: it used to read as "PAH content is
+# not worth configuring", and PAH content is now the subject of the repo's
+# second use case rather than a means to an end.
+#
+# The step that WOULD invalidate it — pointing AAP's project syncs at PAH — is
+# tracked separately in #69, behind gates, precisely because a Galaxy credential
+# on the organization makes every project sync depend on the hub being complete.
+# It is already known to be incomplete: two of the ten collections this repo
+# pins sit below their version window and are not in the hub. Check it with
+# `python3 utilities/refresh-hub-requirements.py --audit-pins`.
+#
+# WHAT PAH CONFIGURATION COSTS THIS PLAYBOOK: seconds. Stage 2 creates the three
+# remotes and repositories and STARTS the sync without waiting for it, so the
+# ten-minute estimate below still holds and the content lands in the background
+# (measured at 4.4 minutes to populate all three repositories).
+# To watch a sync finish instead, run playbooks/sync_hub.yml — it blocks and
+# then verifies against the hub. It is laptop-only and has no job template,
+# because the Red Hat offline token lives in ~/.ansible.cfg and an execution
+# environment has no such file.
 #
 # EACH STAGE STAYS RUNNABLE ON ITS OWN, and that is deliberate — this file is a
 # convenience, not a bottleneck. Run install_cnv.yml when only a cluster needs

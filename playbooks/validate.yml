@@ -20,12 +20,29 @@
 # cannot fully evaluate without writing, so treat the output as a strong signal
 # rather than a contract. It will still catch the common failures: bad
 # credentials, unreachable host, undefined variables, malformed objects.
+#
+# ONE ROLE WOULD OTHERWISE IGNORE CHECK MODE ENTIRELY, WHICH IS WHY hub_sync_enabled
+# IS FORCED FALSE BELOW (#68). ansible.hub 1.1.0's collection_repository_sync
+# module reads `module.params.get("check_mode")`, but `check_mode` is not in its
+# argument_spec — so it is always None, the guarded early-exit never fires, and
+# the sync runs FOR REAL. (It should be `module.check_mode`.)
+#
+# The group_vars expression that normally covers this uses `not
+# ansible_check_mode`, and that magic variable is only True for a CLI `--check`.
+# A play-level `check_mode: true` like the one below leaves it False — verified
+# both ways. So this play has to say so explicitly, or "Nothing will be changed"
+# becomes a lie and a validate run kicks three live PAH syncs.
 # ===========================================================================
 
 - name: Validate AAP configuration in check mode
   hosts: aap
   gather_facts: false
   check_mode: true
+
+  vars:
+    # See the header. Not redundant with the group_vars guard — that one only
+    # catches `--check`, and this play does not use it.
+    hub_sync_enabled: false
 
   tasks:
     - name: Assert the environment is unambiguous

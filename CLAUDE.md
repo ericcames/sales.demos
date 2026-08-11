@@ -1,8 +1,13 @@
 # sales.demos — repo conventions
 
-Read [`docs/plan/ocpvirt-demo-plan.md`](docs/plan/ocpvirt-demo-plan.md) before
-starting work. It holds the environment research, the design decisions, and the
-phase plan, including *why* each choice was made.
+Read the plan doc for the use case you are touching before starting work. Each
+holds the environment research, the design decisions, and the phase plan,
+including *why* each choice was made.
+
+| Use case | Plan |
+|---|---|
+| OpenShift Virtualization | [`docs/plan/ocpvirt-demo-plan.md`](docs/plan/ocpvirt-demo-plan.md) |
+| Private Automation Hub as code | [`docs/plan/pah-plan.md`](docs/plan/pah-plan.md) |
 
 ## This repo is public
 
@@ -64,6 +69,13 @@ ansible-vault edit playbooks/group_vars/all/secrets.yml \
 - **Credentials only.** Per-environment credentials are keyed under
   `env_secrets` by environment name; `connection.yml` selects its slice with
   `env_secrets[aap_env_name]`.
+- **The Red Hat offline token is NOT in the vault**, and that was decided twice.
+  `~/.ansible.cfg` `[galaxy_server.rh_certified]` is the one authoritative copy
+  (#22), and PAH's certified and validated remotes read it from there (#68). A
+  vaulted fallback for execution environments was built, verified working, and
+  removed: it bought one job template at the cost of a second copy of a rotating
+  credential. The consequence is that PAH work is laptop-only, like `config.yml`.
+  Do not add it back without a reason that outweighs the rotation cost.
 - `connection.yml` is committed plaintext and holds everything that is not a
   credential: `aap_hostname`, `openshift_api_url`, usernames, namespaces. It
   *does* vary per environment — that is the point.

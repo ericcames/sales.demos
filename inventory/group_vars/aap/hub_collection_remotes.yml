@@ -1,0 +1,129 @@
+---
+# ============================================================================
+# group_vars/aap/hub_collection_remotes.yml — where PAH fetches collections (#68)
+# ============================================================================
+# Three remotes: two Red Hat, one community. All three ALREADY EXIST on a fresh
+# AAP 2.6 Private Automation Hub, so every item here is an update rather than a
+# creation. That is why the demo can open on the stock UI and change one of them
+# by hand — there is nothing to create first.
+#
+# Defining this variable is what makes dispatch run the hub_collection_remote
+# role. The repositories that consume these remotes, and the sync itself, are in
+# hub_collection_repositories.yml.
+#
+# THE CONSOLE REPOSITORY NAMES DO NOT MATCH THE PAH ONES. Certified content is
+# served from console's `published` repository but lands in PAH's `rh-certified`.
+# Validated is `validated` on both sides. Get this wrong and the sync succeeds
+# against the wrong content set with no error.
+#
+# EVERY REMOTE USES requirements_file, NOT requirements. The two are mutually
+# exclusive on the module, and `requirements` is a list of bare collection names
+# with nowhere to put a version — ansible.hub joins it into a plain
+# `collections:` list (collection_remote.py:221-231). A bare `namespace.name`
+# syncs EVERY published version of that collection, which for certified content
+# is tens of thousands of artifacts. The generated files carry an explicit
+# version or a `>=` floor per collection, which is the only way to bound it.
+# Regenerate them with utilities/refresh-hub-requirements.py.
+#
+# {{ playbook_dir }} RESOLVES ON BOTH ENTRY POINTS. On a laptop the playbook is
+# <repo>/playbooks/<x>.yml; in AAP the project checkout root IS the repo root, so
+# ../hub/ lands in the same place. No second copy of these paths anywhere.
+#
+# THE TOKEN IS THE RED HAT OFFLINE TOKEN — an SSO refresh token, resolved in
+# main.yml from ~/.ansible.cfg and stored nowhere else. It is not a PAH API
+# token and not a galaxy.ansible.com token; see the three-token table in
+# docs/demos/private-automation-hub/architecture.md.
+#
+# TWO WAYS IT GOES WRONG, AND NEITHER RAISES AN ERROR:
+#   - EXPIRED: authenticates, returns zero collections, leaves an empty
+#     repository behind a green run.
+#   - ABSENT: applying this from an AAP execution environment resolves the
+#     lookup to an empty string, so these remotes are configured with no
+#     credential and sync anonymously — which is to say, not at all. PAH
+#     configuration is laptop-only by design (#68); playbooks/sync_hub.yml
+#     asserts the token up front so this fails loudly instead.
+# ============================================================================
+
+# EXPECT changed=2 ON EVERY RUN, ALWAYS THE SAME TWO. rh-certified and validated
+# carry a token; the API never returns it, so ansible.hub cannot compare desired
+# against actual and rewrites the remote each time. The community remote carries
+# no credential and correctly reports changed=0.
+#
+# That is the platform refusing to hand back a secret, not drift and not a bug —
+# the same behaviour group_vars/aap/controller_settings.yml documents for
+# SUBSCRIPTIONS_CLIENT_SECRET, and the reason config.yml's header says to expect
+# `changed` on every apply.
+#
+# THE OTHER CAUSE OF A PERPETUAL changed WAS REAL, AND IS FIXED. The generated
+# requirements files end WITHOUT a trailing newline, because Pulp strips one when
+# it stores the content: keep it and the module finds a one-character difference
+# forever. That accounted for a third remote reporting changed until #68 found
+# it. See utilities/refresh-hub-requirements.py and the matching .yamllint
+# exemption — do not "tidy" a newline back onto those files.
+
+hub_collection_remotes_all:
+  # ---------------------------------------------------------------------
+  # Red Hat certified. 214 collections, 3 newest versions of each.
+  # ---------------------------------------------------------------------
+  - name: rh-certified
+    url: https://console.redhat.com/api/automation-hub/content/published/
+    auth_url: https://sso.redhat.com/auth/realms/redhat-external/protocol/openid-connect/token
+    token: "{{ automation_hub_token }}"
+    requirements_file: "{{ playbook_dir }}/../hub/certified-requirements.yml"
+    tls_validation: true
+    # FALSE, AND THIS WAS LEARNED THE HARD WAY (#68). It was first set true on
+    # the reasoning that certified collections only depend on each other, so
+    # resolving dependencies could not reach outside the curated set. That is
+    # wrong. The first real sync failed on:
+    #
+    #   404 .../collections/index/containers/podman/
+    #
+    # containers.podman is in neither generated list — a listed collection
+    # depends on it, Pulp went to fetch it from console's `published` repo, and
+    # it is not there. One unresolvable dependency fails the ENTIRE sync task,
+    # so the hub stays empty.
+    #
+    # With this false the list is genuinely the boundary. Intra-certified
+    # dependencies are satisfied anyway because every certified collection is
+    # already in the list; what is lost is cross-repo resolution, which is the
+    # same honest cost the community remote carries.
+    sync_dependencies: false
+    # Deliberately false. Signing is not configured on this platform, and
+    # requiring signatures would sync nothing while reporting success.
+    signed_only: false
+
+  # ---------------------------------------------------------------------
+  # Red Hat validated. 47 collections, 3 newest versions of each.
+  # Same account, same token, different content path.
+  # ---------------------------------------------------------------------
+  - name: validated
+    url: https://console.redhat.com/api/automation-hub/content/validated/
+    auth_url: https://sso.redhat.com/auth/realms/redhat-external/protocol/openid-connect/token
+    token: "{{ automation_hub_token }}"
+    requirements_file: "{{ playbook_dir }}/../hub/validated-requirements.yml"
+    tls_validation: true
+    # False for the same reason as rh-certified above. Validated content depends
+    # on certified content, which lives in a DIFFERENT repository — so here the
+    # dependency walk is guaranteed to reach outside this remote's reach.
+    sync_dependencies: false
+    signed_only: false
+
+  # ---------------------------------------------------------------------
+  # Community. 15 collections from two namespaces, one exact version each.
+  #
+  # NO CREDENTIAL. Reading public Galaxy is anonymous — a galaxy.ansible.com
+  # token is only needed to PUBLISH. This remote is the one the ClickOps half of
+  # the demo configures by hand, precisely because it needs no secret and can be
+  # shown on a projector.
+  # ---------------------------------------------------------------------
+  - name: community
+    url: https://galaxy.ansible.com/api/
+    requirements_file: "{{ playbook_dir }}/../hub/community-requirements.yml"
+    tls_validation: true
+    # FALSE HERE, and this is the one that matters. Fifteen collections with
+    # dependencies resolved against all of Galaxy would pull in hundreds more and
+    # quietly undo the curation this file exists to express. The cost is honest
+    # and stated in objections.md: a community collection with an unmet
+    # dependency will not install from PAH alone.
+    sync_dependencies: false
+    signed_only: false

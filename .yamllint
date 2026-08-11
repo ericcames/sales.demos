@@ -28,3 +28,18 @@ rules:
   octal-values:
     forbid-implicit-octal: true
     forbid-explicit-octal: true
+  # The generated hub/*-requirements.yml end WITHOUT a trailing newline, and
+  # that is load-bearing rather than sloppy generation (#68).
+  #
+  # ansible.hub sends each file's contents verbatim as a collection remote's
+  # requirements_file, and Pulp stores it with the trailing newline stripped.
+  # Keep the newline and the module compares what it would send against what is
+  # stored, finds they differ by that one character, and rewrites all three
+  # remotes on every single run — so the config-as-code demo can never show
+  # changed=0, which is the entire claim it makes.
+  #
+  # Scoped to hub/ deliberately. Every other file in the repo still has to end
+  # with a newline; utilities/refresh-hub-requirements.py carries the same note.
+  new-line-at-end-of-file:
+    ignore: |
+      hub/

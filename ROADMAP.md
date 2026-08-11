@@ -1,10 +1,26 @@
 # Roadmap
 
-Near-term work for the OpenShift Virtualization demo. Full detail and rationale
-in [`docs/plan/ocpvirt-demo-plan.md`](docs/plan/ocpvirt-demo-plan.md).
+Two use cases. Full detail and rationale in
+[`docs/plan/ocpvirt-demo-plan.md`](docs/plan/ocpvirt-demo-plan.md) and
+[`docs/plan/pah-plan.md`](docs/plan/pah-plan.md).
 
 Each phase ships two entry points — a Claude Code skill and an AAP job template —
-both driving the same playbook.
+both driving the same playbook. `pah-sync` is the one documented exception; see
+below.
+
+## Use case 2 — Private Automation Hub as code
+
+| | Skill | Playbook | Outcome | Status |
+|---|---|---|---|---|
+| Populate PAH | `pah-sync` | `playbooks/sync_hub.yml` | Certified (214) and validated (47) windowed to 3 versions each, plus 15 curated community collections at their current version. Configured on every build by `config.yml`. | **Draft** ([#68](https://github.com/ericcames/sales.demos/issues/68)) |
+| Point AAP at PAH | — | — | Organization Galaxy credentials, so project syncs resolve from the hub. Deliberately deferred behind gates — gate 2 already fails. | Not started ([#69](https://github.com/ericcames/sales.demos/issues/69)) |
+
+**`pah-sync` has no job template, on purpose.** The Red Hat offline token lives
+in `~/.ansible.cfg` and an execution environment has no such file. A vaulted
+fallback was built, verified, and removed — it bought one job template at the
+cost of a second copy of a rotating credential.
+
+## Use case 1 — OpenShift Virtualization
 
 | Phase | Skill | Playbook | Outcome | Status |
 |---|---|---|---|---|
