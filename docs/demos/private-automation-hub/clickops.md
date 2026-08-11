@@ -43,6 +43,8 @@ have to build this.
 *Automation Content → Repositories*. Note the collection count on each row:
 `rh-certified`, `validated`, `community`, all **0**.
 
+![Repositories — never synced](../../images/pah-repositories-empty.png)
+
 > "This ships with your subscription. This is what it looks like on nearly every
 > install I see."
 
@@ -51,6 +53,8 @@ have to build this.
 ## Step 2 — Edit the community remote
 
 *Automation Content → Remotes* → row `community` → **⋮ → Edit**.
+
+![Edit community remote](../../images/pah-remote-community.png)
 
 Do `community` rather than `rh-certified` for the live portion: it needs **no
 credential**, so nothing has to be hidden from the projector and no token can
@@ -125,6 +129,8 @@ in a thirty-minute slot, which is why you sync before rather than during.
 
 *Collections* now shows fifteen entries, one version each.
 
+![Repositories — populated](../../images/pah-repositories-populated.png)
+
 ---
 
 ## Step 4 — The count
@@ -150,6 +156,8 @@ Then the turn:
 
 Do not do this live — it needs a real credential on screen. Describe it.
 
+![Edit rh-certified remote](../../images/pah-remote-certified.png)
+
 | Field | Value |
 |---|---|
 | **URL** | `https://console.redhat.com/api/automation-hub/content/published/` |
@@ -158,6 +166,8 @@ Do not do this live — it needs a real credential on screen. Describe it.
 | **Requirements file** | 214 collections with `>=` floors |
 
 Validated is identical but with `.../content/validated/`.
+
+![Edit validated remote](../../images/pah-remote-validated.png)
 
 **Two things worth flagging here**, because both bite people:
 
