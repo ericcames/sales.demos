@@ -67,26 +67,35 @@ login banners and `facts.json` as text:
 python3 utilities/render-demo-assets.py
 ```
 
-That writes [`demo-page.png`](../../images/demo-page.png). It is accurate — the
-guest serves that exact template — but it is **not** a capture of a live run.
-Say so if anyone asks, and prefer
-[`demo-page-live.png`](../../images/demo-page-live.png) when you are presenting:
-it is the same page, genuinely served, and a real capture is worth more in the
-cold open. The rendered one is what keeps this working when there is no cluster,
-and what the render script regenerates when the template changes.
+That writes [`demo-page.png`](../../images/demo-page.png):
+
+<a href="../../images/demo-page.png">
+  <img width="480" src="../../images/demo-page.png"
+       alt="The demo page, rendered from the template by headless Chrome">
+</a>
+
+It is accurate — the guest serves that exact template — but it is **not** a
+capture of a live run. Say so if anyone asks, and prefer
+[`demo-page-live.png`](../../images/demo-page-live.png) (first row of the table
+below) when you are presenting: it is the same page, genuinely served, and a
+real capture is worth more in the cold open. The rendered one is what keeps this
+working when there is no cluster, and what the render script regenerates when
+the template changes.
 
 **Captured from a live run**, because the AAP and OpenShift interfaces cannot be
 rendered:
 
-| Image | Shows |
-|---|---|
-| `demo-page-live.png` | The demo page **served by a real guest** — use this for the cold open |
-| `aap-survey.png` | The launch survey a requester sees |
-| `aap-workflow-running.png` | The four chained nodes, mid-run |
-| `ocp-vms-before.png` / `ocp-vms-after.png` | The namespace empty, then with one VM Running |
-| `route-503.png` | The URL live and correctly serving nothing yet |
-| `aap-job-timings.png` | Every node's measured duration, all Success |
-| `aap-login-badged.png` | The environment badge on the sign-in page |
+Click any thumbnail for the full-size image.
+
+| Image | Shows | |
+|---|---|---|
+| `demo-page-live.png` | The demo page **served by a real guest** — use this for the cold open | <a href="../../images/demo-page-live.png"><img width="320" src="../../images/demo-page-live.png" alt="The demo page served by a real guest"></a> |
+| `aap-survey.png` | The launch survey a requester sees | <a href="../../images/aap-survey.png"><img width="320" src="../../images/aap-survey.png" alt="The launch survey"></a> |
+| `aap-workflow-running.png` | The four chained nodes, mid-run | <a href="../../images/aap-workflow-running.png"><img width="320" src="../../images/aap-workflow-running.png" alt="The workflow visualizer, provision in progress"></a> |
+| `ocp-vms-before.png` / `ocp-vms-after.png` | The namespace empty, then with one VM Running | <a href="../../images/ocp-vms-before.png"><img width="320" src="../../images/ocp-vms-before.png" alt="The demo namespace before the run"></a><br><a href="../../images/ocp-vms-after.png"><img width="320" src="../../images/ocp-vms-after.png" alt="The demo namespace after the run"></a> |
+| `route-503.png` | The URL live and correctly serving nothing yet | <a href="../../images/route-503.png"><img width="320" src="../../images/route-503.png" alt="The Route before the web server exists"></a> |
+| `aap-job-timings.png` | Every node's measured duration, all Success | <a href="../../images/aap-job-timings.png"><img width="320" src="../../images/aap-job-timings.png" alt="The controller's job list for a complete run"></a> |
+| `aap-login-badged.png` | The environment badge on the sign-in page | <a href="../../images/aap-login-badged.png"><img width="320" src="../../images/aap-login-badged.png" alt="The badged sign-in page"></a> |
 
 > **These come from several different launches, at different size tiers** —
 > `small` in the survey, `medium` in the 503, `large` in the namespace shot.

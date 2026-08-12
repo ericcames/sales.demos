@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- Committed screenshots now render inline in the four docs that only named the
+  files (#81): both demo READMEs and both run sheets. The run sheets use
+  thumbnails linked to the full image rather than full-width embeds -- they are
+  read on a second screen while presenting, and eight full-width screenshots
+  turn a scannable checklist into a long scroll. No new or re-captured images.
+
 ### Added
 - PAH demo screenshots committed to `docs/images/pah-*.png` (#74): the empty
   and populated Repositories views plus all three remote Edit dialogs. Demo

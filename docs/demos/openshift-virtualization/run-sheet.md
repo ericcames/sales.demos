@@ -15,14 +15,24 @@ required. The narrative behind each beat, with the actual words, is in
 
 ## Before you start (5 minutes, offline)
 
-1. Open these in tabs, in this order — this **is** your slide deck:
+1. Open these in tabs, in this order — this **is** your slide deck. Click a
+   thumbnail for the full-size image:
+
    1. `docs/images/demo-page-live.png` — the destination
+      <br><a href="../../images/demo-page-live.png"><img width="320" src="../../images/demo-page-live.png" alt="The demo page served by a real guest"></a>
    2. `docs/images/aap-survey.png` — the interface
+      <br><a href="../../images/aap-survey.png"><img width="320" src="../../images/aap-survey.png" alt="The launch survey"></a>
    3. `docs/images/ocp-vms-before.png` and `ocp-vms-after.png` — the pair
+      <br><a href="../../images/ocp-vms-before.png"><img width="320" src="../../images/ocp-vms-before.png" alt="The demo namespace before the run"></a>
+      <a href="../../images/ocp-vms-after.png"><img width="320" src="../../images/ocp-vms-after.png" alt="The demo namespace after the run"></a>
    4. `docs/images/aap-workflow-running.png` — the chain
-   5. `docs/images/aap-job-timings.png` — the evidence
-   6. `docs/demos/openshift-virtualization/talk-track.md` — for the banners
-   7. `https://github.com/ericcames/sales.demos` — the close
+      <br><a href="../../images/aap-workflow-running.png"><img width="320" src="../../images/aap-workflow-running.png" alt="The workflow visualizer, provision in progress"></a>
+   5. `docs/images/route-503.png` — the URL live and correctly serving nothing yet
+      <br><a href="../../images/route-503.png"><img width="320" src="../../images/route-503.png" alt="The Route before the web server exists — Application is not available"></a>
+   6. `docs/images/aap-job-timings.png` — the evidence
+      <br><a href="../../images/aap-job-timings.png"><img width="320" src="../../images/aap-job-timings.png" alt="The controller's job list for a complete run"></a>
+   7. `docs/demos/openshift-virtualization/talk-track.md` — for the banners
+   8. `https://github.com/ericcames/sales.demos` — the close
 2. Have this run sheet on a second screen if you have one.
 3. Decide your close before you begin — see **Landing it** at the bottom.
 
