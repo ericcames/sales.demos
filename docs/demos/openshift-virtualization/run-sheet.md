@@ -27,10 +27,12 @@ required. The narrative behind each beat, with the actual words, is in
       <a href="../../images/ocp-vms-after.png"><img width="320" src="../../images/ocp-vms-after.png" alt="The demo namespace after the run"></a>
    4. `docs/images/aap-workflow-running.png` — the chain
       <br><a href="../../images/aap-workflow-running.png"><img width="320" src="../../images/aap-workflow-running.png" alt="The workflow visualizer, provision in progress"></a>
-   5. `docs/images/aap-job-timings.png` — the evidence
+   5. `docs/images/route-503.png` — the URL live and correctly serving nothing yet
+      <br><a href="../../images/route-503.png"><img width="320" src="../../images/route-503.png" alt="The Route before the web server exists — Application is not available"></a>
+   6. `docs/images/aap-job-timings.png` — the evidence
       <br><a href="../../images/aap-job-timings.png"><img width="320" src="../../images/aap-job-timings.png" alt="The controller's job list for a complete run"></a>
-   6. `docs/demos/openshift-virtualization/talk-track.md` — for the banners
-   7. `https://github.com/ericcames/sales.demos` — the close
+   7. `docs/demos/openshift-virtualization/talk-track.md` — for the banners
+   8. `https://github.com/ericcames/sales.demos` — the close
 2. Have this run sheet on a second screen if you have one.
 3. Decide your close before you begin — see **Landing it** at the bottom.
 
