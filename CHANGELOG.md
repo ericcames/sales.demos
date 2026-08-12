@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- The rendered `/etc/motd` now appears in the ocpvirt demo README (#83), which
+  previously said the render script "prints the two login banners" and showed
+  neither. Verified byte-identical to what `render-demo-assets.py` emits from
+  `motd.j2`. `/etc/issue.net` stays in the talk track, where the contrast beat
+  needs both banners shown in order.
 - Committed screenshots now render inline in the four docs that only named the
   files (#81): both demo READMEs and both run sheets. The run sheets use
   thumbnails linked to the full image rather than full-width embeds -- they are
