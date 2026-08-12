@@ -82,6 +82,55 @@ real capture is worth more in the cold open. The rendered one is what keeps this
 working when there is no cluster, and what the render script regenerates when
 the template changes.
 
+The same run prints `/etc/motd`, which is what somebody sees after they
+authenticate to the guest:
+
+```
+        ___________________________________________________________________
+       /                                                                   \
+      |    ____  _____ ____    _   _    _  _____                            |
+      |   |  _ \| ____|  _ \  | | | |  / \|_   _|                           |
+      |   | |_) |  _| | | | | | |_| | / _ \ | |                             |
+      |   |  _ <| |___| |_| | |  _  |/ ___ \| |                             |
+      |   |_| \_\_____|____/  |_| |_/_/   \_\_|                             |
+      |                                                                     |
+      |   ___   ____   _____  _   _  ____   _   _  ___  _____  _____        |
+      |  / _ \ |  _ \ | ____|| \ | |/ ___| | | | ||_ _||  ___||_   _|       |
+      | | | | || |_) ||  _|  |  \| |\___ \ | |_| | | | | |_     | |         |
+      | | |_| ||  __/ | |___ | |\  | ___) ||  _  | | | |  _|    | |         |
+      |  \___/ |_|    |_____||_| \_||____/ |_| |_||___||_|      |_|         |
+      |                                                                     |
+      |         =============================================               |
+      |          V I R T U A L I Z A T I O N   D E M O                      |
+      |         =============================================               |
+      |                                                                     |
+      |   Powered by:                                                       |
+      |     - OpenShift Virtualization    (host)                            |
+      |     - Terraform                   (provision)                       |
+      |     - Ansible Automation Platform (configure/patch)                 |
+      |     - Red Hat Insights            (detect)                          |
+      |                                                                     |
+      |   This host is managed by AAP. Manual changes may be reverted.      |
+       \___________________________________________________________________/
+              \
+               \   ^__^
+                \  (oo)\_______
+                   (__)\       )\/\
+                       ||----w |
+                       ||     ||
+
+   Demo page:  https://sd-lnx-small-1cpu-2gb-web-sales-demos-demo.apps.cluster-abcde.dyn.redhatworkshops.io
+```
+
+Let the cow get its laugh, then land the line under it: *"This host is managed
+by AAP. Manual changes may be reverted."* — the whole operating model, printed
+where the person about to do something manual will read it.
+
+The **pre**-authentication banner, `/etc/issue.net`, is deliberately not here.
+It is the contrast half of a beat that only works when both are shown in order,
+and that beat — with the words — is
+[in the talk track](talk-track.md#the-two-banners-and-why-there-are-two).
+
 **Captured from a live run**, because the AAP and OpenShift interfaces cannot be
 rendered:
 
