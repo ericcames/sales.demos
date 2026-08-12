@@ -105,8 +105,19 @@ defects:
 - **Dependency resolution failed the whole sync** on a 404 for a collection in
   neither list. `sync_dependencies` is now off everywhere.
 
-**Screenshots** are committed (`docs/images/pah-*.png`). What is still missing
-before this moves from Draft to Ready: one rehearsal of the convergence beat.
+**Screenshots** are committed (`docs/images/pah-*.png`) — the before and after
+of the beat this demo turns on. Click either for the full-size image:
+
+| Never synced (demo env) | Populated with `approved` (sandbox env) |
+|---|---|
+| <a href="../../images/pah-repositories-empty.png"><img width="320" src="../../images/pah-repositories-empty.png" alt="Repositories — never synced"></a> | <a href="../../images/pah-repositories-populated.png"><img width="320" src="../../images/pah-repositories-populated.png" alt="Repositories — populated"></a> |
+
+The three remote dialogs are in
+[`run-sheet.md`](run-sheet.md#screenshots) and
+[`clickops.md`](clickops.md).
+
+What is still missing before this moves from Draft to Ready: one rehearsal of
+the convergence beat.
 
 ---
 
