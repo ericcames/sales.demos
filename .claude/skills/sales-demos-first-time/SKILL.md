@@ -229,19 +229,56 @@ RHDP bearer tokens are short-lived — expect to refresh
 
 ## Step 7 — Validate everything
 
-Do not declare success until this passes. It exercises the real path: inventory
-resolution, the vault, and the ini lookup together.
+Do not declare success until both of these pass. Together they exercise the real
+path: inventory resolution, the vault, and the ini lookup.
+
+**It takes two commands, and that is not an accident.** The two kinds of value
+live in two different directories, and only one of them is reachable from an
+ad-hoc `ansible` call:
+
+- `aap_env_name`, `aap_hostname`, `automation_hub_token` come from
+  `inventory/group_vars/`, which sits beside the inventory.
+- `aap_password` and `openshift_api_token` come from `env_secrets` in
+  `playbooks/group_vars/all/secrets.yml`, which sits beside the **playbooks**.
+
+Ansible loads a `group_vars/` directory adjacent to the inventory or adjacent to
+a playbook. An ad-hoc `ansible` command has no playbook, so it never loads the
+second one and any reference to it dies with `'env_secrets' is undefined`. That
+is by design — see `CLAUDE.md` → *Secrets: exactly one mechanism* — and this
+step used to try to read all five in one call, so it could never pass on any
+machine (#86).
 
 ```bash
 ENV=${ENV:-sandbox}
-ansible -i inventory --limit "$ENV" aap -m debug \
-  --vault-id sales.demos@~/secrets/.vault_pass_sales_demos \
-  -a 'msg="env={{ aap_env_name }} host_set={{ aap_hostname is defined }} pw_set={{ aap_password | length > 0 }} token_set={{ openshift_api_token | length > 0 }} hub_set={{ automation_hub_token | length > 20 }}"'
+VAULT_ID="sales.demos@$HOME/secrets/.vault_pass_sales_demos"
+
+# 1. Inventory-resolved values, plus the ini lookup into ~/.ansible.cfg.
+ansible -i inventory --limit "$ENV" aap -m debug --vault-id "$VAULT_ID" \
+  -a 'msg="env={{ aap_env_name }} host_set={{ aap_hostname is defined }} hub_set={{ automation_hub_token | length > 20 }}"'
 ```
 
-Every value must be `True` and `env` must match what you asked for. If `env` is
-wrong, your `--limit` is wrong — the environments are deliberately isolated so
-one cannot borrow another's credentials.
+`env` must match what you asked for and both `_set` values must be `True`. If
+`env` is wrong, your `--limit` is wrong — the environments are deliberately
+isolated so one cannot borrow another's credentials.
+
+```bash
+# 2. Vaulted credentials, read through the vault rather than the inventory.
+ansible-vault view playbooks/group_vars/all/secrets.yml --vault-id "$VAULT_ID" \
+  | ENV="$ENV" python3 -c '
+import sys, yaml, os
+env = os.environ["ENV"]
+e = ((yaml.safe_load(sys.stdin) or {}).get("env_secrets") or {}).get(env, {})
+pw = e.get("aap_password", "")
+tok = e.get("openshift_api_token", "")
+pw_set = bool(pw) and "CHANGEME" not in pw
+token_ok = tok.startswith("sha256~")
+print("env=%s pw_set=%s token_ok=%s" % (env, pw_set, token_ok))
+'
+```
+
+Both must be `True`. `token_ok` checks the shape rather than mere presence: a
+value that is non-empty but not a `sha256~` token will fail later as a confusing
+`401`, which is exactly how #86 hid for as long as it did.
 
 ## When it all passes
 

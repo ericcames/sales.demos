@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed -- skill preflights could never read a vaulted credential (#86)
+- Two skills resolved `openshift_api_token` and `aap_password` with an ad-hoc
+  `ansible ... -m debug` call. Those live in `env_secrets` in
+  `playbooks/group_vars/all/secrets.yml`, and Ansible loads a `group_vars/`
+  directory adjacent to the **inventory** or to a **playbook** -- an ad-hoc
+  command has no playbook, so the file was never loaded and every lookup died
+  with `'env_secrets' is undefined`. The secrets layout is correct and
+  deliberate (`CLAUDE.md` -> *Secrets: exactly one mechanism*); the two snippets
+  simply never caught up with it.
+- **`ocpvirt-setup` reported success on the failure.** `-m debug` prints its
+  errors into the same `"msg"` field the snippet scraped, so `$OCP_TOKEN` became
+  the string `The task includes an option with an undefined variable..` --
+  non-empty, so `test -n` passed and it printed
+  `✅ resolved sandbox credentials via vault`. It then failed forty seconds later
+  as an `HTTP Error 401` at the CNV check, which the skill's own troubleshooting
+  table blames on an expired RHDP token. Hit for real on a minutes-old token
+  that was perfectly valid.
+- **`sales-demos-first-time` Step 7 could not pass on any machine.** That is the
+  step whose own text says *"Do not declare success until this passes."* It read
+  all five values in one call, two of them vaulted.
+- Both now read each value from where it actually lives: inventory-resolved
+  values (`aap_env_name`, `aap_hostname`, `automation_hub_token`) through
+  `ansible ... -m debug`, which also proves the `--limit`; vaulted credentials
+  through `ansible-vault view | python3`, the pattern `README.md` and
+  `pah-sync` already used.
+- **The guards now check shape, not just presence** -- `sha256~*` for the token,
+  `https://*` for the API URL, and a `CHANGEME` test on the password. Checking
+  for a non-empty string is what let an error message pass as a credential.
+- Verified by running every changed block verbatim against the live sandbox,
+  including the negative cases: a non-existent environment reports
+  `pw_set=False token_ok=False`, and the error text that used to pass is now
+  rejected.
+
 ### Fixed -- the masthead pill now asks AAP which environment it is (#87)
 - **Hit for real.** A new RHDP sandbox was provisioned, `connection.yml` was
   updated and the vault refreshed -- the two steps `CLAUDE.md` says a new
