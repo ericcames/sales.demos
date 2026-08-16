@@ -1,7 +1,7 @@
 {
   "_generated_by": "utilities/make-env-badge-config.py — do not edit by hand",
   "environments": {
-    "aap-aap.apps.cluster-x5f6d-1.dyn.redhatworkshops.io": {
+    "aap-aap.apps.cluster-k59xk-1.dyn.redhatworkshops.io": {
       "label": "SANDBOX",
       "fill": "#3E8635",
       "text": "#FFFFFF"
