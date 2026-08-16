@@ -18,13 +18,13 @@
 aap_env_name: "sandbox"
 
 # --- Ansible Automation Platform -------------------------------------------
-aap_hostname: "aap-aap.apps.cluster-x5f6d-1.dyn.redhatworkshops.io"
+aap_hostname: "aap-aap.apps.cluster-k59xk-1.dyn.redhatworkshops.io"
 aap_username: "admin"
 aap_validate_certs: false
 aap_request_timeout: 30
 
 # --- OpenShift -------------------------------------------------------------
-openshift_api_url: "https://api.cluster-x5f6d-1.dyn.redhatworkshops.io:6443"
+openshift_api_url: "https://api.cluster-k59xk-1.dyn.redhatworkshops.io:6443"
 openshift_validate_certs: false
 
 # --- Credentials, resolved from the vaulted group_vars/aap/secrets.yml -----
@@ -54,7 +54,7 @@ demo_ssh_public_key: "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQDs1ypf/MG+oNvFVWhWSx
 # The *.apps ingress domain for this cluster. Used to construct Route
 # hostnames for HTTP access to demo VMs.
 #   oc get ingresses.config.openshift.io cluster -o jsonpath='{.spec.domain}'
-openshift_apps_domain: "apps.cluster-x5f6d-1.dyn.redhatworkshops.io"
+openshift_apps_domain: "apps.cluster-k59xk-1.dyn.redhatworkshops.io"
 
 # Namespace the demo VMs are created in.
 ocpvirt_namespace: "sales-demos-sandbox"
