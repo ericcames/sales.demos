@@ -18,7 +18,9 @@
 # so it gets the colour that means "think before you touch". Regenerate with:
 #
 #   python3 utilities/make-env-logo.py --env demo
-#   python3 utilities/make-env-badge-config.py
+#
+# The masthead pill needs nothing regenerated: since #87 it reads target_env
+# from this environment's own job templates rather than recognising a hostname.
 # ===========================================================================
 
 gateway_settings_demo:

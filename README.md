@@ -99,17 +99,19 @@ utilities/aap-env-badge/
 ```
 
 It paints a `SANDBOX` / `DEMO` pill in the middle of the masthead in the same
-colours, matches both environments in one load, and shows a neutral
-`UNRECOGNIZED ENV` pill for an RHDP AAP host that is not in either
-`connection.yml`. It changes nothing on the cluster. See
+colours and matches both environments in one load. It changes nothing on the
+cluster. See
 [`utilities/aap-env-badge/README.md`](utilities/aap-env-badge/README.md).
 
-The hostname map is generated, so a new environment is still just a
-`connection.yml` edit plus:
+**It asks AAP which environment it is** rather than recognising the hostname,
+so there is nothing to regenerate when RHDP hands you a new cluster: a new
+environment really is just the `connection.yml` edit plus the vault. It reads
+`target_env`, which this repo already sets on its job templates. A cluster that
+answers but declares no environment gets a neutral `UNRECOGNIZED ENV` pill —
+deliberately, since that is when you are most likely to act on the wrong one.
 
-```bash
-python3 utilities/make-env-badge-config.py
-```
+This replaced a generated hostname map that went stale on every rotation and
+failed silently (#87).
 
 ## Secrets: one vaulted file, both environments
 

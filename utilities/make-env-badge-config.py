@@ -1,65 +1,58 @@
 #!/usr/bin/env python3
-"""Generate the hostname -> environment map the masthead badge reads. Issue #54.
+"""Generate the colour table the masthead badge reads. Issues #54, #87.
 
     python3 utilities/make-env-badge-config.py
 
-Writes utilities/aap-env-badge/envs.json, which is committed so loading the
+Writes utilities/aap-env-badge/colors.json, which is committed so loading the
 extension needs no build step.
 
-WHY GENERATED. `aap_hostname` in inventory/group_vars/<env>/connection.yml is
-the single source of truth for where an environment lives. A hand-maintained
-copy in the extension would be a third place to edit on a fresh RHDP
-environment, and the failure mode is silent: a stale map does not error, it just
-labels the wrong cluster with the right color — the exact mistake the badge
-exists to prevent.
+WHAT THIS NO LONGER DOES. Until #87 this emitted a hostname -> environment map
+scraped from `aap_hostname` in each inventory/group_vars/<env>/connection.yml,
+and the extension decided which environment it was on by looking up
+location.hostname in it. That made this script a third thing to re-run every
+time RHDP handed over a new cluster, and the failure mode was silent: a stale
+map does not error, it just stops recognising the environment. It went stale in
+exactly that way and nobody noticed until a grey UNRECOGNIZED ENV pill turned up
+next to a correctly badged green sign-in page.
 
-So a new RHDP environment stays what CLAUDE.md says it is — edit connection.yml
-and the vault — plus re-running the two generators:
+The badge now asks AAP itself — `target_env`, which this repo already sets on
+its job templates — so there is no hostname to keep in step. This script reads
+NOTHING from connection.yml any more, which is the point: rotating an
+environment does not require re-running it.
 
-    python3 utilities/make-env-logo.py --env sandbox
-    python3 utilities/make-env-badge-config.py
+WHY IT STILL EXISTS. utilities/env_colors.py is the single source of truth for
+the colour convention, shared with make-env-logo.py so the sign-in logo and the
+masthead pill cannot drift apart. The extension is JavaScript and cannot import
+it. Hand-copying two hex values into the extension would recreate, for colours,
+precisely the duplicated-source problem #87 removed for hostnames. So the values
+are generated instead, and CI fails the build if the committed file drifts.
 
-Colors come from env_colors.py, shared with make-env-logo.py, so the sign-in
-logo and the masthead pill cannot drift apart.
+Re-run this only when the colour convention changes or an environment is added
+-- not when a cluster is rebuilt.
 
-Deliberately dependency-free: no Pillow, no PyYAML. The one value it needs from
-each connection.yml is a plain quoted scalar, and requiring PyYAML to read it
-would mean a clone could not regenerate this without a pip install.
+Deliberately dependency-free: no Pillow, no PyYAML. A clone should be able to
+regenerate this without a pip install.
 """
 import json
 import pathlib
-import re
-import sys
 
 from env_colors import COLORS, UNKNOWN_COLOR
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
-GROUP_VARS = REPO / "inventory" / "group_vars"
-OUT = REPO / "utilities" / "aap-env-badge" / "envs.json"
-
-# aap_hostname: "aap-aap.apps.cluster-<id>.dyn.redhatworkshops.io"
-HOSTNAME_RE = re.compile(r'^aap_hostname:\s*["\']?([^"\'\s]+)', re.MULTILINE)
-
-
-def hostname_for(env: str) -> str:
-    path = GROUP_VARS / env / "connection.yml"
-    if not path.exists():
-        sys.exit(f"missing {path}")
-    match = HOSTNAME_RE.search(path.read_text())
-    if not match:
-        sys.exit(f"no aap_hostname found in {path}")
-    return match.group(1)
+OUT = REPO / "utilities" / "aap-env-badge" / "colors.json"
 
 
 def main() -> None:
-    envs = {}
-    for env, (fill, text) in COLORS.items():
-        envs[hostname_for(env)] = {"label": env.upper(), "fill": fill, "text": text}
+    environments = {
+        env: {"fill": fill, "text": text} for env, (fill, text) in COLORS.items()
+    }
 
     unknown_fill, unknown_text = UNKNOWN_COLOR
     config = {
         "_generated_by": "utilities/make-env-badge-config.py — do not edit by hand",
-        "environments": envs,
+        # Keyed by the value of `target_env` on the job templates, which is
+        # aap_env_name — the same string as the group_vars/<env>/ directory.
+        "environments": environments,
         "unknown": {
             "label": "UNRECOGNIZED ENV",
             "fill": unknown_fill,
@@ -72,8 +65,8 @@ def main() -> None:
     # escapes — it is reviewed in diffs, not just parsed.
     OUT.write_text(json.dumps(config, indent=2, ensure_ascii=False) + "\n")
     print(f"wrote {OUT.relative_to(REPO)}")
-    for host, meta in envs.items():
-        print(f"  {meta['label']:<8} {host}")
+    for env, meta in environments.items():
+        print(f"  {env:<8} {meta['fill']}")
 
 
 if __name__ == "__main__":

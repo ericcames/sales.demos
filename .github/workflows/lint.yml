@@ -51,6 +51,22 @@ jobs:
         # the end of a long demo build.
         run: bash utilities/check-no-secrets.sh
 
+  generated-files:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: The badge colour table matches env_colors.py
+        # Nothing checked this before #87, which is why a generated file sat
+        # stale in main without complaint. A committed generator output that
+        # nothing verifies is a copy waiting to drift.
+        run: |
+          python3 utilities/make-env-badge-config.py
+          git diff --exit-code utilities/aap-env-badge/colors.json \
+            || { echo "::error::colors.json is stale — run python3 utilities/make-env-badge-config.py and commit"; exit 1; }
+
   skills-frontmatter:
     runs-on: ubuntu-latest
     steps:

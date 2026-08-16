@@ -22,6 +22,7 @@ COLORS = {
     "demo": ("#EE0000", "#FFFFFF"),
 }
 
-# Shown for an RHDP AAP host that is not in either connection.yml. Deliberately
-# neutral rather than alarming: it means "unknown", not "dangerous".
+# Shown when AAP answers but does not say which environment it is -- its config
+# has not been applied, or its templates disagree (#87). Deliberately neutral
+# rather than alarming: it means "unknown", not "dangerous".
 UNKNOWN_COLOR = ("#6A6E73", "#FFFFFF")
