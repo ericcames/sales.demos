@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "AAP environment badge (sales.demos)",
-  "version": "1.0.1",
-  "description": "Paints a SANDBOX / DEMO pill in the AAP masthead. The sign-in page marks the environment; after login AAP does not, and no gateway setting can. See issue #54.",
+  "version": "1.1.0",
+  "description": "Paints a SANDBOX / DEMO pill in the AAP masthead. The sign-in page marks the environment; after login AAP does not, and no gateway setting can. Reads target_env from AAP so it never goes stale. See issues #54 and #87.",
   "content_scripts": [
     {
       "matches": [
@@ -14,7 +14,7 @@
   ],
   "web_accessible_resources": [
     {
-      "resources": ["envs.json"],
+      "resources": ["colors.json"],
       "matches": [
         "https://*.dyn.redhatworkshops.io/*"
       ]

@@ -28,8 +28,37 @@ patching a bundled asset inside the gateway container, which the operator
 reconciles away and an upgrade breaks. The browser is the right place, and in a
 demo it is sufficient: the only screen that matters is the one being shared.
 
-**This changes nothing on the cluster.** It reads no AAP data and sends nothing
-anywhere.
+**This changes nothing on the cluster.** It reads one AAP endpoint — the job
+template list, to find out which environment it is on — and sends nothing
+anywhere. No writes, no third parties, no storage.
+
+## How it knows which environment it is
+
+It asks AAP. `inventory/group_vars/aap/controller_templates.yml` sets
+`target_env: "{{ aap_env_name }}"` on the `Sales Demos - Provision VM` and
+`Sales Demos - Teardown VMs` templates, so every AAP already states its own name
+in a field this repo controls. The extension does one same-origin request to
+`/api/controller/v2/job_templates/` and scans for a template carrying a
+`target_env` — by field, not by template name, so a rename cannot break it.
+
+`playbooks/tasks/assert_target_environment.yml` fails a run closed if
+`target_env` ever disagrees with the template's `limit`, so the value the badge
+reads is the same one the playbooks trust.
+
+`extra_vars` comes back as a JSON-encoded *string* rather than an object; the
+code parses it and tolerates both.
+
+### Why not the hostname
+
+It used to look `location.hostname` up in a generated map built from
+`aap_hostname` in each `connection.yml`. The hostname is only a *proxy* for the
+environment: it changes every time RHDP rebuilds a cluster, so the map had to be
+regenerated and committed on every rotation — a third step on top of the
+`connection.yml` edit and the vault.
+
+It went stale exactly as you would expect, and **silently**: a grey
+`UNRECOGNIZED ENV` pill in the masthead next to a correctly badged green
+`SANDBOX` sign-in page. Nothing errored. See #87.
 
 ## Install
 
@@ -37,8 +66,12 @@ anywhere.
 2. Turn on **Developer mode**
 3. **Load unpacked** → select this directory
 
-Both environments are covered by the one load, and it keeps working when RHDP
-hands you a new cluster ID.
+Both environments are covered by the one load, and — since #87 — it genuinely
+keeps working when RHDP hands you a new cluster ID. There is nothing to
+regenerate and nothing to commit.
+
+If it was already loaded, hit **Reload** on the card: Chrome caches the
+extension's own files, and the old `envs.json` will otherwise still be in there.
 
 ### Why the manifest matches all of `*.dyn.redhatworkshops.io`
 
@@ -61,22 +94,52 @@ before touching the page.
 
 ## An unrecognized environment is a feature
 
-A host matching the RHDP AAP pattern but absent from
-[`envs.json`](envs.json) gets a neutral gray `UNRECOGNIZED ENV` pill rather than
-no pill at all. A freshly built environment nobody has recorded yet is exactly
-when you are most likely to act on the wrong cluster.
+Signed in, AAP answered, and nothing declared an environment → a neutral gray
+`UNRECOGNIZED ENV` pill, rather than no pill at all. A cluster nobody has
+recorded is exactly when you are most likely to act on the wrong one. It is not
+a fallback, and no failure ever produces a *coloured* pill.
 
-To make it recognized, add the environment to
-`inventory/group_vars/<env>/connection.yml` as usual, then regenerate:
+You get it when the config-as-code has not been applied to that cluster yet, if
+the API call fails, if the two templates disagree, or if `target_env` names an
+environment with no colour.
+
+Two consequences worth knowing before they surprise you:
+
+- **A brand-new RHDP environment is grey until `setup.yml` has run.** The old
+  hostname map went green whether or not AAP was configured. This is a change,
+  and arguably the better answer — an unconfigured AAP is not one to be
+  confidently clicking around in.
+- **The pill reports what AAP says it is, not where you are.** If `config.yml`
+  were ever applied to sandbox with `--limit demo`, the sandbox host would show
+  a **red DEMO** pill. That is a true report of a real misconfiguration, and one
+  the hostname map would have hidden.
+- **It needs read access to the job templates.** Signing in as a user who cannot
+  see them gives `200` with no results, and therefore grey.
+
+**Signed out is different, and is treated differently.** A `401`/`403` is AAP
+telling you it does not know who you are — not that the cluster is
+unidentifiable — so the extension paints nothing at all. The sign-in page
+already carries the badged logo, and a grey pill contradicting a green logo two
+inches away is worse than no pill. That distinction keys off the HTTP status,
+never off the URL: sniffing AAP's routes is the coupling this design avoids.
+
+Once you log in the pill appears on its own, without a reload.
+
+## `colors.json`
+
+The only generated file left, and it holds **colours only** — no hostnames, no
+environments to keep in step with a cluster.
 
 ```bash
 python3 utilities/make-env-badge-config.py
 ```
 
-`envs.json` is **generated and committed** — do not edit it by hand.
-`aap_hostname` in `connection.yml` stays the single source of truth, because a
-stale hand-maintained copy does not error, it labels the wrong cluster with the
-right color.
+Re-run it when the colour convention changes or an environment is added, **not**
+when a cluster is rebuilt. [`../env_colors.py`](../env_colors.py) stays the
+single source of truth, shared with `make-env-logo.py` so the sign-in logo and
+the masthead pill cannot drift apart; this file exists only because JavaScript
+cannot import Python. CI regenerates it and fails the build if the committed
+copy differs.
 
 ## Design notes
 
@@ -90,8 +153,14 @@ right color.
   particularly on a shared screen.
 - **No theme detection.** A light outline on the pill keeps it legible against
   both the dark masthead and AAP's light theme.
-- **It paints on the sign-in page too.** Not the goal — that page already
-  carries the badged logo — but the sign-in page has a header of its own and the
-  pill anchors to it. Left as-is: redundant rather than wrong, and it confirms
-  the extension is loaded before you log in. Suppressing it would mean sniffing
-  the route, which is the coupling to AAP internals this design avoids.
+- **It stays off the sign-in page.** It used to paint there — redundant rather
+  than wrong, when the environment came from the hostname and was known before
+  login. Now the environment comes from an authenticated call, so pre-login the
+  honest answer is "don't know yet", and a grey pill beside the correctly badged
+  green logo would actively mislead. Suppressed by HTTP status, not by route.
+- **One request per page load.** The environment cannot change under a live
+  page, so the first successful answer is cached and no further calls are made.
+  While it is still unknown, a 3-second poll retries — that is what makes the
+  pill appear after login without a reload — and it stops itself the moment the
+  environment is known. The MutationObserver repaints from the cached value and
+  never re-fetches.

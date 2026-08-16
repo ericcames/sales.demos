@@ -7,6 +7,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed -- the masthead pill now asks AAP which environment it is (#87)
+- **Hit for real.** A new RHDP sandbox was provisioned, `connection.yml` was
+  updated and the vault refreshed -- the two steps `CLAUDE.md` says a new
+  environment takes -- and the masthead showed a grey `UNRECOGNIZED ENV` pill
+  next to a correctly badged green `SANDBOX` sign-in page. Nothing errored, and
+  no CI job referenced the stale file.
+- **The generated hostname map was itself the third place to edit that #54
+  claimed it avoided.** Re-running a generator and committing its output is a
+  third step, and `aap_hostname` changes on every rotation, so the map had to be
+  re-synced every time. That entry's reasoning was wrong; this is the
+  correction.
+- **`target_env` replaces the hostname.** The hostname is only a *proxy* for the
+  environment; `target_env` **is** the environment, and
+  `controller_templates.yml` already sets it from `aap_env_name` on
+  `Sales Demos - Provision VM` and `Sales Demos - Teardown VMs`. The badge does
+  one same-origin `GET /api/controller/v2/job_templates/` and scans for the
+  field rather than matching a template by name, so a rename cannot break it.
+  `assert_target_environment.yml` already fails a run closed if `target_env` and
+  `limit` disagree, so the value cannot drift.
+- Measured against the live 2.6 sandbox before writing any of it: the
+  name-filtered query returns `count: 1`; `extra_vars` comes back as a
+  JSON-encoded **string**, not an object, and is parsed accordingly; the same
+  request logged out returns `401`; the AAP document sends **no** CSP header, so
+  a content-script fetch is not blocked. No new manifest permissions -- the
+  content script already runs on the AAP origin.
+- **Signed out is now distinguished from unidentifiable.** A `401`/`403` paints
+  nothing, because the sign-in page already carries the badged logo and a grey
+  pill contradicting a green one two inches away is worse than none. Every other
+  failure still paints the neutral pill. The distinction keys off HTTP status,
+  never the URL -- route-sniffing is the coupling this design avoids.
+- `envs.json` is deleted. `make-env-badge-config.py` now emits a colours-only
+  `colors.json` and reads nothing from `connection.yml`, so rotating an
+  environment does not require re-running it. `env_colors.py` stays the single
+  source of truth so the sign-in logo and the pill cannot drift apart.
+- **CI now verifies the generated file**, which nothing did before -- a
+  committed generator output that nothing checks is a copy waiting to drift.
+- Two claims in `utilities/aap-env-badge/README.md` are corrected rather than
+  quietly dropped: it no longer "reads no AAP data" (it reads one endpoint, and
+  still changes nothing), and "it keeps working when RHDP hands you a new
+  cluster ID" was **false** when written -- this is what makes it true.
+
 ### Changed
 - The rendered `/etc/motd` now appears in the ocpvirt demo README (#83), which
   previously said the render script "prints the two login banners" and showed
