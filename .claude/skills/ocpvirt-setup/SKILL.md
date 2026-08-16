@@ -125,25 +125,44 @@ beside it. Do not attempt the run with a failing prerequisite.
 CNV may already be installed. Check before running — the playbook is
 idempotent, but 20 minutes of waiting is not worth spending on a no-op.
 
-Resolve the cluster's URL and token through Ansible rather than by reading
-files. The URL is plaintext in `connection.yml` but the token is inside the
-vault, and going through Ansible means the `--limit` selects the environment —
-the same path the playbook takes, so a mismatch cannot hide here.
+**Each value comes from where it actually lives, and they are two different
+places.** `openshift_api_url` is plaintext in `inventory/group_vars/<env>/`, so
+an ad-hoc `ansible` call resolves it and the `--limit` proves the environment
+selection at the same time. `openshift_api_token` is **not** reachable that way:
+it comes from `env_secrets` in `playbooks/group_vars/all/secrets.yml`, and
+Ansible loads a `group_vars/` directory adjacent to the **inventory** or to a
+**playbook** — an ad-hoc command has no playbook, so that file is never loaded
+and the lookup fails with `'env_secrets' is undefined` (#86). Read it through
+the vault instead, the same way `README.md` does.
 
 ```bash
 ENV=${ENV:-sandbox}
 VAULT_ID="sales.demos@$HOME/secrets/.vault_pass_sales_demos"
 
-read -r OCP_URL OCP_TOKEN <<<"$(
-  ansible -i inventory --limit "$ENV" aap -m debug --vault-id "$VAULT_ID" \
-    -a 'msg="{{ openshift_api_url }} {{ openshift_api_token }}"' 2>/dev/null \
-  | sed -n 's/.*"msg": "\(.*\)"/\1/p'
-)"
+# Plaintext, and next to the inventory: ad-hoc ansible resolves it.
+OCP_URL=$(ansible -i inventory --limit "$ENV" aap -m debug --vault-id "$VAULT_ID" \
+  -a 'msg={{ openshift_api_url }}' 2>/dev/null \
+  | sed -n 's/.*"msg": "\(.*\)"/\1/p')
+
+# Vaulted, and next to the PLAYBOOKS: read it through the vault.
+OCP_TOKEN=$(ansible-vault view playbooks/group_vars/all/secrets.yml \
+  --vault-id "$VAULT_ID" 2>/dev/null \
+  | ENV="$ENV" python3 -c \
+    'import sys,yaml,os; print(yaml.safe_load(sys.stdin)["env_secrets"][os.environ["ENV"]]["openshift_api_token"])')
+
 export OCP_URL OCP_TOKEN
 
-test -n "$OCP_TOKEN" \
-  && echo "✅ resolved $ENV credentials via vault" \
-  || echo "❌ could not resolve credentials — check the vault password and --limit"
+# CHECK THE SHAPE, NOT JUST THAT SOMETHING CAME BACK. `-m debug` prints its
+# errors into the same "msg" field this scrapes, so a failed lookup yields the
+# error TEXT — non-empty, and a plain `test -n` called that success while the
+# token was the string "The task includes an option with an undefined
+# variable..". That is what made #86 fail forty seconds later as a confusing
+# 401 instead of failing here.
+case "$OCP_URL" in https://*) ;; *) echo "❌ could not resolve $ENV API URL — check --limit"; esac
+case "$OCP_TOKEN" in
+  sha256~*) echo "✅ resolved $ENV credentials via vault" ;;
+  *) echo "❌ could not resolve $ENV token — check the vault password and that env_secrets.$ENV exists" ;;
+esac
 ```
 
 ```bash
@@ -220,8 +239,10 @@ playbook was broken in two different ways; only running it and then checking
 the cluster caught either one.
 
 Reuses `$OCP_URL` and `$OCP_TOKEN` exported in the preflight above. If you are
-running this standalone, resolve them with the same `ansible … -m debug` command
-first — do not `yaml.safe_load` the secrets file, which is ciphertext.
+running this standalone, resolve them with the same two commands first — the URL
+through `ansible … -m debug`, the token through `ansible-vault view`. Never
+`yaml.safe_load` `secrets.yml` directly: on disk it is ciphertext, so it must be
+piped through the vault first.
 
 ```bash
 python3 - <<'PY'
