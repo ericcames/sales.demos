@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added -- the branch convention, which existed in git log in two shapes and nowhere in CLAUDE.md (#97)
+- `CLAUDE.md` -> *Workflow* documented five conventions and **nothing about
+  branches**. The gap surfaced concretely: asked which branch to use for #94, the
+  convention had to be reverse-engineered from `git log`, which turned up two
+  competing patterns and no rule between them -- `issue-5-ocpvirt-demo` (numbered,
+  no type) against `docs-pill-proof` (typed, no number), with
+  `fix-86-preflight-vault-lookup` the only recent branch carrying its issue
+  number. Both are defensible; neither was written down, so every new branch was
+  a fresh judgement call.
+- The stated rule is `<type>-<issue>-<slug>`, which is the two existing styles
+  reconciled rather than a correction of either. Both remain in the history and
+  neither needs rewriting. Carrying the issue number is the load-bearing part --
+  it links a branch back to its decision without anyone reading `git log`.
+- **`delete_branch_on_merge` is now enabled on the repository**, so merged PR
+  branches clean up after themselves. This is recorded here and in `CLAUDE.md`
+  precisely because a repository setting **leaves no trace in the tree** -- there
+  is no file a reader could check to discover it.
+- Prompted by a cleanup that deleted 17 local and 11 remote branches, leaving
+  only `main`. **That backlog existed because the setting was off.** Every branch
+  was verified landed before deletion, including six that `git` reported as
+  unmerged: their patch-ids had drifted through squash or rework, but the content
+  was demonstrably in `main` -- checked by confirming every file each branch
+  touched is present, not by trusting `git cherry` alone. The one file unique to
+  those six was `utilities/aap-env-badge/envs.json`, the superseded name of
+  `colors.json`.
+
 ### Changed -- the DevNet sandboxes are up, and B1 is a plan rather than a candidate (#94)
 - **The previous entry's caveat was wrong, and wrong in the useful direction.**
   It recorded DevNet sandbox availability as unresolved because Cisco's docs and

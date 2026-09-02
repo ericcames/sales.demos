@@ -168,3 +168,18 @@ Environment secrets.
 - **Additive only** — do not remove working capability until the replacement is
   proven.
 - **Maintain `CHANGELOG.md`.**
+- **Branch from `main`; never commit to it directly.** Name the branch
+  `<type>-<issue>-<slug>` — `fix-86-preflight-vault-lookup`,
+  `docs-94-network-mcp-plan`. `<type>` is `fix`, `docs`, or the area being
+  changed; `<slug>` is two to four words describing the change, not the file.
+  Carrying the issue number is the point: it links the branch back to the
+  decision without anyone reading `git log`.
+
+  Both older styles remain in the history and are fine where they sit —
+  `issue-5-ocpvirt-demo` (numbered, no type) and `docs-pill-proof` (typed, no
+  number). This rule is the two of them reconciled, not a correction of either.
+
+  **Merged branches delete themselves.** `delete_branch_on_merge` is enabled on
+  the repository, so a merged PR cleans up its own branch and no manual pruning
+  is needed. That is a repository setting, not a tracked file, so it is recorded
+  here — it cannot be seen by reading the tree (#97).
