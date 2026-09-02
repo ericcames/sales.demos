@@ -214,11 +214,21 @@ and the four-issue structure survives.
 
 **B1 — Cisco DevNet sandboxes.** A Meraki *always-on read-only* sandbox and a
 24×7 hosted Catalyst Center sandbox (virtualized controller plus real hardware
-topology) both exist, and their read-only nature matches the governance stance
-exactly. *Verify before relying on it:* community reports indicate the Meraki
-Dashboard, Catalyst Center, ISE and Catalyst SD-WAN sandboxes were temporarily
-offline as of February 2026 — confirm current reachability at
-`devnetsandbox.cisco.com`.
+topology) are both documented, and their read-only nature matches the governance
+stance exactly.
+
+> **Availability is unresolved, and the sources disagree.** Cisco's own
+> [Catalyst Center sandbox page](https://developer.cisco.com/docs/catalyst-center/sandboxes/)
+> still lists a Catalyst Center 2.3.3.6 sandbox as **Always-On** with no outage
+> notice. Cisco Community threads from **February 2026** report that the Meraki
+> Dashboard, Catalyst Center, ISE and Catalyst SD-WAN always-on labs were pulled
+> for maintenance, with **no restoration date given**. Documentation being stale
+> and the labs being back are equally consistent with that.
+>
+> This cannot be settled from documentation. Someone has to sign in at
+> `devnetsandbox.cisco.com` and try. **Until that happens, B1 is a candidate,
+> not a plan**, and Cisco's "no open decisions" status covers the *server* side
+> only — the *target* side is as unresolved as Palo Alto's and Aruba's.
 
 **B2 — RHDP catalog items.** Check whether RHDP offers PAN-OS or Aruba items to
 reserve, the way `aap.dailydemo.Panos` already does for Palo Alto. Connection
@@ -260,8 +270,12 @@ AAP-write-path governance statement. If A4 or A5 wins, the collection-knowledge
 server lands here rather than in a vendor issue.
 
 **Cisco.** Official Meraki and Catalyst Center servers plus DevNet Content
-Search; targets per B1. **The only vendor fully unblocked today** — there is no
-open Decision A for it — so it should prove the pattern first.
+Search; targets per B1. **The only vendor with no open Decision A** — the servers
+exist and are vendor-published — so it should prove the pattern first. Note that
+this is not the same as being unblocked: B1's availability is unresolved (see
+Decision B), so Cisco's *target* is as uncertain as anyone's. DevNet Content
+Search is the exception that needs no target at all, which makes it the single
+cheapest thing in this entire document to stand up.
 
 **Palo Alto.** Shape depends on Decision A; target per Decision B.
 
@@ -299,7 +313,10 @@ Nothing is deployed and no environment is touched by this document. Per
 ## Open items
 
 - **Decisions A, B and C** — the reason #94 is open.
-- Confirm DevNet sandbox availability before the Cisco issue commits to B1.
+- **Confirm DevNet sandbox availability by signing in at
+  `devnetsandbox.cisco.com`** — documentation and community reports disagree, and
+  no amount of further reading will settle it. This gates B1 and therefore the
+  Cisco issue's target.
 - Confirm `mcp-gateway` entitlement, not merely catalog presence.
 - Whether the AAP MCP server write path gets proved on 2.6 now or waits for #92's
   2.7 adoption.

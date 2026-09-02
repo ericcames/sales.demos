@@ -7,6 +7,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added -- a third use case, and an options brief rather than a design (#94)
+- `docs/plan/network-mcp-plan.md` plans MCP servers on OpenShift for AI-assisted
+  development of Cisco, Palo Alto and Aruba use cases. **It is deliberately not
+  a settled design** -- three decisions are written open for a network SME to
+  resolve, which is a departure from the other two plan docs and is called out in
+  its Context. The implementation issues are deliberately unopened: Decisions A
+  and B change what the Palo Alto and Aruba issues *are*, so opening them now
+  would guarantee rewriting them.
+- **The premise did not survive the research.** "Use vendor-supplied MCP servers
+  where they exist" holds for Cisco alone, which publishes three. Palo Alto's
+  official Cortex MCP server serves XSIAM/Cortex SecOps data, **not PAN-OS** --
+  every PAN-OS server is community. Aruba has nothing official at all: its
+  `central-mcp-server` is documented on HPE's own developer portal, which makes
+  it look sanctioned, and the same page says *"This is **not** an officially
+  supported product of HPE."* That disclaimer is quoted verbatim in the plan doc
+  rather than paraphrased, because org ownership and portal hosting are not
+  support statements.
+- **The finding that actually defines the work** is that every server found --
+  Cisco's included -- is stdio transport and ships no container image. So this is
+  not a deployment exercise; the foundation is containerize → adapt stdio to
+  streamable HTTP → Route → authenticate → inject credentials from the vault.
+  They are also all read-only already, which means the #93 governance stance
+  (read-only MCP, writes through an AAP job template) costs nothing here -- it
+  describes what the software does rather than restricting it.
+- **`ansible.mcp` runs the opposite direction from its name**, and has been
+  syncing into this repo's PAH since #68 (`hub/certified-requirements.yml:37`)
+  referenced nowhere else. It gives *playbooks* modules to discover and call
+  tools on MCP servers -- Ansible as MCP *client*. It is not a way to expose
+  Ansible as MCP, and anything planned on that assumption would have been wrong.
+- **The AAP MCP server is Technology Preview on 2.6, not only 2.7**, so #92 is a
+  sequencing preference for this work rather than a hard block.
+- **One claim was corrected before this shipped.** The first draft said DevNet
+  sandboxes were "temporarily offline as of February 2026" and treated Cisco as
+  fully unblocked. Checking both sources found they disagree: Cisco's Catalyst
+  Center sandbox page still lists an Always-On sandbox with no outage notice,
+  while Community threads from February 2026 report the always-on labs pulled for
+  maintenance with no restoration date. Documentation being stale and the labs
+  being back are equally consistent with that, and no further reading settles it
+  -- someone has to sign in and try. B1 is now recorded as a candidate rather
+  than a plan, and Cisco's "no open decisions" status is scoped to the server
+  side only.
+- Adds the `mcp` and `network` labels, backfilling `mcp` onto #92 and #93 so the
+  whole body of MCP work is one query.
+
 ### Fixed -- skill preflights could never read a vaulted credential (#86)
 - Two skills resolved `openshift_api_token` and `aap_password` with an ad-hoc
   `ansible ... -m debug` call. Those live in `env_secrets` in
