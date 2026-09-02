@@ -21,7 +21,7 @@ the Palo Alto and Aruba issues *are*. See
 |---|---|---|---|---|
 | Research and decide | — | — | The vendor MCP landscape, the Red Hat hosting layer, and Decisions A (what PAN-OS and Aruba build), B (where the devices come from) and C (hosting mechanism). Vendor-supplied servers exist for Cisco only. | **In progress** ([#94](https://github.com/ericcames/sales.demos/issues/94)) |
 | Foundation | `sales-demos-mcp-deploy` | `playbooks/mcp_server.yml` | Every server found is stdio-only with no container image, so the pattern is containerize → stdio to streamable HTTP → Route → auth → credentials from the vault. Depends on [#92](https://github.com/ericcames/sales.demos/issues/92). | Not started — blocked on Decision C |
-| Cisco | — | — | Official Meraki and Catalyst Center servers plus DevNet Content Search. No open Decision A; target still gated on B1. | Not started |
+| Cisco | — | — | Official Meraki and Catalyst Center servers plus DevNet Content Search. **The only unblocked vendor** — Catalyst Center Always-On v2.3.3.6 confirmed live 2026-09-02, along with always-on Catalyst 8000/9000 (SSH, RESTCONF, NETCONF). Meraki's sandbox unconfirmed. | Not started — ready to start |
 | Palo Alto | — | — | No official PAN-OS server exists — the official Cortex MCP serves SecOps data. Shape depends on Decision A. | Not started — blocked on Decision A |
 | Aruba | — | — | Nothing official exists; the portal-documented server is disclaimed by HPE. Shape depends on Decision A. | Not started — blocked on Decision A |
 

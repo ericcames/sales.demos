@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed -- the DevNet sandboxes are up, and B1 is a plan rather than a candidate (#94)
+- **The previous entry's caveat was wrong, and wrong in the useful direction.**
+  It recorded DevNet sandbox availability as unresolved because Cisco's docs and
+  Cisco Community threads disagreed, and said only signing in would settle it.
+  Signing in settled it: the always-on labs are back, the February 2026 community
+  reports are stale, and Cisco's own documentation was right. The catalog's only
+  maintenance banner is for the **Cisco Security Cloud Control** lab, which is
+  unrelated. **Catalyst Center Always-On v2.3.3.6 is live and launchable**, which
+  is exactly the target the Cisco issue needs.
+- **Three always-on sandboxes were found that this plan had not accounted for**,
+  and two of them matter more than the B1 answer does. **Catalyst 8000** and
+  **Catalyst 9000** are always-on IOS-XE targets speaking **SSH, RESTCONF and
+  NETCONF**. The vendor table records that no official IOS/NX-OS MCP server
+  exists; that gap now has live gear behind it, which strengthens A4 for
+  `cisco.ios` (a knowledge server has something real to be checked against) and
+  hands A1 a free credentialed target that needed no sourcing. **ACI Simulator
+  Always-On** (APIC v6) is the third.
+- Also catalogued: **Cisco Modeling Labs** (reservable, full API) is a concrete
+  option for B4's in-cluster simulation, and a reservable **CI/CD pipeline**
+  sandbox bundles GitLab, Ansible, pyATS, CML and Open NX-OS.
+- **Cisco is now the only genuinely unblocked vendor** -- vendor-published servers
+  *and* a confirmed target -- rather than merely the one with no open Decision A.
+  One gap remains: **Meraki** was not visible in the portion of the catalog
+  reviewed, so its target is unconfirmed even though its server is official.
+
 ### Added -- a third use case, and an options brief rather than a design (#94)
 - `docs/plan/network-mcp-plan.md` plans MCP servers on OpenShift for AI-assisted
   development of Cisco, Palo Alto and Aruba use cases. **It is deliberately not

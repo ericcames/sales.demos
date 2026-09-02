@@ -217,18 +217,38 @@ and the four-issue structure survives.
 topology) are both documented, and their read-only nature matches the governance
 stance exactly.
 
-> **Availability is unresolved, and the sources disagree.** Cisco's own
-> [Catalyst Center sandbox page](https://developer.cisco.com/docs/catalyst-center/sandboxes/)
-> still lists a Catalyst Center 2.3.3.6 sandbox as **Always-On** with no outage
-> notice. Cisco Community threads from **February 2026** report that the Meraki
-> Dashboard, Catalyst Center, ISE and Catalyst SD-WAN always-on labs were pulled
-> for maintenance, with **no restoration date given**. Documentation being stale
-> and the labs being back are equally consistent with that.
+> ~~**Availability is unresolved, and the sources disagree.** Community threads
+> from February 2026 report the always-on labs pulled for maintenance with no
+> restoration date. Until someone signs in, B1 is a candidate, not a plan.~~
 >
-> This cannot be settled from documentation. Someone has to sign in at
-> `devnetsandbox.cisco.com` and try. **Until that happens, B1 is a candidate,
-> not a plan**, and Cisco's "no open decisions" status covers the *server* side
-> only — the *target* side is as unresolved as Palo Alto's and Aruba's.
+> **Resolved 2026-09-02 by signing in to `devnetsandbox.cisco.com`.** The
+> always-on labs are back, and the community reports were stale — Cisco's own
+> documentation was right. The catalog's only maintenance banner is for the
+> **Cisco Security Cloud Control** lab, which is unrelated to anything here.
+> **B1 is a plan, not a candidate.**
+
+Confirmed live and launchable in the self-service catalog:
+
+| Sandbox | Access | Relevance |
+|---|---|---|
+| **Catalyst Center Always-On v2.3.3.6** | Always-On | The target the Cisco issue needs. Matches Cisco's docs page exactly. |
+| **Catalyst 8000 Always-On** | Always-On | Admin API access to a Catalyst 8000 switch — **SSH, RESTCONF and NETCONF**. |
+| **Catalyst 9000 Always-On** | Always-On | Cat9000v switch, unique credentials per reservation. |
+| **ACI Simulator Always-On** | Always-On | APIC v6. |
+| Catalyst Center Sandbox (2.3.7.11) | Launch appeared disabled | A newer release exists but is not always-on. |
+| Cisco Modeling Labs | Reservable | Network simulation with an HTML5 UI and full API — relevant to **B4**. |
+| CI/CD pipeline for infrastructure automation | Reservable | Bundles GitLab, **Ansible**, **pyATS**, CML and Open NX-OS. |
+
+**The Catalyst 8000 and 9000 findings change more than B1 does.** They are
+always-on IOS-XE targets speaking RESTCONF and NETCONF, which means the gap noted
+in the vendor table — no official IOS/NX-OS MCP server — now has live gear behind
+it. That strengthens **A4** for `cisco.ios` specifically (a knowledge server has
+something real to be checked against) and gives **A1** a free, credentialed
+target that needed no sourcing at all.
+
+Still unconfirmed: **Meraki**. It was not visible in the portion of the catalog
+reviewed, so the Meraki MCP server's target remains open even though its server
+is official.
 
 **B2 — RHDP catalog items.** Check whether RHDP offers PAN-OS or Aruba items to
 reserve, the way `aap.dailydemo.Panos` already does for Palo Alto. Connection
@@ -270,12 +290,11 @@ AAP-write-path governance statement. If A4 or A5 wins, the collection-knowledge
 server lands here rather than in a vendor issue.
 
 **Cisco.** Official Meraki and Catalyst Center servers plus DevNet Content
-Search; targets per B1. **The only vendor with no open Decision A** — the servers
-exist and are vendor-published — so it should prove the pattern first. Note that
-this is not the same as being unblocked: B1's availability is unresolved (see
-Decision B), so Cisco's *target* is as uncertain as anyone's. DevNet Content
-Search is the exception that needs no target at all, which makes it the single
-cheapest thing in this entire document to stand up.
+Search; targets per B1. **The only vendor that is genuinely unblocked** — the
+servers are vendor-published *and* the Catalyst Center always-on sandbox is
+confirmed live (Decision B). It should prove the pattern first. DevNet Content
+Search needs no target at all, which makes it the cheapest thing in this document
+to stand up. The one gap is Meraki, whose sandbox is unconfirmed.
 
 **Palo Alto.** Shape depends on Decision A; target per Decision B.
 
@@ -313,10 +332,9 @@ Nothing is deployed and no environment is touched by this document. Per
 ## Open items
 
 - **Decisions A, B and C** — the reason #94 is open.
-- **Confirm DevNet sandbox availability by signing in at
-  `devnetsandbox.cisco.com`** — documentation and community reports disagree, and
-  no amount of further reading will settle it. This gates B1 and therefore the
-  Cisco issue's target.
+- ~~Confirm DevNet sandbox availability.~~ **Done 2026-09-02 — B1 confirmed.**
+  Remaining: whether a **Meraki** sandbox exists in the catalog, which was not
+  visible in the portion reviewed.
 - Confirm `mcp-gateway` entitlement, not merely catalog presence.
 - Whether the AAP MCP server write path gets proved on 2.6 now or waits for #92's
   2.7 adoption.
