@@ -1,12 +1,29 @@
 # Roadmap
 
-Two use cases. Full detail and rationale in
-[`docs/plan/ocpvirt-demo-plan.md`](docs/plan/ocpvirt-demo-plan.md) and
-[`docs/plan/pah-plan.md`](docs/plan/pah-plan.md).
+Three use cases. Full detail and rationale in
+[`docs/plan/ocpvirt-demo-plan.md`](docs/plan/ocpvirt-demo-plan.md),
+[`docs/plan/pah-plan.md`](docs/plan/pah-plan.md) and
+[`docs/plan/network-mcp-plan.md`](docs/plan/network-mcp-plan.md).
 
 Each phase ships two entry points — a Claude Code skill and an AAP job template —
 both driving the same playbook. `pah-sync` is the one documented exception; see
 below.
+
+## Use case 3 — Network MCP servers
+
+AI-assisted development of Cisco, Palo Alto and Aruba use cases. Nothing is built
+yet: three decisions are held open for network SME review, and the implementation
+issues are deliberately unopened until they land — Decisions A and B change what
+the Palo Alto and Aruba issues *are*. See
+[`docs/plan/network-mcp-plan.md`](docs/plan/network-mcp-plan.md).
+
+| | Skill | Playbook | Outcome | Status |
+|---|---|---|---|---|
+| Research and decide | — | — | The vendor MCP landscape, the Red Hat hosting layer, and Decisions A (what PAN-OS and Aruba build), B (where the devices come from) and C (hosting mechanism). Vendor-supplied servers exist for Cisco only. | **In progress** ([#94](https://github.com/ericcames/sales.demos/issues/94)) |
+| Foundation | `sales-demos-mcp-deploy` | `playbooks/mcp_server.yml` | Every server found is stdio-only with no container image, so the pattern is containerize → stdio to streamable HTTP → Route → auth → credentials from the vault. Depends on [#92](https://github.com/ericcames/sales.demos/issues/92). | Not started — blocked on Decision C |
+| Cisco | — | — | Official Meraki and Catalyst Center servers plus DevNet Content Search. No open Decision A; target still gated on B1. | Not started |
+| Palo Alto | — | — | No official PAN-OS server exists — the official Cortex MCP serves SecOps data. Shape depends on Decision A. | Not started — blocked on Decision A |
+| Aruba | — | — | Nothing official exists; the portal-documented server is disclaimed by HPE. Shape depends on Decision A. | Not started — blocked on Decision A |
 
 ## Use case 2 — Private Automation Hub as code
 
