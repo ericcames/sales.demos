@@ -16,21 +16,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   maintenance banner is for the **Cisco Security Cloud Control** lab, which is
   unrelated. **Catalyst Center Always-On v2.3.3.6 is live and launchable**, which
   is exactly the target the Cisco issue needs.
-- **Three always-on sandboxes were found that this plan had not accounted for**,
-  and two of them matter more than the B1 answer does. **Catalyst 8000** and
-  **Catalyst 9000** are always-on IOS-XE targets speaking **SSH, RESTCONF and
-  NETCONF**. The vendor table records that no official IOS/NX-OS MCP server
-  exists; that gap now has live gear behind it, which strengthens A4 for
-  `cisco.ios` (a knowledge server has something real to be checked against) and
-  hands A1 a free credentialed target that needed no sourcing. **ACI Simulator
-  Always-On** (APIC v6) is the third.
-- Also catalogued: **Cisco Modeling Labs** (reservable, full API) is a concrete
-  option for B4's in-cluster simulation, and a reservable **CI/CD pipeline**
-  sandbox bundles GitLab, Ansible, pyATS, CML and Open NX-OS.
+- **Seven always-on sandboxes exist where the plan assumed one.** Beyond Catalyst
+  Center: **Catalyst 8000** and **Catalyst 9000** (SSH, RESTCONF, NETCONF),
+  **IOS XR** (YANG, model-driven programmability), **Network Services
+  Orchestrator**, **SD-WAN 20.18**, and the **ACI Simulator**. The vendor table
+  records that no official IOS/NX-OS MCP server exists; that gap now has live,
+  credentialed, permanently available gear behind it, which strengthens A4 for
+  `cisco.ios` and `cisco.iosxr` and hands A1 targets that needed no sourcing.
+- **Meraki is reservable, not always-on, and that reverses the Cisco plan.** The
+  Cisco issue was framed around Meraki because Cisco's *hosted* MCP server is a
+  Meraki server -- but a reservable sandbox is time-boxed with no stable endpoint,
+  which is a poor fit for a server running continuously in a cluster. **Catalyst
+  Center is the only target pairing an official MCP server with an always-on
+  endpoint**, so it now leads. The order inside the Cisco issue is DevNet Content
+  Search (no target at all), then Catalyst Center, then Meraki.
+- Also catalogued as reservable: **Cisco Modeling Labs** (full API -- the concrete
+  option for B4's in-cluster simulation), **IOS XE on Cat8kv**, **XRd**
+  (containerized IOS-XR), **Identity Services Engine 3.4** -- which explicitly
+  advertises "ISE ansible modules" -- **NSOLAB**, Nexus Dashboard, and a **CI/CD
+  pipeline** sandbox bundling GitLab, Ansible, pyATS, CML and Open NX-OS. ISE
+  advertising Ansible modules, and a sandbox shipping Ansible and pyATS
+  preinstalled, are evidence Cisco already expects this audience.
 - **Cisco is now the only genuinely unblocked vendor** -- vendor-published servers
-  *and* a confirmed target -- rather than merely the one with no open Decision A.
-  One gap remains: **Meraki** was not visible in the portion of the catalog
-  reviewed, so its target is unconfirmed even though its server is official.
+  *and* a confirmed always-on target -- rather than merely the one with no open
+  Decision A.
 
 ### Added -- a third use case, and an options brief rather than a design (#94)
 - `docs/plan/network-mcp-plan.md` plans MCP servers on OpenShift for AI-assisted

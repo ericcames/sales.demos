@@ -227,28 +227,43 @@ stance exactly.
 > **Cisco Security Cloud Control** lab, which is unrelated to anything here.
 > **B1 is a plan, not a candidate.**
 
-Confirmed live and launchable in the self-service catalog:
+**Seven always-on sandboxes** are live and launchable — a far richer set than
+this plan assumed:
 
-| Sandbox | Access | Relevance |
-|---|---|---|
-| **Catalyst Center Always-On v2.3.3.6** | Always-On | The target the Cisco issue needs. Matches Cisco's docs page exactly. |
-| **Catalyst 8000 Always-On** | Always-On | Admin API access to a Catalyst 8000 switch — **SSH, RESTCONF and NETCONF**. |
-| **Catalyst 9000 Always-On** | Always-On | Cat9000v switch, unique credentials per reservation. |
-| **ACI Simulator Always-On** | Always-On | APIC v6. |
-| Catalyst Center Sandbox (2.3.7.11) | Launch appeared disabled | A newer release exists but is not always-on. |
-| Cisco Modeling Labs | Reservable | Network simulation with an HTML5 UI and full API — relevant to **B4**. |
-| CI/CD pipeline for infrastructure automation | Reservable | Bundles GitLab, **Ansible**, **pyATS**, CML and Open NX-OS. |
+| Sandbox | Relevance |
+|---|---|
+| **Catalyst Center Always-On v2.3.3.6** | Has an **official MCP server** (`catc-mcp-oss`). The single best target in the catalog for this work. |
+| **Catalyst 8000 Always-On** | Admin API to a Catalyst 8000 — SSH, RESTCONF, NETCONF. |
+| **Catalyst 9000 Always-On** | Cat9000v switch, unique credentials. |
+| **IOS XR Always-on** | Model-driven programmability, YANG data models. |
+| **Network Services Orchestrator Always-On** | Full NSO API surface. |
+| **SD-WAN 20.18 AlwaysOn** | Newest SD-WAN release. |
+| **ACI Simulator Always-On** | APIC v6. |
 
-**The Catalyst 8000 and 9000 findings change more than B1 does.** They are
-always-on IOS-XE targets speaking RESTCONF and NETCONF, which means the gap noted
-in the vendor table — no official IOS/NX-OS MCP server — now has live gear behind
-it. That strengthens **A4** for `cisco.ios` specifically (a knowledge server has
-something real to be checked against) and gives **A1** a free, credentialed
-target that needed no sourcing at all.
+Reservable, and relevant: **Meraki Sandbox** (a dedicated Meraki org with virtual
+devices), **Cisco Modeling Labs** (topology simulation with a full API — the
+concrete option for **B4**), **IOS XE on Cat8kv** (17.12.02), **XRd** (containerized
+IOS-XR with NETCONF and YANG), **Identity Services Engine 3.4** (explicitly
+advertises "ISE ansible modules"), **NSOLAB**, Nexus Dashboard, and a **CI/CD
+pipeline** sandbox bundling GitLab, Ansible, pyATS, CML and Open NX-OS. The
+Catalyst Center 2.3.7.11 and SD-WAN 20.12 cards showed their Launch control
+disabled.
 
-Still unconfirmed: **Meraki**. It was not visible in the portion of the catalog
-reviewed, so the Meraki MCP server's target remains open even though its server
-is official.
+> **Meraki is reservable, not always-on — and that reverses the Cisco plan.**
+> The Cisco issue was framed around Meraki because Cisco's *hosted* MCP server is
+> a Meraki server. But a reservable sandbox is time-boxed and has no stable
+> endpoint, which is a poor fit for a server running continuously in a cluster.
+> **Catalyst Center is the one target that pairs an official MCP server with an
+> always-on endpoint**, so it should lead. Meraki becomes the second server, on a
+> reserved org, once the pattern works.
+
+**The always-on IOS-XE, IOS-XR and NSO boxes change more than B1 does.** The
+vendor table records that no official IOS/NX-OS MCP server exists — that gap now
+has live, credentialed, permanently available gear behind it. It strengthens
+**A4** for `cisco.ios` and `cisco.iosxr` (a knowledge server has something real
+to be checked against) and hands **A1** targets that needed no sourcing at all.
+Note also that ISE advertising Ansible modules, and a sandbox that ships Ansible
+and pyATS preinstalled, are evidence that Cisco already expects this audience.
 
 **B2 — RHDP catalog items.** Check whether RHDP offers PAN-OS or Aruba items to
 reserve, the way `aap.dailydemo.Panos` already does for Palo Alto. Connection
@@ -292,9 +307,13 @@ server lands here rather than in a vendor issue.
 **Cisco.** Official Meraki and Catalyst Center servers plus DevNet Content
 Search; targets per B1. **The only vendor that is genuinely unblocked** — the
 servers are vendor-published *and* the Catalyst Center always-on sandbox is
-confirmed live (Decision B). It should prove the pattern first. DevNet Content
-Search needs no target at all, which makes it the cheapest thing in this document
-to stand up. The one gap is Meraki, whose sandbox is unconfirmed.
+confirmed live. It should prove the pattern first.
+
+Order within the issue, which the sandbox findings settle: **DevNet Content
+Search** first — it needs no target at all, making it the cheapest thing in this
+document to stand up. Then **Catalyst Center**, the only pairing of an official
+MCP server with an always-on endpoint. Then **Meraki**, whose sandbox is
+reservable and therefore a worse fit for a long-running server.
 
 **Palo Alto.** Shape depends on Decision A; target per Decision B.
 
@@ -332,9 +351,12 @@ Nothing is deployed and no environment is touched by this document. Per
 ## Open items
 
 - **Decisions A, B and C** — the reason #94 is open.
-- ~~Confirm DevNet sandbox availability.~~ **Done 2026-09-02 — B1 confirmed.**
-  Remaining: whether a **Meraki** sandbox exists in the catalog, which was not
-  visible in the portion reviewed.
+- ~~Confirm DevNet sandbox availability.~~ **Done 2026-09-02 — B1 confirmed**,
+  including Meraki, which exists but is reservable rather than always-on.
+- Whether the reservable sandboxes (Meraki, CML, ISE, XRd) are worth the
+  reservation lifecycle at all, given seven always-on boxes need none. A
+  reservation that expires mid-demo is a failure mode the always-on set does not
+  have.
 - Confirm `mcp-gateway` entitlement, not merely catalog presence.
 - Whether the AAP MCP server write path gets proved on 2.6 now or waits for #92's
   2.7 adoption.
