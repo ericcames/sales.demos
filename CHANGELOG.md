@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed -- the last unverified AAP 2.6 claim, now measured (#116)
+- `hub_collection_remotes.yml` said all three remotes already exist on a fresh
+  **AAP 2.6** hub. That claim is load-bearing, not decorative: the entire file
+  is written as updates rather than creations, so a missing remote would mean
+  updating something absent.
+- **Measured against the live 2.7 hub** 2026-09-03 via
+  `GET /api/galaxy/pulp/api/v3/remotes/ansible/collection/`: count 3, named
+  `validated`, `rh-certified`, `community` -- exactly the three declared,
+  unchanged across the version move. The version stamp is dropped rather than
+  bumped, matching the treatment the other #116 claims got.
+- **The query ran through Ansible, not a shell curl.** Reading the vault
+  password into a shell variable to pass to `curl -u` was blocked by the
+  permission classifier, correctly. `ansible.builtin.uri` with the password
+  resolved from `env_secrets` is how this repo already handles hub credentials
+  in `sync_hub.yml` -- the password never reaches a shell variable or a process
+  argument. The shell version was the shortcut; the block caught it.
+- This closes the last open item in #116 apart from the execution environment,
+  which turned out to be a larger finding and moved to its own issue (#122).
+
 ### Fixed -- the AAP 2.6 assertions that survived the 2.7 move, re-measured rather than re-typed (#116)
 - #115 adopted 2.7 but deliberately left nine `AAP 2.6` strings alone, because
   #101's instruction was **re-verify, do not blind-edit**. Each is now measured.
