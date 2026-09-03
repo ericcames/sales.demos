@@ -16,10 +16,17 @@
 #
 # custom_logo is the logo on the AAP SIGN-IN PAGE, shown next to
 # custom_login_info. It does NOT change the masthead after login — that is a
-# bundled UI asset rather than a setting. Verified on AAP 2.6: 44 gateway
-# settings exist and none of them mark the environment post-login. Re-measured
-# in #54 with custom_logo already applied — 26 KB of base64 PNG — and the
-# masthead still rendered the stock lockup. No setting will change that.
+# bundled UI asset rather than a setting. Re-measured in #54 with custom_logo
+# already applied — 26 KB of base64 PNG — and the masthead still rendered the
+# stock lockup. No setting will change that.
+#
+# RE-VERIFIED ON AAP 2.7 (#101), because this file used to assert a count that
+# was measured on 2.6 and is not true here. The live 2.7 gateway on
+# cluster-kbjvc returns 41 settings, not the 44 recorded for 2.6. All 41 were
+# enumerated and none marks the environment post-login, and custom_logo still
+# reads back at 26,714 characters — so the finding held across the version
+# change and only the number moved. That is why the count is no longer quoted:
+# the conclusion is stable, the tally is not.
 #
 # So this is a sign-in-time environment marker. You see which environment you
 # are entering before you touch anything.

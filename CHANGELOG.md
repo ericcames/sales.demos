@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed -- the three "VERIFIED ON AAP 2.6" claims, re-measured on 2.7 (#101)
+- #101 step 3 says **re-verify, do not blind-edit**, the claims 2.7 might
+  invalidate. Measured against the live 2.7 gateway and controller on
+  `cluster-kbjvc`. **Two of the three held; the third was wrong in both files
+  that asserted it.**
+- **The gateway settings count was wrong, and had been wrong before this.**
+  `gateway_settings.yml` recorded 44 settings on 2.6; `make-env-logo.py`
+  attributed 43 to 2.7 from upstream documentation. The live 2.7 gateway returns
+  **41**. All 41 were enumerated by name.
+- **The conclusion those counts supported survived intact** -- none of the 41
+  marks the environment post-login, so `custom_logo` really is a sign-in-time
+  marker and the browser-extension half of the design is still necessary.
+  `custom_logo` also reads back at 26,714 characters, matching the "26 KB of
+  base64 PNG" measured in #54.
+- **So the counts are gone rather than corrected in place.** A number that has
+  now been stated three ways across two versions is the least durable part of
+  the claim, and quoting it invites the next reader to trust the tally over the
+  finding. The finding is what is load-bearing; it is what the comments now say.
+- `controller_settings.yml` **held**: all five keys exist on the 2.7 controller,
+  which exposes 111 settings in total. What was a 2.6-only measurement is now
+  one on both versions.
+- **`aap_target_version` and `available_memory_gb` are deliberately untouched.**
+  They are step 2 of #101 and wait on the probe in #100 -- `available_memory_gb`
+  is the value a hardcoded guess got wrong by roughly 4x, so replacing one guess
+  with another would repeat the mistake this sequencing exists to avoid.
+
 ### Added -- the branch convention, which existed in git log in two shapes and nowhere in CLAUDE.md (#97)
 - `CLAUDE.md` -> *Workflow* documented five conventions and **nothing about
   branches**. The gap surfaced concretely: asked which branch to use for #94, the
