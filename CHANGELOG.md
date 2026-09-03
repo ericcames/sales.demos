@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed -- the AAP 2.6 assertions that survived the 2.7 move, re-measured rather than re-typed (#116)
+- #115 adopted 2.7 but deliberately left nine `AAP 2.6` strings alone, because
+  #101's instruction was **re-verify, do not blind-edit**. Each is now measured.
+- **The load-bearing one holds.** `playbooks/sync_hub.yml` builds
+  `hub_api` from the claim that the gateway fronts Hub by PATH at
+  `/api/galaxy/`. Verified two ways on 2.7: only two Routes exist in the `aap`
+  namespace (`aap`, `aap-mcp`), so there is still no hub route; and the
+  platform's own hub API reports its links rooted at
+  `/api/galaxy/v3/plugin/ansible/content/...` -- the exact path the playbook
+  builds. `/pah-sync` was never broken. Same correction applied to
+  `hub_ee_registries.yml` and `controller_credentials.yml`.
+- **The version stamp is dropped rather than bumped** on those three. The claim
+  has now held across a major platform version; pinning it to one release
+  understates what is known about it.
+- **The `ansible.controller` fallback is still necessary.** Measured against the
+  pinned collections: `ansible.platform 2.7.20260604` ships neither a host nor a
+  group module, while `ansible.controller 4.8.0` ships both. `provision_vm.yml`
+  keeps its deliberate exception to the ansible.platform-over-ansible.controller
+  rule, now dated to 2.7 and flagged for removal whenever that gap closes.
+- `pah-sync`'s skill description said PAH "ships with every AAP 2.6
+  environment". PAH ships with AAP generally, so the version is dropped rather
+  than bumped -- it added nothing and dated badly.
+- **Two items are deliberately unchanged**, and the PR says why: the collection
+  remotes claim needs a credentialed hub API call, and the execution environment
+  turns out to be a larger finding than a stale comment.
+
 ### Changed -- available_memory_gb raised from 14 to the measured 67 (#118)
 - `playbooks/probe_env.yml` measured sandbox on 2026-09-03 and recommended
   **67**: 124.68 GiB allocatable, 49.05 GiB already requested, 75.63 GiB free,

@@ -382,8 +382,17 @@
         # fails the job.
         #
         # ansible.controller, not ansible.platform, and that is not an oversight:
-        # ansible.platform ships NO host or group module. Inventory membership is
-        # still a controller-scoped concern in AAP 2.6.
+        # ansible.platform ships NO host or group module, so inventory
+        # membership remains a controller-scoped concern and this is a
+        # deliberate exception to the ansible.platform-over-ansible.controller
+        # rule in CLAUDE.md.
+        #
+        # RE-CHECKED ON 2.7 AND STILL TRUE (#116). Measured against the pinned
+        # collections 2026-09-03: ansible.platform 2.7.20260604 ships neither
+        # module; ansible.controller 4.8.0 ships both host.py and group.py. The
+        # 2.7 move did not close this gap, so the fallback stays. Re-check when
+        # ansible.platform is next bumped — this is the kind of exception worth
+        # removing the moment it stops being necessary.
         - name: Ensure the Windows group exists, with WinRM connection vars
           ansible.controller.group:
             controller_host: "{{ ocpvirt_aap_url }}"

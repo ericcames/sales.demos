@@ -93,8 +93,21 @@
     hub_collection_remotes: "{{ hub_collection_remotes_all }}"
     hub_collection_repositories: "{{ hub_collection_repositories_all }}"
 
-    # AAP 2.6's gateway fronts Hub by PATH on the same hostname, at /api/galaxy/.
-    # There is no separate hub route — verified on this platform (#35).
+    # The gateway fronts Hub by PATH on the same hostname, at /api/galaxy/.
+    # There is no separate hub route.
+    #
+    # THIS LINE BUILDS A URL FROM THAT CLAIM, so it was re-verified rather than
+    # assumed when the platform moved to 2.7 (#115). Measured 2026-09-03 on
+    # cluster-kbjvc (#116), two ways:
+    #
+    #   - Only two Routes exist in the `aap` namespace, `aap` and `aap-mcp`.
+    #     There is still no hub route to point at.
+    #   - The platform's own hub API reports its links rooted at
+    #     /api/galaxy/v3/plugin/ansible/content/... — the exact path built
+    #     below. The server agrees with the assumption.
+    #
+    # First verified on 2.6 in #35. Holding across a major version is the
+    # reason the version stamp is gone rather than bumped.
     hub_api: "https://{{ aap_hostname }}/api/galaxy/v3/plugin/ansible/content"
 
     # An unwindowed sync of a long-lived certified collection yields 20-50+
