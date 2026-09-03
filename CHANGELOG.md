@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed -- the repo targeted AAP 2.6 while its only live environment ran 2.7 (#101)
+- **Measured, not assumed.** The sandbox gateway returns
+  `{"status":"good","version":"2.7",...}` and the controller behind it reports
+  `4.8.6` (2026-09-03). `inventory/group_vars/aap/main.yml` said
+  `aap_target_version: "2.6"` with a comment asserting the catalog item ships
+  2.6. The catalog item moved; #92's environment arrived on 2.7.
+- **The pin is declarative -- nothing reads it.** Confirmed by grep across the
+  repo and `~/.ansible/collections`: the only occurrence was its own
+  definition. Correcting it changes no behaviour, and it is kept rather than
+  deleted because it records which version the surrounding configuration was
+  measured against.
+- **The controller version is not the platform version**, and conflating them
+  is how the stale pin survived. `4.8.x` is the controller, `2.7` the
+  platform. Both `main.yml` and `CLAUDE.md` now say which is which.
+- **`available_memory_gb` is deliberately still 14.** cluster-kbjvc is larger
+  than the cluster that 14 was measured on, so the default under-provisions --
+  it fails closed in `plan` rather than leaving a VM Pending. It is not
+  re-measured because the honest number is not knowable yet: CNV is not
+  installed here, and its own footprint comes out of the same budget, so any
+  figure taken now is wrong the moment `/ocpvirt-setup` runs. The reasoning is
+  recorded in `terraform/ocpvirt/variables.tf` rather than left implicit.
+- **`CLAUDE.md` names the one sanctioned curl.** No tool on the AAP MCP server
+  returns the platform version -- `config_retrieve` and `status_retrieve` both
+  give the controller version, `gateway-settings_list` gives categories -- so
+  `GET /api/gateway/v1/ping/` is the only source, needs no credential, and is
+  now an explicit exception to the #113 MCP-first rule instead of an
+  undocumented one the issue was already relying on.
+- Step 3 of #101 (re-verifying the 2.6 measurement claims) had already shipped
+  in `37ffbbc`; the issue was simply never updated. No files were re-touched.
+
 ### Added -- the MCP servers are now the default path, not an option (#113)
 - The servers connected but nothing made the agent *use* them. `oc` and `curl`
   were pre-approved in a personal `settings.local.json` while no MCP tool was,
