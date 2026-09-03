@@ -142,23 +142,96 @@ kubeconfig that does not exist yet. The alternative was following whatever
 `~/.kube/config` happens to point at, which trades a visible, self-explaining
 failure for a silent, wrong-environment success. The visible failure is better.
 
-## Still to do — the AAP MCP server
+## The AAP MCP server — the other shape
 
-Not built yet. The research is done and recorded in #102:
+The OpenShift server is stdio and needs no hosting. The AAP one **runs in the
+cluster** and is reached over HTTPS, because it is a component of the platform
+rather than a client-side tool. `playbooks/mcp_server.yml` deploys it, and
+`setup.yml` runs that as stage 3 of 4, so a freshly built environment arrives
+with it already on.
 
-- The operator owns a **typed** `AnsibleMCPServer` CRD at
-  `mcpserver.ansible.com/v1alpha1` — 31 validated spec fields. Use it rather
-  than the `spec.mcp` passthrough on the AAP CR, which is
-  `x-kubernetes-preserve-unknown-fields` and will accept a misspelled key
-  silently.
-- `allow_write_operations` is the write toggle. Per Red Hat's own docs,
-  **changing it after deployment requires deleting and recreating the CR** — it
-  is not idempotent in the usual sense.
-- Authentication is an AAP OAuth 2 token that *inherits the user's permissions*,
-  which reopens the rotating-credential question above. The proposed answer is
-  the same one used here: generate it at skill run time into a gitignored file.
-- `service_type` offers `LoadBalancer` and `NodePort`. Both are dead on RHDP
-  (#29). Pin `Route` explicitly rather than trusting the default.
+### Use the typed CRD, not the documented shortcut
+
+Red Hat's docs tell you to add an `mcp:` block to the AAP CR. That works and it
+is the wrong choice here. Measured on the live 2.7 CRD:
+
+```json
+spec.mcp -> { "type": "object", "x-kubernetes-preserve-unknown-fields": true }
+```
+
+No sub-properties, so **the API server accepts any key under it — including a
+misspelling — and reports success.** A typo yields a green run and no server.
+
+The operator also owns a properly typed CRD, which is what `spec.mcp` produces
+anyway: `ansiblemcpservers.mcpserver.ansible.com`, 31 validated fields. Applying
+that directly means a bad field name is rejected at apply time. It also avoids
+editing the CR that governs controller, hub and EDA on a node AAP shares with
+everything else.
+
+`service_type` is pinned to `Route` rather than defaulted: the enum also offers
+`LoadBalancer` and `NodePort`, and both are dead on RHDP (#29).
+
+### The one genuine trap
+
+Red Hat's documentation, verbatim:
+
+> "If you changed the permissions of the MCP server after it was created and
+> deployed, you must delete the `AnsibleMCPServer` custom resource and recreate
+> it."
+
+So `allow_write_operations` is **not idempotent in the usual sense** — a plain
+apply that flips it leaves a server still enforcing the old permission while the
+CR claims the new one. `mcp_server.yml` reads the live object and deletes it when
+the flag differs. That is why the playbook looks more complicated than an apply,
+and it should not be simplified.
+
+The write posture itself is per-environment and **deliberately not defaulted** —
+the playbook refuses to run without it, because a silent default is the wrong way
+to decide whether an agent can POST, PATCH and DELETE:
+
+| Environment | `aap_mcp_allow_write_operations` |
+|---|---|
+| `sandbox` | `true` |
+| `demo` | `false` |
+
+### What it exposes
+
+Measured on a working sandbox: **140 tools**, including
+`job_templates_launch_create`, `workflow_job_templates_launch_create` and
+`jobs_stdout_retrieve` — precisely steps 4 and 5 of the demo stories in #93 and
+#99.
+
+**This is not an ungoverned agent, and the distinction is worth stating.** #93's
+thesis is *"the MCP server reads; every write goes through an Ansible job
+template."* Launching a job template through the AAP MCP server **is** that
+governed path: versioned, surveyed, RBAC-gated, and logged where the audit trail
+is the AAP job output rather than a chat log. Write access adds the ability to
+launch the governed thing, not to bypass it.
+
+### Authentication, and an honest exception
+
+The client authenticates with an AAP OAuth 2 token. Red Hat's docs: *"The AI
+tool will inherit the user's permissions for API token-based authentication."*
+So the token, not just `allow_write_operations`, bounds what the agent can do —
+creating it as `admin` gives the agent admin.
+
+That token is **not** in `.mcp.json`, which is committed. It is registered with
+`claude mcp add --scope local`, writing to the operator's own config. And it is
+a documented exception to `CLAUDE.md`'s rule that a created token must be
+deleted in an `always:` block — an MCP client needs a durable credential, so
+cleanup would destroy the thing it was made for. Three things keep that honest:
+no playbook creates it, it is never committed, and it is the one token in this
+repo you retire by hand.
+
+Tokens moved in 2.7, incidentally: `/api/controller/v2/tokens/` returns **404**,
+and the gateway owns them at `/api/gateway/v1/tokens/`.
+
+### A Route is not proof
+
+The first live run returned **503** on a freshly admitted Route — the router had
+a backend with nothing behind it yet. `mcp_server.yml` now waits for the
+Deployment to report a ready replica, not merely for the Route to exist. A 503
+shortly after deploy is normal and means "wait", not "misconfigured".
 
 ## Verification
 

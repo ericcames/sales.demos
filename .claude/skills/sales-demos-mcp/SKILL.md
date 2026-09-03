@@ -1,6 +1,6 @@
 ---
 name: sales-demos-mcp
-description: "Connect Claude Code directly to this repo's OpenShift clusters over MCP, so asking the cluster a question costs a tool call instead of a hand-rolled curl plus a vault lookup. Generates a per-environment kubeconfig from connection.yml and the vault, then verifies the server answers. TRIGGER when: the user asks to set up, connect, refresh or fix the MCP servers, says an openshift-sandbox or openshift-demo MCP server is failing or shows no tools, or has just repointed an environment or rotated a token. SKIP: if the user wants to install OpenShift Virtualization or apply AAP configuration — that is ocpvirt-setup — or is asking about the AAP MCP server, which is issue #102 and not built yet."
+description: "Connect Claude Code directly to this repo's OpenShift clusters over MCP, so asking the cluster a question costs a tool call instead of a hand-rolled curl plus a vault lookup. Generates a per-environment kubeconfig from connection.yml and the vault, then verifies the server answers. TRIGGER when: the user asks to set up, connect, refresh or fix the MCP servers, says an openshift-sandbox or openshift-demo MCP server is failing or shows no tools, or has just repointed an environment or rotated a token. SKIP: if the user wants to install OpenShift Virtualization or apply AAP configuration — that is ocpvirt-setup — or wants to deploy the AAP MCP server into a cluster, which is playbooks/mcp_server.yml run by ocpvirt-setup."
 ---
 
 # sales-demos-mcp
@@ -150,6 +150,78 @@ Finally, confirm the client sees them:
 claude mcp list
 ```
 
+## The AAP MCP server — registered locally, deployed by Phase 0
+
+The OpenShift servers above are stdio and need no hosting. The AAP MCP server is
+the other shape: it **runs in the cluster** and is reached over HTTPS, because
+it is a component of the platform rather than a client-side tool.
+
+`playbooks/mcp_server.yml` deploys it, and `setup.yml` runs that on every
+environment, so a freshly built environment arrives with it already on. Nothing
+to do here for the server itself.
+
+What is left is the client half, and it is **deliberately not in `.mcp.json`**:
+it needs a bearer token, and `.mcp.json` is committed. Register it in your own
+local config instead.
+
+```bash
+ENV=${ENV:-sandbox}
+VAULT_ID="sales.demos@$HOME/secrets/.vault_pass_sales_demos"
+
+AAP_HOST=$(ansible -i inventory --limit "$ENV" aap -m debug --vault-id "$VAULT_ID" \
+  -a 'msg={{ aap_hostname }}' 2>/dev/null | sed -n 's/.*"msg": "\(.*\)"/\1/p')
+AAP_PASS=$(ansible-vault view playbooks/group_vars/all/secrets.yml --vault-id "$VAULT_ID" 2>/dev/null \
+  | ENV="$ENV" python3 -c 'import sys,yaml,os; print(yaml.safe_load(sys.stdin)["env_secrets"][os.environ["ENV"]]["aap_password"])')
+
+# Tokens moved in 2.7: /api/controller/v2/tokens/ is 404, the gateway owns them.
+TOKEN=$(curl -sk -u "admin:$AAP_PASS" -X POST "https://$AAP_HOST/api/gateway/v1/tokens/" \
+  -H 'Content-Type: application/json' \
+  -d "{\"description\":\"sales.demos MCP ($ENV)\",\"scope\":\"write\"}" \
+  | python3 -c 'import sys,json; print(json.load(sys.stdin)["token"])')
+
+MCP_HOST=$(KUBECONFIG=$PWD/.kube/$ENV.kubeconfig oc get route aap-mcp -n aap -o jsonpath='{.spec.host}')
+
+claude mcp add --transport http --scope local "aap-$ENV" "https://$MCP_HOST/mcp" \
+  --header "Authorization: Bearer $TOKEN"
+```
+
+**`--scope local` is the load-bearing flag.** It writes to your own config, not
+to the committed `.mcp.json`, so the token never becomes a tracked file. That is
+the same reasoning that keeps the Red Hat offline token (#22) and the PAH API
+token (#68) out of the vault: a rotating credential should have exactly one
+copy, in the place that issued it.
+
+Two consequences to be honest about:
+
+- **This token does not clean itself up.** `CLAUDE.md` requires playbooks that
+  create tokens to delete them in an `always:` block, and this one deliberately
+  survives — an MCP client needs a durable credential. It is therefore the one
+  token in this repo you must retire by hand. List and delete them with:
+  ```bash
+  curl -sk -u "admin:$AAP_PASS" "https://$AAP_HOST/api/gateway/v1/tokens/"
+  curl -sk -u "admin:$AAP_PASS" -X DELETE "https://$AAP_HOST/api/gateway/v1/tokens/<id>/"
+  ```
+- **The token inherits your permissions.** Red Hat's docs: *"The AI tool will
+  inherit the user's permissions for API token-based authentication."* Creating
+  it as `admin` gives the agent admin. Use `scope=read` on anything you care
+  about — the environment's own `allow_write_operations` is a second gate, not
+  the only one.
+
+Verify by asking the server, as ever:
+
+```bash
+curl -sk -o /dev/null -w '%{http_code}\n' -X POST "https://$MCP_HOST/mcp" \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -H 'Accept: application/json, text/event-stream' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"verify","version":"0"}}}'
+```
+
+`200` and a body naming `"serverInfo":{"name":"aap"}` is the pass. **A `503` means
+the Route is admitted but the pod is not serving yet** — wait and retry rather
+than assuming a misconfiguration. Measured on a working sandbox: **140 tools**,
+including `job_templates_launch_create`, `workflow_job_templates_launch_create`
+and `jobs_stdout_retrieve`.
+
 ## If it fails
 
 | Symptom | Cause | Fix |
@@ -159,6 +231,9 @@ claude mcp list
 | `could not resolve <env> token` | Vault password wrong, or `env_secrets.<env>` missing | `/sales-demos-first-time` step 2 |
 | `dial tcp: no such host` | The RHDP environment has expired | Check `connection.yml` points at a live cluster — both had expired once before (#101) |
 | Tools present but every call fails | Kubeconfig points at a different cluster than you think | `oc whoami --show-server` with `KUBECONFIG` set |
+| AAP MCP returns `503` | Route admitted, pod not serving yet | Wait — `oc get deploy aap-mcp -n aap`; this is normal for ~60s after deploy |
+| AAP MCP returns `401` | Token expired or deleted | Re-create it and re-run `claude mcp add --scope local` |
+| AAP MCP write tools missing | `aap_mcp_allow_write_operations` is false for this environment | Intentional on `demo`. Changing it needs a delete-and-recreate — re-run `mcp_server.yml`, which handles that |
 | `npx: command not found` | Node not installed | See preflight; a standalone binary is the alternative |
 
 Never paste a live token into a commit message, issue, or PR. This repo is

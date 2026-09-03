@@ -16,7 +16,11 @@
 #                        the execution environment mirrored into this
 #                        environment's Private Automation Hub, and (#68) PAH's
 #                        own collection remotes and repositories.
-#   3. prepare_env.yml   Prove it. Checks the boot source, the storage clone
+#   3. mcp_server.yml    Deploy the AAP MCP server, so a new environment arrives
+#                        with it already on rather than needing a second visit.
+#                        Its write posture comes from the environment's own
+#                        group_vars and is deliberately not defaulted (#102).
+#   4. prepare_env.yml   Prove it. Checks the boot source, the storage clone
 #                        strategy and ingress, then builds one real VM, times
 #                        it, and destroys it.
 #
@@ -74,5 +78,8 @@
 - name: Phase 0 (2/3) — apply the AAP configuration
   ansible.builtin.import_playbook: config.yml
 
-- name: Phase 0 (3/3) — prove the environment is demo-ready
+- name: Phase 0 (3/4) — deploy the AAP MCP server
+  ansible.builtin.import_playbook: mcp_server.yml
+
+- name: Phase 0 (4/4) — prove the environment is demo-ready
   ansible.builtin.import_playbook: prepare_env.yml

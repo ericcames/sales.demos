@@ -1,0 +1,16 @@
+---
+# ===========================================================================
+# group_vars/demo/mcp.yml — the AAP MCP server's write posture on demo
+# ===========================================================================
+# FALSE, because this is the environment customers watch. The reasoning, the
+# #93 governance note, and the delete-and-recreate requirement are all in
+# group_vars/sandbox/mcp.yml — read that one first; this file is the other half
+# of a deliberate asymmetry, not an oversight.
+#
+# The matching restriction on the OpenShift side is the `--read-only` flag on
+# the `openshift-demo` server in .mcp.json. Both halves should move together:
+# relaxing one and not the other gives a false sense of what this environment
+# allows.
+# ===========================================================================
+
+aap_mcp_allow_write_operations: false

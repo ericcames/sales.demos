@@ -1,0 +1,30 @@
+---
+# ===========================================================================
+# group_vars/sandbox/mcp.yml — the AAP MCP server's write posture on sandbox
+# ===========================================================================
+# TRUE HERE, FALSE ON demo, AND THE ASYMMETRY IS THE POINT. sandbox is the
+# environment you break; demo is the one customers watch. playbooks/mcp_server.yml
+# refuses to run if this is undefined rather than picking a default, because a
+# silent default is the wrong way to decide whether an AI agent can POST, PATCH
+# and DELETE through AAP.
+#
+# The CRD describes the field as: "Enable tools that support modification and
+# data changes (using POST, DELETE, and PATCH methods)."
+#
+# THIS DOES NOT MAKE THE AGENT UNGOVERNED, and that distinction is worth being
+# precise about. #93's thesis is "the MCP server reads; every write goes through
+# an Ansible job template." Launching a job template through the AAP MCP server
+# IS that governed path — the work is versioned, surveyed, RBAC-gated and
+# logged, and the audit trail lives in the AAP job output rather than a chat log.
+# What write access adds is the ability to launch it, not the ability to bypass
+# it.
+#
+# CHANGING THIS IS NOT A NORMAL RE-APPLY. Red Hat's documentation: "If you
+# changed the permissions of the MCP server after it was created and deployed,
+# you must delete the AnsibleMCPServer custom resource and recreate it."
+# mcp_server.yml detects the change and deletes first. Flipping this value and
+# running a plain `oc apply` yourself would leave a server still enforcing the
+# old permission while the CR claims the new one.
+# ===========================================================================
+
+aap_mcp_allow_write_operations: true
