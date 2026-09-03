@@ -14,6 +14,48 @@ paying a `curl` + vault read + JSON parse every time we need to ask a cluster a
 question. That cost is real and this repo pays it constantly — the work in #101
 alone hand-rolled that sequence a dozen times.
 
+## Measure the environment first
+
+Everything below assumes the cluster can carry it. That assumption was never
+checked, and when it finally was, the repo's own figure turned out to be off by
+five times.
+
+`terraform/ocpvirt/variables.tf` declared `available_memory_gb = 14`. Measured
+on sandbox 2026-09-03 with `playbooks/probe_env.yml`:
+
+| | Value |
+|---|---|
+| Allocatable | 31.5 vCPU / 124.68 GiB |
+| Requested | 14.5 vCPU / 49.05 GiB |
+| **Free by requests** | **17.0 vCPU / 75.63 GiB** |
+| Free by live usage | 96.42 GiB — informational |
+| Recommended `available_memory_gb` | **67** |
+
+**Nothing reported the drift, and nothing could have.** The budget guard in
+`locals.tf` fails closed: a too-small figure does not error, it silently refuses
+tiers the cluster could run. The demo gets smaller and no one learns why. That
+is the failure mode a probe exists to catch — not a crash, a quiet shrinking.
+
+**Requests are what schedule, not usage.** The scheduler places pods and KubeVirt
+VMs against requests; live consumption is irrelevant to whether the next one
+fits. The 21 GiB gap between the two rows above is the whole reason both are
+printed. Optimising against live usage would suggest 96 GiB of room that does
+not exist.
+
+Against that measurement the add-ons are not close to a constraint — the four
+not-yet-installed candidates in `inventory/group_vars/aap/probe_workloads.yml`
+total an estimated 19.7 GiB, leaving ~56 GiB. **Those are estimates**, each
+tagged with a `source:` string saying so, because a guessed number and a
+measured one look identical once written down — which is exactly how `14`
+survived. Replace each as its add-on gets installed.
+
+Both add-on operators this plan depends on were confirmed present on the
+cluster's OperatorHub by the same run: `mcp-gateway` and
+`automation-orchestrator-operator`.
+
+Re-run it on any new or resized environment: `sales-demos-probe-env`. It is
+strictly read-only, so it is safe mid-demo.
+
 ## What an MCP server actually is
 
 Strip the branding and it is unremarkable: **a process that advertises a list of
