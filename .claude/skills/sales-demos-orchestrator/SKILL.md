@@ -53,6 +53,44 @@ hand live inside something another operator recreates at will. Temporal is
 write-heavy, and putting that load on the database the whole demo platform runs
 on trades a working AAP for a working AO.
 
+## Logging in
+
+**Username `admin`, password = this environment's AAP admin password.** The
+playbook seeds it from `env_secrets[<env>].aap_password` so AO and AAP are one
+credential rather than two (#143).
+
+That is **seed-time only**. The CRD is explicit: the secret "is used only during
+initial database seeding to create the admin user. Once the admin user exists,
+this secret is ignored — password changes must be made via the application API
+or CLI." So it fixes every environment built from now on, and does nothing to
+one that already exists.
+
+On an environment built **before** #143, the operator generated a random
+password instead. Retrieve it with:
+
+```bash
+oc get secret ao-initial-admin-password -n automation-orchestrator \
+  -o jsonpath='{.data.password}' | base64 -d
+```
+
+To change it afterwards, it is an API call, not a redeploy:
+
+```bash
+TOK=$(curl -sk -X POST "https://$AO_HOST/api/v1/auth/login" \
+  -H 'Content-Type: application/json' \
+  -d '{"username":"admin","password":"<current>"}' | python3 -c 'import json,sys;print(json.load(sys.stdin)["access_token"])')
+AOUID=$(curl -sk "https://$AO_HOST/api/v1/users/me" -H "Authorization: Bearer $TOK" \
+  | python3 -c 'import json,sys;print(json.load(sys.stdin)["id"])')
+curl -sk -X PATCH "https://$AO_HOST/api/v1/users/$AOUID" \
+  -H "Authorization: Bearer $TOK" -H 'Content-Type: application/json' \
+  -d '{"password":"<new>"}'
+```
+
+`UID` is a readonly builtin in bash — name the variable something else, as
+above, or the substitution silently uses your Unix uid and the PATCH 422s.
+
+**Never paste the password into an issue, PR, or commit.** This repo is public.
+
 ## Preflight Check
 
 Run these before doing anything else. Every one must pass.

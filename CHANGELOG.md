@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed -- Automation Orchestrator's admin password is now AAP's (#143)
+- `install_ao.yml` seeds `spec.secrets.initialAdminPasswordSecretRef` from
+  `env_secrets[<env>].aap_password`, so **AO and AAP are one credential** rather
+  than two. Before this the operator generated a random password that had to be
+  dug out of `ao-initial-admin-password` in the cluster -- different and
+  unpredictable in every environment.
+- **Seed-time only, and deliberately so.** The CRD says the secret "is used only
+  during initial database seeding to create the admin user. Once the admin user
+  exists, this secret is ignored." So it fixes every future environment and
+  changes nothing on `sandbox`, whose admin already existed and had been
+  updated by hand to the same value.
+- **The playbook does NOT call the password-change API on every run**, and that
+  is a decision rather than an omission: doing so would turn an idempotent
+  install into something that rewrites a credential on a live demo platform on
+  every reconcile, and would fight anyone who changed it on purpose. Changing an
+  existing instance's password is an API operation, documented in the skill.
+- Verified: `changed=0` on a second run, AO still `Ready=True / Degraded=False`,
+  and the AAP admin password still authenticates against `/api/v1/auth/login`.
+
+
 ### Added -- Automation Orchestrator installs on every build, on its own database (#141)
 - **`playbooks/install_ao.yml` + `/sales-demos-orchestrator` + a job template.**
   #108 established that the operator installs and all five product images pull,
