@@ -33,6 +33,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   is the value a hardcoded guess got wrong by roughly 4x, so replacing one guess
   with another would repeat the mistake this sequencing exists to avoid.
 
+### Changed -- `sandbox` repointed at the live cluster, because both environments had expired (#101)
+- **Both environments this repo points at were dead**, and nothing in the tree
+  said so. `api.cluster-k59xk-1` (`sandbox`) and `api.cluster-xcvjx-1` (`demo`)
+  both refused connections; the local `~/.kube/config` still pointed at the
+  former. The repo had **zero runnable environments**, which is a state every
+  playbook here fails in identically and unhelpfully -- a connection error, not a
+  message saying the cluster is gone.
+- `sandbox` now points at `cluster-kbjvc`, the AAP 2.7 environment measured in
+  #92 and confirmed live: the API answers 200 on kubelet v1.33.13, and AAP
+  reports `{"status":"good","version":"2.7","db_connected":true}`.
+- Three values in `inventory/group_vars/sandbox/connection.yml`, plus the two
+  `env_secrets.sandbox` keys in the vault. **Note the new cluster has no `-1`
+  suffix** -- every RHDP environment so far has carried one, so this is the kind
+  of detail that gets pattern-matched wrong.
+- `openshift_apps_domain` was not assumed from the API hostname. The AAP route at
+  `aap-aap.apps.cluster-kbjvc.dyn.redhatworkshops.io` answering 200 is itself
+  proof of the ingress domain, and it was then confirmed against
+  `oc get ingresses.config.openshift.io cluster`.
+- **`demo` is deliberately left pointing at a dead cluster.** Repointing it needs
+  a demo-purposed RHDP environment, not this one, and quietly aiming both
+  environments at the same box would erase the distinction `--limit` exists to
+  enforce.
+- **This makes the cluster reachable, not demo-ready.** CNV is not installed on
+  `cluster-kbjvc` -- no `kubevirt.io` API group, no `devices.kubevirt.io/kvm` --
+  so `/ocpvirt-setup` still has to run before any VM phase works. Stated here
+  because "the repoint is merged" reads like "the demo works", and it does not.
+- The 2.7 adoption proper -- `aap_target_version`, `available_memory_gb`, and
+  re-verifying the three "VERIFIED ON AAP 2.6" claims -- is the rest of #101 and
+  waits on the probe in #100, so that the memory budget is a measured number
+  rather than a second folk figure.
+
 ### Added -- the branch convention, which existed in git log in two shapes and nowhere in CLAUDE.md (#97)
 - `CLAUDE.md` -> *Workflow* documented five conventions and **nothing about
   branches**. The gap surfaced concretely: asked which branch to use for #94, the
