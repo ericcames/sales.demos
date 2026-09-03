@@ -59,14 +59,32 @@ probe_workloads:
       installed here, so nothing about this figure is measured. Treat it as a
       placeholder that says "small", not as a number.
 
-  - name: "Automation Orchestrator (automation-orchestrator-operator)"
+  - name: "Automation Orchestrator operator (controller-manager only)"
+    installed: true
+    cpu: 0.01
+    memory: 0.0625
+    source: >-
+      MEASURED on sandbox/cluster-kbjvc 2026-09-03 by #108, read back from the
+      pod: one `manager` container requesting cpu 10m / memory 64Mi. Confirmed
+      independently by probe_env.yml before and after the install, which moved
+      by +0.01 vCPU / +0.07 GiB. It replaces an estimate of 2.0 / 4.0 — about
+      64x the memory, and this file's own comment already called it the least
+      trustworthy figure here. THIS IS THE OPERATOR ALONE, not a running
+      Automation Orchestrator; that is the entry below.
+
+  - name: "Automation Orchestrator instance (AutomationOrchestrator CR)"
     cpu: 2.0
     memory: 4.0
     source: >-
-      ESTIMATE, and the least trustworthy in this file. Offered on
-      OperatorHub (confirmed 2026-09-03) but #108 has not yet established
-      whether it is even entitled, let alone what it costs. If it turns out
-      to be a multi-pod install this could be several times larger.
+      ESTIMATE, and unmeasurable here for now. The operator above is installed,
+      but no instance is running: the CRD requires spec.postgres with a host and
+      two distinct databases (backend and Temporal) and offers no embedded
+      option, so an instance cannot be stood up on RHDP without provisioning
+      PostgreSQL first (#108). The figure is a placeholder for backend +
+      temporal + UI + redis and is carried over from the old combined estimate.
+      It is kept as a SEPARATE candidate on purpose: folding it into the
+      measured operator above would let the part that actually costs memory
+      vanish from this file the moment the operator was marked installed.
 
   - name: "AAP self-service portal (aap-portal namespace)"
     cpu: 1.0
