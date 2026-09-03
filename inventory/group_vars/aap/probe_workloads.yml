@@ -72,19 +72,20 @@ probe_workloads:
       trustworthy figure here. THIS IS THE OPERATOR ALONE, not a running
       Automation Orchestrator; that is the entry below.
 
-  - name: "Automation Orchestrator instance (AutomationOrchestrator CR)"
-    cpu: 2.0
-    memory: 4.0
+  - name: "Automation Orchestrator instance + CloudNativePG database"
+    installed: true
+    cpu: 1.91
+    memory: 2.47
     source: >-
-      ESTIMATE, and unmeasurable here for now. The operator above is installed,
-      but no instance is running: the CRD requires spec.postgres with a host and
-      two distinct databases (backend and Temporal) and offers no embedded
-      option, so an instance cannot be stood up on RHDP without provisioning
-      PostgreSQL first (#108). The figure is a placeholder for backend +
-      temporal + UI + redis and is carried over from the old combined estimate.
-      It is kept as a SEPARATE candidate on purpose: folding it into the
-      measured operator above would let the part that actually costs memory
-      vanish from this file the moment the operator was marked installed.
+      MEASURED on sandbox/cluster-kbjvc 2026-09-03 by #141, which installed it
+      for real: 9 AO pods (backend x2, UI x2, worker x2, background-worker,
+      temporal, redis) at 1.80 vCPU / 1.91 GiB, plus one CloudNativePG
+      PostgreSQL instance at 0.10 vCPU / 0.50 GiB. Confirmed by probe_env.yml
+      either side of the install, which moved 15.00 -> 16.91 vCPU and
+      50.30 -> 52.77 GiB requested. It replaces a 2.0 / 4.0 placeholder, and it
+      is why available_memory_gb went 67 -> 63. Storage is a separate 10Gi PVC
+      on the default StorageClass and is not counted here, which measures
+      memory rather than disk.
 
   - name: "AAP self-service portal (aap-portal namespace)"
     cpu: 1.0

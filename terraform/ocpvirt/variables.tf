@@ -94,12 +94,19 @@ variable "os_type" {
 # re-run the probe. `sales-demos-probe-env` is read-only and safe mid-demo, and
 # it prints the recommendation beside whatever this default currently says.
 # Re-run it after installing any platform add-on — the candidates in
-# inventory/group_vars/aap/probe_workloads.yml total an estimated 7 GiB and
-# come out of this budget.
+# inventory/group_vars/aap/probe_workloads.yml come out of this budget.
+#
+# 67 -> 63 IS EXACTLY THAT HAPPENING (#141). Automation Orchestrator and its
+# CloudNativePG database now install on every build, and they take 1.91 vCPU /
+# 2.47 GiB of requests with them — measured by probe_env.yml either side of the
+# install, 50.30 -> 52.77 GiB requested. Overstating this budget is the
+# dangerous direction: the precondition in locals.tf fails CLOSED, so a figure
+# that is too small merely refuses tiers the cluster could run, while one that
+# is too large admits a plan that will not schedule.
 variable "available_memory_gb" {
-  description = "Guest memory budget in GiB for this cluster. Measured by playbooks/probe_env.yml on sandbox 2026-09-03; re-run sales-demos-probe-env rather than hand-adjusting (#118)."
+  description = "Guest memory budget in GiB for this cluster. Measured by playbooks/probe_env.yml on sandbox 2026-09-03 with Automation Orchestrator installed; re-run sales-demos-probe-env rather than hand-adjusting (#118, #141)."
   type        = number
-  default     = 67
+  default     = 63
 }
 
 variable "vm_memory_overhead_mb" {
