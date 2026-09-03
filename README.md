@@ -142,7 +142,16 @@ usernames, namespaces — lives in the committed plaintext
 editing that environment's `connection.yml` plus two keys in the vault.
 
 `secrets.yml.example` is the only `.example` file in the repo, and shows the
-shape of the real one.
+shape of the real one. **It is a contract, not a courtesy**, and CI enforces
+it: `utilities/check-secrets-example.py` finds every variable the code reads
+bare and nothing defines — those can only come from the vault — and fails if
+one is not declared here. It also fails on a key nothing reads, and on a
+credential added to one environment's `env_secrets` but not the other.
+
+That check exists because the example had already drifted: `rhsm_org_id` and
+`rhsm_activation_key` are asserted by `playbooks/roles/linux_register` and
+were missing from it, so a secrets file built from the example passed every
+preflight and then failed Phase 4 on guest registration (#128).
 
 **The Automation Hub token is deliberately not in the vault.** `~/.ansible.cfg`
 already holds it and is the authoritative copy — it is what

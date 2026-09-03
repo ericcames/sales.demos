@@ -51,6 +51,24 @@ jobs:
         # the end of a long demo build.
         run: bash utilities/check-no-secrets.sh
 
+  secrets-example-sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - run: pip install PyYAML
+      - name: secrets.yml.example declares every key the code reads
+        # The real secrets.yml is vault-encrypted, so CI can never diff the two.
+        # This compares the example against the variables the code reads bare and
+        # nothing defines — which can only come from the vault. Nothing checked
+        # this before #128, which is how rhsm_org_id and rhsm_activation_key came
+        # to be asserted by playbooks/roles/linux_register while the example never
+        # mentioned them: a secrets file built from the example passed every
+        # preflight and failed Phase 4 in front of an audience.
+        run: python3 utilities/check-secrets-example.py
+
   generated-files:
     runs-on: ubuntu-latest
     steps:
