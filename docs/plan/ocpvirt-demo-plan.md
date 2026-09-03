@@ -26,10 +26,20 @@ throwaway debug pod to check for hardware virtualization.
 
 1. **Single node ⇒ no live migration.** Drop it from the demo narrative. Everything else
    (VM lifecycle, snapshots, console, hotplug) works.
-2. **~~~35 GB RAM is the real budget.~~ Corrected in #2: ~14 GiB.** The 35 GB figure was
-   measured *before* CNV was installed; CNV's own components now run on the node, leaving
-   **~14.2 GiB free of 61.7 GiB** — and that moves as AAP and CNV pods come and go. Sizing
-   tiers must fit inside that, which is why `large` is 6 GiB. See *Sizing design*.
+2. **~~~35 GB RAM is the real budget.~~ ~~Corrected in #2: ~14 GiB.~~ Corrected again in
+   #118: ~75 GiB.** Each correction was honest when written, and the entries are kept
+   rather than overwritten because the pattern is the point — this number has now been
+   wrong twice, in both directions, and each time it read as settled fact.
+   - **35 GB** was measured *before* CNV was installed.
+   - **~14.2 GiB of 61.7 GiB** was measured after CNV, on the original cluster, and is
+     why `large` is 6 GiB.
+   - **75.63 GiB free of 124.68 GiB** was measured by `playbooks/probe_env.yml` on
+     sandbox/`cluster-kbjvc` 2026-09-03 and cross-checked against `oc describe node`.
+     The environment itself changed underneath the figure.
+
+   The durable fix is not a better number, it is `sales-demos-probe-env`: read-only,
+   safe mid-demo, and it prints what the cluster has rather than what a document
+   remembers. See *Sizing design*.
 3. **No Windows boot source.** CNV ships RHEL/Fedora DataSources; Red Hat cannot
    redistribute Windows. Build a golden image once, publish it, clone thereafter.
 4. **AAP is co-resident on the only node.** A standard CNV install does *not* reboot the node
@@ -208,8 +218,8 @@ contract shared with the AAP survey and the skill, so they must not promise memo
 does not give.
 
 A `terraform plan` precondition enforces the budget against `available_memory_gb` (default
-14), so an over-budget request fails in the plan instead of leaving a VM `Pending` with an
-`Insufficient memory` event while Terraform reports success.
+67, measured by the probe — #118), so an over-budget request fails in the plan instead of
+leaving a VM `Pending` with an `Insufficient memory` event while Terraform reports success.
 
 Windows uses the same tiers with `preference: windows.2k22` and a 60 Gi disk minimum.
 

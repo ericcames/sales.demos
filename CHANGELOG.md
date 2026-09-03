@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed -- available_memory_gb raised from 14 to the measured 67 (#118)
+- `playbooks/probe_env.yml` measured sandbox on 2026-09-03 and recommended
+  **67**: 124.68 GiB allocatable, 49.05 GiB already requested, 75.63 GiB free,
+  less an 8 GiB safety margin. Cross-checked against `oc describe node`.
+- **This unblocks nothing today, and that is worth stating plainly.** The
+  largest shipped request is `os_type=both` at `large` -- 2 VMs x 6 GiB plus
+  350 MiB overhead each, about 12.7 GiB -- which passed under 14 just as it
+  passes under 67. `variables.tf` already said no shipped combination trips the
+  guard. This makes the safety net *accurate* rather than arbitrary, so that
+  when it does bind it binds on a real number.
+- **The probe's number is used as emitted.** Shaving it to reserve room for the
+  add-ons in `probe_workloads.yml` was considered and rejected: shipping a probe
+  and then not trusting its output one commit later is how hand-adjusted figures
+  start. The workflow is install an add-on, re-run the probe, take the new
+  number.
+- **The 14 had leaked into six documents**, all now corrected: `README.md`,
+  `ROADMAP.md`, `docs/demos/openshift-virtualization/architecture.md`,
+  `docs/plan/ocpvirt-demo-plan.md`, and the `controller_schedules.yml` comment
+  in both environments.
+- **The overnight-teardown rationale was rewritten, not deleted.** Both
+  `controller_schedules.yml` files justified the schedule by arguing memory
+  headroom was scarce. At 75 GiB free that argument no longer holds, but the
+  schedule is still right for a different reason -- RHDP environments are
+  metered and reclaimed, so a VM running overnight burns quota -- and #92's
+  add-ons come out of the same budget. Capacity being comfortable today is not
+  a guarantee, which argues for keeping the teardown.
+- **`ocpvirt-demo-plan.md` gets a third correction entry rather than an edit.**
+  That line already recorded one correction (35 GB -> ~14 GiB in #2); it now
+  records this one too. The figure has been wrong twice, in both directions, and
+  each time it read as settled fact -- so the history is the useful part, and
+  the durable fix is the probe rather than a better number.
+- **Tier sizes were deliberately not revisited.** `sd1.large` is 6 GiB because
+  `u1.large`'s 8 GiB did not fit the old budget; it would fit now. Resizing is a
+  separate decision with its own blast radius, and #100's lesson is that a
+  number moves when something is measured, not when it merely becomes possible.
+
 ### Added -- a read-only cluster probe, because the memory budget was five times wrong (#100)
 - `playbooks/probe_env.yml` and the `sales-demos-probe-env` skill measure what a
   cluster actually has: allocatable, what is already requested, what is free,

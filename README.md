@@ -413,8 +413,10 @@ oc get vm,vmi,pvc -n sales-demos-sandbox -w
 
 Tiers are repo-owned `sd1.*` instance types, not Red Hat's `u1.*`, and `large` is
 6 GiB rather than 8. That sizing came from a smaller cluster with ~14 GiB free;
-`sales-demos-probe-env` measured 75.63 GiB free on sandbox 2026-09-03, so the
-`available_memory_gb` default is now conservative rather than binding (#100). A precondition enforces that
+`sales-demos-probe-env` measured 75.63 GiB free on sandbox 2026-09-03 and
+`available_memory_gb` is now 67 to match (#118). The tier sizes were not
+revisited — that constraint is gone, but a number should move because something
+was measured, not because it now could. A precondition enforces that
 budget, so an over-budget request fails in `plan` instead of leaving a VM `Pending`
 while Terraform reports success. The `u1.*` types are left untouched.
 

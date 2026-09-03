@@ -79,21 +79,27 @@ variable "os_type" {
 # for a smaller or busier cluster.
 # ---------------------------------------------------------------------------
 
-# DELIBERATELY NOT RAISED YET (#101). The sandbox moved to cluster-kbjvc, which
-# is materially larger than the cluster this 14 was measured on, so the default
-# is conservative rather than wrong — it under-provisions, which fails closed in
-# `plan` instead of leaving a VM Pending.
+# MEASURED, NOT GUESSED (#118). 67 is what playbooks/probe_env.yml emitted
+# against sandbox on 2026-09-03, cross-checked against the node's own
+# accounting: 124.68 GiB allocatable, 49.05 GiB already requested, 75.63 GiB
+# free, less an 8 GiB safety margin.
 #
-# It is not re-measured here because the honest number is not knowable yet:
-# OpenShift Virtualization is not installed on this cluster, and CNV's own
-# footprint (virt-launcher overhead, the handler DaemonSet) comes out of the
-# same budget. Measuring allocatable memory before CNV lands produces a figure
-# that is wrong the moment it does. Re-measure after /ocpvirt-setup has run,
-# with the probe from #100.
+# The 14 it replaces was measured once on a smaller cluster and then outlived
+# it by roughly 5x. Nothing reported the drift and nothing could have — the
+# precondition in locals.tf fails CLOSED, so a stale figure does not error, it
+# silently refuses tiers this cluster runs easily. The demo gets smaller and
+# nobody learns why.
+#
+# THIS NUMBER IS ENVIRONMENT-SPECIFIC AND WILL GO STALE. Do not hand-adjust it;
+# re-run the probe. `sales-demos-probe-env` is read-only and safe mid-demo, and
+# it prints the recommendation beside whatever this default currently says.
+# Re-run it after installing any platform add-on — the candidates in
+# inventory/group_vars/aap/probe_workloads.yml total an estimated 7 GiB and
+# come out of this budget.
 variable "available_memory_gb" {
-  description = "Guest memory budget in GiB for this cluster. Conservative default measured on an older, smaller sandbox; re-measure after CNV is installed (#101)."
+  description = "Guest memory budget in GiB for this cluster. Measured by playbooks/probe_env.yml on sandbox 2026-09-03; re-run sales-demos-probe-env rather than hand-adjusting (#118)."
   type        = number
-  default     = 14
+  default     = 67
 }
 
 variable "vm_memory_overhead_mb" {

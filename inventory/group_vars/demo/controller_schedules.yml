@@ -11,10 +11,16 @@
 #
 # Same pattern as gateway_settings.yml, which has lived split this way since #21.
 #
-# Demo VMs should never run overnight. On RHDP that is a capacity question, not
-# a cost one: these VMs share a node with AAP and CNV, and terraform/ocpvirt
-# enforces a memory budget against roughly 14 GiB of headroom. A VM left running
-# from yesterday is memory the next demo cannot have.
+# Demo VMs should never run overnight. The reason is quota, not headroom, and
+# that distinction got sharper in #118: this comment used to argue from "roughly
+# 14 GiB of headroom", but the probe measured 75.63 GiB free on sandbox and
+# available_memory_gb is now 67. Memory pressure is no longer the argument.
+#
+# The schedule is still right. An RHDP environment is metered and reclaimed, so
+# a VM left running from yesterday burns quota against an environment that
+# expires either way — and #92's platform add-ons come out of the same budget
+# as the VMs. Capacity is comfortable today and is not guaranteed to stay that
+# way, which is an argument for keeping the teardown, not for removing it.
 #
 # TIMEZONE: America/Phoenix observes NO daylight saving, so times there are a
 # fixed UTC offset year-round and a schedule written once never drifts by an

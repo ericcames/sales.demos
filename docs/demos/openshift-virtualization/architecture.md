@@ -86,9 +86,15 @@ Mapped to **repo-owned** `sd1.*` cluster instance types, not Red Hat's shipped
 | `large-2cpu-6gb` | `sd1.large` | 2 / 6 GiB | 50 GiB |
 
 **Why not `u1.*`:** that series has no 6 GiB size — it goes 2 / 4 / 8 / 16. At
-`u1.large`'s 8 GiB, `os_type=both` needs about 16.6 GiB against roughly 14 GiB
-free on this single node once AAP and the virtualization layer are running, so
-it would never schedule.
+`u1.large`'s 8 GiB, `os_type=both` needs about 16.6 GiB, which did not fit the
+~14 GiB free on the smaller cluster these tiers were designed against.
+
+**That constraint no longer binds, and the tiers were left alone anyway.**
+`sales-demos-probe-env` measured 75.63 GiB free on sandbox (2026-09-03) and
+`available_memory_gb` is now 67 (#118). `u1.large` would fit comfortably. The
+tiers stay at 6 GiB because resizing them is a separate decision with its own
+blast radius — the lesson of #100 is that a number moves when something is
+measured, not merely when it becomes possible.
 
 **The ceiling is enforced in code.** `terraform/ocpvirt/locals.tf` carries a
 `terraform_data.memory_budget` precondition:
