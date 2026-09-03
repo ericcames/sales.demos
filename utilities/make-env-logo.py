@@ -12,12 +12,16 @@ you are most likely to act on the wrong one is the moment before you have
 touched anything.
 
 It does not change the post-login masthead — that is a bundled UI asset, not a
-setting (verified upstream on AAP 2.7, where all 43 gateway settings were
-enumerated; AAP 2.6 exposes 44 and none of them mark the environment after
-login either). Re-measured on the live 2.6 gateway in #54: `custom_logo` was
-already applied, 26 KB of base64 PNG, and the masthead still rendered the stock
-lockup. So this really is a sign-in-time warning, and no setting will change
-that.
+setting. Re-measured on the live 2.6 gateway in #54: `custom_logo` was already
+applied, 26 KB of base64 PNG, and the masthead still rendered the stock lockup.
+So this really is a sign-in-time warning, and no setting will change that.
+
+THE COUNTS THAT USED TO BE HERE WERE WRONG, and are gone rather than corrected
+in place, because the number is the least durable part of the claim. This file
+previously said 2.7 exposes 43 gateway settings and 2.6 exposes 44; the live
+2.7 gateway on cluster-kbjvc returns 41 (#101). All 41 were enumerated and none
+marks the environment post-login, so the conclusion survives every count it has
+been given. Cite the conclusion, not the tally.
 
 Marking the environment AFTER login needs the browser, not the server — see
 utilities/aap-env-badge/, which paints a matching pill in the masthead using the

@@ -8,9 +8,12 @@
 # not template out. This repo has no export tooling — the keys below are
 # authored, and deliberately few.
 #
-# VERIFIED ON AAP 2.6. Every key below exists on the RHDP catalog item's 2.6
-# controller, so the usual "aap_config targets 2.7, do not copy its settings
-# verbatim" caution does not apply to this file. Re-check if the keys move.
+# VERIFIED ON AAP 2.6 AND RE-VERIFIED ON 2.7 (#101). All five keys below were
+# checked against the live 2.7 controller on cluster-kbjvc, which exposes 111
+# settings in total; every one is present. So the usual "aap_config targets 2.7,
+# do not copy its settings verbatim" caution still does not apply to this file,
+# and now that is a measurement on both versions rather than one. Re-check if
+# the keys move.
 #
 # AUTOMATION ANALYTICS. Uploading to console.redhat.com needs a Red Hat service
 # account. AAP never returns those values through the API — the export shows
