@@ -16,9 +16,12 @@
 #
 # VERIFIED ON THIS PLATFORM, so the usual objections do not apply here:
 #   - PAH is deployed (`hub disabled=False`; five hub pods running).
-#   - AAP 2.6's gateway proxies it by PATH, at /api/galaxy/ — there is no
-#     separate hub route, and ansible.hub's ah_path_prefix already defaults to
-#     `galaxy`, so nothing needs overriding.
+#   - The gateway proxies it by PATH, at /api/galaxy/ — there is no separate
+#     hub route, and ansible.hub's ah_path_prefix already defaults to `galaxy`,
+#     so nothing needs overriding. First verified on 2.6; RE-VERIFIED ON 2.7
+#     (#116) — see sync_hub.yml for the measurement. The version was dropped
+#     from this line rather than bumped: it has now held across a major
+#     platform version, so pinning the claim to one release understates it.
 #   - It works as a container registry: `podman login` against the AAP hostname
 #     succeeds.
 #   - The cluster can pull from it with NO insecure-registry and NO extra CA:

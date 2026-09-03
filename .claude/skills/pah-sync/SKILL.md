@@ -5,7 +5,7 @@ description: "Populate this environment's Private Automation Hub as code — all
 
 # pah-sync
 
-Populates the Private Automation Hub that ships with every AAP 2.6 environment,
+Populates the Private Automation Hub that ships with every AAP environment,
 from configuration in git rather than from the web UI.
 
 This skill contains **no logic**. The work is
