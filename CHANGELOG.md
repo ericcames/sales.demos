@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed -- secrets.yml.example had drifted from what the code requires (#128)
+- **Added `rhsm_org_id` and `rhsm_activation_key`.**
+  `playbooks/roles/linux_register/tasks/main.yml` asserts both and fails the play
+  without them, and `/ocpvirt-demo` preflights for the activation key -- but
+  neither was declared in `secrets.yml.example`. A secrets file built from the
+  example passed every preflight and then failed Phase 4 on guest registration,
+  which is the one failure mode that only surfaces in front of an audience.
+- **Corrected the pre-#5 paths in the example header.** It still told the reader
+  to copy and encrypt `inventory/group_vars/aap/secrets.yml`; the file moved to
+  `playbooks/group_vars/all/` in #5.
+- **Marked `quay_username`, `quay_password` and `windows_admin_password` as not
+  yet consumed.** No tracked file reads any of the three -- they are staged for
+  the Phase 2 Windows golden image. Kept rather than deleted (additive only), but
+  named in an allowlist so that adding a future orphan is deliberate.
+
+### Added -- CI check that keeps the example honest (#128)
+- `utilities/check-secrets-example.py`, wired in as the `secrets-example-sync`
+  job. The real `secrets.yml` is vault-encrypted, so CI can never diff the two.
+  Instead it finds every variable referenced under `playbooks/` or `inventory/`
+  that nothing in either tree defines *and* that is used at least once without a
+  `| default(...)` guard. Those can only come from the vault, so each must be
+  declared in the example.
+- **The bare-versus-defaulted distinction is the whole discriminator.** It is
+  what separates a required credential from an optional override:
+  `tf_state_namespace` is always written with a default and needs no vault entry,
+  while `{{ rhsm_org_id }}` is used bare and will fail the play outright. On the
+  current tree it identifies exactly the six vault keys and nothing else.
+- Also fails on a declared key nothing reads, and on an `env_secrets` credential
+  present for one environment but not the other -- a file that works right up
+  until someone runs against the environment customers see.
+
 ### Added -- AAP self-service portal, ported from aap.selfservice (#103)
 - `playbooks/portal.yml` and the `sales-demos-portal` skill deploy Red Hat
   Developer Hub with the AAP plugin via the `redhat-rhaap-portal` Helm chart
