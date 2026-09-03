@@ -21,7 +21,7 @@ plus a vault read. Full detail in
 | OpenShift MCP | `sales-demos-mcp` | — (laptop-only, by design) | Two committed servers, `openshift-sandbox` (full, 25 tools) and `openshift-demo` (read-only, 16). Runs locally, so it survives environment churn and works before a cluster exists. | **Done** ([#102](https://github.com/ericcames/sales.demos/issues/102)) |
 | AAP MCP | `sales-demos-mcp` | `playbooks/mcp_server.yml` | A typed `AnsibleMCPServer` CR, deployed by `setup.yml` so a new environment arrives with it on. 140 tools including job-template launch. Write posture is per-environment and never defaulted. | **Done** ([#102](https://github.com/ericcames/sales.demos/issues/102)) |
 | Cluster probe | `sales-demos-probe-env` | `playbooks/probe_env.yml` | Read-only capacity measurement, safe mid-demo. Found `available_memory_gb` five times too small and recommends a replacement. Both add-on operators confirmed present on OperatorHub. | **Done** ([#100](https://github.com/ericcames/sales.demos/issues/100)) |
-| Automation Orchestrator | — | — | Install as an explicit experiment and record whether it is even entitled. Split out so an entitlement failure cannot block the MCP work. | Not started ([#108](https://github.com/ericcames/sales.demos/issues/108)) |
+| Automation Orchestrator | — | — | Installed as an explicit experiment 2026-09-03. The operator installs and its images pull with no extra credential, costing a measured 0.01 vCPU / 64 MiB. Deliberately no playbook or skill: the CRD requires a bring-your-own PostgreSQL with two databases, so no instance can run on RHDP yet. | **Done** ([#108](https://github.com/ericcames/sales.demos/issues/108)) |
 
 ## Use case 3 — Network MCP servers
 

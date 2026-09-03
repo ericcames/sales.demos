@@ -7,6 +7,57 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added -- Automation Orchestrator installed as an experiment, and it is not the blocker we expected (#108)
+- **The operator installs and its images pull.** `stable` still resolves to
+  `v2026.8.1787147047`, the exact version #92 recorded, and the CSV reached
+  `Succeeded`/`InstallSucceeded` with the controller-manager `1/1 Running`. The
+  bundle and controller images pulled from `registry.redhat.io` under the
+  environment's existing pull secret -- **no separate pull secret was needed**.
+  #92 could only say the operator was in the catalog and was careful that
+  catalog presence is not entitlement; that guess is now retired.
+- **Footprint measured twice, and the estimate was 64x too large.** Read back
+  from the pod: one `manager` container requesting `cpu: 10m` / `memory: 64Mi`.
+  `probe_env.yml` run before and after independently agrees -- requests moved
+  15.00 -> 15.01 vCPU and 50.30 -> 50.37 GiB. It replaces an estimate of
+  2.0 vCPU / 4.0 GiB. `available_memory_gb` stays **66** either side of the
+  install, so nothing in `terraform/` moves.
+- **All five product images pull, so entitlement is a closed question.** The
+  operator installing does not prove the product it manages will run, and the
+  `valid-subscription: ["Red Hat Ansible Automation Orchestrator"]` annotation
+  invites the opposite assumption -- so every image the CSV lists was pulled by
+  a throwaway pod that referenced it and exited 0: operator, backend, UI,
+  temporal and `rhel9/redis-6`. All came down under the environment's existing
+  pull secret. #108 was written expecting to hit a licensing wall; there is not
+  one.
+- **The real obstacle is PostgreSQL, not licensing.** The CRD requires
+  `spec.postgres` with a `host` plus two distinct databases (`backendDatabase`
+  and `temporalDatabase`) and offers no embedded option, so an
+  `AutomationOrchestrator` instance cannot be stood up on RHDP without
+  provisioning a database first. The answer to "can we demo this?" is not yet,
+  and for a different reason than the issue expected -- a provisioning problem,
+  not an entitlement one. #108 said both outcomes were worth writing down.
+- **No playbook and no skill in this change, and it is not in `setup.yml`.**
+  #108 left that open pending the outcome, and the outcome was that the operator
+  is the cheap part -- automating the install of a controller nobody can
+  instantiate would be automating the wrong half. **That reasoning expires with
+  the database, and #141 opens to remove it:** CloudNativePG (certified, v1.30.0,
+  no subscription) provisions the two databases so AO joins every `sandbox` and
+  `demo` build, default-on with a skip flag.
+- The operator is **left running on `sandbox`** -- 64 MiB is not worth
+  reclaiming and it lets the next session go straight at the CR question. It
+  sits in its own namespace labelled `sales.demos/experiment=issue-108`, and
+  `docs/plan/platform-addons-plan.md` records the two-command removal. Only
+  `AllNamespaces` install mode is supported, which is why it has its own
+  cluster-scoped OperatorGroup rather than sharing CNV's.
+
+### Changed -- probe_workloads.yml splits the orchestrator into two entries (#108)
+- The measured operator (`installed: true`) and the still-unmeasured
+  **instance** are now separate rows. Folding them into one would have let the
+  part that actually costs memory vanish from the file the moment the operator
+  was marked installed -- the entry would read as measured while the backend,
+  Temporal, UI and redis went uncounted.
+
+
 ### Changed -- secrets.yml is no longer tracked (#130)
 - `playbooks/group_vars/all/secrets.yml` is now **vault-encrypted and local
   only**. It was vault-encrypted and committed; untracking it is what makes this

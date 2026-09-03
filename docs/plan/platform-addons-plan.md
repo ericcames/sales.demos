@@ -286,3 +286,122 @@ The rule this repo already holds itself to — *ask the target, do not trust the
 recap* — is what `/sales-demos-mcp` does: it starts the server over stdio,
 enumerates tools, and makes a live `namespaces_list` call. A written kubeconfig
 proves a file exists, not that a cluster accepts it.
+
+## Automation Orchestrator — the experiment, and its answer
+
+Issue [#108](https://github.com/ericcames/sales.demos/issues/108), split out of
+#102 so an entitlement failure could not block the MCP work.
+
+**Installed on `sandbox`/`cluster-kbjvc` 2026-09-03.** #92 could only say the
+operator was *present in the catalog*, and was careful that catalog presence is
+not entitlement. It has now been installed, so the guess is retired.
+
+### Outcome 1: it installs, and the images pull
+
+```
+automation-orchestrator-operator.v2026.8.1787147047   Succeeded   InstallSucceeded
+automation-orchestrator-operator-controller-manager-5bf5bb...   1/1   Running
+```
+
+`stable` still resolves to **v2026.8.1787147047**, the exact version #92
+recorded, so the catalog has not moved under us. The bundle unpacked and the
+controller image pulled from `registry.redhat.io` under this environment's
+existing pull secret with no extra credential. **No separate pull secret was
+needed to install the operator.**
+
+The manifest is explicit that the product is separately subscribed —
+`operators.openshift.io/valid-subscription: ["Red Hat Ansible Automation
+Orchestrator"]` — and self-describes as `certified: "false"`,
+`maturity: "alpha"`, `operator-type: non-standalone`. So the obvious next
+worry is that the operator installs and then its *product* images are refused.
+
+**They are not.** Every image the CSV lists was pulled on this cluster by a
+throwaway pod that referenced it and exited 0:
+
+| Image | |
+|---|---|
+| `automation-orchestrator-rhel9-operator` | pulled |
+| `automation-orchestrator-backend-rhel9` | pulled |
+| `automation-orchestrator-ui-rhel9` | pulled |
+| `automation-orchestrator-temporal-rhel9` | pulled |
+| `rhel9/redis-6` | pulled |
+
+All five came down under the environment's existing pull secret with no extra
+credential. **Entitlement is a closed question and it is not the obstacle.**
+That is worth stating plainly, because the `valid-subscription` annotation
+invites the opposite assumption and #108 was written expecting to hit it.
+
+### The footprint, measured twice
+
+`probe_env.yml` was run immediately before and immediately after, which is the
+whole reason #100 landed first:
+
+| | Requested CPU | Requested memory | Free by requests |
+|---|---|---|---|
+| Before | 15.00 vCPU | 50.30 GiB | 74.38 GiB |
+| After | 15.01 vCPU | 50.37 GiB | 74.31 GiB |
+| **Delta** | **+0.01 vCPU** | **+0.07 GiB** | −0.07 GiB |
+
+Read back from the pod itself, the operator requests `cpu: 10m` /
+`memory: 64Mi` (limits `500m` / `256Mi`) in a single `manager` container. The
+two numbers agree, which is the point of measuring both ways.
+
+`available_memory_gb` is **unchanged at 66** — the recommendation was 66 before
+the install and 66 after. Nothing in `terraform/` needs to move.
+
+**The estimate it replaces was 2.0 vCPU / 4.0 GiB** — about 64x the memory. It
+was honestly labelled the least trustworthy figure in
+`probe_workloads.yml`, and it was.
+
+### The real blocker is not entitlement, it is PostgreSQL
+
+Installing the operator gets you a CRD and a controller. Getting a *running*
+Automation Orchestrator needs an `AutomationOrchestrator` CR, and the CRD
+requires this and will not default it:
+
+```
+spec required:              ['postgres']
+spec.postgres required:     ['backendDatabase', 'host', 'temporalDatabase']
+```
+
+**There is no embedded database option.** It is bring-your-own PostgreSQL, and
+it needs *two distinct databases* — one for the backend, one for Temporal — each
+supplied as a secret with `database`, `username`, `password`, plus a host, and
+optionally a CA cert secret for TLS. The operator ships images for a backend, a
+Temporal server, a UI and a redis, but not for a database.
+
+So the answer to *"can we demo Automation Orchestrator on RHDP?"* is: **not as
+it stands.** The operator installs for free, and the next person hits a
+provisioning problem, not a licensing one. That is a materially better place to
+start than #92 could offer, and it is a different obstacle than the one the
+issue expected to find.
+
+### What is left installed, and how to remove it
+
+The operator is **left running on `sandbox`** — 64 MiB is not worth reclaiming,
+and leaving it lets the next session go straight at the CR question. It is
+scoped to its own namespace, labelled `sales.demos/experiment=issue-108`, and
+the entire experiment reverses with one delete:
+
+```bash
+oc delete namespace automation-orchestrator-operator-system
+oc delete crd automationorchestrators.aap.ansible.com
+```
+
+It is **not** in `setup.yml` as of this issue, and has no playbook or skill.
+#108 left that decision open pending the outcome, and the outcome was that the
+operator is the cheap part — a playbook installing a controller nobody can
+instantiate would automate the wrong half.
+
+**That holds only while the database is missing, and
+[#141](https://github.com/ericcames/sales.demos/issues/141) removes it.** Since
+all five images pull, the sole obstacle is the two PostgreSQL databases, and
+#141 provisions them with CloudNativePG (`certified: true`, v1.30.0, no
+subscription required) so AO becomes part of every `sandbox` and `demo` build —
+default-on, with a skip flag. Read this section as the measurement that made
+#141 worth opening, not as a standing decision against automating it.
+
+Only `AllNamespaces` install mode is supported (`OwnNamespace`,
+`SingleNamespace` and `MultiNamespace` are all `supported: false`), so it needs
+a cluster-scoped OperatorGroup. That is why it went into its own namespace with
+an empty-spec OperatorGroup rather than alongside CNV.
