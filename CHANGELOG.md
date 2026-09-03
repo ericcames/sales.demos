@@ -7,6 +7,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added -- AAP credential type so secrets.yml need not be tracked (#129)
+- `inventory/group_vars/aap/controller_credential_types.yml` defines
+  "Sales Demos - Env Secrets": four write-only fields (`aap_password`,
+  `openshift_api_token`, `rhsm_org_id`, `rhsm_activation_key`) injected as
+  **extra_vars**, plus the matching credential and its attachment to all six job
+  templates.
+- **Why it exists.** Every template carried only "Sales Demos - Vault", whose
+  sole job was decrypting the vault-encrypted `secrets.yml` that AAP received in
+  the project's SCM checkout. That works only while the file is tracked. #130
+  untracks it, and the moment it is untracked AAP's checkout has no secrets file
+  at all -- `env_secrets` goes undefined and every template fails on the
+  connection asserts.
+- **No playbook and no `connection.yml` changed.** `connection.yml` defines
+  `aap_password` as `env_secrets[aap_env_name].aap_password`; extra_vars outrank
+  group_vars, so in AAP the injected value wins and that expression is never
+  evaluated, while on a laptop the local vaulted file still supplies it. One
+  variable contract, both entry points.
+- **This is not the #4 restriction.** AAP disallows Vault credentials on SCM
+  inventory *sources*. This is a job template credential, which is the sanctioned
+  way to hand a job a secret.
+- **One type, two environments, no environment key in the fields.** Each RHDP
+  environment has its own AAP, so `config.yml --limit sandbox` fills sandbox's
+  controller from `env_secrets['sandbox']` and `--limit demo` fills demo's from
+  `env_secrets['demo']`, off the same lines -- exactly how
+  "Sales Demos - PAH Registry" already resolves `aap_hostname`.
+- **Rotation is now an explicit act.** With the vaulted file in SCM, editing the
+  vault propagated on the next project sync. Now a rotated token does nothing
+  until `config.yml` is re-run *for that environment*.
+- **`{  {` in the injectors is not a typo.** The `controller_credential_types`
+  role rewrites brace-space-space-brace into `{{` before sending injectors to
+  AAP. Written normally, Ansible would expand the template at CaC time and inject
+  the *value* as a literal default instead of letting AAP substitute its own
+  field at launch.
+- **Known check-mode behaviour.** On an environment that has never had the type
+  applied, `validate.yml` fails with
+  `credential_types/?name=Sales+Demos+-+Env+Secrets returned 0 items, expected 1`
+  -- check mode does not create the type, so the credential referencing it cannot
+  resolve. It clears after one real `config.yml` run. The dispatch role names this
+  case itself ("missing dependencies caused by check mode").
+
 ### Fixed -- check-secrets-example.py miscounted prose and YAML keys (#137)
 - **Comments are stripped before the Jinja scan.** A `{{` inside an explanatory
   comment opened a match that ran to the next `}}` several lines later and
