@@ -1,0 +1,25 @@
+{
+  "mcpServers": {
+    "openshift-sandbox": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "kubernetes-mcp-server@0.0.66",
+        "--kubeconfig", ".kube/sandbox.kubeconfig",
+        "--toolsets", "core,config,kubevirt",
+        "--disable-multi-cluster"
+      ]
+    },
+    "openshift-demo": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "kubernetes-mcp-server@0.0.66",
+        "--kubeconfig", ".kube/demo.kubeconfig",
+        "--toolsets", "core,config,kubevirt",
+        "--disable-multi-cluster",
+        "--read-only"
+      ]
+    }
+  }
+}

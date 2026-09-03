@@ -176,6 +176,13 @@ command -v virtctl >/dev/null && echo "✅ virtctl" \
 command -v podman >/dev/null && echo "✅ $(podman --version)" || echo "⚠️  podman missing (only needed to build the EE)"
 command -v ansible-builder >/dev/null && echo "✅ ansible-builder" || echo "⚠️  ansible-builder missing (only needed to build the EE)"
 
+# node/npx — only needed for the MCP servers (/sales-demos-mcp), which launch
+# kubernetes-mcp-server. Nothing else in this repo uses Node. If you would
+# rather not install it, upstream publishes a standalone binary for seven
+# platforms: https://github.com/containers/kubernetes-mcp-server/releases
+command -v npx >/dev/null && echo "✅ npx ($(node --version))" \
+  || echo "⚠️  npx missing (only needed for /sales-demos-mcp)"
+
 # registry.redhat.io login — needed to pull the EE base image when building.
 podman login --get-login registry.redhat.io >/dev/null 2>&1 \
   && echo "✅ logged in to registry.redhat.io" \
@@ -185,6 +192,8 @@ podman login --get-login registry.redhat.io >/dev/null 2>&1 \
 `terraform` and `virtctl` are the two that block real work. The podman pair only
 matter if you are rebuilding the execution environment, which is rare — it is
 published to quay and mirrored into each environment's Private Automation Hub.
+`npx` matters only for the MCP servers, and is the one prerequisite here that is
+not Python, Ansible or a Red Hat tool — worth knowing before it surprises you.
 
 ## Step 5 — Run-log directory
 

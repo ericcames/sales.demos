@@ -9,6 +9,19 @@ Each phase ships two entry points — a Claude Code skill and an AAP job templat
 both driving the same playbook. `pah-sync` is the one documented exception; see
 below.
 
+## Platform add-ons — MCP servers
+
+Not a use case: tooling. Connects Claude Code straight to the clusters so asking
+an environment a question costs a tool call rather than a hand-rolled `curl`
+plus a vault read. Full detail in
+[`docs/plan/platform-addons-plan.md`](docs/plan/platform-addons-plan.md).
+
+| | Skill | Playbook | Outcome | Status |
+|---|---|---|---|---|
+| OpenShift MCP | `sales-demos-mcp` | — (laptop-only, by design) | Two committed servers, `openshift-sandbox` (full, 25 tools) and `openshift-demo` (read-only, 16). Runs locally, so it survives environment churn and works before a cluster exists. | **Done** ([#102](https://github.com/ericcames/sales.demos/issues/102)) |
+| AAP MCP | — | `config.yml` | A typed `AnsibleMCPServer` CR, applied per environment so a new one arrives with it already on. Research done; not built. | Not started ([#102](https://github.com/ericcames/sales.demos/issues/102)) |
+| Automation Orchestrator | — | — | Install as an explicit experiment and record whether it is even entitled. Split out so an entitlement failure cannot block the MCP work. | Not started ([#108](https://github.com/ericcames/sales.demos/issues/108)) |
+
 ## Use case 3 — Network MCP servers
 
 AI-assisted development of Cisco, Palo Alto and Aruba use cases. Nothing is built
