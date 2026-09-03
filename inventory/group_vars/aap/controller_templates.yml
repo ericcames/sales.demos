@@ -236,3 +236,38 @@ controller_templates_all:
     # information is written to <web_url>/facts.json by linux_configure — this
     # is the controller-side copy, that one is the curl-able copy.
     use_fact_cache: true
+
+  # ---------------------------------------------------------------------
+  # Automation Orchestrator (#141). Installs CloudNativePG, builds the three
+  # databases, installs the AO operator and creates the instance.
+  #
+  # RUNS AGAINST THE CLUSTER, NOT THE GUESTS, so it takes `limit:
+  # {{ aap_env_name }}` like Provision does rather than `linuxweb` — the
+  # playbook is `hosts: aap`. No Machine credential for the same reason.
+  #
+  # setup.yml already runs this stage by default, so this template is for
+  # re-running it on its own: an environment that was built with
+  # `install_ao=false`, or one where the AO stack needs reconciling without
+  # re-running CNV and the whole AAP configuration.
+  # ---------------------------------------------------------------------
+  # AAP VALIDATES `playbook:` AGAINST THE PROJECT'S SCM CHECKOUT, so this entry
+  # cannot be created until playbooks/install_ao.yml is on the branch the "Sales
+  # Demos" project syncs. Adding a template and its playbook in the same PR
+  # therefore fails config.yml once, with
+  #   Unable to create job_template ...: {'playbook': ['Playbook not found for project.']}
+  # and succeeds on the first run after the merge. That is ordering, not
+  # misconfiguration — do not "fix" it by removing the template.
+  - name: "Sales Demos - Install Automation Orchestrator"
+    description: "Install Automation Orchestrator and its CloudNativePG database, then verify the Route serves a page."
+    job_type: run
+    organization: "IT Service Automation"
+    inventory: "Sales Demo VMs"
+    project: "Sales Demos"
+    playbook: playbooks/install_ao.yml
+    execution_environment: "Sales Demos - OCP Virt EE"
+    credentials:
+      - "Sales Demos - Vault"
+      - "Sales Demos - Env Secrets"
+    limit: "{{ aap_env_name }}"
+    extra_vars:
+      target_env: "{{ aap_env_name }}"

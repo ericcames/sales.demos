@@ -1,0 +1,451 @@
+---
+# ===========================================================================
+# install_ao.yml — install Automation Orchestrator and the PostgreSQL it
+# cannot run without. Issue #141, following the #108 experiment.
+#
+# Imported by playbooks/setup.yml behind `install_ao`, and runnable alone when
+# an environment already has everything else:
+#
+#   ansible-playbook playbooks/install_ao.yml -i inventory --limit sandbox \
+#     -e target_env=sandbox \
+#     --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
+#
+# Idempotent, no prompts. Every input arrives as an extra_var or from
+# group_vars, so the skill, an AAP job template and a laptop run are the same
+# code. Creates no AAP token, so there is nothing to clean up in an `always:`.
+#
+# WHY THIS NEEDS ITS OWN DATABASE. The AutomationOrchestrator CRD requires
+# `spec.postgres` and offers no embedded option — #108 established that the
+# operator installs and all five product images pull, and that PostgreSQL is
+# the only thing standing between the catalog entry and a running product.
+#
+# WHY NOT AAP'S POSTGRES. `aap-postgres-15` is owned by the
+# AnsibleAutomationPlatform CR with blockOwnerDeletion — the AAP operator
+# reconciles it, so databases added by hand live inside something another
+# operator recreates at will. Temporal is write-heavy, and putting that load
+# on the database the whole demo platform depends on trades a working AAP for
+# a working AO. CloudNativePG is certified, carries no valid-subscription
+# annotation, and is config-as-code like everything else here.
+#
+# THREE DATABASES, NOT TWO, AND THAT IS THE TRAP. The CRD requires exactly two
+# secretRefs — backendDatabase and temporalDatabase — so two is what you build,
+# and then `ao-temporal-migration` crash-loops forever on
+#
+#   pq: database "temporal_visibility" does not exist
+#
+# while every other component sits waiting. Temporal keeps its visibility store
+# in a SEPARATE database whose name is fixed: literally `temporal_visibility`,
+# not a suffix of whatever you called the temporal database. Nothing in the
+# CRD, the alm-examples sample, or the operator description mentions it. It was
+# found by reading the migration logs on the first live install (#141). Do not
+# remove the third Database resource because the CRD only asks for two.
+# ===========================================================================
+
+- name: Install Automation Orchestrator and its PostgreSQL
+  # `hosts: aap` plus `--limit <env>` is what selects the environment, exactly
+  # as install_cnv.yml does. See #16 and tasks/assert_target_environment.yml.
+  hosts: aap
+  gather_facts: false
+
+  environment:
+    K8S_AUTH_HOST: "{{ openshift_api_url }}"
+    K8S_AUTH_API_KEY: "{{ openshift_api_token }}"
+    K8S_AUTH_VERIFY_SSL: "{{ openshift_validate_certs | default(false) | bool }}"
+
+  vars:
+    # --- Automation Orchestrator ------------------------------------------
+    ao_namespace: "automation-orchestrator"
+    ao_operator_namespace: "automation-orchestrator-operator-system"
+    ao_package: "automation-orchestrator-operator"
+    ao_channel: "stable"
+    ao_name: "ao"
+    ao_catalog_source: "redhat-operators"
+
+    # --- CloudNativePG ----------------------------------------------------
+    cnpg_namespace: "cnpg-system"
+    cnpg_package: "cloudnative-pg"
+    cnpg_channel: "stable-v1"
+    cnpg_catalog_source: "certified-operators"
+
+    # --- the database -----------------------------------------------------
+    ao_db_cluster: "ao-db"
+    ao_db_owner: "ao"
+    ao_db_storage_size: "10Gi"
+    ao_db_backend_name: "ao_backend"
+    ao_db_temporal_name: "ao_temporal"
+    # FIXED BY TEMPORAL, NOT BY US. See the header — this name is hardcoded in
+    # the Temporal visibility store and is not derived from ao_db_temporal_name.
+    ao_db_visibility_name: "temporal_visibility"
+
+    ao_catalog_source_namespace: "openshift-marketplace"
+    ao_wait_retries: 60
+    ao_wait_delay: 20
+
+  tasks:
+    - name: Assert the environment is unambiguous
+      ansible.builtin.include_tasks: tasks/assert_target_environment.yml
+
+    - name: Assert the required connection variables are set
+      ansible.builtin.assert:
+        that:
+          - openshift_api_url is defined
+          - openshift_api_url | length > 0
+          - openshift_api_token is defined
+          - openshift_api_token | length > 0
+        fail_msg: >-
+          openshift_api_url and openshift_api_token are required. They live in
+          playbooks/group_vars/all/secrets.yml (gitignored, vault-encrypted) —
+          build it from secrets.yml.example, then run with
+          `-i inventory --limit <env>`.
+        quiet: true
+
+    - name: Confirm the cluster is reachable and the token is valid
+      kubernetes.core.k8s_info:
+        api_version: config.openshift.io/v1
+        kind: ClusterVersion
+        name: version
+      register: ao_clusterversion
+
+    - name: Show the cluster Automation Orchestrator is being installed on
+      ansible.builtin.debug:
+        msg: >-
+          OpenShift {{ ao_clusterversion.resources[0].status.desired.version }}
+          — installing {{ ao_package }} ({{ ao_channel }}) and
+          {{ cnpg_package }} ({{ cnpg_channel }}).
+
+    # -----------------------------------------------------------------------
+    # 1. CloudNativePG — the database operator
+    # -----------------------------------------------------------------------
+    - name: Create the CloudNativePG namespace
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: v1
+          kind: Namespace
+          metadata:
+            name: "{{ cnpg_namespace }}"
+
+    - name: Create the CloudNativePG OperatorGroup
+      # Empty spec means AllNamespaces, which is how CNPG is meant to run and
+      # leaves the door open for a second consumer later.
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: operators.coreos.com/v1
+          kind: OperatorGroup
+          metadata:
+            name: "{{ cnpg_package }}"
+            namespace: "{{ cnpg_namespace }}"
+          spec: {}
+
+    - name: Subscribe to CloudNativePG
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: operators.coreos.com/v1alpha1
+          kind: Subscription
+          metadata:
+            name: "{{ cnpg_package }}"
+            namespace: "{{ cnpg_namespace }}"
+          spec:
+            name: "{{ cnpg_package }}"
+            channel: "{{ cnpg_channel }}"
+            source: "{{ cnpg_catalog_source }}"
+            sourceNamespace: "{{ ao_catalog_source_namespace }}"
+            installPlanApproval: Automatic
+
+    - name: Wait for the CloudNativePG ClusterServiceVersion to succeed
+      # SELECT BY NAME, NEVER items[0]. An AllNamespaces operator has its CSV
+      # copied into every namespace, so items[0] in this namespace is as likely
+      # to be some other operator's copy as it is to be CNPG's — that misread
+      # cost real time during #141's spike.
+      kubernetes.core.k8s_info:
+        api_version: operators.coreos.com/v1alpha1
+        kind: ClusterServiceVersion
+        namespace: "{{ cnpg_namespace }}"
+      register: ao_cnpg_csv
+      retries: "{{ ao_wait_retries }}"
+      delay: "{{ ao_wait_delay }}"
+      until:
+        - ao_cnpg_csv.resources | default([]) | selectattr('metadata.name', 'search', '^' ~ cnpg_package)
+          | selectattr('status.phase', 'defined')
+          | selectattr('status.phase', 'equalto', 'Succeeded') | list | length > 0
+
+    - name: Wait for the CloudNativePG Cluster CRD to be established
+      # postgresql.cnpg.io, NOT postgresql.cnpg.noobaa.io. ODF's Multicloud
+      # Object Gateway ships its own vendored CNPG under that private group and
+      # its CRDs are present on any cluster with ODF — they are not ours and
+      # will not serve these resources.
+      kubernetes.core.k8s_info:
+        api_version: apiextensions.k8s.io/v1
+        kind: CustomResourceDefinition
+        name: clusters.postgresql.cnpg.io
+      register: ao_cnpg_crd
+      retries: "{{ ao_wait_retries }}"
+      delay: "{{ ao_wait_delay }}"
+      until: ao_cnpg_crd.resources | default([]) | length > 0
+
+    # -----------------------------------------------------------------------
+    # 2. The database itself
+    # -----------------------------------------------------------------------
+    - name: Create the Automation Orchestrator namespace
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: v1
+          kind: Namespace
+          metadata:
+            name: "{{ ao_namespace }}"
+
+    - name: Create the PostgreSQL cluster
+      # One instance on purpose: this is a demo platform, not production. The
+      # backend database is created by initdb; the other two arrive as Database
+      # resources below, because initdb only bootstraps one.
+      kubernetes.core.k8s:
+        state: present
+        apply: true
+        definition:
+          apiVersion: postgresql.cnpg.io/v1
+          kind: Cluster
+          metadata:
+            name: "{{ ao_db_cluster }}"
+            namespace: "{{ ao_namespace }}"
+          spec:
+            instances: 1
+            storage:
+              size: "{{ ao_db_storage_size }}"
+            bootstrap:
+              initdb:
+                database: "{{ ao_db_backend_name }}"
+                owner: "{{ ao_db_owner }}"
+            resources:
+              requests:
+                cpu: 100m
+                memory: 512Mi
+
+    - name: Wait for the PostgreSQL cluster to report a ready instance
+      kubernetes.core.k8s_info:
+        api_version: postgresql.cnpg.io/v1
+        kind: Cluster
+        name: "{{ ao_db_cluster }}"
+        namespace: "{{ ao_namespace }}"
+      register: ao_db
+      retries: "{{ ao_wait_retries }}"
+      delay: "{{ ao_wait_delay }}"
+      until:
+        - ao_db.resources | default([]) | length > 0
+        - ao_db.resources[0].status.readyInstances | default(0) | int >= 1
+
+    - name: Create the second and third databases
+      # THE THIRD ONE IS NOT OPTIONAL — see the header. temporal_visibility is
+      # required by Temporal's visibility store and is invisible in the CRD.
+      kubernetes.core.k8s:
+        state: present
+        apply: true
+        definition:
+          apiVersion: postgresql.cnpg.io/v1
+          kind: Database
+          metadata:
+            name: "{{ item.resource }}"
+            namespace: "{{ ao_namespace }}"
+          spec:
+            cluster:
+              name: "{{ ao_db_cluster }}"
+            name: "{{ item.db }}"
+            owner: "{{ ao_db_owner }}"
+      loop:
+        - {resource: "ao-temporal", db: "{{ ao_db_temporal_name }}"}
+        - {resource: "temporal-visibility", db: "{{ ao_db_visibility_name }}"}
+      loop_control:
+        label: "{{ item.db }}"
+
+    - name: Wait for both databases to be applied
+      kubernetes.core.k8s_info:
+        api_version: postgresql.cnpg.io/v1
+        kind: Database
+        namespace: "{{ ao_namespace }}"
+      register: ao_databases
+      retries: "{{ ao_wait_retries }}"
+      delay: "{{ ao_wait_delay }}"
+      until:
+        - ao_databases.resources | default([]) | selectattr('status.applied', 'defined')
+          | selectattr('status.applied', 'equalto', true) | list | length >= 2
+
+    - name: Read the credentials CloudNativePG generated
+      # CNPG owns the password and we never see it in plaintext or write it to
+      # disk. Nothing here lands in a tracked file.
+      kubernetes.core.k8s_info:
+        api_version: v1
+        kind: Secret
+        name: "{{ ao_db_cluster }}-app"
+        namespace: "{{ ao_namespace }}"
+      register: ao_db_secret
+      no_log: true
+      retries: "{{ ao_wait_retries }}"
+      delay: "{{ ao_wait_delay }}"
+      until: ao_db_secret.resources | default([]) | length > 0
+
+    - name: Create the database secrets in the shape Automation Orchestrator expects
+      # CNPG writes `dbname`; the AutomationOrchestrator CRD reads `database`.
+      # The key names differ, so the secret has to be reshaped rather than
+      # referenced directly — that mismatch is the whole reason for this task.
+      kubernetes.core.k8s:
+        state: present
+        apply: true
+        definition:
+          apiVersion: v1
+          kind: Secret
+          metadata:
+            name: "{{ item.name }}"
+            namespace: "{{ ao_namespace }}"
+          type: Opaque
+          data:
+            database: "{{ item.db | b64encode }}"
+            username: "{{ ao_db_secret.resources[0].data.username }}"
+            password: "{{ ao_db_secret.resources[0].data.password }}"
+      loop:
+        - {name: "ao-backend-db", db: "{{ ao_db_backend_name }}"}
+        - {name: "ao-temporal-db", db: "{{ ao_db_temporal_name }}"}
+      loop_control:
+        label: "{{ item.name }}"
+      no_log: true
+
+    # -----------------------------------------------------------------------
+    # 3. The Automation Orchestrator operator and instance
+    # -----------------------------------------------------------------------
+    - name: Create the Automation Orchestrator operator namespace
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: v1
+          kind: Namespace
+          metadata:
+            name: "{{ ao_operator_namespace }}"
+
+    - name: Create the Automation Orchestrator OperatorGroup
+      # AllNamespaces is the ONLY supported install mode for this operator —
+      # OwnNamespace, SingleNamespace and MultiNamespace are all
+      # `supported: false` in its manifest, so an empty spec is required rather
+      # than merely convenient.
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: operators.coreos.com/v1
+          kind: OperatorGroup
+          metadata:
+            name: "{{ ao_package }}"
+            namespace: "{{ ao_operator_namespace }}"
+          spec: {}
+
+    - name: Subscribe to the Automation Orchestrator operator
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: operators.coreos.com/v1alpha1
+          kind: Subscription
+          metadata:
+            name: "{{ ao_package }}"
+            namespace: "{{ ao_operator_namespace }}"
+          spec:
+            name: "{{ ao_package }}"
+            channel: "{{ ao_channel }}"
+            source: "{{ ao_catalog_source }}"
+            sourceNamespace: "{{ ao_catalog_source_namespace }}"
+            installPlanApproval: Automatic
+
+    - name: Wait for the Automation Orchestrator ClusterServiceVersion to succeed
+      kubernetes.core.k8s_info:
+        api_version: operators.coreos.com/v1alpha1
+        kind: ClusterServiceVersion
+        namespace: "{{ ao_operator_namespace }}"
+      register: ao_csv
+      retries: "{{ ao_wait_retries }}"
+      delay: "{{ ao_wait_delay }}"
+      until:
+        - ao_csv.resources | default([]) | selectattr('metadata.name', 'search', '^' ~ ao_package)
+          | selectattr('status.phase', 'defined')
+          | selectattr('status.phase', 'equalto', 'Succeeded') | list | length > 0
+
+    - name: Wait for the AutomationOrchestrator CRD to be established
+      kubernetes.core.k8s_info:
+        api_version: apiextensions.k8s.io/v1
+        kind: CustomResourceDefinition
+        name: automationorchestrators.aap.ansible.com
+      register: ao_crd
+      retries: "{{ ao_wait_retries }}"
+      delay: "{{ ao_wait_delay }}"
+      until: ao_crd.resources | default([]) | length > 0
+
+    - name: Create the Automation Orchestrator instance
+      kubernetes.core.k8s:
+        state: present
+        apply: true
+        definition:
+          apiVersion: aap.ansible.com/v1alpha1
+          kind: AutomationOrchestrator
+          metadata:
+            name: "{{ ao_name }}"
+            namespace: "{{ ao_namespace }}"
+          spec:
+            ingress:
+              type: Route
+            postgres:
+              host: "{{ ao_db_cluster }}-rw"
+              port: 5432
+              sslMode: require
+              backendDatabase:
+                secretRef:
+                  name: "ao-backend-db"
+              temporalDatabase:
+                secretRef:
+                  name: "ao-temporal-db"
+
+    - name: Wait for Automation Orchestrator to report Ready
+      # Gate on the CR's own condition, not on pods existing. The migrations
+      # run as Jobs and the components only start once they finish.
+      kubernetes.core.k8s_info:
+        api_version: aap.ansible.com/v1alpha1
+        kind: AutomationOrchestrator
+        name: "{{ ao_name }}"
+        namespace: "{{ ao_namespace }}"
+      register: ao_instance
+      retries: "{{ ao_wait_retries }}"
+      delay: "{{ ao_wait_delay }}"
+      until:
+        - ao_instance.resources | default([]) | length > 0
+        - ao_instance.resources[0].status.conditions | default([])
+          | selectattr('type', 'equalto', 'Ready')
+          | selectattr('status', 'equalto', 'True') | list | length > 0
+
+    - name: Read the Route
+      kubernetes.core.k8s_info:
+        api_version: route.openshift.io/v1
+        kind: Route
+        name: "{{ ao_name }}"
+        namespace: "{{ ao_namespace }}"
+      register: ao_route
+      retries: "{{ ao_wait_retries }}"
+      delay: "{{ ao_wait_delay }}"
+      until: ao_route.resources | default([]) | length > 0
+
+    - name: Ask the Route for a page, rather than trusting the recap
+      # A Route existing is not proof it serves anything — #102 hit exactly this
+      # and got a 503 from a freshly admitted Route with no backend yet.
+      ansible.builtin.uri:
+        url: "https://{{ ao_route.resources[0].spec.host }}/"
+        method: GET
+        validate_certs: false
+        status_code: [200]
+      register: ao_probe
+      retries: "{{ ao_wait_retries }}"
+      delay: "{{ ao_wait_delay }}"
+      until: ao_probe.status | default(0) == 200
+
+    - name: Report the Automation Orchestrator URL
+      ansible.builtin.debug:
+        msg:
+          - "Automation Orchestrator is up on {{ aap_env_name }}."
+          - "  URL:       https://{{ ao_route.resources[0].spec.host }}/"
+          - "  Operator:  {{ ao_csv.resources | selectattr('metadata.name', 'search', '^' ~ ao_package) | map(attribute='metadata.name') | first }}"
+          - "  Database:  {{ ao_db_cluster }} ({{ ao_db_backend_name }}, {{ ao_db_temporal_name }}, {{ ao_db_visibility_name }})"
+          - "  HTTP:      {{ ao_probe.status }}"

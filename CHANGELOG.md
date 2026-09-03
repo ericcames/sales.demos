@@ -7,6 +7,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added -- Automation Orchestrator installs on every build, on its own database (#141)
+- **`playbooks/install_ao.yml` + `/sales-demos-orchestrator` + a job template.**
+  #108 established that the operator installs and all five product images pull,
+  and that PostgreSQL was the only obstacle. This removes it: CloudNativePG
+  supplies the database, and AO now arrives with every environment rather than
+  being a catalog entry somebody could install by hand.
+- **Wired into `setup.yml` as stage 4 of 5, default-on and skippable.**
+  `-e install_ao=false` drops it. Default-on matches the goal; the flag exists
+  because this is the longest stage and a hung add-on must not fail a build
+  someone needs in twenty minutes. Setup goes from roughly 10 minutes to 15.
+- **THREE DATABASES, NOT TWO, AND THE THIRD IS UNDOCUMENTED.** The CRD requires
+  exactly two secretRefs -- `backendDatabase` and `temporalDatabase` -- so two
+  is what you build, and then `ao-temporal-migration` crash-loops forever on
+  `pq: database "temporal_visibility" does not exist` while every other
+  component waits. Temporal keeps its visibility store in a separate database
+  whose name is fixed and is *not* derived from the temporal database's name.
+  Nothing in the CRD, the `alm-examples` sample or the operator description
+  mentions it; it was found by reading the migration logs on the first live
+  install.
+- **Not AAP's PostgreSQL, and that was a considered choice.** `aap-postgres-15`
+  is owned by the `AnsibleAutomationPlatform` CR with `blockOwnerDeletion`, so
+  databases added to it sit inside something another operator recreates at
+  will, and Temporal's write volume would land on the database the whole demo
+  platform depends on. CloudNativePG is certified, v1.30.0, and carries no
+  `valid-subscription` annotation.
+- **Two traps encoded in the playbook so nobody re-finds them.** ODF's
+  Multicloud Object Gateway ships a vendored CloudNativePG under
+  `postgresql.cnpg.noobaa.io`, whose CRDs are present on any ODF cluster and
+  will not serve `postgresql.cnpg.io` resources. And an AllNamespaces operator
+  has its CSV copied into every namespace, so waiting on `items[0]` of a CSV
+  list reads whichever operator happens to sort first -- both waits select by
+  name.
+- Verified by asking the Route for a page rather than trusting the recap: the
+  playbook requires HTTP 200 before it reports success, and two consecutive
+  runs report `changed=0`.
+
+### Changed -- available_memory_gb 67 -> 63, because AO comes out of that budget (#141)
+- Measured by `probe_env.yml` either side of the install: requests moved
+  15.00 -> 16.91 vCPU and 50.30 -> 52.77 GiB, a delta of **1.91 vCPU /
+  2.47 GiB** for nine AO pods plus one PostgreSQL instance. The
+  `probe_workloads.yml` placeholder of 2.0 / 4.0 is replaced with that
+  measurement.
+- **Overstating this budget is the dangerous direction.** The precondition in
+  `terraform/ocpvirt/locals.tf` fails closed, so a figure that is too small
+  merely refuses tiers the cluster could run, while one that is too large
+  admits a plan that will not schedule.
+
+
 ### Added -- Automation Orchestrator installed as an experiment, and it is not the blocker we expected (#108)
 - **The operator installs and its images pull.** `stable` still resolves to
   `v2026.8.1787147047`, the exact version #92 recorded, and the CSV reached

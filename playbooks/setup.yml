@@ -20,7 +20,10 @@
 #                        with it already on rather than needing a second visit.
 #                        Its write posture comes from the environment's own
 #                        group_vars and is deliberately not defaulted (#102).
-#   4. prepare_env.yml   Prove it. Checks the boot source, the storage clone
+#   4. install_ao.yml    Install Automation Orchestrator and the PostgreSQL it
+#                        cannot run without, via CloudNativePG. Default on,
+#                        skipped with `-e install_ao=false` (#141).
+#   5. prepare_env.yml   Prove it. Checks the boot source, the storage clone
 #                        strategy and ingress, then builds one real VM, times
 #                        it, and destroys it.
 #
@@ -67,19 +70,30 @@
 # CNV, config.yml when only AAP objects changed, prepare_env.yml to re-check an
 # environment that has been sitting idle.
 #
-# EXPECT ROUGHLY 10 MINUTES: about 4 for CNV, a few for the AAP objects and the
-# first Hub image mirror, and about 1 to verify. That is on top of RHDP
-# provisioning the environment itself.
+# EXPECT ROUGHLY 15 MINUTES: about 4 for CNV, a few for the AAP objects and the
+# first Hub image mirror, about 5 for Automation Orchestrator and its database,
+# and about 1 to verify. That is on top of RHDP provisioning the environment
+# itself. Pass `-e install_ao=false` to drop back to roughly 10.
 # ===========================================================================
 
-- name: Phase 0 (1/3) — install OpenShift Virtualization
+- name: Phase 0 (1/5) — install OpenShift Virtualization
   ansible.builtin.import_playbook: install_cnv.yml
 
-- name: Phase 0 (2/3) — apply the AAP configuration
+- name: Phase 0 (2/5) — apply the AAP configuration
   ansible.builtin.import_playbook: config.yml
 
-- name: Phase 0 (3/4) — deploy the AAP MCP server
+- name: Phase 0 (3/5) — deploy the AAP MCP server
   ansible.builtin.import_playbook: mcp_server.yml
 
-- name: Phase 0 (4/4) — prove the environment is demo-ready
+- name: Phase 0 (4/5) — install Automation Orchestrator and its database
+  # DEFAULT ON, AND SKIPPABLE. #141 wants AO in every build, so the default is
+  # true rather than an opt-in nobody remembers. The flag exists because this
+  # stage installs two operators and a database and is the longest-running
+  # thing here — a hung AO install must not fail a build that is otherwise
+  # fine when someone needs to demo in twenty minutes. `-e install_ao=false`
+  # skips it, and install_ao.yml stays runnable on its own afterwards.
+  ansible.builtin.import_playbook: install_ao.yml
+  when: install_ao | default(true) | bool
+
+- name: Phase 0 (5/5) — prove the environment is demo-ready
   ansible.builtin.import_playbook: prepare_env.yml

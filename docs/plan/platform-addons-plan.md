@@ -376,32 +376,93 @@ provisioning problem, not a licensing one. That is a materially better place to
 start than #92 could offer, and it is a different obstacle than the one the
 issue expected to find.
 
-### What is left installed, and how to remove it
+### From experiment to build phase
 
-The operator is **left running on `sandbox`** — 64 MiB is not worth reclaiming,
-and leaving it lets the next session go straight at the CR question. It is
-scoped to its own namespace, labelled `sales.demos/experiment=issue-108`, and
-the entire experiment reverses with one delete:
+[#141](https://github.com/ericcames/sales.demos/issues/141) took the #108
+result and made AO part of every build. It installs by default in `setup.yml`
+and is skipped with `-e install_ao=false`, so the goal — AO present in every
+`sandbox` and `demo` environment — is met without a hung add-on being able to
+fail a build somebody needs in twenty minutes.
+
+**The database is CloudNativePG**, `certified: true`, v1.30.0, carrying no
+`valid-subscription` annotation. AAP's own `aap-postgres-15` was considered and
+rejected: it is owned by the `AnsibleAutomationPlatform` CR with
+`blockOwnerDeletion`, so databases added to it live inside something another
+operator recreates at will, and Temporal's write volume would land on the
+database the entire demo platform depends on.
+
+#### Three databases, not two
+
+The CRD requires exactly two secretRefs — `backendDatabase` and
+`temporalDatabase` — so two is what you build. Then `ao-temporal-migration`
+crash-loops forever while every other component waits:
+
+```
+pq: database "temporal_visibility" does not exist
+```
+
+Temporal keeps its visibility store in a **separate database with a fixed
+name**: literally `temporal_visibility`, not a suffix of whatever the temporal
+database was called. Nothing in the CRD, the `alm-examples` sample, or the
+operator description says so. It was found by reading the migration logs on the
+first live install. The third database is why `install_ao.yml` creates two
+`Database` resources on top of the one `initdb` bootstraps.
+
+#### Two smaller traps, both now encoded in the playbook
+
+- **`postgresql.cnpg.io`, not `postgresql.cnpg.noobaa.io`.** ODF's Multicloud
+  Object Gateway ships a vendored CloudNativePG under that private API group,
+  and its CRDs are present on any cluster with ODF — including this one, dated
+  two days before CNPG was installed. They will not serve these resources.
+- **Never wait on `items[0]` of a ClusterServiceVersion list.** An
+  AllNamespaces operator has its CSV copied into every namespace, so `items[0]`
+  in a given namespace is as likely to be another operator's copy. Both waits
+  select by name.
+
+#### What it costs, measured
+
+| | Requested CPU | Requested memory |
+|---|---|---|
+| Before | 15.00 vCPU | 50.30 GiB |
+| After | 16.91 vCPU | 52.77 GiB |
+| **Delta** | **+1.91 vCPU** | **+2.47 GiB** |
+
+Nine AO pods (backend x2, UI x2, worker x2, background-worker, temporal, redis)
+at 1.80 vCPU / 1.91 GiB, plus one PostgreSQL instance at 0.10 vCPU / 0.50 GiB
+and a 10Gi PVC. That is inside the 2.0 / 4.0 placeholder it replaces, and it is
+why `available_memory_gb` moved **67 → 63**: AO comes out of the same budget as
+the demo VMs, and overstating that budget is the dangerous direction — the
+precondition fails closed, so too small merely refuses tiers, while too large
+admits a plan that will not schedule.
+
+#### Teardown leaves it alone
+
+`teardown.yml` destroys demo VMs and preserves CNV, the boot sources and the
+Terraform state namespace. AO and its database join that list: they are
+setup-time infrastructure, not per-demo state. Removing them is deliberate and
+manual — `oc delete namespace automation-orchestrator` takes the database and
+its PVC with it.
+
+### Removing the whole thing
+
+`teardown.yml` does not touch any of this, deliberately. To remove it by hand:
 
 ```bash
-oc delete namespace automation-orchestrator-operator-system
+oc delete namespace automation-orchestrator                  # instance + database + PVC
+oc delete namespace automation-orchestrator-operator-system  # the AO operator
+oc delete namespace cnpg-system                              # CloudNativePG
 oc delete crd automationorchestrators.aap.ansible.com
 ```
 
-It is **not** in `setup.yml` as of this issue, and has no playbook or skill.
-#108 left that decision open pending the outcome, and the outcome was that the
-operator is the cheap part — a playbook installing a controller nobody can
-instantiate would automate the wrong half.
+Only `AllNamespaces` install mode is supported for the AO operator
+(`OwnNamespace`, `SingleNamespace` and `MultiNamespace` are all
+`supported: false`), so both it and CNPG hold a cluster-scoped OperatorGroup in
+a namespace of their own rather than sharing CNV's.
 
-**That holds only while the database is missing, and
-[#141](https://github.com/ericcames/sales.demos/issues/141) removes it.** Since
-all five images pull, the sole obstacle is the two PostgreSQL databases, and
-#141 provisions them with CloudNativePG (`certified: true`, v1.30.0, no
-subscription required) so AO becomes part of every `sandbox` and `demo` build —
-default-on, with a skip flag. Read this section as the measurement that made
-#141 worth opening, not as a standing decision against automating it.
-
-Only `AllNamespaces` install mode is supported (`OwnNamespace`,
-`SingleNamespace` and `MultiNamespace` are all `supported: false`), so it needs
-a cluster-scoped OperatorGroup. That is why it went into its own namespace with
-an empty-spec OperatorGroup rather than alongside CNV.
+**A note on how this section came to be split.** #108's own write-up predicted
+"the two PostgreSQL databases" and recorded a decision not to write a playbook,
+on the correct-at-the-time reasoning that automating the install of a controller
+nobody could instantiate would automate the wrong half. Both were superseded
+within a day: there are three databases, not two, and #141 wrote the playbook.
+The measurements above are kept because they are still true and still the reason
+#141 was worth opening; the predictions are not preserved as if they had held.
