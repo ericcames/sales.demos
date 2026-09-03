@@ -95,7 +95,7 @@ The `u1.*` types are left untouched.
 
 The real ceiling is enforced in code, not by this table:
 `terraform/ocpvirt/locals.tf` fails `plan` when a run exceeds
-`available_memory_gb` (default 14), so an over-budget request is caught before
+`available_memory_gb` (default 67, measured — #118), so an over-budget request is caught before
 it schedules and sits Pending.
 
 ## Not scheduled
