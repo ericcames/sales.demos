@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed -- demo pointed at a cluster that no longer resolves (#135)
+- `inventory/group_vars/demo/connection.yml` named the previous demo cluster in
+  `aap_hostname`, `openshift_api_url` and `openshift_apps_domain`. The
+  environment had been rebuilt and its credentials refreshed in the vault, but
+  these three lines were not.
+- **The failure gave no signal pointing here.** DNS simply stopped resolving, so
+  every connection died at the network layer -- `curl` returned HTTP 000 and the
+  `openshift-demo` MCP server reported only `CONNECTION_CLOSED`. Same shape as
+  #101 on sandbox.
+- Credentials and hostnames are refreshed in two different places by design, so
+  updating one leaves no trace that the other is stale. The file header now says
+  that explicitly: when an environment is rebuilt, change both.
+- Verified against the rebuilt environment: the AAP gateway reports `2.7` with
+  `db_connected`, the vaulted token authenticates as its cluster-admin
+  ServiceAccount, and the cluster's own `ingresses.config.openshift.io` domain
+  matches `openshift_apps_domain` exactly.
+
 ### Fixed -- secrets.yml.example had drifted from what the code requires (#128)
 - **Added `rhsm_org_id` and `rhsm_activation_key`.**
   `playbooks/roles/linux_register/tasks/main.yml` asserts both and fails the play

@@ -7,11 +7,19 @@
 # the new hostname and API URL here, then update the two credential keys under
 # `env_secrets.demo` in the vault-encrypted group_vars/aap/secrets.yml.
 #
-# LIVE as of 2026-08-10 (#30). This was placeholders until then, and an apply
+# LIVE as of 2026-09-03, repointed at a rebuilt environment (#135). It first
+# went live 2026-08-10 (#30); before that it was placeholders, and an apply
 # against `demo` correctly failed rather than silently borrowing sandbox's
 # values — the bug fixed in #16. Now that both environments are real, that
 # isolation is load-bearing rather than theoretical: `--limit demo` and
 # `--limit sandbox` reach two different clusters.
+#
+# THE CREDENTIALS AND THESE HOSTNAMES ARE REFRESHED SEPARATELY, and that is how
+# this file goes stale unnoticed: the vault was updated for the rebuilt
+# environment while these three lines still named the old cluster. Nothing
+# fails in a way that points here — DNS simply stops resolving, so every
+# connection dies at the network layer and the MCP server reports only
+# CONNECTION_CLOSED. When an environment is rebuilt, change BOTH.
 #
 #   ansible-vault edit playbooks/group_vars/all/secrets.yml \
 #     --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
@@ -20,13 +28,13 @@
 aap_env_name: "demo"
 
 # --- Ansible Automation Platform -------------------------------------------
-aap_hostname: "aap-aap.apps.cluster-xcvjx-1.dyn.redhatworkshops.io"
+aap_hostname: "aap-aap.apps.cluster-6d5xj.dyn.redhatworkshops.io"
 aap_username: "admin"
 aap_validate_certs: false
 aap_request_timeout: 30
 
 # --- OpenShift -------------------------------------------------------------
-openshift_api_url: "https://api.cluster-xcvjx-1.dyn.redhatworkshops.io:6443"
+openshift_api_url: "https://api.cluster-6d5xj.dyn.redhatworkshops.io:6443"
 openshift_validate_certs: false
 
 # --- Credentials, resolved from the vaulted group_vars/aap/secrets.yml -----
@@ -56,7 +64,7 @@ demo_ssh_public_key: "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQDs1ypf/MG+oNvFVWhWSx
 # The *.apps ingress domain for this cluster. Used to construct Route
 # hostnames for HTTP access to demo VMs.
 #   oc get ingresses.config.openshift.io cluster -o jsonpath='{.spec.domain}'
-openshift_apps_domain: "apps.cluster-xcvjx-1.dyn.redhatworkshops.io"
+openshift_apps_domain: "apps.cluster-6d5xj.dyn.redhatworkshops.io"
 
 # Namespace the demo VMs are created in.
 ocpvirt_namespace: "sales-demos-demo"
