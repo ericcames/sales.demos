@@ -9,9 +9,11 @@ name: Lint
 #
 # Nothing deploys from CI. Deploys run via ansible-playbook, either wrapped by a
 # skill in .claude/skills/ or as an AAP job template — both driving the same
-# playbooks/<phase>.yml. That keeps every environment-specific value in the
-# gitignored inventory/group_vars/<env>/secrets.yml with no second copy in
-# GitHub Environment secrets, so a new RHDP env stays a one-file edit.
+# playbooks/<phase>.yml. That keeps every credential in the vault-encrypted,
+# untracked playbooks/group_vars/all/secrets.yml with no second copy in GitHub
+# Environment secrets. Non-credential per-environment values live in the
+# committed inventory/group_vars/<env>/connection.yml, so a new RHDP env stays a
+# one-file edit.
 on:
   pull_request:
   push:

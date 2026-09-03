@@ -81,8 +81,10 @@
         fail_msg: >-
           AAP or OpenShift connection variables are not set for
           '{{ aap_env_name | default("?") }}'. Check that environment's
-          connection.yml, and that --vault-id was passed so env_secrets
-          resolves.
+          connection.yml, that playbooks/group_vars/all/secrets.yml exists --
+          it is gitignored, so a fresh clone has only the .example (#130) --
+          and that --vault-id was passed so env_secrets resolves. Run
+          /sales-demos-first-time to build it.
         quiet: true
 
     - name: Assert kubeconfig exists for Helm

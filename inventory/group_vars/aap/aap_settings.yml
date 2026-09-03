@@ -12,8 +12,10 @@
 # aap_validate_certs) are NOT here. They split two ways:
 #
 #   credentials only      playbooks/group_vars/all/secrets.yml
-#                         VAULT-ENCRYPTED AND COMMITTED, keyed per environment
-#                         under env_secrets
+#                         VAULT-ENCRYPTED AND LOCAL ONLY — never tracked (#130),
+#                         keyed per environment under env_secrets. In AAP these
+#                         arrive instead from the "Sales Demos - Env Secrets"
+#                         credential type as extra_vars (#129).
 #   everything else       inventory/group_vars/<env>/connection.yml
 #                         committed PLAINTEXT — hostnames, API URLs, usernames,
 #                         namespaces, the SSH public key

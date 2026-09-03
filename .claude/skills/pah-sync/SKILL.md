@@ -54,16 +54,17 @@ green run.
 ENV=${ENV:-sandbox}
 VAULT_ID="sales.demos@$HOME/secrets/.vault_pass_sales_demos"
 
-# 1. The vault password file exists. Without it the committed secrets cannot be
+# 1. The vault password file exists. Without it secrets.yml cannot be
 #    decrypted and aap_password will look simply undefined.
 test -s "$HOME/secrets/.vault_pass_sales_demos" \
   && echo "✅ vault password file" \
   || echo "❌ ~/secrets/.vault_pass_sales_demos missing"
 
-# 2. The committed secrets file is vault-encrypted, not plaintext.
+# 2. secrets.yml exists locally and is vault-encrypted, not plaintext.
+#    It is gitignored (#130); a fresh clone will not have it.
 head -c 15 playbooks/group_vars/all/secrets.yml 2>/dev/null | grep -q '^\$ANSIBLE_VAULT' \
   && echo "✅ secrets.yml is vault-encrypted" \
-  || echo "❌ secrets.yml is NOT encrypted — stop, do not commit"
+  || echo "❌ secrets.yml missing or NOT encrypted — see /sales-demos-first-time"
 
 # 3. The Red Hat OFFLINE token resolves. This is the one that matters: an empty
 #    token does not fail the sync, it just syncs nothing.

@@ -131,9 +131,13 @@
           - ocpvirt_namespace_resolved | length > 0
         fail_msg: >-
           No OpenShift connection. Locally this comes from
-          group_vars/<env>/connection.yml with --vault-id passed so
-          openshift_api_token resolves; from AAP, attach an OpenShift API Bearer
-          Token credential (it injects K8S_AUTH_HOST / K8S_AUTH_API_KEY).
+          group_vars/<env>/connection.yml plus the vault-encrypted
+          playbooks/group_vars/all/secrets.yml, with --vault-id passed so
+          openshift_api_token resolves. That file is gitignored (#130), so a
+          fresh clone has only secrets.yml.example -- build yours from it, or
+          run /sales-demos-first-time. From AAP this arrives as an extra_var
+          from the "Sales Demos - Env Secrets" credential (#129); check it is
+          attached to this job template.
         quiet: true
 
     - name: Assert the AAP connection is resolved

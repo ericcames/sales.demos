@@ -33,8 +33,22 @@ Only placeholder lines and the audit pattern itself may match.
 ## Secrets: exactly one mechanism
 
 `playbooks/group_vars/all/secrets.yml` is the only secrets file. It is
-**vault-encrypted and committed**, and lives in the `all` group directory so it
-loads for every host — both environments, *and the demo VMs*.
+**vault-encrypted and local only — never tracked** — and lives in the `all` group
+directory so it loads for every host: both environments, *and the demo VMs*.
+
+**It used to be committed, and untracking it in #130 is what makes this repo
+reusable.** A public repo that ships one person's encrypted credentials hands
+everyone else a blob they cannot decrypt, cannot replace without diverging from
+upstream, and that conflicts on every pull. `secrets.yml.example` is the contract
+now; each machine builds its own real file from it. On a fresh clone the file
+does not exist and you create it — that is the point, not a gap.
+
+**This is why #129 exists.** AAP job templates used to receive the vaulted file
+in the project's SCM checkout and decrypt it with the "Sales Demos - Vault"
+credential. With nothing to decrypt, they get their credentials from the
+"Sales Demos - Env Secrets" custom credential type instead, injected as
+`extra_vars`. Untracking the file without that credential type breaks every job
+template — the two changes belong together.
 
 It was `group_vars/aap/` until #5, which is scoped to hosts in the `aap` group.
 That was invisible until a playbook targeted something else: `run_demo.yml` runs
@@ -90,11 +104,27 @@ ansible-vault edit playbooks/group_vars/all/secrets.yml \
   create `connection.yml.example` or any other `.example` twin.
 - Do **not** introduce a second sourceable secrets file. `docs/dev-environment.sh`
   is retired and must not come back.
-- **Never weaken the vault check** in `utilities/check-no-secrets.sh`. Because
-  `secrets.yml` is tracked rather than gitignored, that check — a tracked
-  `secrets.yml` must begin with `$ANSIBLE_VAULT` — is the only thing preventing
-  a plaintext credential file from being pushed publicly. Do not replace it with
-  a `.gitignore` rule; that hides the file instead of verifying it.
+- **Never weaken the guard** in `utilities/check-no-secrets.sh`. It is the only
+  thing preventing a credential file from being pushed to this public repo, and
+  it now makes three checks that cannot silently pass:
+
+  1. nothing named `secrets.yml` is tracked — catches `git add -f`
+  2. the `.gitignore` rule actually matches, tested with `git check-ignore`
+  3. a tracked `secrets.yml`, if one exists anyway, still begins with
+     `$ANSIBLE_VAULT`
+
+  **Check 2 is the answer to a real objection, not a replacement for one.** The
+  rule here used to say an ignore rule hides the file instead of verifying it,
+  and that was correct: gitignoring the file and keeping the old loop would have
+  been *silent*. `git ls-files` returns nothing, the loop never iterates, `fail`
+  stays `0`, and the script prints "passed" — and because every other pattern in
+  it also pipes from `git ls-files`, a plaintext untracked `secrets.yml` full of
+  live tokens would be invisible to all of them too. So the ignore rule is not
+  trusted; it is *verified*. Deleting it fails the build.
+
+  Check 1 must run **before** check 2, and the order is load-bearing: git reports
+  a tracked file as "not ignored" whatever `.gitignore` says, so testing
+  check-ignore first blames `.gitignore` for a rule that is present and correct.
 
 ## Environments
 

@@ -82,13 +82,14 @@ VAULT_ID="sales.demos@$HOME/secrets/.vault_pass_sales_demos"
 #    ~/secrets/, alongside .vault_pass_azure and .vault_pass_qa.
 test -s "$HOME/secrets/.vault_pass_sales_demos" \
   && echo "✅ vault password file" \
-  || echo "❌ ~/secrets/.vault_pass_sales_demos missing — without it the committed secrets cannot be decrypted"
+  || echo "❌ ~/secrets/.vault_pass_sales_demos missing — without it secrets.yml cannot be decrypted"
 
-# 2. The committed secrets file is vault-encrypted, not plaintext.
-#    (This repo is public and secrets.yml is deliberately tracked.)
+# 2. secrets.yml exists locally and is vault-encrypted, not plaintext.
+#    It is gitignored (#130), so a fresh clone will NOT have it — build it
+#    from secrets.yml.example via /sales-demos-first-time.
 head -c 15 playbooks/group_vars/all/secrets.yml 2>/dev/null | grep -q '^\$ANSIBLE_VAULT' \
   && echo "✅ secrets.yml is vault-encrypted" \
-  || echo "❌ secrets.yml is NOT encrypted — stop, do not commit"
+  || echo "❌ secrets.yml missing or NOT encrypted — see /sales-demos-first-time"
 
 # 3. This environment's credentials are real, not placeholders.
 #    Read through the vault; never yaml.safe_load the file directly.
