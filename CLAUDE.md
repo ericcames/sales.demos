@@ -9,6 +9,7 @@ including *why* each choice was made.
 | OpenShift Virtualization | [`docs/plan/ocpvirt-demo-plan.md`](docs/plan/ocpvirt-demo-plan.md) |
 | Private Automation Hub as code | [`docs/plan/pah-plan.md`](docs/plan/pah-plan.md) |
 | Network MCP servers | [`docs/plan/network-mcp-plan.md`](docs/plan/network-mcp-plan.md) |
+| Platform add-ons (MCP servers) | [`docs/plan/platform-addons-plan.md`](docs/plan/platform-addons-plan.md) |
 
 ## This repo is public
 

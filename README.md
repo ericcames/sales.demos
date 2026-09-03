@@ -226,6 +226,7 @@ never a demo environment, so they must never run from AAP:
 | `sales-demos-first-time` | One-time setup on a new machine — start here |
 | `collections-sync` | Pin, install, and verify `collections/requirements.yml` |
 | `sales-demos-ee-build` | Build, verify, and publish the execution environment |
+| `sales-demos-mcp` | Connect Claude Code to the clusters over MCP — per-environment kubeconfigs |
 
 New machine? Run `/sales-demos-first-time` first. It walks every prerequisite and
 validates each one, including the vault password — without which nothing in this

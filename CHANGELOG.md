@@ -7,6 +7,56 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added -- the OpenShift MCP servers, so asking a cluster a question is a tool call (#102)
+- **The cost this removes is real and this repo was paying it constantly.** Every
+  question asked of a cluster in #101 -- node capacity, which EE registries
+  existed, whether `spec.mcp` was on the CR -- cost a `curl`, a vault read and a
+  JSON parse, hand-assembled each time. `.mcp.json` replaces that with a tool
+  call.
+- **The OpenShift server runs on the laptop, not in the cluster**, reversing what
+  #92 assumed. It filed `kubernetes-mcp-server` as a "zero-footprint fallback";
+  it is the correct primary. An in-cluster server **can never help bootstrap the
+  environment it runs in**, and dies with every expiring RHDP cluster -- this
+  session began by finding both of this repo's had expired. A local one re-reads
+  `connection.yml` and carries on.
+- **It also takes #94's Decision C off the critical path.** That decision --
+  containerize, adapt stdio to streamable HTTP, Route, auth, vault-to-Secret --
+  exists because every *network vendor* MCP server is stdio-only with no
+  container image. Claude Code and a stdio server both run on the laptop, so
+  there is no gap to cross here at all.
+- **Two servers, one per environment, named after it.** `openshift-sandbox` has
+  full access (25 tools); `openshift-demo` is `--read-only` (16). The environment
+  is in the server's *name*, so you pick it by picking the tool. One server whose
+  target silently changed underneath you is exactly #16 -- where `--limit demo`
+  resolved to sandbox's hostname and token with no warning -- and repeating that
+  with cluster-write tools attached would be materially worse.
+- **`--read-only` was measured, not assumed.** It removes precisely the nine
+  mutating tools and keeps every investigative one, including `vm_guest_info`
+  and `vm_troubleshoot`. So `demo` can still diagnose a broken VM and cannot
+  change it -- #93's "agent reads, Ansible writes" thesis costing nothing here,
+  unlike Dynatrace (#99), where it costs a withheld scope.
+- The `kubevirt` toolset is enabled, adding `vm_create`, `vm_clone`,
+  `vm_lifecycle`, `vm_guest_info` and `vm_troubleshoot` -- directly relevant to a
+  repo whose whole first use case is OpenShift Virtualization.
+- `utilities/make-kubeconfig.sh` derives `.kube/<env>.kubeconfig` from
+  `connection.yml` plus the vault. **Nothing new is stored**: it is gitignored,
+  `0600`, and regenerable, so it is a cache with an obvious refresh rather than
+  the second copy of a rotating credential that #22 and #68 both refused. It
+  accepts **both** token shapes, because #105 is open precisely for a check that
+  accepted only `sha256~` and rejected a valid ServiceAccount token.
+- **One new prerequisite, and it is the first non-Red-Hat one:** `npx`. Recorded
+  in `/sales-demos-first-time` step 4.5, with the standalone binary noted as the
+  escape hatch for anyone who would rather not install Node.
+- **Known rough edge, stated rather than hidden:** a fresh clone shows a *failing*
+  MCP server until `/sales-demos-mcp` runs, because the committed config points
+  at a kubeconfig that does not exist yet. The alternative -- following whatever
+  `~/.kube/config` happens to point at -- trades a visible, self-explaining
+  failure for a silent, wrong-environment success. That is the worse trade.
+- `docs/plan/platform-addons-plan.md` is written to **teach the mechanism**, not
+  just record the decision: what a tool call is, and why the stdio-versus-HTTP
+  transport split is the single fact that makes the network servers in #94 hard
+  and these easy.
+
 ### Changed -- the three "VERIFIED ON AAP 2.6" claims, re-measured on 2.7 (#101)
 - #101 step 3 says **re-verify, do not blind-edit**, the claims 2.7 might
   invalidate. Measured against the live 2.7 gateway and controller on
