@@ -7,6 +7,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed -- secrets.yml is no longer tracked (#130)
+- `playbooks/group_vars/all/secrets.yml` is now **vault-encrypted and local
+  only**. It was vault-encrypted and committed; untracking it is what makes this
+  public repo reusable by anyone else. Shipping one person's encrypted
+  credentials hands a forker a blob they cannot decrypt, cannot replace without
+  diverging from upstream, and that conflicts on every pull.
+  `secrets.yml.example` is the contract, and each machine builds its own file.
+- **This depends on #129 and would break AAP without it.** Job templates used to
+  receive the vaulted file in the project's SCM checkout and decrypt it with the
+  "Sales Demos - Vault" credential. They now get their credentials from the
+  "Sales Demos - Env Secrets" credential type as extra_vars.
+
+### Fixed -- the secret guard would have gone silent (#130)
+- **Gitignoring the file and keeping the old check would have passed silently.**
+  `git ls-files` returns nothing for an untracked file, so the vault-header loop
+  never iterated, `fail` stayed `0`, and the script printed "passed" -- and every
+  other pattern in it also reads from `git ls-files`, so a *plaintext* untracked
+  `secrets.yml` full of live tokens would have been invisible to all of them.
+  CI would have gone green while the one thing the script guards stopped being
+  guarded.
+- `utilities/check-no-secrets.sh` now makes three checks that cannot no-op:
+  nothing named `secrets.yml` is tracked; the `.gitignore` rule actually matches
+  (`git check-ignore`); and a tracked one, if it exists anyway, still begins with
+  `$ANSIBLE_VAULT`. The ignore rule is not trusted -- it is verified, and
+  deleting it fails the build. That answers the standing objection in `CLAUDE.md`
+  that an ignore rule hides the file instead of verifying it, rather than
+  discarding it.
+- **The check order is load-bearing.** Tracked-ness is tested before
+  `git check-ignore`, because git reports a tracked file as "not ignored"
+  whatever `.gitignore` says. Testing check-ignore first blamed `.gitignore` for
+  a rule that was present and correct.
+
+### Changed -- documentation and the first-time skill follow the new model (#130)
+- `CLAUDE.md`, `README.md`, `CONTRIBUTING.md`, `.github/SECURITY.md`,
+  `.gitignore`, `aap_settings.yml`, `secrets.yml.example` and the `lint.yml`
+  header all said the file was committed. They now describe building it from the
+  example, and `SECURITY.md` records that credentials committed before this
+  change remain in git history.
+- **`sales-demos-first-time` step 2 was a dead end.** It told a new user the file
+  already existed and to ask for the password. On a fresh clone there is now
+  nothing to decrypt. It covers two cases instead: a fresh machine, where you
+  create both the file and a password of your own choosing, and a shared
+  environment, where you need the file *and* the password because the file is no
+  longer in git. Its step 0 audit now checks for the file too.
+
 ### Added -- AAP credential type so secrets.yml need not be tracked (#129)
 - `inventory/group_vars/aap/controller_credential_types.yml` defines
   "Sales Demos - Env Secrets": four write-only fields (`aap_password`,

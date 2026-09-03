@@ -1,6 +1,6 @@
 ---
 name: sales-demos-first-time
-description: "First-time setup for the sales.demos repo on a new machine. Checks and guides every local prerequisite — Automation Hub token, the vault password that decrypts the committed secrets, pinned collections, the python kubernetes client, and the run-log directory — then validates each one. TRIGGER when: the user is new to this repo, asks how to get started, says prerequisites are missing, or hits errors about vault decryption, a missing vault password, `couldn't resolve module/action`, or an undefined connection variable. SKIP: if setup is already done and the user wants to run a phase — that is ocpvirt-setup."
+description: "First-time setup for the sales.demos repo on a new machine. Checks and guides every local prerequisite — Automation Hub token, the vault password and the secrets file you build from the example, pinned collections, the python kubernetes client, and the run-log directory — then validates each one. TRIGGER when: the user is new to this repo, asks how to get started, says prerequisites are missing, or hits errors about vault decryption, a missing vault password, `couldn't resolve module/action`, or an undefined connection variable. SKIP: if setup is already done and the user wants to run a phase — that is ocpvirt-setup."
 ---
 
 # sales-demos-first-time
@@ -59,6 +59,8 @@ test -f ~/.ansible.cfg && grep -q 'galaxy_server.rh_certified' ~/.ansible.cfg \
   && echo "EXISTS   Hub token in ~/.ansible.cfg" || echo "MISSING  Hub token"
 test -s ~/secrets/.vault_pass_sales_demos \
   && echo "EXISTS   vault password" || echo "MISSING  vault password  <-- blocker"
+test -f playbooks/group_vars/all/secrets.yml \
+  && echo "EXISTS   secrets.yml" || echo "MISSING  secrets.yml  <-- blocker, build it from the .example"
 test -f ansible.cfg \
   && echo "PROBLEM  project-local ansible.cfg present" || echo "OK       no project-local ansible.cfg"
 ansible-galaxy collection list kubernetes.core 2>/dev/null | grep -q kubernetes.core \
@@ -98,35 +100,70 @@ leftover on some machines; this repo reads the former.
 does not merge, so a local one shadows `~/.ansible.cfg` and breaks certified
 installs. Set options via CLI flags or environment variables instead.
 
-## Step 2 — Vault password (the one you cannot create)
+## Step 2 — Vault password and the secrets file
 
-`playbooks/group_vars/all/secrets.yml` is committed to this public repo
-**vault-encrypted**. Without the password, every playbook fails at the first
-templated credential.
+`playbooks/group_vars/all/secrets.yml` is **not in this repo**. It is
+gitignored (#130), because this repo is public and shipping one person's
+encrypted credentials would hand everyone else a blob they cannot decrypt and
+cannot replace without diverging from upstream. Without this file, every
+playbook fails at the first templated credential.
 
-**A new user cannot generate this.** There is no derivation and no recovery —
-the file is only as recoverable as the password someone hands you. Ask Eric for
-it. Do not invent one, and do not re-encrypt the file with a new password unless
-you intend to lock out everyone else.
+There are two situations. Work out which one you are in first:
 
-Once you have it:
+```bash
+test -f playbooks/group_vars/all/secrets.yml \
+  && echo "file present — you need the password that matches it (case B)" \
+  || echo "no file — you are building one (case A)"
+```
+
+### Case A — a fresh machine, no file
+
+You create both, and **you choose the password**. There is nothing to ask
+anyone for.
 
 ```bash
 mkdir -p ~/secrets && chmod 700 ~/secrets
-printf '%s\n' '<the password>' > ~/secrets/.vault_pass_sales_demos
+printf '%s\n' '<a long random passphrase>' > ~/secrets/.vault_pass_sales_demos
 chmod 600 ~/secrets/.vault_pass_sales_demos
+
+cp playbooks/group_vars/all/secrets.yml.example \
+   playbooks/group_vars/all/secrets.yml
 ```
 
-Verify it actually decrypts — do not assume:
+Now fill in real values. `secrets.yml.example` documents every key and where to
+get it, and CI keeps it honest — `utilities/check-secrets-example.py` fails the
+build if the code reads a key the example does not declare (#128). Then encrypt:
+
+```bash
+ansible-vault encrypt playbooks/group_vars/all/secrets.yml \
+  --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
+```
+
+**The `sales.demos` vault-id label is not cosmetic.** It is baked into the
+file's header, and `inventory/group_vars/aap/controller_credentials.yml` builds
+the AAP Vault credential against that exact label. Encrypt with a different
+label and AAP will not use the credential.
+
+### Case B — someone shared their environment with you
+
+You need **both** the file and the password; the password alone is no longer
+enough, because the file is not in git. Get them over a private channel — never
+in an issue, a PR, or this repo.
+
+### Either way, verify — do not assume
 
 ```bash
 ansible-vault view playbooks/group_vars/all/secrets.yml \
   --vault-id sales.demos@~/secrets/.vault_pass_sales_demos >/dev/null 2>&1 \
   && echo "✅ vault password works" \
-  || echo "❌ wrong password — decryption failed"
+  || echo "❌ decryption failed — wrong password, or the file was encrypted with a different vault-id"
 ```
 
-This directory also holds `.vault_pass_azure` and `.vault_pass_qa` for
+**Back up both the file and the password.** Since #130 neither is in git, so
+nothing can restore them. Losing the password makes the file unrecoverable;
+losing the file loses both environments' credentials.
+
+`~/secrets/` also holds `.vault_pass_azure` and `.vault_pass_qa` for
 `aap_config`. Same convention, one file per vault ID.
 
 ## Step 3 — Collections

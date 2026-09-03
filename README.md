@@ -115,16 +115,33 @@ failed silently (#87).
 
 ## Secrets: one vaulted file, both environments
 
-`playbooks/group_vars/all/secrets.yml` is **vault-encrypted and committed**. It
-sits in the `all` group directory, so it loads for `sandbox`, `demo` and the
-demo VMs alike —
-one file, no per-environment copy to keep in step.
+`playbooks/group_vars/all/secrets.yml` is **vault-encrypted and local only — it
+is not tracked**. It sits in the `all` group directory, so it loads for
+`sandbox`, `demo` and the demo VMs alike — one file, no per-environment copy to
+keep in step.
 
-On a fresh clone you do not create it. You already have it; you need the vault
-password, which lives outside this repo at `~/secrets/.vault_pass_sales_demos`
-(`chmod 600`, in a `chmod 700` directory) alongside the other `.vault_pass_*`
-files. **Back that password up** — losing it makes the committed file
-unrecoverable.
+**On a fresh clone it does not exist, and you create it.** That is deliberate:
+this repo is public, and shipping one person's encrypted credentials would hand
+everyone else a blob they cannot decrypt and cannot replace without diverging
+from upstream (#130). `secrets.yml.example` is the contract — copy it, fill in
+your own values, encrypt it:
+
+```bash
+cp playbooks/group_vars/all/secrets.yml.example \
+   playbooks/group_vars/all/secrets.yml
+# fill in real values, then:
+ansible-vault encrypt playbooks/group_vars/all/secrets.yml \
+  --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
+```
+
+The vault password is yours to choose and lives outside this repo at
+`~/secrets/.vault_pass_sales_demos` (`chmod 600`, in a `chmod 700` directory)
+alongside the other `.vault_pass_*` files. **Back up both the password and the
+file** — nothing in git can restore either one now.
+
+The `sales.demos` vault-id label is not cosmetic: it must match the label baked
+into the file's header, and `inventory/group_vars/aap/controller_credentials.yml`
+depends on it.
 
 ```bash
 ansible-vault edit playbooks/group_vars/all/secrets.yml \

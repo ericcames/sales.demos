@@ -4,8 +4,8 @@
 
 This repository holds **sales demo automation** — playbooks, Terraform, AAP
 configuration-as-code, skills, and docs. It contains **no live credentials in
-plaintext**. It does contain credentials, deliberately: one vault-encrypted,
-committed secrets file (see below).
+plaintext**, and since #130 it does not contain credentials at all: the one
+secrets file is vault-encrypted and local only (see below).
 
 This repository is **public**.
 
@@ -37,15 +37,23 @@ Customer data remains forbidden. The exception is narrow: RHDP addresses only.
 
 | | Where | State |
 |---|---|---|
-| Credentials | `playbooks/group_vars/all/secrets.yml` | **vault-encrypted and committed** |
+| Credentials | `playbooks/group_vars/all/secrets.yml` | **vault-encrypted, local only, never tracked** |
 | Everything else per-environment — hostnames, API URLs, usernames, namespaces | `inventory/group_vars/<env>/connection.yml` | committed plaintext |
 | The vault password | `~/secrets/.vault_pass_sales_demos` | outside the repo, `600` |
 
-The secrets file is **tracked rather than gitignored** on purpose: gitignoring
-would hide it instead of verifying it. `check-no-secrets.sh` enforces that a
-tracked `secrets.yml` begins with `$ANSIBLE_VAULT`, which is the check standing
-between a plaintext credential file and a public push. See
-[CONTRIBUTING.md](../CONTRIBUTING.md).
+The secrets file is **gitignored, and that ignore rule is itself verified**.
+`utilities/check-no-secrets.sh` fails the build if anything named `secrets.yml`
+is tracked, if the `.gitignore` rule stops matching (`git check-ignore`), or if
+a tracked one is not `$ANSIBLE_VAULT`-encrypted.
+
+The distinction matters. Gitignoring the file and keeping the previous check
+would have been silent: every pattern in that script reads from `git ls-files`,
+so an untracked plaintext credential file is invisible to all of them and CI
+would report "passed". The rule is not trusted; it is checked.
+
+**Credentials committed before #130 remain in git history.** They were
+vault-encrypted, and the environments they addressed are ephemeral and expire,
+but treat anything that was in that file as disclosed.
 
 ## Automated enforcement
 

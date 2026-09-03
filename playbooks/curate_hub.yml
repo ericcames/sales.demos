@@ -70,7 +70,9 @@
         fail_msg: >-
           aap_hostname / aap_username / aap_password are not set for
           '{{ aap_env_name | default("?") }}'. Check that environment's
-          connection.yml, and that --vault-id was passed so env_secrets resolves.
+          connection.yml, that playbooks/group_vars/all/secrets.yml exists (it is
+          gitignored -- a fresh clone has only the .example, #130), and that
+          --vault-id was passed so env_secrets resolves.
         quiet: true
 
     - name: Load the desired contents

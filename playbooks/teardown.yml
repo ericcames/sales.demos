@@ -98,8 +98,11 @@
           - ocpvirt_api_token | length > 0
         fail_msg: >-
           No OpenShift connection. Locally this comes from
-          group_vars/<env>/connection.yml with --vault-id passed; from AAP,
-          attach an OpenShift API Bearer Token credential.
+          group_vars/<env>/connection.yml plus the vault-encrypted
+          playbooks/group_vars/all/secrets.yml, with --vault-id passed. That
+          file is gitignored (#130), so a fresh clone has only the .example.
+          From AAP it arrives as an extra_var from the "Sales Demos - Env
+          Secrets" credential (#129).
         quiet: true
 
     - name: Report what is about to be destroyed

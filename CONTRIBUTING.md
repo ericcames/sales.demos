@@ -12,9 +12,21 @@ Use generic placeholders in committed docs and examples:
 
 ## Where values live
 
-`playbooks/group_vars/all/secrets.yml` is **vault-encrypted and committed**, and
-is the only secrets mechanism in this repo. It sits in the `all` group directory
-so it loads for every environment — one file, both `sandbox` and `demo`.
+`playbooks/group_vars/all/secrets.yml` is **vault-encrypted and local only — it
+is not tracked** — and is the only secrets mechanism in this repo. It sits in the
+`all` group directory so it loads for every environment — one file, both
+`sandbox` and `demo`.
+
+On a fresh clone it does not exist. Build it from `secrets.yml.example`, which
+is the contract and is kept honest by CI (#128):
+
+```bash
+cp playbooks/group_vars/all/secrets.yml.example \
+   playbooks/group_vars/all/secrets.yml
+# fill in real values, then:
+ansible-vault encrypt playbooks/group_vars/all/secrets.yml \
+  --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
+```
 
 ```bash
 ansible-vault edit playbooks/group_vars/all/secrets.yml \
@@ -32,7 +44,8 @@ A new RHDP environment therefore means editing that environment's
 The vault password lives outside this repo at
 `~/secrets/.vault_pass_sales_demos` (`chmod 600`, `chmod 700` directory),
 alongside the other `.vault_pass_*` files. It is the one secret that cannot be
-vaulted, and losing it makes the committed file unrecoverable.
+vaulted. Losing it makes your secrets file unrecoverable, and since #130 that
+file is no longer in git either — **back up both**.
 
 > **RHDP URLs are not sensitive here**, matching
 > [`aap_config`](https://github.com/ericcames/aap_config). A
@@ -61,12 +74,18 @@ git ls-files -z | xargs -0 grep -nEi \
 Only placeholder lines, prose, and the audit pattern itself may match. Keep the
 pattern generic — never hardcode a real value into the check.
 
-`utilities/check-no-secrets.sh` runs this in CI along with the check that
-matters most under the vault model: **a tracked `secrets.yml` must begin with
-`$ANSIBLE_VAULT`.** Since `secrets.yml` is no longer gitignored, that check is
-the only thing standing between a plaintext credential file and a public push.
-Do not weaken it, and do not "fix" a failure by re-adding an ignore rule — that
-would hide the file rather than verify it.
+`utilities/check-no-secrets.sh` runs this in CI along with the checks that
+matter most: **nothing named `secrets.yml` may be tracked**, and **the
+`.gitignore` rule that keeps it untracked must actually match**, tested with
+`git check-ignore`. A tracked one, if it somehow exists, must still begin with
+`$ANSIBLE_VAULT`.
+
+Do not weaken any of the three. In particular, do not "fix" a failure by
+deleting the ignore rule — the rule is not trusted here, it is *verified*, and
+removing it fails the build. That verification is the point: simply gitignoring
+the file and keeping the old check would have been **silent**, because every
+pattern in that script reads from `git ls-files`, and an untracked file is
+invisible to all of them.
 
 ## Ansible standards
 

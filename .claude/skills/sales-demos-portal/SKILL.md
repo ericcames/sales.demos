@@ -35,12 +35,13 @@ VAULT_ID="sales.demos@$HOME/secrets/.vault_pass_sales_demos"
 # 1. The vault password file exists.
 test -s "$HOME/secrets/.vault_pass_sales_demos" \
   && echo "✅ vault password file" \
-  || echo "❌ ~/secrets/.vault_pass_sales_demos missing — without it the committed secrets cannot be decrypted"
+  || echo "❌ ~/secrets/.vault_pass_sales_demos missing — without it secrets.yml cannot be decrypted"
 
-# 2. The committed secrets file is vault-encrypted, not plaintext.
+# 2. secrets.yml exists locally and is vault-encrypted, not plaintext.
+#    It is gitignored (#130); a fresh clone will not have it.
 head -c 15 playbooks/group_vars/all/secrets.yml 2>/dev/null | grep -q '^\$ANSIBLE_VAULT' \
   && echo "✅ secrets.yml is vault-encrypted" \
-  || echo "❌ secrets.yml is NOT encrypted — stop, do not commit"
+  || echo "❌ secrets.yml missing or NOT encrypted — see /sales-demos-first-time"
 
 # 3. This environment's credentials are real, not placeholders.
 ansible-vault view playbooks/group_vars/all/secrets.yml --vault-id "$VAULT_ID" 2>/dev/null \

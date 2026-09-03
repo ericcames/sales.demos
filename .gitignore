@@ -1,13 +1,20 @@
 # ---------------------------------------------------------------------------
 # Secrets — the ONLY secrets mechanism in this repo is
-# playbooks/group_vars/aap/secrets.yml, which is VAULT-ENCRYPTED AND COMMITTED.
+# playbooks/group_vars/all/secrets.yml. It is VAULT-ENCRYPTED AND LOCAL ONLY.
 # One file, both environments. Credentials only; hostnames and API URLs live in
-# the committed plaintext group_vars/<env>/connection.yml.
+# the committed plaintext inventory/group_vars/<env>/connection.yml.
 #
-# secrets.yml is deliberately NOT ignored — it is meant to be tracked. What
-# stops a plaintext one being committed is utilities/check-no-secrets.sh, which
-# fails the build if a tracked secrets.yml does not start with $ANSIBLE_VAULT.
-# That check is the safety net; do not remove it.
+# IT USED TO BE COMMITTED, and untracking it in #130 is what makes this repo
+# reusable. A public repo that ships one person's encrypted credentials hands a
+# forker a blob they cannot decrypt, cannot replace without diverging from
+# upstream, and that conflicts on every pull. secrets.yml.example is the
+# contract now; the real file is built from it per machine.
+#
+# THE IGNORE RULE IS NOT THE SAFETY NET -- IT IS WHAT GETS CHECKED.
+# utilities/check-no-secrets.sh verifies three things, none of which can pass
+# silently: that this rule actually matches the file (git check-ignore), that
+# nothing named secrets.yml is tracked, and that any tracked one is encrypted
+# anyway. Deleting the rule below fails the build; it does not go unnoticed.
 #
 # The vault PASSWORD is the one secret that cannot be vaulted. It lives outside
 # this repo at ~/secrets/.vault_pass_sales_demos (chmod 600, chmod 700 dir).
@@ -15,6 +22,13 @@
 #
 # Do NOT add a second sourceable secrets file (no docs/dev-environment.sh).
 # ---------------------------------------------------------------------------
+#
+# The real credentials file, and the example that documents its shape. The
+# negation matters: without it the *.example twin would be swept up too, and
+# that file is the only contract a new user has.
+playbooks/group_vars/all/secrets.yml
+!playbooks/group_vars/all/secrets.yml.example
+
 .vault_pass
 .vault_pass*
 .vault_password
