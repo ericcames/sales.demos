@@ -59,6 +59,7 @@
     ao_package: "automation-orchestrator-operator"
     ao_channel: "stable"
     ao_name: "ao"
+    ao_admin_secret: "ao-admin-password"
     ao_catalog_source: "redhat-operators"
 
     # --- CloudNativePG ----------------------------------------------------
@@ -97,6 +98,24 @@
           playbooks/group_vars/all/secrets.yml (gitignored, vault-encrypted) —
           build it from secrets.yml.example, then run with
           `-i inventory --limit <env>`.
+        quiet: true
+
+    - name: Assert the AAP admin password is available to seed the AO admin
+      # AO's admin password IS the AAP admin password, so the two are one
+      # credential rather than a second one to hunt for (#143). It reaches this
+      # play the same way every other credential does — from the vaulted
+      # secrets.yml, or from the "Sales Demos - Env Secrets" credential type
+      # when this runs as a job template.
+      ansible.builtin.assert:
+        that:
+          - env_secrets is defined
+          - env_secrets[aap_env_name] is defined
+          - env_secrets[aap_env_name].aap_password is defined
+          - env_secrets[aap_env_name].aap_password | length > 0
+        fail_msg: >-
+          env_secrets[{{ aap_env_name }}].aap_password is required — it seeds
+          Automation Orchestrator's admin password so it matches AAP. It lives
+          in playbooks/group_vars/all/secrets.yml (gitignored, vault-encrypted).
         quiet: true
 
     - name: Confirm the cluster is reachable and the token is valid
@@ -376,6 +395,31 @@
       delay: "{{ ao_wait_delay }}"
       until: ao_crd.resources | default([]) | length > 0
 
+    - name: Create the admin password secret, so AO's admin matches AAP's
+      # SEED-TIME ONLY, AND THAT IS BY DESIGN. The CRD says this secret "is used
+      # only during initial database seeding to create the admin user. Once the
+      # admin user exists, this secret is ignored — password changes must be
+      # made via the application API or CLI." So this fixes every FUTURE
+      # environment and deliberately does nothing to an existing one.
+      #
+      # Do not "improve" this by calling the password-change API on every run.
+      # That would turn an idempotent install into something that rewrites a
+      # credential on a live demo platform on every reconcile, and it would
+      # fight anyone who changed the password on purpose.
+      kubernetes.core.k8s:
+        state: present
+        apply: true
+        definition:
+          apiVersion: v1
+          kind: Secret
+          metadata:
+            name: "{{ ao_admin_secret }}"
+            namespace: "{{ ao_namespace }}"
+          type: Opaque
+          data:
+            password: "{{ env_secrets[aap_env_name].aap_password | b64encode }}"
+      no_log: true
+
     - name: Create the Automation Orchestrator instance
       kubernetes.core.k8s:
         state: present
@@ -389,6 +433,9 @@
           spec:
             ingress:
               type: Route
+            secrets:
+              initialAdminPasswordSecretRef:
+                name: "{{ ao_admin_secret }}"
             postgres:
               host: "{{ ao_db_cluster }}-rw"
               port: 5432
@@ -449,3 +496,4 @@
           - "  Operator:  {{ ao_csv.resources | selectattr('metadata.name', 'search', '^' ~ ao_package) | map(attribute='metadata.name') | first }}"
           - "  Database:  {{ ao_db_cluster }} ({{ ao_db_backend_name }}, {{ ao_db_temporal_name }}, {{ ao_db_visibility_name }})"
           - "  HTTP:      {{ ao_probe.status }}"
+          - "  Login:     admin / the AAP admin password for this environment"
