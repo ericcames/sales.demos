@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed -- skill preflights rejected a valid ServiceAccount token (#105)
+- The token-shape check in `ocpvirt-setup` and `sales-demos-first-time` only
+  accepted `sha256~` OAuth tokens. A ServiceAccount JWT -- the better credential,
+  since it does not expire mid-run -- starts `eyJ` and was rejected with a message
+  blaming the vault password or a missing `env_secrets` key, neither of which was
+  the problem.
+- **Both call sites now accept either form.** `sha256~*` for OAuth tokens and
+  `eyJ*.*.*` for ServiceAccount JWTs. The `eyJ` pattern still rejects the #86
+  failure mode (an Ansible error string contains spaces and starts with neither
+  prefix), so the guard that was added to stop non-empty garbage from passing as
+  a credential is preserved.
+- The prose in `sales-demos-first-time` Step 7 previously said a value "that is
+  non-empty but not a `sha256~` token will fail later as a confusing 401"; it now
+  describes both accepted forms and why the #86 case is still caught.
+
 ### Fixed -- validate.yml could not run on the environment it was most needed for (#106)
 - `validate.yml` told you to *"run this before config.yml, always"* and then
   died on any environment where `config.yml` had never run -- the first apply

@@ -280,14 +280,17 @@ e = ((yaml.safe_load(sys.stdin) or {}).get("env_secrets") or {}).get(env, {})
 pw = e.get("aap_password", "")
 tok = e.get("openshift_api_token", "")
 pw_set = bool(pw) and "CHANGEME" not in pw
-token_ok = tok.startswith("sha256~")
+token_ok = tok.startswith("sha256~") or (tok.startswith("eyJ") and "." in tok)
 print("env=%s pw_set=%s token_ok=%s" % (env, pw_set, token_ok))
 '
 ```
 
 Both must be `True`. `token_ok` checks the shape rather than mere presence: a
-value that is non-empty but not a `sha256~` token will fail later as a confusing
-`401`, which is exactly how #86 hid for as long as it did.
+value that is non-empty but not a recognised token form will fail later as a
+confusing `401`, which is exactly how #86 hid for as long as it did. Both
+`sha256~` OAuth tokens and `eyJ` ServiceAccount JWTs are accepted; an Ansible
+error string (the #86 failure mode) contains spaces and starts with neither
+prefix, so it is still rejected.
 
 ## When it all passes
 
