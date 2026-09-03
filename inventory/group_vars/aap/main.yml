@@ -3,9 +3,24 @@
 # Shared, demo-agnostic AAP configuration. Applies to every environment.
 # ===========================================================================
 
-# This catalog item ships AAP 2.6 on the OpenShift operator. Pin to it.
-# (aap_config targets 2.7 — do not copy its connection settings verbatim.)
-aap_target_version: "2.6"
+# The version this repo targets. Measured on the live sandbox 2026-09-03:
+# GET /api/gateway/v1/ping/ returns {"status":"good","version":"2.7"}, and the
+# controller behind it reports 4.8.6. The old comment here said the catalog
+# item ships 2.6 and to pin to that; the catalog item moved, and #92's
+# environment arrived on 2.7. (#101)
+#
+# THIS PIN IS DECLARATIVE — nothing reads it. Verified with a grep across the
+# repo and across ~/.ansible/collections: the only occurrence is this line.
+# It records which version the surrounding configuration was authored and
+# measured against, so a future reader knows what the file's claims were true
+# of. Changing it alters no behaviour; it stops the repo asserting a version
+# its only live environment does not run.
+#
+# Note the two are different claims: the CONTROLLER version is 4.8.x and the
+# PLATFORM version is 2.7. Reading the first as the second is how the stale
+# 2.6 pin survived. The platform version has no MCP tool — see the sanctioned
+# curl in CLAUDE.md.
+aap_target_version: "2.7"
 
 # Kept in step with aap_organizations.yml, which declares the organization this
 # repo creates. A fresh RHDP environment ships `Default` and `Ansible Product

@@ -79,8 +79,19 @@ variable "os_type" {
 # for a smaller or busier cluster.
 # ---------------------------------------------------------------------------
 
+# DELIBERATELY NOT RAISED YET (#101). The sandbox moved to cluster-kbjvc, which
+# is materially larger than the cluster this 14 was measured on, so the default
+# is conservative rather than wrong — it under-provisions, which fails closed in
+# `plan` instead of leaving a VM Pending.
+#
+# It is not re-measured here because the honest number is not knowable yet:
+# OpenShift Virtualization is not installed on this cluster, and CNV's own
+# footprint (virt-launcher overhead, the handler DaemonSet) comes out of the
+# same budget. Measuring allocatable memory before CNV lands produces a figure
+# that is wrong the moment it does. Re-measure after /ocpvirt-setup has run,
+# with the probe from #100.
 variable "available_memory_gb" {
-  description = "Guest memory budget in GiB for this cluster. Raise it if the node has more headroom than the sandbox's ~14 GiB."
+  description = "Guest memory budget in GiB for this cluster. Conservative default measured on an older, smaller sandbox; re-measure after CNV is installed (#101)."
   type        = number
   default     = 14
 }

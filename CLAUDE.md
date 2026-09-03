@@ -153,6 +153,24 @@ You can check which path was taken: the terminal renders each call by its
 name, so `mcp__openshift-sandbox__pods_list` used the server and
 `Bash(oc get pods)` did not.
 
+**One sanctioned exception, and it is the AAP platform version.** No tool on
+the AAP MCP server returns it — measured 2026-09-03, `config_retrieve` and
+`status_retrieve` both give the *controller* version (`4.8.6`) and
+`gateway-settings_list` returns setting categories. The server exposes API
+objects; the gateway ping is not among them. So this one curl is correct, and
+it needs no credential:
+
+```bash
+curl -sk https://<aap_hostname>/api/gateway/v1/ping/
+# {"status":"good","version":"2.7","db_connected":true,...}
+```
+
+Named here so it is not re-argued every time someone checks a version claim,
+and because the distinction it turns on — controller `4.8.x` versus platform
+`2.7` — is the one that let a stale pin sit unnoticed (#101). Before shelling
+out for anything else, confirm no tool covers it rather than assuming; that
+check is part of the rule.
+
 **This repo is self-contained.** Never send a user to a skill from another repo
 or plugin, and never build a workflow here that depends on one. If something is
 missing, add it here. Other plugins may be installed on the same machine for
@@ -172,8 +190,15 @@ Environment secrets.
 
 ## Ansible
 
-- **AAP 2.6** — this catalog item ships 2.6 on the OpenShift operator. Pin to it.
-  `aap_config` targets 2.7; do not copy its connection settings verbatim.
+- **AAP 2.7** — measured on the live sandbox 2026-09-03, the gateway reports
+  `2.7` and the controller behind it `4.8.6`. This line said 2.6 and told you
+  to pin to it; the catalog item moved and #92's environment arrived on 2.7
+  (#101). `aap_config` also targets 2.7 now, but still do not copy its
+  connection settings verbatim — that caution was never about the version.
+
+  **The controller version is not the platform version.** `4.8.x` is the
+  controller; `2.7` is the platform. Reading the first as the second is exactly
+  how the stale 2.6 pin survived unnoticed, so quote which one you mean.
 - **`ansible.platform` over `ansible.controller`** — controller is legacy.
 - **Always clean up tokens** — any playbook creating a token must delete it in an
   `always:` block so stale tokens do not accumulate.
