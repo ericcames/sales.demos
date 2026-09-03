@@ -14,7 +14,7 @@
 # require wiring the plugin manually — a build, not a port. Both are available
 # on the cluster; the chart path is proven (validated 2026-05-06, ~11 min).
 #
-# TWO FACTS FROM THE SOURCE REPO THAT COST A DAY EACH TO LEARN:
+# THREE FACTS FROM THE SOURCE REPO (AND LIVE DEBUGGING) THAT COST A DAY EACH:
 #
 #   1. OAuth applications live in the GATEWAY registry
 #      (/api/gateway/v1/applications/), never the controller's.
@@ -22,6 +22,13 @@
 #   2. Never PATCH client_secret. The gateway hashes it differently on PATCH
 #      than on POST, giving invalid_client at /o/token/ every time. Delete and
 #      recreate the application on each run.
+#
+#   3. AAP 2.7 defaults pkce_required to true. RHDH's RHAAP auth provider does
+#      not send PKCE parameters (code_challenge/code_verifier), so the OAuth
+#      authorize endpoint fails silently — AAP redirects back without a code
+#      and the portal shows "You have to provide code or refreshToken". The
+#      source repo never hit this because it was built against an older AAP
+#      where the default was false. Set pkce_required: false explicitly.
 #
 # THE SERVICE TOKEN IS DURABLE BY DESIGN. The portal backend uses it to sync
 # job templates and serve API requests. Same exception pattern as the MCP
@@ -145,6 +152,7 @@
           authorization_grant_type: "authorization-code"
           redirect_uris: "https://placeholder.example.com/oauth/callback"
           skip_authorization: false
+          pkce_required: false
         status_code: 201
       register: oauth_app_created
       no_log: true

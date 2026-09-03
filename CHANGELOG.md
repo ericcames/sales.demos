@@ -23,11 +23,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   with the AAP plugin pre-wired; the operator deploys generic RHDH and the
   plugin would need wiring manually. That is a build, not a port, and the chart
   path is already proven.
-- **Two hard-learned facts survived the port verbatim.** (1) OAuth applications
-  live in the gateway registry (`/api/gateway/v1/applications/`), never the
-  controller's. (2) Never PATCH `client_secret` -- the gateway hashes it
-  differently on PATCH than on POST, giving `invalid_client` at `/o/token/`.
-  The playbook deletes and recreates the application on every run.
+- **Three hard-learned facts survived the port (and live debugging).** (1) OAuth
+  applications live in the gateway registry (`/api/gateway/v1/applications/`),
+  never the controller's. (2) Never PATCH `client_secret` -- the gateway hashes
+  it differently on PATCH than on POST, giving `invalid_client` at `/o/token/`.
+  The playbook deletes and recreates the application on every run. (3) AAP 2.7
+  defaults `pkce_required` to `true`; RHDH's RHAAP auth provider does not send
+  PKCE parameters, so the OAuth flow fails silently -- AAP redirects back
+  without an authorization code and the portal shows "You have to provide code
+  or refreshToken". The playbook sets `pkce_required: false` explicitly.
 - **The service token is durable by design.** Same exception pattern as the MCP
   client token documented in CLAUDE.md. The portal backend uses it to sync
   templates and serve API requests. Cleaned up in `rescue:` only if the OCP
