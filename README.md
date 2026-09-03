@@ -207,6 +207,7 @@ in this repo, which for repo-specific skills is the correct scope.
 | `ocpvirt-windows-image` | `playbooks/build_windows_golden.yml` | Build and publish the Windows golden image | Not started |
 | `ocpvirt-demo` | `playbooks/run_demo.yml` | Register the VMs and configure the web server | Done ([#5](https://github.com/ericcames/sales.demos/issues/5)) |
 | `ocpvirt-teardown` | `playbooks/teardown.yml` | Destroy VMs; keep CNV and the golden image | Done ([#6](https://github.com/ericcames/sales.demos/issues/6)) |
+| `sales-demos-probe-env` | `playbooks/probe_env.yml` | Measure what the cluster actually has and recommend `available_memory_gb` | Done ([#100](https://github.com/ericcames/sales.demos/issues/100)) |
 | `pah-sync` | `playbooks/sync_hub.yml`, `playbooks/curate_hub.yml` | Populate Private Automation Hub, and reconcile the curated `approved` repository | Done ([#68](https://github.com/ericcames/sales.demos/issues/68), [#70](https://github.com/ericcames/sales.demos/issues/70)) |
 
 See the [roadmap](ROADMAP.md) and the open issues. CI enforces that every skill
@@ -411,8 +412,9 @@ oc get vm,vmi,pvc -n sales-demos-sandbox -w
 ```
 
 Tiers are repo-owned `sd1.*` instance types, not Red Hat's `u1.*`, and `large` is
-6 GiB rather than 8. Post-CNV this node has ~14 GiB free, so `u1.large` would make
-`os_type=both` need ~16.6 GiB and never schedule. A precondition enforces that
+6 GiB rather than 8. That sizing came from a smaller cluster with ~14 GiB free;
+`sales-demos-probe-env` measured 75.63 GiB free on sandbox 2026-09-03, so the
+`available_memory_gb` default is now conservative rather than binding (#100). A precondition enforces that
 budget, so an over-budget request fails in `plan` instead of leaving a VM `Pending`
 while Terraform reports success. The `u1.*` types are left untouched.
 

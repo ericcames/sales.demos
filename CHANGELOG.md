@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added -- a read-only cluster probe, because the memory budget was five times wrong (#100)
+- `playbooks/probe_env.yml` and the `sales-demos-probe-env` skill measure what a
+  cluster actually has: allocatable, what is already requested, what is free,
+  and a recommended `available_memory_gb`.
+- **The number it replaces was never wrong in a way anything reported.**
+  `terraform/ocpvirt/variables.tf` declared `available_memory_gb = 14`, measured
+  once on a smaller cluster. Sandbox has **75.63 GiB** free. The budget guard in
+  `locals.tf` fails *closed*, so a stale figure does not error -- it silently
+  refuses tiers the cluster could run, and the demo just gets smaller.
+- **Strictly read-only.** Every task is `k8s_info`; a run reports `changed=0`,
+  so it is safe mid-demo when someone asks whether the cluster can take another
+  VM. That is why it is a second playbook rather than a flag on
+  `prepare_env.yml`, which builds and destroys a real VM to do its job.
+- **Requests, not usage.** The scheduler places pods and KubeVirt VMs against
+  requests; live consumption does not decide whether the next one fits. Both are
+  printed side by side because the gap on sandbox is 21 GiB -- optimising
+  against live usage would suggest room that is not there.
+- **Two accounting rules, either of which silently skews the answer.** A pod
+  reserves `max(sum(containers), max(initContainers))`, not the sum of
+  everything. And only pods with `spec.nodeName` hold capacity -- an unscheduled
+  Pending pod reserves nothing. Getting the second wrong inflated the first run
+  by 1.56 GiB and 0.82 vCPU against `oc describe node`; the corrected probe
+  matches the node's own accounting exactly (`14.5 vCPU / 49.05 GiB` against
+  `14500m / 50231Mi`).
+- `inventory/group_vars/aap/probe_workloads.yml` holds candidate add-on
+  footprints as data, **each tagged with a `source:`** saying whether it is
+  measured, derived or a guess. A guessed number and a measured one look
+  identical once written down, which is precisely how `14` survived; the tag is
+  what stops that recurring.
+- Confirmed on sandbox 2026-09-03: OpenShift 4.20.34, CNV `Available=True`, and
+  both add-on operators (`mcp-gateway`, `automation-orchestrator-operator`)
+  offered on OperatorHub -- the outstanding question in
+  `docs/plan/platform-addons-plan.md`, which now opens with the measurement.
+- **`variables.tf` is deliberately not changed here.** Raising the default
+  changes which tiers `plan` accepts, and behaviour changes ship on their own.
+
 ### Changed -- the repo targeted AAP 2.6 while its only live environment ran 2.7 (#101)
 - **Measured, not assumed.** The sandbox gateway returns
   `{"status":"good","version":"2.7",...}` and the controller behind it reports

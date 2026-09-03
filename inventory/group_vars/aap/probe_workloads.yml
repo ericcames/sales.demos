@@ -1,0 +1,86 @@
+---
+# ===========================================================================
+# probe_workloads.yml — candidate add-on footprints, as data. Issue #100.
+# ===========================================================================
+# What #92 is deciding is whether this cluster can carry the platform add-ons
+# on top of AAP and CNV. Answering that needs two numbers: what is free (the
+# probe measures it) and what each add-on costs (this file).
+#
+# EVERY ENTRY CARRIES A `source:` AND THAT IS THE POINT. `available_memory_gb`
+# became stale precisely because a measured number and a guessed one look
+# identical once written down. A reader here can tell instantly which is
+# which, and an `estimate` is an invitation to replace it with a measurement
+# rather than a figure to trust.
+#
+# When one is installed, replace its estimate with what it actually requests:
+#
+#   oc get pods -n <ns> -o json | jq '[.items[].spec.containers[].resources.requests]'
+#
+# and change `source:` to name the measurement and its date. Do not delete the
+# entry — a measured footprint is the thing that makes the next capacity
+# question cheap.
+#
+# cpu is in whole vCPU, memory in GiB, both as requests rather than limits:
+# requests are what the scheduler holds, which is what probe_env.yml reports
+# against.
+#
+# `installed: true` marks a workload that is ALREADY RUNNING and therefore
+# already inside the measured requests figure. probe_env.yml sums only the
+# entries without it, because adding an installed workload to the measured
+# total would charge the cluster for it twice.
+# ===========================================================================
+
+probe_workloads:
+  - name: "AAP 2.7 (gateway, controller, hub, EDA, redis)"
+    installed: true
+    cpu: 14.5
+    memory: 49.05
+    source: >-
+      MEASURED on sandbox/cluster-kbjvc 2026-09-03 via probe_env.yml, matching
+      `oc describe node`. This is the whole platform baseline, not AAP alone —
+      it includes OpenShift, ODF and CNV on a single-node cluster.
+
+  - name: "AAP MCP server (AnsibleMCPServer/aap-mcp)"
+    installed: true
+    cpu: 0.1
+    memory: 0.25
+    source: >-
+      ESTIMATE. Deployed and running on sandbox since #102, but its footprint
+      has not been read back separately from the AAP namespace total above.
+      Replace with a measurement — it is already installed, so this one is
+      free to take.
+
+  - name: "MCP gateway (mcp-gateway)"
+    cpu: 0.5
+    memory: 1.0
+    source: >-
+      ESTIMATE, and a soft one. `mcp-gateway` is offered on this cluster's
+      OperatorHub (confirmed by probe_env.yml 2026-09-03) but has never been
+      installed here, so nothing about this figure is measured. Treat it as a
+      placeholder that says "small", not as a number.
+
+  - name: "Automation Orchestrator (automation-orchestrator-operator)"
+    cpu: 2.0
+    memory: 4.0
+    source: >-
+      ESTIMATE, and the least trustworthy in this file. Offered on
+      OperatorHub (confirmed 2026-09-03) but #108 has not yet established
+      whether it is even entitled, let alone what it costs. If it turns out
+      to be a multi-pod install this could be several times larger.
+
+  - name: "AAP self-service portal (aap-portal namespace)"
+    cpu: 1.0
+    memory: 2.0
+    source: >-
+      ESTIMATE. #103. The `aap-portal` namespace does not exist on sandbox —
+      probe_env.yml checks for it and reports `absent` — so nothing here has
+      been observed.
+
+  - name: "Demo VMs, os_type=both at the large tier"
+    cpu: 4.0
+    memory: 12.7
+    source: >-
+      DERIVED, not guessed: 2 VMs x 6 GiB guest + 350 MiB KubeVirt overhead
+      each, from terraform/ocpvirt/locals.tf's own budget arithmetic. This is
+      the workload available_memory_gb exists to protect, so it belongs beside
+      the things competing with it.

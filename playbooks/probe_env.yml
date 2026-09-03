@@ -1,0 +1,370 @@
+---
+# ===========================================================================
+# probe_env.yml — measure what this cluster actually has. Issue #100.
+#
+#   ansible-playbook playbooks/probe_env.yml -i inventory --limit sandbox \
+#     -e target_env=sandbox \
+#     --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
+#
+# THE PROBLEM THIS SOLVES. terraform/ocpvirt/variables.tf carried
+# `available_memory_gb = 14` as a hardcoded guess. It was measured once, on a
+# smaller cluster, and then outlived it: cluster-kbjvc has roughly nine times
+# that free. The guess was never wrong in a way anything reported — the budget
+# guard fails closed, so an under-provisioned figure just quietly refuses tiers
+# the cluster could easily run.
+#
+# The next RHDP environment will differ again. A hardcoded number is exactly
+# what produced the stale one, so this is a playbook rather than a paragraph in
+# an issue.
+#
+# STRICTLY READ-ONLY, AND THAT IS THE DESIGN. prepare_env.yml owns building and
+# timing a real VM; it creates a namespace and a VM to do it. This one only ever
+# calls k8s_info, so it is safe to run in the middle of a live demo when someone
+# asks "can this cluster take another VM?". That separation is why this is a
+# second playbook and not a flag on the first (#100).
+#
+# REQUESTS ARE WHAT SCHEDULE, NOT USAGE. The scheduler places pods — and KubeVirt
+# VMs — against `requests`, never against live consumption. A node can look 20%
+# used in `oc adm top` and still refuse a VM because requests are committed
+# elsewhere. Both numbers are reported side by side for exactly that reason, and
+# the recommendation is derived from requests.
+# ===========================================================================
+
+- name: Phase 1 — probe the environment, read-only
+  hosts: aap
+  gather_facts: false
+
+  environment:
+    K8S_AUTH_HOST: "{{ openshift_api_url }}"
+    K8S_AUTH_API_KEY: "{{ openshift_api_token }}"
+    K8S_AUTH_VERIFY_SSL: "{{ openshift_validate_certs | default(false) | bool }}"
+
+  vars:
+    # Empty means "discover the default" — see tasks/resolve_storage_class.yml.
+    cnv_storage_class: ""
+    probe_portal_namespace: "{{ aap_portal_namespace | default('aap-portal') }}"
+    probe_aap_namespace: "{{ aap_namespace | default('aap') }}"
+    # The add-ons #92 is deciding on. Filtered from the full PackageManifest
+    # list, which is several hundred entries and useless printed whole.
+    probe_addon_packages:
+      - automation-orchestrator-operator
+      - mcp-gateway
+      - ansible-automation-platform-operator
+      - kubevirt-hyperconverged
+    # Headroom withheld from the recommendation. The node must keep running
+    # OpenShift itself, and a budget that consumes every free byte schedules a
+    # VM onto a node with no room to reschedule a control-plane pod.
+    probe_safety_margin_gb: 8
+
+  tasks:
+    - name: Guard the environment selector
+      ansible.builtin.include_tasks: tasks/assert_target_environment.yml
+
+    - name: Resolve the default StorageClass
+      ansible.builtin.include_tasks: tasks/resolve_storage_class.yml
+
+    # -----------------------------------------------------------------------
+    # Gather. Every task here is k8s_info — nothing below writes.
+    # -----------------------------------------------------------------------
+    - name: Read the nodes
+      kubernetes.core.k8s_info:
+        api_version: v1
+        kind: Node
+      register: probe_nodes
+
+    - name: Read the pods that hold reservations
+      # Succeeded and Failed pods still exist in the API but have released their
+      # resources, so counting them would overstate what is committed. Running
+      # and Pending are what the scheduler is holding capacity for.
+      kubernetes.core.k8s_info:
+        api_version: v1
+        kind: Pod
+        field_selectors:
+          - status.phase!=Succeeded
+          - status.phase!=Failed
+      register: probe_pods
+
+    - name: Read live node usage
+      # metrics.k8s.io is not guaranteed to be installed. Never fatal: live
+      # usage is the secondary number, and its absence must not stop the probe
+      # producing the recommendation, which comes from requests.
+      kubernetes.core.k8s_info:
+        api_version: metrics.k8s.io/v1beta1
+        kind: NodeMetrics
+      register: probe_metrics
+      failed_when: false
+
+    - name: Read the cluster version
+      kubernetes.core.k8s_info:
+        api_version: config.openshift.io/v1
+        kind: ClusterVersion
+        name: version
+      register: probe_clusterversion
+
+    - name: Read OpenShift Virtualization's state
+      kubernetes.core.k8s_info:
+        api_version: hco.kubevirt.io/v1beta1
+        kind: HyperConverged
+      register: probe_hco
+      failed_when: false
+
+    - name: Read the installed operators in the AAP namespace
+      kubernetes.core.k8s_info:
+        api_version: operators.coreos.com/v1alpha1
+        kind: ClusterServiceVersion
+        namespace: "{{ probe_aap_namespace }}"
+      register: probe_csvs
+      failed_when: false
+
+    - name: Read the subscriptions in the AAP namespace
+      kubernetes.core.k8s_info:
+        api_version: operators.coreos.com/v1alpha1
+        kind: Subscription
+        namespace: "{{ probe_aap_namespace }}"
+      register: probe_subs
+      failed_when: false
+
+    - name: Look for the self-service portal namespace
+      kubernetes.core.k8s_info:
+        api_version: v1
+        kind: Namespace
+        name: "{{ probe_portal_namespace }}"
+      register: probe_portal
+      failed_when: false
+
+    - name: Read what OperatorHub offers for the add-ons
+      # PackageManifests are a virtual API — cluster-wide, served from the
+      # marketplace. Filtered to the add-ons under consideration because the
+      # unfiltered list is several hundred entries.
+      kubernetes.core.k8s_info:
+        api_version: packages.operators.coreos.com/v1
+        kind: PackageManifest
+        namespace: openshift-marketplace
+      register: probe_packages
+      failed_when: false
+
+    # -----------------------------------------------------------------------
+    # Compute. Kubernetes quantities are not plain integers — memory arrives as
+    # Ki/Mi/Gi and CPU as millicores or whole cores — so each is normalised
+    # before any arithmetic.
+    # -----------------------------------------------------------------------
+    - name: Total allocatable across the nodes
+      ansible.builtin.set_fact:
+        probe_alloc_mem_bytes: >-
+          {%- set units = {'Ki': 1024, 'Mi': 1048576, 'Gi': 1073741824, 'Ti': 1099511627776,
+                           'K': 1000, 'M': 1000000, 'G': 1000000000, 'T': 1000000000000} -%}
+          {%- set ns = namespace(total=0) -%}
+          {%- for n in probe_nodes.resources | default([]) -%}
+            {%- set q = n.status.allocatable.memory | default('0') -%}
+            {%- set suffix = q | regex_replace('^[0-9.]+', '') -%}
+            {%- set num = q | regex_replace('[^0-9.]', '') | float -%}
+            {%- set ns.total = ns.total + (num * units.get(suffix, 1)) | int -%}
+          {%- endfor -%}
+          {{ ns.total }}
+        probe_alloc_cpu_milli: >-
+          {%- set ns = namespace(total=0) -%}
+          {%- for n in probe_nodes.resources | default([]) -%}
+            {%- set q = n.status.allocatable.cpu | default('0') -%}
+            {%- set suffix = q | regex_replace('^[0-9.]+', '') -%}
+            {%- set num = q | regex_replace('[^0-9.]', '') | float -%}
+            {%- set ns.total = ns.total + (num * (1 if suffix == 'm' else 1000)) | int -%}
+          {%- endfor -%}
+          {{ ns.total }}
+
+    - name: Sum requests the way the scheduler does
+      # Two rules, and getting either wrong makes the number disagree with
+      # `oc describe node` — which is the acceptance test, because the node's
+      # own accounting is what the scheduler enforces.
+      #
+      #   1. A pod's effective request is NOT the sum of every container. Init
+      #      containers run to completion one at a time before the app
+      #      containers start, so a pod reserves
+      #      max(sum(containers), max(initContainers)). Summing them together
+      #      overstates any pod with a large init container.
+      #
+      #   2. ONLY PODS WITH spec.nodeName HOLD CAPACITY. An unscheduled Pending
+      #      pod is reserving nothing yet. Measured on sandbox 2026-09-03, two
+      #      openshift-storage ctrlplugin pods sit Pending and unscheduled on
+      #      this single-node cluster; counting them inflated the total by
+      #      1.56 GiB and 0.82 vCPU against `oc describe node`. They are
+      #      reported separately below rather than silently folded in.
+      ansible.builtin.set_fact:
+        probe_req_mem_bytes: >-
+          {%- set units = {'Ki': 1024, 'Mi': 1048576, 'Gi': 1073741824, 'Ti': 1099511627776,
+                           'K': 1000, 'M': 1000000, 'G': 1000000000, 'T': 1000000000000} -%}
+          {%- set ns = namespace(total=0) -%}
+          {%- for p in probe_pods.resources | default([]) | selectattr('spec.nodeName', 'defined') -%}
+            {%- set csum = namespace(v=0) -%}
+            {%- for c in p.spec.containers | default([]) -%}
+              {%- set q = ((c.resources | default({})).get('requests', {})).get('memory', '0') -%}
+              {%- set suffix = q | regex_replace('^[0-9.]+', '') -%}
+              {%- set num = q | regex_replace('[^0-9.]', '') | float -%}
+              {%- set csum.v = csum.v + (num * units.get(suffix, 1)) | int -%}
+            {%- endfor -%}
+            {%- set imax = namespace(v=0) -%}
+            {%- for c in p.spec.initContainers | default([]) -%}
+              {%- set q = ((c.resources | default({})).get('requests', {})).get('memory', '0') -%}
+              {%- set suffix = q | regex_replace('^[0-9.]+', '') -%}
+              {%- set num = q | regex_replace('[^0-9.]', '') | float -%}
+              {%- set imax.v = [imax.v, (num * units.get(suffix, 1)) | int] | max -%}
+            {%- endfor -%}
+            {%- set ns.total = ns.total + [csum.v, imax.v] | max -%}
+          {%- endfor -%}
+          {{ ns.total }}
+        probe_req_cpu_milli: >-
+          {%- set ns = namespace(total=0) -%}
+          {%- for p in probe_pods.resources | default([]) | selectattr('spec.nodeName', 'defined') -%}
+            {%- set csum = namespace(v=0) -%}
+            {%- for c in p.spec.containers | default([]) -%}
+              {%- set q = ((c.resources | default({})).get('requests', {})).get('cpu', '0') -%}
+              {%- set suffix = q | regex_replace('^[0-9.]+', '') -%}
+              {%- set num = q | regex_replace('[^0-9.]', '') | float -%}
+              {%- set csum.v = csum.v + (num * (1 if suffix == 'm' else 1000)) | int -%}
+            {%- endfor -%}
+            {%- set imax = namespace(v=0) -%}
+            {%- for c in p.spec.initContainers | default([]) -%}
+              {%- set q = ((c.resources | default({})).get('requests', {})).get('cpu', '0') -%}
+              {%- set suffix = q | regex_replace('^[0-9.]+', '') -%}
+              {%- set num = q | regex_replace('[^0-9.]', '') | float -%}
+              {%- set imax.v = [imax.v, (num * (1 if suffix == 'm' else 1000)) | int] | max -%}
+            {%- endfor -%}
+            {%- set ns.total = ns.total + [csum.v, imax.v] | max -%}
+          {%- endfor -%}
+          {{ ns.total }}
+
+    - name: Count pods that are waiting rather than holding capacity
+      ansible.builtin.set_fact:
+        probe_unscheduled: >-
+          {{ probe_pods.resources | default([])
+             | rejectattr('spec.nodeName', 'defined') | list }}
+
+    - name: Total live usage across the nodes
+      ansible.builtin.set_fact:
+        probe_live_mem_bytes: >-
+          {%- set units = {'Ki': 1024, 'Mi': 1048576, 'Gi': 1073741824, 'Ti': 1099511627776,
+                           'K': 1000, 'M': 1000000, 'G': 1000000000, 'T': 1000000000000} -%}
+          {%- set ns = namespace(total=0) -%}
+          {%- for m in probe_metrics.resources | default([]) -%}
+            {%- set q = m.usage.memory | default('0') -%}
+            {%- set suffix = q | regex_replace('^[0-9.]+', '') -%}
+            {%- set num = q | regex_replace('[^0-9.]', '') | float -%}
+            {%- set ns.total = ns.total + (num * units.get(suffix, 1)) | int -%}
+          {%- endfor -%}
+          {{ ns.total }}
+
+    - name: Derive the free figures and the recommendation
+      ansible.builtin.set_fact:
+        probe_free_by_requests_gb: "{{ ((probe_alloc_mem_bytes | int - probe_req_mem_bytes | int) / 1073741824) | round(2) }}"
+        probe_free_by_live_gb: "{{ ((probe_alloc_mem_bytes | int - probe_live_mem_bytes | int) / 1073741824) | round(2) }}"
+        probe_alloc_mem_gb: "{{ (probe_alloc_mem_bytes | int / 1073741824) | round(2) }}"
+        probe_req_mem_gb: "{{ (probe_req_mem_bytes | int / 1073741824) | round(2) }}"
+        probe_live_mem_gb: "{{ (probe_live_mem_bytes | int / 1073741824) | round(2) }}"
+        probe_alloc_cpu: "{{ (probe_alloc_cpu_milli | int / 1000) | round(2) }}"
+        probe_req_cpu: "{{ (probe_req_cpu_milli | int / 1000) | round(2) }}"
+
+    - name: Recommend available_memory_gb
+      # Floored at the safety margin, so a genuinely full cluster recommends 0
+      # rather than a negative number that would read as an error.
+      ansible.builtin.set_fact:
+        probe_recommended_memory_gb: >-
+          {{ [(probe_free_by_requests_gb | float - probe_safety_margin_gb | float) | round(0, 'floor') | int, 0] | max }}
+
+    - name: Summarise CNV's state
+      ansible.builtin.set_fact:
+        probe_cnv_state: >-
+          {%- if (probe_hco.resources | default([]) | length) > 0 -%}
+          installed — Available={{ probe_hco.resources[0].status.conditions | default([])
+            | selectattr('type', 'equalto', 'Available')
+            | map(attribute='status') | first | default('?') }}
+          {%- else -%}
+          NOT INSTALLED — run ocpvirt-setup
+          {%- endif -%}
+
+    - name: Note whether KVM is advertised
+      ansible.builtin.set_fact:
+        probe_kvm_capacity: >-
+          {{ probe_nodes.resources | default([])
+             | map(attribute='status.allocatable')
+             | map('default', {}, true)
+             | map('dict2items') | flatten
+             | selectattr('key', 'equalto', 'devices.kubevirt.io/kvm')
+             | map(attribute='value') | list | first | default('absent') }}
+
+    # -----------------------------------------------------------------------
+    # Report.
+    # -----------------------------------------------------------------------
+    - name: Print the probe
+      ansible.builtin.debug:
+        msg:
+          - "═══ {{ aap_env_name }} — probed {{ ansible_date_time.iso8601 | default('now') }} ═══"
+          - "OpenShift:   {{ probe_clusterversion.resources[0].status.desired.version | default('unknown') }}"
+          - "Nodes:       {{ probe_nodes.resources | default([]) | length }}"
+          - "Storage:     {{ cnv_effective_storage_class }}"
+          - "CNV:         {{ probe_cnv_state }}"
+          - "KVM device:  {{ probe_kvm_capacity }}"
+          - "Portal ns:   {{ 'present' if (probe_portal.resources | default([]) | length > 0) else 'absent' }}"
+          - ""
+          - "             ALLOCATABLE      REQUESTED        FREE"
+          - "CPU          {{ '%-16s' | format(probe_alloc_cpu + ' vCPU') }}{{ '%-16s' | format(probe_req_cpu + ' vCPU') }}{{ (probe_alloc_cpu | float - probe_req_cpu | float) | round(2) }} vCPU"
+          - "Memory       {{ '%-16s' | format(probe_alloc_mem_gb + ' GiB') }}{{ '%-16s' | format(probe_req_mem_gb + ' GiB') }}{{ probe_free_by_requests_gb }} GiB"
+          - ""
+          - "Free by REQUESTS: {{ probe_free_by_requests_gb }} GiB   <-- this is what schedules pods and VMs"
+          - "Free by LIVE USE: {{ probe_free_by_live_gb }} GiB   ({{ 'metrics.k8s.io unavailable' if (probe_metrics.resources | default([]) | length == 0) else 'informational only' }})"
+          - "Unscheduled:      {{ probe_unscheduled | length }} pod(s) Pending with no node — reserving nothing, excluded above"
+          - ""
+          - "RECOMMENDED  available_memory_gb = {{ probe_recommended_memory_gb }}"
+          - "             ({{ probe_free_by_requests_gb }} GiB free by requests, less a {{ probe_safety_margin_gb }} GiB safety margin)"
+          - "             terraform/ocpvirt/variables.tf currently declares its own default; compare before changing it."
+
+    - name: Weigh the candidate add-ons against what is free
+      # probe_workloads.yml carries an estimate per add-on, each tagged with
+      # where the number came from. Only the not-yet-installed ones are summed:
+      # anything marked `installed: true` is already inside the measured
+      # requests figure, so counting it again would charge for it twice.
+      ansible.builtin.set_fact:
+        probe_pending_workloads: >-
+          {{ probe_workloads | default([]) | rejectattr('installed', 'defined') | list }}
+
+    - name: Total the candidate demand
+      ansible.builtin.set_fact:
+        probe_demand_gb: >-
+          {{ probe_pending_workloads | map(attribute='memory') | map('float') | sum | round(2) }}
+
+    - name: Judge whether the candidates fit
+      ansible.builtin.set_fact:
+        probe_remaining_gb: "{{ (probe_free_by_requests_gb | float - probe_demand_gb | float) | round(2) }}"
+        probe_fit_verdict: >-
+          {{ 'FITS — with room to spare'
+             if (probe_free_by_requests_gb | float - probe_demand_gb | float) > (probe_safety_margin_gb | float)
+             else 'TIGHT — under the safety margin, install selectively' }}
+
+    - name: Print the capacity verdict
+      ansible.builtin.debug:
+        msg:
+          - "═══ candidate add-ons — would they fit? ═══"
+          - "{{ probe_pending_workloads | length }} not yet installed, needing {{ probe_demand_gb }} GiB total:"
+          - "{{ probe_pending_workloads | map(attribute='name') | list }}"
+          - ""
+          - "Free by requests:   {{ probe_free_by_requests_gb }} GiB"
+          - "Candidate demand:   {{ probe_demand_gb }} GiB"
+          - "Would remain:       {{ probe_remaining_gb }} GiB"
+          - "{{ probe_fit_verdict }}"
+          - ""
+          - "EVERY CANDIDATE FIGURE IS AN ESTIMATE. See the source: strings in"
+          - "inventory/group_vars/aap/probe_workloads.yml — replace each with a"
+          - "measurement as its add-on gets installed."
+
+    - name: Print the add-on operator availability
+      ansible.builtin.debug:
+        msg: >-
+          {{ probe_packages.resources | default([])
+             | selectattr('metadata.name', 'in', probe_addon_packages)
+             | map(attribute='metadata.name') | list
+             | default(['none of the tracked add-ons are offered on this cluster'], true) }}
+
+    - name: Print the operators already installed in the AAP namespace
+      ansible.builtin.debug:
+        msg: >-
+          {{ probe_csvs.resources | default([])
+             | map(attribute='metadata.name') | list
+             | default(['none'], true) }}
