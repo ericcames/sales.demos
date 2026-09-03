@@ -21,6 +21,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   15.00 -> 15.01 vCPU and 50.30 -> 50.37 GiB. It replaces an estimate of
   2.0 vCPU / 4.0 GiB. `available_memory_gb` stays **66** either side of the
   install, so nothing in `terraform/` moves.
+- **All five product images pull, so entitlement is a closed question.** The
+  operator installing does not prove the product it manages will run, and the
+  `valid-subscription: ["Red Hat Ansible Automation Orchestrator"]` annotation
+  invites the opposite assumption -- so every image the CSV lists was pulled by
+  a throwaway pod that referenced it and exited 0: operator, backend, UI,
+  temporal and `rhel9/redis-6`. All came down under the environment's existing
+  pull secret. #108 was written expecting to hit a licensing wall; there is not
+  one.
 - **The real obstacle is PostgreSQL, not licensing.** The CRD requires
   `spec.postgres` with a `host` plus two distinct databases (`backendDatabase`
   and `temporalDatabase`) and offers no embedded option, so an
@@ -28,10 +36,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   provisioning a database first. The answer to "can we demo this?" is not yet,
   and for a different reason than the issue expected -- a provisioning problem,
   not an entitlement one. #108 said both outcomes were worth writing down.
-- **Deliberately no playbook and no skill, and it is not in `setup.yml`.** #108
-  left that open pending the outcome, and the outcome says the operator is the
-  cheap part. Automating the install of a controller nobody can instantiate
-  would be automating the wrong half.
+- **No playbook and no skill in this change, and it is not in `setup.yml`.**
+  #108 left that open pending the outcome, and the outcome was that the operator
+  is the cheap part -- automating the install of a controller nobody can
+  instantiate would be automating the wrong half. **That reasoning expires with
+  the database, and #141 opens to remove it:** CloudNativePG (certified, v1.30.0,
+  no subscription) provisions the two databases so AO joins every `sandbox` and
+  `demo` build, default-on with a skip flag.
 - The operator is **left running on `sandbox`** -- 64 MiB is not worth
   reclaiming and it lets the next session go straight at the CR question. It
   sits in its own namespace labelled `sales.demos/experiment=issue-108`, and

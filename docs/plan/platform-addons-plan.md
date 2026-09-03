@@ -309,12 +309,27 @@ controller image pulled from `registry.redhat.io` under this environment's
 existing pull secret with no extra credential. **No separate pull secret was
 needed to install the operator.**
 
-That is the narrow claim, and it is worth keeping narrow: the *operator*
-installs. Whether the product it manages is licensed here is a different
-question, and the manifest is explicit that it is separately subscribed —
+The manifest is explicit that the product is separately subscribed —
 `operators.openshift.io/valid-subscription: ["Red Hat Ansible Automation
-Orchestrator"]`. It also self-describes as `certified: "false"`,
-`maturity: "alpha"`, and `operator-type: non-standalone`.
+Orchestrator"]` — and self-describes as `certified: "false"`,
+`maturity: "alpha"`, `operator-type: non-standalone`. So the obvious next
+worry is that the operator installs and then its *product* images are refused.
+
+**They are not.** Every image the CSV lists was pulled on this cluster by a
+throwaway pod that referenced it and exited 0:
+
+| Image | |
+|---|---|
+| `automation-orchestrator-rhel9-operator` | pulled |
+| `automation-orchestrator-backend-rhel9` | pulled |
+| `automation-orchestrator-ui-rhel9` | pulled |
+| `automation-orchestrator-temporal-rhel9` | pulled |
+| `rhel9/redis-6` | pulled |
+
+All five came down under the environment's existing pull secret with no extra
+credential. **Entitlement is a closed question and it is not the obstacle.**
+That is worth stating plainly, because the `valid-subscription` annotation
+invites the opposite assumption and #108 was written expecting to hit it.
 
 ### The footprint, measured twice
 
@@ -373,10 +388,18 @@ oc delete namespace automation-orchestrator-operator-system
 oc delete crd automationorchestrators.aap.ansible.com
 ```
 
-It is deliberately **not** in `setup.yml` and has no playbook or skill. #108
-left that decision open pending this outcome, and the outcome says the operator
-is the cheap part — a playbook that installs a controller nobody can
-instantiate would be automating the wrong half.
+It is **not** in `setup.yml` as of this issue, and has no playbook or skill.
+#108 left that decision open pending the outcome, and the outcome was that the
+operator is the cheap part — a playbook installing a controller nobody can
+instantiate would automate the wrong half.
+
+**That holds only while the database is missing, and
+[#141](https://github.com/ericcames/sales.demos/issues/141) removes it.** Since
+all five images pull, the sole obstacle is the two PostgreSQL databases, and
+#141 provisions them with CloudNativePG (`certified: true`, v1.30.0, no
+subscription required) so AO becomes part of every `sandbox` and `demo` build —
+default-on, with a skip flag. Read this section as the measurement that made
+#141 worth opening, not as a standing decision against automating it.
 
 Only `AllNamespaces` install mode is supported (`OwnNamespace`,
 `SingleNamespace` and `MultiNamespace` are all `supported: false`), so it needs
