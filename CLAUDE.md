@@ -133,6 +133,26 @@ attached. `demo` is `--read-only` on purpose; keep that in step with
 Anything needing a bearer token stays out of this file — see the token exception
 under *Ansible*.
 
+**Ask the cluster over MCP; shell out only when no tool covers it.** When a
+question can be answered by asking a cluster or AAP, use the
+`openshift-<env>` or `aap-<env>` server rather than `oc`, `curl` or the AAP
+API by hand. The servers exist to make that the cheap path — a tool call
+instead of a kubeconfig plus a vault lookup — and they are useless if the
+agent reaches for `oc` out of habit. Two things make this stick:
+
+- **`.claude/settings.json` is tracked and allowlists the servers**, so the MCP
+  path is the one that does *not* interrupt you. It is merged with each
+  person's own `settings.local.json`, never a replacement for it.
+- **The allowlist is per-server wildcards on purpose.** The read-only guard
+  belongs at the server — `openshift-demo` is `--read-only` and `demo`'s
+  `aap_mcp_allow_write_operations` is `false` — not in a list of tool names
+  that goes stale the moment a server gains a tool. The environment is in the
+  server's name (#16), so naming the server *is* choosing the posture.
+
+You can check which path was taken: the terminal renders each call by its
+name, so `mcp__openshift-sandbox__pods_list` used the server and
+`Bash(oc get pods)` did not.
+
 **This repo is self-contained.** Never send a user to a skill from another repo
 or plugin, and never build a workflow here that depends on one. If something is
 missing, add it here. Other plugins may be installed on the same machine for
