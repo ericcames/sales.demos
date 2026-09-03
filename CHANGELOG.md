@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed -- the MCP server's ingress choice was documented under a key that cannot hold it (#111)
+- `CHANGELOG.md` and `docs/plan/platform-addons-plan.md` both said `service_type`
+  is pinned to `Route`. **`Route` is not a legal `service_type`.** Read from the
+  live CRD on `cluster-kbjvc`, the two keys carry different enums:
+  `ingress_type` takes `none`/`Ingress`/`Route` (default `Route`), `service_type`
+  takes `LoadBalancer`/`ClusterIP`/`NodePort` (default `ClusterIP`). The docs had
+  taken `service_type`'s enum values and attached them to the value pinned on
+  `ingress_type`.
+- **The #29 reasoning was sound but filed under the wrong key.** `LoadBalancer`
+  and `NodePort` are service types, so "both are dead on RHDP" justifies
+  `service_type: ClusterIP` -- it says nothing about `ingress_type`.
+- The old wording also implied both keys were pinned *away* from their defaults.
+  They are not: `Route` and `ClusterIP` are each the CRD default. Pinning them is
+  still right, because an operator upgrade can move a default, and #29 means
+  neither is a value to inherit silently. The corrected text says that instead.
+- **Docs only.** `playbooks/mcp_server.yml` already applied the correct keys and
+  the deployed `AnsibleMCPServer/aap-mcp` already carried them; nothing about the
+  running server changed.
+
 ### Added -- the AAP MCP server, deployed by Phase 0 (#102)
 - `playbooks/mcp_server.yml` deploys it and `setup.yml` runs that as stage 3 of
   4, so a freshly built environment **arrives with it on** rather than needing a
@@ -31,8 +50,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `true` on `sandbox`, `false` on `demo`, and the playbook *refuses to run* if it
   is unset. A silent default is the wrong way to decide whether an agent can
   POST, PATCH and DELETE.
-- `service_type` is pinned to `Route`. The enum also offers `LoadBalancer` and
-  `NodePort`; both are dead on RHDP (#29), so the default is not trusted.
+- **Ingress type and service type are both stated, never inherited.**
+  `ingress_type: Route` is what makes the server reachable; `service_type:
+  ClusterIP` keeps it off `LoadBalancer` and `NodePort`, which are dead on RHDP
+  (#29). Each is also the CRD's current default -- they are pinned so an operator
+  upgrade cannot move them out from under a working deployment.
 - **A bug the first live run found, kept rather than papered over.** Probing the
   freshly admitted Route returned **503** -- the router had a backend with
   nothing behind it. The playbook now waits for the Deployment to report a ready

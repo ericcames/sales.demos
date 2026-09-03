@@ -168,8 +168,13 @@ that directly means a bad field name is rejected at apply time. It also avoids
 editing the CR that governs controller, hub and EDA on a node AAP shares with
 everything else.
 
-`service_type` is pinned to `Route` rather than defaulted: the enum also offers
-`LoadBalancer` and `NodePort`, and both are dead on RHDP (#29).
+`ingress_type` and `service_type` are both stated rather than inherited:
+`ingress_type: Route` is what makes the server reachable at all, and
+`service_type: ClusterIP` keeps it off `LoadBalancer` and `NodePort`, which are
+dead on RHDP (#29). `Route` is not a legal `service_type` — the two keys carry
+different enums, and it is the service type that #29 constrains. Each value is
+also the CRD's current default; both are pinned anyway, so an operator upgrade
+cannot move them out from under a working deployment.
 
 ### The one genuine trap
 
