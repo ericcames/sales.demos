@@ -3,9 +3,21 @@
 # group_vars/aap/hub_collection_remotes.yml — where PAH fetches collections (#68)
 # ============================================================================
 # Three remotes: two Red Hat, one community. All three ALREADY EXIST on a fresh
-# AAP 2.6 Private Automation Hub, so every item here is an update rather than a
+# Private Automation Hub, so every item here is an update rather than a
 # creation. That is why the demo can open on the stock UI and change one of them
 # by hand — there is nothing to create first.
+#
+# THE WHOLE FILE IS WRITTEN AS UPDATES, so that claim is load-bearing rather
+# than decorative: if a remote did not already exist, these items would try to
+# update something absent. It said "a fresh AAP 2.6 hub" and the platform moved
+# to 2.7 (#115), so it was re-measured rather than re-typed (#116).
+#
+# Verified 2026-09-03 against the live 2.7 hub on cluster-kbjvc, via
+# GET /api/galaxy/pulp/api/v3/remotes/ansible/collection/ — count 3, named
+# `validated`, `rh-certified` and `community`. Exactly the three declared below,
+# unchanged across the version move. The version stamp is dropped rather than
+# bumped: the claim has now held on both 2.6 and 2.7, and pinning it to one
+# release understates that.
 #
 # Defining this variable is what makes dispatch run the hub_collection_remote
 # role. The repositories that consume these remotes, and the sync itself, are in
