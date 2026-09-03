@@ -36,9 +36,17 @@ controller_templates_all:
     playbook: playbooks/provision_vm.yml
     execution_environment: "Sales Demos - OCP Virt EE"
     credentials:
-      # The only one needed. Everything else comes from connection.yml via the
-      # project-sourced inventory.
+      # Everything that is not a credential comes from connection.yml via the
+      # project-sourced inventory. The credentials themselves come from these
+      # two, and BOTH are on every template in this file.
+      #
+      # "Sales Demos - Env Secrets" is the one that does the work: it injects
+      # aap_password, openshift_api_token and the two rhsm_* values as extra_vars,
+      # which outrank the group_vars definitions in connection.yml. "Sales Demos
+      # - Vault" is the old path, kept and inert -- see the headers of
+      # controller_credentials.yml and controller_credential_types.yml (#129).
       - "Sales Demos - Vault"
+      - "Sales Demos - Env Secrets"
     # `limit` selects the environment, exactly as --limit does on the CLI, and
     # target_env makes the run fail closed if the two ever disagree — see
     # playbooks/tasks/assert_target_environment.yml.
@@ -105,6 +113,7 @@ controller_templates_all:
     execution_environment: "Sales Demos - OCP Virt EE"
     credentials:
       - "Sales Demos - Vault"
+      - "Sales Demos - Env Secrets"
       # Teardown now CONNECTS to the guests before destroying them, to release
       # the Red Hat subscription and remove the Insights host (#47). Without
       # this credential those steps fail silently-ish — they are best-effort by
@@ -147,6 +156,7 @@ controller_templates_all:
     credentials:
       - "Sales Demos - Linux Machine"
       - "Sales Demos - Vault"
+      - "Sales Demos - Env Secrets"
     limit: linuxweb
     ask_limit_on_launch: true
 
@@ -161,6 +171,7 @@ controller_templates_all:
     credentials:
       - "Sales Demos - Linux Machine"
       - "Sales Demos - Vault"
+      - "Sales Demos - Env Secrets"
     limit: linuxweb
     ask_limit_on_launch: true
 
@@ -185,6 +196,7 @@ controller_templates_all:
     credentials:
       - "Sales Demos - Linux Machine"
       - "Sales Demos - Vault"
+      - "Sales Demos - Env Secrets"
     limit: linuxweb
     # So a single misbehaving VM can be targeted without editing the template.
     ask_limit_on_launch: true
@@ -214,6 +226,7 @@ controller_templates_all:
       # which says nothing about credentials. That is the cost of `all` scope,
       # and it applies to every job template in this repo.
       - "Sales Demos - Vault"
+      - "Sales Demos - Env Secrets"
     # Defaults to the linuxweb group; ask on launch so the same template can be
     # pointed at one host when a single VM is misbehaving.
     limit: linuxweb
