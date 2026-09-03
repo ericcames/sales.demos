@@ -275,7 +275,7 @@
                     github: []
                     gitlab: []
         wait: true
-        wait_timeout: "600"
+        wait_timeout: "600s"
         state: present
 
     # -------------------------------------------------------------------
@@ -286,7 +286,7 @@
       kubernetes.core.k8s_info:
         api_version: apps/v1
         kind: Deployment
-        name: rhaap-portal-redhat-developer-hub
+        name: rhaap-portal
         namespace: "{{ portal_namespace }}"
       register: portal_deploy
       until:
@@ -405,7 +405,7 @@
         state: patched
         api_version: apps/v1
         kind: Deployment
-        name: rhaap-portal-redhat-developer-hub
+        name: rhaap-portal
         namespace: "{{ portal_namespace }}"
         definition:
           spec:
@@ -419,7 +419,7 @@
       kubernetes.core.k8s_info:
         api_version: apps/v1
         kind: Deployment
-        name: rhaap-portal-redhat-developer-hub
+        name: rhaap-portal
         namespace: "{{ portal_namespace }}"
       register: portal_rollout
       until:
