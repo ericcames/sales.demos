@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added -- the MCP servers are now the default path, not an option (#113)
+- The servers connected but nothing made the agent *use* them. `oc` and `curl`
+  were pre-approved in a personal `settings.local.json` while no MCP tool was,
+  so the shell path ran silently and the MCP path stopped to ask. Given a free
+  path and a prompting one, habit wins.
+- **`.claude/settings.json` is now tracked** and allowlists
+  `openshift-sandbox`, `openshift-demo` and `aap-sandbox`. Claude Code merges
+  it with each person's `settings.local.json`, so it is additive -- no existing
+  local permission is replaced, and a fresh clone gets the same behaviour
+  without hand-configuring anything.
+- **The entries are per-server wildcards on purpose.** The read-only guard
+  belongs at the server, where it already is: `openshift-demo` runs
+  `--read-only` and `demo`'s `aap_mcp_allow_write_operations` is `false`, while
+  `sandbox` is write-enabled on both. Because the environment is baked into the
+  server *name* (#16), naming the server is choosing the posture -- and a list
+  of individual tool names would go stale the first time a server gained a
+  tool. Widening `openshift-sandbox` grants nothing the shell did not already
+  have there: `oc delete`, `oc apply` and `oc patch` were unprompted already.
+- `CLAUDE.md` carries the matching directive, and records that the check is
+  direct -- the terminal renders each call by name, so
+  `mcp__openshift-sandbox__pods_list` used the server and `Bash(oc get pods)`
+  did not.
+- **Config and docs only.** No playbook, no deployed server, no environment is
+  touched.
+
 ### Fixed -- the MCP server's ingress choice was documented under a key that cannot hold it (#111)
 - `CHANGELOG.md` and `docs/plan/platform-addons-plan.md` both said `service_type`
   is pinned to `Route`. **`Route` is not a legal `service_type`.** Read from the
