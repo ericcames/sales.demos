@@ -21,6 +21,28 @@
 # rather than a contract. It will still catch the common failures: bad
 # credentials, unreachable host, undefined variables, malformed objects.
 #
+# ONE OF THOSE ROLES DID NOT DEGRADE, IT CRASHED, AND ON THE ONE RUN THAT
+# MATTERS MOST (#106). Dispatch runs hub_ee_registry then hub_ee_repository, and
+# the second READS BACK the registry the first would have written. In check mode
+# the write never happens, so ansible.hub 1.1.0 indexes an empty lookup:
+#
+#   KeyError: 'id'   at ansible/hub/plugins/modules/ah_ee_repository.py:238
+#
+# That is a read-after-write across two roles, not version drift — proven by
+# running config.yml once and then the identical validate command clean
+# (ok=197 failed=0), same cluster, same collections. And it fired precisely on a
+# never-configured environment: the first apply against a brand-new cluster,
+# which is exactly when a dry run is worth the most. The header said "run this
+# before config.yml, always" and that instruction could not be followed.
+#
+# Worse, aap_configuration_secure_logging hid the traceback behind
+# `censored: 'the output has been hidden...'`, so the failure was opaque as well
+# as fatal.
+#
+# The pre-flight below detects the missing registry and skips ONLY the role that
+# cannot evaluate without it, saying so out loud. See the task for the coverage
+# gap that leaves.
+#
 # ONE ROLE WOULD OTHERWISE IGNORE CHECK MODE ENTIRELY, WHICH IS WHY hub_sync_enabled
 # IS FORCED FALSE BELOW (#68). ansible.hub 1.1.0's collection_repository_sync
 # module reads `module.params.get("check_mode")`, but `check_mode` is not in its
@@ -69,6 +91,66 @@
         msg: >-
           Check mode against {{ aap_env_name }} ({{ aap_hostname }}).
           Nothing will be changed.
+
+    # -----------------------------------------------------------------------
+    # Pre-flight for the read-after-write pair (#106).
+    #
+    # Read-only, and it uses ansible.builtin.uri with the password resolved from
+    # env_secrets rather than shelling out — the same way sync_hub.yml talks to
+    # this hub. The credential never reaches a shell variable or a process
+    # argument.
+    # -----------------------------------------------------------------------
+    - name: Ask the hub which EE registries already exist
+      ansible.builtin.uri:
+        url: "https://{{ aap_hostname }}/api/galaxy/_ui/v1/execution-environments/registries/?limit=100"
+        method: GET
+        user: "{{ aap_username }}"
+        password: "{{ aap_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ aap_validate_certs | default(false) | bool }}"
+      register: validate_ee_registries
+      check_mode: false
+      failed_when: false
+
+    - name: Work out which declared EE registries are missing
+      ansible.builtin.set_fact:
+        validate_missing_registries: >-
+          {{ hub_ee_registries_all | default([]) | map(attribute='name') | list
+             | difference(validate_ee_registries.json.data | default([]) | map(attribute='name') | list) }}
+
+    - name: Skip the EE repository role when its registry does not exist yet
+      # THE COVERAGE GAP, STATED WHERE IT HAPPENS RATHER THAN LEFT IMPLICIT.
+      #
+      # hub_ee_repository is the role that crashes, and it crashes only because
+      # the registry it reads is absent. Emptying its input makes dispatch
+      # include the role with nothing to iterate, so the run completes instead
+      # of dying with a KeyError.
+      #
+      # What is NOT validated as a result: the EE repository items themselves —
+      # a typo in `name`, `registry` or `upstream_name` in
+      # hub_ee_repositories.yml would not be caught on this run. That is a real
+      # loss, and it is the price of validate being runnable at all on a fresh
+      # environment.
+      #
+      # It is conditional on purpose. Once config.yml has created the registry,
+      # this does nothing and full coverage returns — so the gap exists only on
+      # the first run, and the next validate closes it.
+      ansible.builtin.set_fact:
+        hub_ee_repositories_all: []
+      when: validate_missing_registries | length > 0
+
+    - name: Say so, loudly
+      ansible.builtin.debug:
+        msg:
+          - "EE registries missing from this hub: {{ validate_missing_registries | join(', ') }}"
+          - "SKIPPING the hub_ee_repository role for this run. It reads back a"
+          - "registry that dispatch would create earlier in the same run, and in"
+          - "check mode that write never happens (#106)."
+          - ""
+          - "NOT VALIDATED THIS RUN: the items in hub_ee_repositories.yml."
+          - "Run playbooks/config.yml to create the registry, then re-run this"
+          - "playbook — the skip disappears and coverage is complete."
+      when: validate_missing_registries | length > 0
 
     - name: Dispatch in check mode (reports intended changes, applies nothing)
       # Basic auth on purpose. dispatch supports it directly, so no OAuth token
