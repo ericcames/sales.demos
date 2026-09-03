@@ -23,13 +23,14 @@ warn_list:
   - yaml[line-length]
 
 mock_modules:
-  # Platform gateway — token lifecycle. Any playbook creating a token must
-  # delete it in an `always:` block.
+  # Platform gateway — token lifecycle and OAuth applications.
   - ansible.platform.token
+  - ansible.platform.application
   # Raw Kubernetes objects — the CNV install (Phase 0, playbooks/install_cnv.yml)
   # creates the Subscription and HyperConverged CR with these.
   - kubernetes.core.k8s
   - kubernetes.core.k8s_info
+  - kubernetes.core.helm
   # OpenShift Virtualization — VM lifecycle (Phases 1-4).
   - redhat.openshift_virtualization.kubevirt_vm
   - redhat.openshift_virtualization.kubevirt_vm_info
