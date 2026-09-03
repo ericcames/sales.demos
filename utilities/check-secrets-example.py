@@ -59,9 +59,16 @@ STAGED = {
 # Structural Jinja that survives the extractor and is not a variable. Keep this
 # list SHORT and justified: every entry is a hole in filter 2, so an unexplained
 # addition is how a real missing key would get silenced.
-NOT_A_VAULT_KEY: dict[str, str] = {}
+NOT_A_VAULT_KEY = {
+    "target_env": (
+        "supplied per run, never stored: `-e target_env=<env>` on the CLI and an "
+        "extra_var on every job template. playbooks/tasks/assert_target_environment.yml "
+        "exists precisely because it is external and must be checked against --limit."
+    ),
+}
 
 JINJA = re.compile(r"\{\{(.*?)\}\}|\{%(.*?)%\}", re.S)
+COMMENT = re.compile(r"^[ \t]*#.*$", re.M)
 STRLIT = re.compile(r"'[^']*'|\"[^\"]*\"")
 WORD = re.compile(r"[A-Za-z_]\w*")
 
@@ -133,20 +140,37 @@ def scan(files: list[Path]) -> tuple[set[str], set[str]]:
     jinja_locals: set[str] = set()
     defined: set[str] = set()
 
-    def walk(node) -> None:
+    def collect_var_blocks(node) -> None:
+        """Add names from real definition sites only.
+
+        NOT every YAML key: `rhsm_org_id` appears as a key under a credential's
+        `inputs:` in controller_credentials.yml, and treating that as a
+        definition made the checker believe the variable was defined and its
+        example declaration an orphan. A key only defines a variable when it is
+        the top level of a vars file, or sits under `vars:` / `set_fact:`.
+        """
         if isinstance(node, dict):
             for k, v in node.items():
-                if isinstance(k, str):
-                    defined.add(k)
-                walk(v)
+                # Match the FQCN too: this repo writes ansible.builtin.set_fact,
+                # and keying on the bare name silently misses every fact it sets.
+                if isinstance(k, str) and k.split(".")[-1] in ("vars", "set_fact") and isinstance(v, dict):
+                    defined.update(x for x in v if isinstance(x, str))
+                collect_var_blocks(v)
         elif isinstance(node, list):
             for i in node:
-                walk(i)
+                collect_var_blocks(i)
 
     for path in files:
         text = path.read_text(errors="replace")
+        # Strip whole-line comments FIRST. This repo's headers explain Jinja in
+        # prose, and `{{` inside a comment opens a match that runs to the next
+        # `}}` several lines later, swallowing every English word between them
+        # as a "variable". Only full-line comments are removed: a `#` inside a
+        # quoted value is not a comment, and trailing comments are rare enough
+        # not to be worth the parsing risk.
+        code = COMMENT.sub("", text)
 
-        for a, b in JINJA.findall(text):
+        for a, b in JINJA.findall(code):
             expr = a or b
             jinja_locals |= set(re.findall(r"\bset\s+(\w+)", expr))
             for loop in re.finditer(r"\bfor\s+([\w,\s]+?)\s+in\b", expr):
@@ -158,9 +182,18 @@ def scan(files: list[Path]) -> tuple[set[str], set[str]]:
                 n for n in identifiers(clean) if n not in KEYWORDS and n not in BUILTINS
             )
 
+        # Top-level keys of a vars file ARE definitions: group_vars, and a role's
+        # defaults/ or vars/. Anywhere else, only vars:/set_fact: blocks count.
+        is_vars_file = (
+            "group_vars/" in path.as_posix()
+            or "/defaults/" in path.as_posix()
+            or "/vars/" in path.as_posix()
+        )
         try:
             for doc in yaml.safe_load_all(text):
-                walk(doc)
+                if is_vars_file and isinstance(doc, dict):
+                    defined.update(k for k in doc if isinstance(k, str))
+                collect_var_blocks(doc)
         except yaml.YAMLError:
             pass  # vaulted or templated files that are not plain YAML
         defined |= set(re.findall(r"^\s*register:\s*(\w+)", text, re.M))

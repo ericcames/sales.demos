@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed -- check-secrets-example.py miscounted prose and YAML keys (#137)
+- **Comments are stripped before the Jinja scan.** A `{{` inside an explanatory
+  comment opened a match that ran to the next `}}` several lines later and
+  captured every English word between them as a variable name, so a header
+  explaining Jinja escaping reported `AAP`, `Ansible`, `Jinja`, `escape` and
+  `hatch` as missing vault keys.
+- **Only real definition sites define a variable.** The checker treated every
+  mapping key anywhere in the tree as a definition. `rhsm_org_id` legitimately
+  appears as a *key* under a credential's `inputs:`, which made the checker
+  believe the variable was defined and then report its declaration in the example
+  as an orphan -- backwards, since those are the two keys the check exists to
+  protect. A key now counts only at the top level of a vars file (`group_vars/`,
+  a role's `defaults/` or `vars/`) or under a `vars:` / `set_fact:` mapping.
+- **The `set_fact` match handles the FQCN.** This repo writes
+  `ansible.builtin.set_fact`; keying on the bare name silently missed every fact
+  it sets, which turned ~50 ordinary playbook facts into "missing vault keys".
+- `target_env` is now in the `NOT_A_VAULT_KEY` allowlist: it is supplied per run
+  via `-e target_env=<env>` and as a job template extra_var, never stored.
+- Both defects were latent in #128 and surfaced immediately when #129 added a
+  file that trips them -- which is the check doing its job, one layer down.
+
 ### Fixed -- demo pointed at a cluster that no longer resolves (#135)
 - `inventory/group_vars/demo/connection.yml` named the previous demo cluster in
   `aap_hostname`, `openshift_api_url` and `openshift_apps_domain`. The
