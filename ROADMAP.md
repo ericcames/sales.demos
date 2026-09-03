@@ -19,7 +19,7 @@ plus a vault read. Full detail in
 | | Skill | Playbook | Outcome | Status |
 |---|---|---|---|---|
 | OpenShift MCP | `sales-demos-mcp` | — (laptop-only, by design) | Two committed servers, `openshift-sandbox` (full, 25 tools) and `openshift-demo` (read-only, 16). Runs locally, so it survives environment churn and works before a cluster exists. | **Done** ([#102](https://github.com/ericcames/sales.demos/issues/102)) |
-| AAP MCP | — | `config.yml` | A typed `AnsibleMCPServer` CR, applied per environment so a new one arrives with it already on. Research done; not built. | Not started ([#102](https://github.com/ericcames/sales.demos/issues/102)) |
+| AAP MCP | `sales-demos-mcp` | `playbooks/mcp_server.yml` | A typed `AnsibleMCPServer` CR, deployed by `setup.yml` so a new environment arrives with it on. 140 tools including job-template launch. Write posture is per-environment and never defaulted. | **Done** ([#102](https://github.com/ericcames/sales.demos/issues/102)) |
 | Automation Orchestrator | — | — | Install as an explicit experiment and record whether it is even entitled. Split out so an entitlement failure cannot block the MCP work. | Not started ([#108](https://github.com/ericcames/sales.demos/issues/108)) |
 
 ## Use case 3 — Network MCP servers

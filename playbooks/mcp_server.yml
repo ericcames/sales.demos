@@ -1,0 +1,167 @@
+---
+# ===========================================================================
+# mcp_server.yml — deploy the AAP MCP server into an environment. Issue #102.
+#
+#   ansible-playbook playbooks/mcp_server.yml -i inventory --limit sandbox \
+#     -e target_env=sandbox \
+#     --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
+#
+# WHY A TYPED CR AND NOT spec.mcp ON THE AAP CR. Red Hat's 2.7 docs tell you to
+# add an `mcp:` block to the AnsibleAutomationPlatform CR. That works, and it is
+# the wrong choice here. Measured on the live 2.7 CRD:
+#
+#     spec.mcp -> { "type": "object", "x-kubernetes-preserve-unknown-fields": true }
+#
+# No sub-properties at all, so the API server accepts ANY key under it —
+# including a misspelling — and reports success. A typo produces a green run and
+# no server, which is the exact failure this repo's "ask the target, do not
+# trust the recap" rule exists to catch, except here it would be catchable
+# earlier and for free.
+#
+# The operator also owns a properly typed CRD, and it is what spec.mcp produces
+# anyway:
+#
+#     ansiblemcpservers.mcpserver.ansible.com  (31 validated spec fields)
+#
+# Applying that directly means the API server rejects a bad field name at apply
+# time. It also avoids editing the CR that governs controller, hub and EDA on a
+# single-node cluster, where AAP shares the only node.
+#
+# ALLOW_WRITE_OPERATIONS IS NOT IDEMPOTENT IN THE USUAL SENSE, and this is the
+# one thing that will bite whoever changes it. Red Hat's own documentation:
+#
+#   "If you changed the permissions of the MCP server after it was created and
+#    deployed, you must delete the AnsibleMCPServer custom resource and
+#    recreate it."
+#
+# So a plain apply that flips the flag leaves a server still enforcing the OLD
+# permission, with a CR that claims the new one. This playbook therefore reads
+# the live object first and DELETES it when the flag differs, rather than
+# patching. Do not "simplify" that away.
+#
+# SERVICE TYPE IS PINNED, NOT DEFAULTED. The CRD offers LoadBalancer and
+# NodePort. Both are dead on RHDP (#29): a LoadBalancer never gets an IP and
+# NodePort is firewalled. Route is the only thing that works, so it is explicit.
+# ===========================================================================
+
+- name: Deploy the AAP MCP server
+  hosts: aap
+  gather_facts: false
+
+  environment:
+    K8S_AUTH_HOST: "{{ openshift_api_url }}"
+    K8S_AUTH_API_KEY: "{{ openshift_api_token }}"
+    K8S_AUTH_VERIFY_SSL: "{{ openshift_validate_certs | default(false) | bool }}"
+
+  vars:
+    aap_mcp_namespace: "{{ aap_namespace | default('aap') }}"
+    aap_mcp_name: "{{ aap_mcp_cr_name | default('aap-mcp') }}"
+    aap_mcp_wait_retries: 60
+    aap_mcp_wait_delay: 10
+
+  tasks:
+    - name: Confirm the inventory resolved to the environment you meant
+      ansible.builtin.include_tasks: tasks/assert_target_environment.yml
+
+    - name: Require the write posture to be stated, never defaulted
+      # Deliberately no default. This decides whether an AI agent can POST,
+      # PATCH and DELETE through AAP, and a silent default is the wrong way to
+      # answer that. Each environment sets it in its own group_vars.
+      ansible.builtin.assert:
+        that:
+          - aap_mcp_allow_write_operations is defined
+          - aap_mcp_allow_write_operations | type_debug == 'bool'
+        fail_msg: >-
+          aap_mcp_allow_write_operations must be set for '{{ aap_env_name }}'
+          in inventory/group_vars/{{ aap_env_name }}/. It is deliberately not
+          defaulted — it controls whether the MCP server exposes write tools.
+
+    - name: Look for an existing MCP server
+      kubernetes.core.k8s_info:
+        api_version: mcpserver.ansible.com/v1alpha1
+        kind: AnsibleMCPServer
+        name: "{{ aap_mcp_name }}"
+        namespace: "{{ aap_mcp_namespace }}"
+      register: mcp_existing
+
+    - name: Decide whether the write posture changed
+      ansible.builtin.set_fact:
+        mcp_write_changed: >-
+          {{ (mcp_existing.resources | length > 0)
+             and ((mcp_existing.resources[0].spec.allow_write_operations | default(false) | bool)
+                  != (aap_mcp_allow_write_operations | bool)) }}
+
+    - name: Delete the MCP server so the new permission actually takes effect
+      # Red Hat's documented requirement, quoted in the header. Patching the
+      # flag updates the CR and leaves the running server on the old setting.
+      when: mcp_write_changed | bool
+      kubernetes.core.k8s:
+        state: absent
+        api_version: mcpserver.ansible.com/v1alpha1
+        kind: AnsibleMCPServer
+        name: "{{ aap_mcp_name }}"
+        namespace: "{{ aap_mcp_namespace }}"
+        wait: true
+        wait_timeout: 300
+
+    - name: Apply the MCP server
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: mcpserver.ansible.com/v1alpha1
+          kind: AnsibleMCPServer
+          metadata:
+            name: "{{ aap_mcp_name }}"
+            namespace: "{{ aap_mcp_namespace }}"
+          spec:
+            # "Enable tools that support modification and data changes (using
+            # POST, DELETE, and PATCH methods)." — the CRD's own description.
+            allow_write_operations: "{{ aap_mcp_allow_write_operations | bool }}"
+            # "The URL of your Ansible Automation Platform" — how the MCP server
+            # finds the AAP it fronts.
+            public_base_url: "https://{{ aap_hostname }}"
+            # See the header: the other two enum values are dead on RHDP (#29).
+            ingress_type: Route
+            service_type: ClusterIP
+      register: mcp_applied
+
+    - name: Wait for the MCP server deployment to be Available
+      # THE ROUTE IS ADMITTED BEFORE THE POD SERVES. Probing the Route straight
+      # after apply returns 503 — the router has a backend with nothing behind
+      # it yet. Found by doing exactly that on the first live run, which is why
+      # this task exists and why the report below still refuses to call a Route
+      # proof of anything.
+      kubernetes.core.k8s_info:
+        api_version: apps/v1
+        kind: Deployment
+        name: "{{ aap_mcp_name }}"
+        namespace: "{{ aap_mcp_namespace }}"
+      register: mcp_deploy
+      until:
+        - mcp_deploy.resources | length > 0
+        - (mcp_deploy.resources[0].status.readyReplicas | default(0)) | int > 0
+      retries: "{{ aap_mcp_wait_retries }}"
+      delay: "{{ aap_mcp_wait_delay }}"
+
+    - name: Wait for the MCP Route to be admitted
+      kubernetes.core.k8s_info:
+        api_version: route.openshift.io/v1
+        kind: Route
+        namespace: "{{ aap_mcp_namespace }}"
+        label_selectors:
+          - "app.kubernetes.io/name={{ aap_mcp_name }}"
+      register: mcp_route
+      until: mcp_route.resources | length > 0 and (mcp_route.resources[0].spec.host | default('')) | length > 0
+      retries: "{{ aap_mcp_wait_retries }}"
+      delay: "{{ aap_mcp_wait_delay }}"
+
+    - name: Report what is now running
+      ansible.builtin.debug:
+        msg:
+          - "AAP MCP server deployed to {{ aap_env_name }}."
+          - "CR:            {{ aap_mcp_name }} ({{ aap_mcp_namespace }})"
+          - "Write access:  {{ aap_mcp_allow_write_operations }}"
+          - "Recreated:     {{ mcp_write_changed | bool }}"
+          - "MCP URL:       https://{{ mcp_route.resources[0].spec.host }}/mcp"
+          - "Ready pods:    {{ mcp_deploy.resources[0].status.readyReplicas | default(0) }}"
+          - "A Route existing is NOT proof it answers — /sales-demos-mcp calls it."

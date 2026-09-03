@@ -7,6 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added -- the AAP MCP server, deployed by Phase 0 (#102)
+- `playbooks/mcp_server.yml` deploys it and `setup.yml` runs that as stage 3 of
+  4, so a freshly built environment **arrives with it on** rather than needing a
+  second visit. Verified on `cluster-kbjvc`: 140 tools, including
+  `job_templates_launch_create`, `workflow_job_templates_launch_create` and
+  `jobs_stdout_retrieve` -- steps 4 and 5 of the demo stories in #93 and #99.
+- **It uses the typed CRD, not the documented shortcut, and that is the whole
+  point.** Red Hat's docs say to add an `mcp:` block to the AAP CR. Measured on
+  the live 2.7 CRD, `spec.mcp` is `x-kubernetes-preserve-unknown-fields` with no
+  sub-properties -- **the API server accepts a misspelled key and reports
+  success**, giving a green run and no server. The operator also owns
+  `ansiblemcpservers.mcpserver.ansible.com` with 31 validated fields, which is
+  what `spec.mcp` produces anyway. Applying it directly means a bad field name is
+  rejected at apply time instead of silently ignored.
+- **`allow_write_operations` is not idempotent, per Red Hat's own docs:** *"If
+  you changed the permissions of the MCP server after it was created and
+  deployed, you must delete the AnsibleMCPServer custom resource and recreate
+  it."* A plain apply that flips it leaves a server enforcing the OLD permission
+  while the CR claims the new one. The playbook reads the live object and deletes
+  first. That is why it is longer than an apply, and it must not be simplified.
+- **The write posture is per-environment and deliberately has no default** --
+  `true` on `sandbox`, `false` on `demo`, and the playbook *refuses to run* if it
+  is unset. A silent default is the wrong way to decide whether an agent can
+  POST, PATCH and DELETE.
+- `service_type` is pinned to `Route`. The enum also offers `LoadBalancer` and
+  `NodePort`; both are dead on RHDP (#29), so the default is not trusted.
+- **A bug the first live run found, kept rather than papered over.** Probing the
+  freshly admitted Route returned **503** -- the router had a backend with
+  nothing behind it. The playbook now waits for the Deployment to report a ready
+  replica, not merely for the Route to exist, and the skill's failure table says
+  a 503 shortly after deploy means "wait", not "misconfigured".
+- **`CLAUDE.md` gains its first documented exception to "always clean up
+  tokens".** An MCP client needs a *durable* credential, so an `always:` block
+  would destroy the thing it was created for. Three things keep it from being a
+  hole: no playbook creates it (the skill does, on a laptop), it is never
+  committed (`claude mcp add --scope local`, not the tracked `.mcp.json`), and it
+  is the one token here you retire by hand. It also **inherits the creating
+  user's permissions** -- Red Hat's words -- so `allow_write_operations` is a
+  second gate, not the only one.
+- Recorded in passing: **tokens moved in 2.7.** `/api/controller/v2/tokens/` is
+  now `404`; the gateway owns them at `/api/gateway/v1/tokens/`.
+
 ### Added -- the OpenShift MCP servers, so asking a cluster a question is a tool call (#102)
 - **The cost this removes is real and this repo was paying it constantly.** Every
   question asked of a cluster in #101 -- node capacity, which EE registries
