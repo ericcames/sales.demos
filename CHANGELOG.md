@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed -- validate.yml could not run on the environment it was most needed for (#106)
+- `validate.yml` told you to *"run this before config.yml, always"* and then
+  died on any environment where `config.yml` had never run -- the first apply
+  against a brand-new cluster, which is exactly when a dry run is worth the
+  most.
+- **A read-after-write across two roles, not version drift.** Dispatch runs
+  `hub_ee_registry` then `hub_ee_repository`, and the second reads back the
+  registry the first would have written. In check mode that write never happens,
+  so `ansible.hub` 1.1.0 indexes an empty lookup and raises
+  `KeyError: 'id'` at `ah_ee_repository.py:238`.
+- **And it failed opaquely.** `aap_configuration_secure_logging: true` hid the
+  traceback behind `censored: 'the output has been hidden...'`, so the reported
+  symptom was a censored failure with no cause.
+- **The fix is conditional, not a blanket skip.** A read-only pre-flight asks
+  the hub which EE registries exist. Only when a declared one is genuinely
+  absent does it empty `hub_ee_repositories_all`, so dispatch includes the role
+  with nothing to iterate instead of crashing. Once `config.yml` has created the
+  registry the pre-flight does nothing and full coverage returns -- **the gap
+  exists only on the first run, and the next validate closes it.**
+- **The coverage gap is stated where it happens.** #106 asked for that
+  explicitly. The skipped run does not validate the items in
+  `hub_ee_repositories.yml`, and both the task comment and the runtime message
+  say so, along with the command that removes the skip.
+- The pre-flight uses `ansible.builtin.uri` with the password from
+  `env_secrets`, the same way `sync_hub.yml` reaches this hub -- the credential
+  never reaches a shell variable or a process argument.
+- Verified on live sandbox both ways: registry present, `ok=199 changed=11
+  failed=0` with no skip; registry absent, `ok=192 changed=10 failed=0` with the
+  skip and its explanation. Neither fails.
+
 ### Fixed -- the last unverified AAP 2.6 claim, now measured (#116)
 - `hub_collection_remotes.yml` said all three remotes already exist on a fresh
   **AAP 2.6** hub. That claim is load-bearing, not decorative: the entire file
