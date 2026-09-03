@@ -160,7 +160,8 @@ export OCP_URL OCP_TOKEN
 # 401 instead of failing here.
 case "$OCP_URL" in https://*) ;; *) echo "❌ could not resolve $ENV API URL — check --limit"; esac
 case "$OCP_TOKEN" in
-  sha256~*) echo "✅ resolved $ENV credentials via vault" ;;
+  sha256~*) echo "✅ resolved $ENV credentials (OAuth token)" ;;
+  eyJ*.*.*)  echo "✅ resolved $ENV credentials (ServiceAccount token)" ;;
   *) echo "❌ could not resolve $ENV token — check the vault password and that env_secrets.$ENV exists" ;;
 esac
 ```
