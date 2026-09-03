@@ -209,6 +209,7 @@ in this repo, which for repo-specific skills is the correct scope.
 | `ocpvirt-teardown` | `playbooks/teardown.yml` | Destroy VMs; keep CNV and the golden image | Done ([#6](https://github.com/ericcames/sales.demos/issues/6)) |
 | `sales-demos-probe-env` | `playbooks/probe_env.yml` | Measure what the cluster actually has and recommend `available_memory_gb` | Done ([#100](https://github.com/ericcames/sales.demos/issues/100)) |
 | `pah-sync` | `playbooks/sync_hub.yml`, `playbooks/curate_hub.yml` | Populate Private Automation Hub, and reconcile the curated `approved` repository | Done ([#68](https://github.com/ericcames/sales.demos/issues/68), [#70](https://github.com/ericcames/sales.demos/issues/70)) |
+| `sales-demos-portal` | `playbooks/portal.yml` | Deploy the AAP self-service portal (RHDH + AAP plugin) via Helm | Done ([#103](https://github.com/ericcames/sales.demos/issues/103)) |
 
 See the [roadmap](ROADMAP.md) and the open issues. CI enforces that every skill
 added here appears in this table.

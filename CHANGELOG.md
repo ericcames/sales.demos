@@ -7,6 +7,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added -- AAP self-service portal, ported from aap.selfservice (#103)
+- `playbooks/portal.yml` and the `sales-demos-portal` skill deploy Red Hat
+  Developer Hub with the AAP plugin via the `redhat-rhaap-portal` Helm chart
+  (2.1.0). One playbook, two phases: bootstrap the portal (OAuth app, namespace,
+  secrets, Helm deploy), then sync the org list and patch the portal ConfigMap.
+- **Ported from `aap.selfservice`, not built from scratch.** That repo validated
+  the Helm path on 2026-05-06 (~11 min end to end). The work here is adapting
+  credentials and connection flow to this repo's conventions -- `env_secrets` in
+  the vault, `connection.yml` for non-secrets, `--limit` for environment
+  selection. No new vault keys needed: every credential the portal requires
+  already exists.
+- **Helm, not the RHDH operator.** Both are available on the cluster (operator
+  `rhdh-operator.v1.10.3` on the `fast` channel). The Helm chart bundles RHDH
+  with the AAP plugin pre-wired; the operator deploys generic RHDH and the
+  plugin would need wiring manually. That is a build, not a port, and the chart
+  path is already proven.
+- **Three hard-learned facts survived the port (and live debugging).** (1) OAuth
+  applications live in the gateway registry (`/api/gateway/v1/applications/`),
+  never the controller's. (2) Never PATCH `client_secret` -- the gateway hashes
+  it differently on PATCH than on POST, giving `invalid_client` at `/o/token/`.
+  The playbook deletes and recreates the application on every run. (3) AAP 2.7
+  defaults `pkce_required` to `true`; RHDH's RHAAP auth provider does not send
+  PKCE parameters, so the OAuth flow fails silently -- AAP redirects back
+  without an authorization code and the portal shows "You have to provide code
+  or refreshToken". The playbook sets `pkce_required: false` explicitly.
+- **The service token is durable by design.** Same exception pattern as the MCP
+  client token documented in CLAUDE.md. The portal backend uses it to sync
+  templates and serve API requests. Cleaned up in `rescue:` only if the OCP
+  setup block fails.
+- **Replaces `oc rollout status` with `k8s_info` polling.** The source repo
+  shelled out to `oc`; the port polls the Deployment for
+  `updatedReplicas == replicas` and `unavailableReplicas == 0`, matching the
+  pattern `mcp_server.yml` already uses.
+- **Not added to `setup.yml`.** The portal is a platform addon (#92 Phase 4),
+  not part of the base environment build. It runs separately via the
+  `sales-demos-portal` skill or a future job template.
+- `.ansible-lint` gains `ansible.platform.application` and `kubernetes.core.helm`
+  as mock modules -- both are used by the portal playbook and CI lints offline.
+
 ### Fixed -- skill preflights rejected a valid ServiceAccount token (#105)
 - The token-shape check in `ocpvirt-setup` and `sales-demos-first-time` only
   accepted `sha256~` OAuth tokens. A ServiceAccount JWT -- the better credential,
