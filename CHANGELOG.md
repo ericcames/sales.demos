@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed -- #143 broke the Automation Orchestrator job template (#122 step 2)
+- `install_ao.yml` asserted and read `env_secrets[aap_env_name].aap_password`.
+  **That variable does not exist in a job template.** `secrets.yml` is untracked
+  (#130), so there is no vaulted file in the project checkout; the "Sales Demos
+  - Env Secrets" credential type injects `aap_password` as an extra_var instead.
+  The playbook therefore worked from a laptop and failed from AAP with
+  `assertion: env_secrets is defined ... evaluated_to: false`.
+- **This is exactly the split `CLAUDE.md` forbids** -- "required vars asserted at
+  the top so both entry points fail identically". One entry point worked and the
+  other could not start.
+- Now reads **`aap_password`**, which `connection.yml` resolves from the vault on
+  a laptop and the credential injects in AAP. `config.yml` and `curate_hub.yml`
+  have always read it that way; this brings `install_ao.yml` in line.
+- **Found by running the job template, not by review.** #143 was verified only
+  from the CLI, where `env_secrets` is defined -- the defect was invisible from
+  that side. It surfaced on the first AAP run of the playbook after #143, which
+  is #122 step 2's whole purpose.
+
+
 ### Added -- `main` is branch-protected, and CI is now a gate rather than a convention
 - A pull request is **required** to change `main`, with **0 required approvals**
   -- zero because there is one collaborator and GitHub does not permit approving
