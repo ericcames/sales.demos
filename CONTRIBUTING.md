@@ -94,7 +94,11 @@ invisible to all of them.
   Select an environment with `--limit <env>`.
 - Shared, demo-agnostic config lives in `group_vars/aap/`; per-environment
   values in `group_vars/<env>/`.
-- **AAP 2.6** — pin to it. This catalog item ships 2.6 on the OpenShift operator.
+- **AAP 2.7** — pin to it. The catalog item moved and #92's environment arrived
+  on 2.7; the gateway reports `2.7` and the controller behind it `4.8.6`. This
+  line said 2.6 until #122. Quote which version you mean: `4.8.x` is the
+  controller, `2.7` is the platform, and reading the first as the second is how
+  the stale 2.6 pin survived unnoticed.
 - **`ansible.platform` over `ansible.controller`** — controller is legacy.
 - **Always clean up tokens** — any playbook that creates one must delete it in an
   `always:` block.
