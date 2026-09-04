@@ -341,10 +341,23 @@ Environment secrets.
   `issue-5-ocpvirt-demo` (numbered, no type) and `docs-pill-proof` (typed, no
   number). This rule is the two of them reconciled, not a correction of either.
 
-  **Merged branches delete themselves.** `delete_branch_on_merge` is enabled on
-  the repository, so a merged PR cleans up its own branch and no manual pruning
-  is needed. That is a repository setting, not a tracked file, so it is recorded
-  here — it cannot be seen by reading the tree (#97).
+  **Merged branches delete themselves — on the remote only.**
+  `delete_branch_on_merge` is enabled on the repository, so a merged PR cleans up
+  `origin/<branch>`. That is a repository setting, not a tracked file, so it is
+  recorded here — it cannot be seen by reading the tree (#97).
+
+  **The local branch survives the merge, and this note used to say it did not**
+  (#177). It read "no manual pruning is needed", which is true of the remote and
+  false of the clone you are standing in, so leftovers accumulated silently —
+  the note told you not to look. Delete the local copy when you merge:
+
+  ```bash
+  git checkout main && git pull && git branch -d <branch>
+  ```
+
+  `git branch --merged main` lists any that were missed. Use `-d`, never `-D`:
+  `-d` refuses a branch that is not actually merged, which is what makes the
+  sweep safe to run without reading the list first.
 
   **`main` is now protected, and the rule above is enforced rather than
   trusted.** Recorded here for the same reason as the line above: it is a
