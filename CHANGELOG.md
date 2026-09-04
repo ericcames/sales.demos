@@ -7,6 +7,101 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added -- AAP project syncs now resolve from Private Automation Hub (#69)
+- `playbooks/link_hub.yml` and the `pah-link-aap` skill: a
+  `Sales Demos - PAH Galaxy` credential aimed at the curated `approved`
+  repository, assigned to the organization, so a project sync installs
+  `collections/requirements.yml` from the hub with no internet egress. `#68`
+  populated the hub and `#70` curated it; until now nothing pointed at it.
+- **`-e hub_galaxy_link_state=absent` reverses it**, deleting the assignment, the
+  credential and the token. Built and proven in the same change, because the
+  failure mode this carries is "every job template in the organization stops
+  working" and the fix for that has to be quick and known-good.
+- **The playbook refuses to link an empty `approved`.** A Galaxy credential over
+  an empty repository does not fail at link time, it fails in every subsequent
+  project sync with an error that names a collection rather than the cause.
+- `approved` only -- not the three mirrors as ordered fallbacks. #69 asked for
+  one credential per distribution; pointing at a mirror "just in case" gives up
+  the only claim this use case makes, that your teams install what you approved.
+
+### Fixed -- the curated set was the pin list, not the dependency closure (#69)
+- **`approved` held nine collections and a project sync needed ten.** An AAP
+  project sync runs `ansible-galaxy collection install -r
+  collections/requirements.yml`, which resolves *transitive* dependencies. The
+  first real run against a linked organization failed:
+
+      ERROR! Failed to resolve the requested dependencies map. Could not satisfy
+      the following requirements:
+      * ansible.eda:>=2.5.0 (dependency of infra.aap_configuration:4.7.0)
+
+- `refresh-hub-requirements.py --write-approved` now computes the closure and
+  **refuses to write a set missing a dependency** rather than emitting one that
+  looks complete. Dependencies are curated at their sync-window floor, the oldest
+  version the hub is guaranteed to hold, and the entry carries a comment saying
+  what pulled it in.
+- **`--audit-pins` could not have caught this**, and that is the lesson worth
+  keeping: it checks the collections this repo *names* against the version
+  window. Only the resolver knows what they *depend on*. `link_hub.yml`
+  therefore ends with a real project sync rather than an object-existence check.
+
+### Fixed -- #69's gate 3 named the wrong token, and the wrong problem
+- **It is a gateway token, not a PAH API token.** `POST
+  /api/galaxy/v3/auth/token/` exists on AAP 2.7 and issues a real 40-character
+  token; the gateway rejects it. Measured against the hub's collection index:
+  basic auth `200`, galaxy_ng token `403` under both `Token` and `Bearer`,
+  gateway token `200` under either. The resulting project-sync failure reads
+  `403 ... Authentication credentials were not provided`, which looks like a
+  credential that was never attached rather than one that was rejected.
+- The mint is `POST /api/gateway/v1/tokens/` at `read` scope -- the same endpoint
+  `utilities/make-aap-mcp.sh` already uses, and `read` was verified sufficient
+  before it was chosen.
+- **Gateway tokens accumulate**, unlike the galaxy_ng endpoint which resets, so
+  the playbook retires the tokens it minted on earlier runs before minting a
+  fresh one. Verified: a second run left exactly one.
+- **The token is minted, never stored.** #69 called it "per-user and
+  short-lived" and asked for a rotation story. `GALAXY_TOKEN_EXPIRATION` is
+  `null` -- there is no time-based expiry, and that phrase is inherited from Red
+  Hat's *cloud* Automation Hub. It does not help: the token dies with the RHDP
+  environment, so the cadence was never 30 days but every rebuild. It comes from
+  `aap_username` / `aap_password`, which already rotate with the environment.
+- **Anonymous access was considered and rejected.**
+  `GALAXY_ENABLE_UNAUTHENTICATED_COLLECTION_ACCESS` and `_DOWNLOAD` are settable
+  and the credential type requires only `url`, so a tokenless credential would
+  work with nothing to mint. Anything reaching the route would then read the
+  whole hub -- defensible on an ephemeral demo cluster, a poor pattern to
+  demonstrate to a customer who will copy it.
+- `CLAUDE.md`'s token-cleanup exception rewritten: it used to rest partly on "no
+  playbook creates it", which this makes untrue. The exception is now stated as
+  what it always was -- a token that *is* the deliverable, as opposed to one
+  created incidentally -- and the unlink path is what keeps it narrow.
+
+### Changed -- documentation catching up to a shipped #69
+- `docs/plan/pah-plan.md`: replaced the stale "Two pinned collections are already
+  outside the window" section, which contradicted the curated-repository section
+  40 lines above it, with what the six gates actually turned out to be.
+- `objections.md` answers "So AAP now installs its collections from your hub?"
+  with **yes**, and tells the three-ways-incomplete story, because the way the
+  gap was found is a better answer than the yes.
+- `talk-track.md`, `ROADMAP.md`, `README.md`, `playbooks/setup.yml` and the
+  `pah-sync` skill updated. `setup.yml`'s comment still explains why linking is
+  not a setup stage: setup must leave an environment whose job templates work,
+  and this is the one change that can stop them working.
+
+### Verified on sandbox, 2026-09-04
+- `--check` verifies the curated repository and mints nothing.
+- First link green; the `Sales Demos` project sync succeeds against `approved`.
+- Second run retires one token and mints one, leaving exactly one.
+- #69's gate 2 in its literal wording, inside the EE via podman:
+  `ansible-galaxy collection install -r collections/requirements.yml -s
+  .../content/approved/` downloads every artifact from `/content/approved/`.
+- `Sales Demos - Provision VM` builds a real VM (`changed=7`) and
+  `Sales Demos - Teardown VMs` destroys it, both green, with the project's
+  collections now coming from PAH.
+- Unlink restores the pre-#69 state and the project sync stays green.
+- **`demo` is deliberately not linked.** That is a separate PR, after sandbox has
+  been stable across a real demo.
+
+
 ### Fixed -- hub_ee_registries.yml describes our registry in isolation (#181)
 - Clarified that of the three dispatched roles, only `hub_ee_registry` does work
   here — `hub_ee_registry_index` and `hub_ee_registry_sync` default to false

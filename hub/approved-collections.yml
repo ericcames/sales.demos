@@ -12,19 +12,31 @@
 # SYNCS from upstream. Confusing the two is the likeliest mistake here.
 #
 # The curated set: what this repo itself installs, at the exact pinned
-# version. Derived from collections/requirements.yml -- bump a pin there
-# and re-run with --write-approved.
+# version, PLUS every collection those pins depend on. Derived from
+# collections/requirements.yml -- bump a pin there and re-run with
+# --write-approved.
+#
+# THE DEPENDENCIES ARE NOT OPTIONAL. An AAP project sync runs
+# `ansible-galaxy collection install -r collections/requirements.yml`,
+# which resolves transitive dependencies. Seeded with the direct pins
+# alone, this repository failed the first real #69 run on
+# ansible.eda:>=2.5.0 (dependency of infra.aap_configuration:4.7.0).
+# Dependencies are curated at their sync-window floor, the oldest version
+# the hub is guaranteed to hold.
 #
 # UNLIKE THE OTHER THREE FILES, THIS ONE IS A TRUE DESIRED STATE. Delete a
 # line and playbooks/curate_hub.yml removes that collection from the
 # repository. A sync cannot do that; a curated repository can, which is the
 # whole reason it exists (#70).
 #
-# 9 collections, exact versions.
+# 10 collections, exact versions — 9 pinned by this repo,
+# 1 pulled in as dependencies.
 # ============================================================================
 collections:
   - name: ansible.controller
     version: "4.8.0"
+  - name: ansible.eda
+    version: "2.12.0"  # dependency of infra.aap_configuration
   - name: ansible.hub
     version: "1.1.0"
   - name: ansible.platform

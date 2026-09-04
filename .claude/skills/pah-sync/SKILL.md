@@ -1,6 +1,6 @@
 ---
 name: pah-sync
-description: "Populate this environment's Private Automation Hub as code — all Red Hat certified and validated collections windowed to their 3 newest versions, plus the ericcames and mlowcher61 community namespaces at their current version only. Regenerates the pinned lists from upstream, runs playbooks/sync_hub.yml, then asks the hub what actually landed. TRIGGER when: the user asks to populate, sync, fill or refresh Private Automation Hub or PAH, wants certified or validated collections in their hub, asks why a hub is empty or a collection is missing from it, wants to refresh hub/*-requirements.yml, or hits a hub sync that reports success with no content. SKIP: if the user wants to point AAP projects AT the hub via organization Galaxy credentials — that is issue #69 and deliberately not done yet — or wants to mirror the execution environment image, which is sales-demos-ee-build."
+description: "Populate this environment's Private Automation Hub as code — all Red Hat certified and validated collections windowed to their 3 newest versions, plus the ericcames and mlowcher61 community namespaces at their current version only. Regenerates the pinned lists from upstream, runs playbooks/sync_hub.yml, then asks the hub what actually landed. TRIGGER when: the user asks to populate, sync, fill or refresh Private Automation Hub or PAH, wants certified or validated collections in their hub, asks why a hub is empty or a collection is missing from it, wants to refresh hub/*-requirements.yml, or hits a hub sync that reports success with no content. SKIP: if the user wants to point AAP projects AT the hub via organization Galaxy credentials — that is pah-link-aap — or wants to mirror the execution environment image, which is sales-demos-ee-build."
 ---
 
 # pah-sync
@@ -121,9 +121,14 @@ python3 utilities/refresh-hub-requirements.py --audit-pins  # offline, no networ
 
 `--audit-pins` answers a question [#69](https://github.com/ericcames/sales.demos/issues/69)
 depends on: would every collection in `collections/requirements.yml` actually
-resolve from the hub? **Two currently would not** — `ansible.controller` and
-`ansible.platform` are pinned below their version window. That breaks nothing
-today, because no organization has a Galaxy credential.
+resolve from the hub? All nine now do — `ansible.controller` and
+`ansible.platform` were pinned below their version window until the generator
+started lowering a floor to any version this repo pins.
+
+**It is not the whole question, and #69 found out the hard way.** The audit
+checks the collections this repo *names*; a project sync resolves the ones it
+*depends on*. Use `--write-approved` for that — it computes the transitive
+closure and refuses to write a set missing one.
 
 ## Run
 
@@ -212,16 +217,22 @@ ansible-playbook playbooks/curate_hub.yml -i inventory --limit sandbox \
   --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
 ```
 
-Seeded with the nine collections in `collections/requirements.yml` at their exact
-pinned versions — what this repo itself depends on, which is what would make
-[#69](https://github.com/ericcames/sales.demos/issues/69) safe.
+Seeded with the collections in `collections/requirements.yml` at their exact
+pinned versions **plus everything those depend on** — the dependency closure, not
+the pin list. That distinction is what makes
+[#69](https://github.com/ericcames/sales.demos/issues/69) safe, and it was found
+by a failure: `approved` held the nine names and a project sync needed
+`ansible.eda` too.
 
 **If it refuses with "not present anywhere in this hub"**, that version is
 missing — usually because it sits below the certified version window. Run
 `--audit-pins`, then regenerate and re-sync: the generator lowers a floor to any
 version this repo has pinned.
 
-**This is the repository to point consumers at**, not the mirrors.
+**This is the repository to point consumers at**, not the mirrors. Doing so is
+[`/pah-link-aap`](../pah-link-aap/SKILL.md) — a separate, reversible step,
+because a Galaxy credential on the organization makes every project sync depend
+on this repository being complete.
 
 ## Verify against the hub, not the recap
 

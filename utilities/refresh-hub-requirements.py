@@ -416,6 +416,129 @@ def parse_requirements(path: pathlib.Path) -> dict[str, str]:
     return pins
 
 
+INSTALLED = pathlib.Path(os.path.expanduser("~/.ansible/collections/ansible_collections"))
+
+
+def installed_dependencies(name: str) -> dict[str, str] | None:
+    """A collection's declared dependencies, read from the copy installed locally.
+
+    None means "not installed", which the caller must treat as a hard failure
+    rather than as "no dependencies" -- the two are indistinguishable from an
+    empty dict and only one of them is safe.
+
+    WHY THE LOCAL COPY AND NOT THE NETWORK. --write-approved is offline by
+    design, and the versions installed here are the versions this repo pins, so
+    the metadata is the metadata of the thing being curated. The one gap worth
+    naming: a dependency pulled in transitively may be installed at a different
+    version than the one curated below, so its OWN dependencies are read from a
+    near neighbour. That is why link_hub.yml ends with a real project sync --
+    the resolver, not this function, is the proof.
+    """
+    namespace, _, collection = name.partition(".")
+    manifest = INSTALLED / namespace / collection / "MANIFEST.json"
+    if not manifest.exists():
+        return None
+    info = json.loads(manifest.read_text()).get("collection_info", {})
+    return info.get("dependencies") or {}
+
+
+def satisfies(version: str, spec: str) -> bool:
+    """Does `version` satisfy a galaxy dependency spec like '>=5.2.0,<7.0.0'?"""
+    for clause in (c.strip() for c in str(spec).split(",") if c.strip()):
+        if clause in ("*", ""):
+            continue
+        match = re.match(r"^(>=|<=|!=|==|>|<)?\s*(.+)$", clause)
+        if not match:
+            return False
+        operator, wanted = match.group(1) or "==", match.group(2).strip()
+        left, right = version_key(version), version_key(wanted)
+        checks = {
+            ">=": left >= right, "<=": left <= right, ">": left > right,
+            "<": left < right, "==": left == right, "!=": left != right,
+        }
+        if not checks[operator]:
+            return False
+    return True
+
+
+def hub_floors() -> dict[str, str]:
+    """name -> the oldest version each sync window admits.
+
+    The floor is the safest version to curate a dependency at: it is a real
+    published release AND it is the one the window is guaranteed to have pulled
+    into the hub. Picking anything newer is a guess about what upstream shipped.
+    """
+    floors: dict[str, str] = {}
+    for kind in ("certified", "validated"):
+        path = HUB / f"{kind}-requirements.yml"
+        if path.exists():
+            for name, spec in parse_requirements(path).items():
+                floors[name] = spec.lstrip(">=")
+    return floors
+
+
+def dependency_closure(pins: dict[str, str]) -> tuple[dict[str, str], dict[str, str], list[str]]:
+    """Expand the repo's pins to everything ansible-galaxy would also install.
+
+    THIS IS THE HALF #69 GOT WRONG THE FIRST TIME. `approved` was seeded with the
+    nine collections in collections/requirements.yml, which are the DIRECT
+    dependencies -- and an AAP project sync runs `ansible-galaxy collection
+    install -r collections/requirements.yml`, which resolves the TRANSITIVE ones
+    too. Measured on sandbox 2026-09-04, with the organization pointed at
+    `approved`:
+
+        ERROR! Failed to resolve the requested dependencies map. Could not
+        satisfy the following requirements:
+        * ansible.eda:>=2.5.0 (dependency of infra.aap_configuration:4.7.0)
+
+    A curated repository holding nine of ten collections is not a curated
+    repository, it is a broken one. Returns (closure, reasons, problems).
+    """
+    floors = hub_floors()
+    closure = dict(pins)
+    reasons: dict[str, str] = {}
+    problems: list[str] = []
+
+    queue = sorted(pins)
+    while queue:
+        name = queue.pop(0)
+        declared = installed_dependencies(name)
+        if declared is None:
+            problems.append(
+                f"{name}: not installed locally, so its dependencies cannot be read. "
+                "Run the collections-sync skill first."
+            )
+            continue
+        for dependency, spec in sorted(declared.items()):
+            if dependency in closure:
+                # Already curated. Check the pin actually satisfies the
+                # constraint rather than assuming a name match is enough.
+                if not satisfies(closure[dependency], spec):
+                    problems.append(
+                        f"{dependency} {closure[dependency]} does not satisfy "
+                        f"{spec}, required by {name}"
+                    )
+                continue
+            floor = floors.get(dependency)
+            if floor is None:
+                problems.append(
+                    f"{dependency} is required by {name} ({spec}) and is in neither "
+                    "certified nor validated, so it cannot be curated"
+                )
+                continue
+            if not satisfies(floor, spec):
+                problems.append(
+                    f"{dependency} floor {floor} does not satisfy {spec}, required "
+                    f"by {name}. Widen that window or pin the dependency directly."
+                )
+                continue
+            closure[dependency] = floor
+            reasons[dependency] = f"dependency of {name}"
+            queue.append(dependency)
+
+    return closure, reasons, problems
+
+
 def write_approved() -> int:
     """Regenerate hub/approved-collections.yml from collections/requirements.yml.
 
@@ -434,23 +557,50 @@ def write_approved() -> int:
     this, and the curated set follows. The two are allowed to diverge later — that
     is why this is a separate file rather than the playbook reading the pins
     directly — but nothing has needed it to yet.
+
+    AND IT IS THE DEPENDENCY CLOSURE, NOT THE PIN LIST. See dependency_closure():
+    a project sync resolves transitive dependencies, so a curated repository
+    holding only the direct ones fails at exactly the moment #69 points AAP at it.
     """
     pins = parse_requirements(REPO / "collections" / "requirements.yml")
     if not pins:
         print("ERROR  no pins found in collections/requirements.yml", file=sys.stderr)
         return 1
 
+    curated, reasons, problems = dependency_closure(pins)
+    if problems:
+        for problem in problems:
+            print(f"ERROR  {problem}", file=sys.stderr)
+        print(
+            "\nRefusing to write an incomplete curated set. A repository missing one\n"
+            "transitive dependency breaks every project sync pointed at it — which is\n"
+            "how this was found (#69).",
+            file=sys.stderr,
+        )
+        return 1
+
+    added = len(curated) - len(pins)
     body = (
         "# The curated set: what this repo itself installs, at the exact pinned\n"
-        "# version. Derived from collections/requirements.yml -- bump a pin there\n"
-        "# and re-run with --write-approved.\n"
+        "# version, PLUS every collection those pins depend on. Derived from\n"
+        "# collections/requirements.yml -- bump a pin there and re-run with\n"
+        "# --write-approved.\n"
+        "#\n"
+        "# THE DEPENDENCIES ARE NOT OPTIONAL. An AAP project sync runs\n"
+        "# `ansible-galaxy collection install -r collections/requirements.yml`,\n"
+        "# which resolves transitive dependencies. Seeded with the direct pins\n"
+        "# alone, this repository failed the first real #69 run on\n"
+        "# ansible.eda:>=2.5.0 (dependency of infra.aap_configuration:4.7.0).\n"
+        "# Dependencies are curated at their sync-window floor, the oldest version\n"
+        "# the hub is guaranteed to hold.\n"
         "#\n"
         "# UNLIKE THE OTHER THREE FILES, THIS ONE IS A TRUE DESIRED STATE. Delete a\n"
         "# line and playbooks/curate_hub.yml removes that collection from the\n"
         "# repository. A sync cannot do that; a curated repository can, which is the\n"
         "# whole reason it exists (#70).\n"
         "#\n"
-        f"# {len(pins)} collections, exact versions."
+        f"# {len(curated)} collections, exact versions — {len(pins)} pinned by this repo,\n"
+        f"# {added} pulled in as dependencies."
     )
     text = HEADER.format(
         filename="approved-collections.yml",
@@ -458,18 +608,19 @@ def write_approved() -> int:
         body=body,
     )
     text += "collections:\n"
-    for name in sorted(pins):
+    for name in sorted(curated):
         text += f"  - name: {name}\n"
-        text += f"    version: \"{pins[name]}\"\n"
+        note = f"  # {reasons[name]}" if name in reasons else ""
+        text += f"    version: \"{curated[name]}\"{note}\n"
     text = text.rstrip("\n")
 
     path = HUB / "approved-collections.yml"
     current = path.read_text() if path.exists() else None
     if current == text:
-        print(f"ok     {path.relative_to(REPO)} — {len(pins)} collections, unchanged")
+        print(f"ok     {path.relative_to(REPO)} — {len(curated)} collections, unchanged")
         return 0
     path.write_text(text)
-    print(f"wrote  {path.relative_to(REPO)} — {len(pins)} collections")
+    print(f"wrote  {path.relative_to(REPO)} — {len(curated)} collections, {added} of them dependencies")
     return 0
 
 

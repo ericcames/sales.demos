@@ -308,18 +308,76 @@ Two things that cost time and are worth knowing:
 Verified: populate 0→9, idempotent re-run (`add 0, remove 0, changed=0`), removal
 (delete a line → 9→8), and the `approved` distribution serving artifacts.
 
-### Two pinned collections are already outside the window
+### Pointing AAP at the hub (#69), built and verified on `sandbox`
 
-`--audit-pins` compares `collections/requirements.yml` against the generated
-floors, offline. Two of ten do not resolve from the hub:
+`playbooks/link_hub.yml` creates a `Sales Demos - PAH Galaxy` credential aimed at
+`approved` and assigns it to the organization. `-e hub_galaxy_link_state=absent`
+reverses it. The skill is `pah-link-aap`.
 
-- `ansible.controller` 4.8.0 — certified floor `>=4.8.2`
-- `ansible.platform` 2.7.20260604 — certified floor `>=2.7.20260615`
+**Two of the six gates in #69 turned out to be wrong, and both were wrong in
+ways that only a real run exposed.**
 
-**Nothing is broken today**, because no organization has a Galaxy credential.
-This is precondition 2 of #69, found before it could bite. `ansible.platform`
-publishes date-stamped versions frequently, so a 3-version window is unusually
-narrow there.
+**Gate 2 was written as a version-window problem and is not one.** Two pins —
+`ansible.controller` 4.8.0 and `ansible.platform` 2.7.20260604 — did sit below
+the certified 3-version floor, and `--audit-pins` caught that offline. The
+generator now lowers a floor to any version this repo pins, and `approved` copies
+exact versions so the window stops applying to it at all. Both fixed.
+
+**What the audit could not see is the dependency closure.** An AAP project sync
+runs `ansible-galaxy collection install -r collections/requirements.yml`, which
+resolves *transitive* dependencies. `approved` held the nine direct ones, so the
+first real link failed:
+
+```
+ERROR! Failed to resolve the requested dependencies map. Could not satisfy
+the following requirements:
+* ansible.eda:>=2.5.0 (dependency of infra.aap_configuration:4.7.0)
+```
+
+`--write-approved` now computes the closure and **refuses to write a set missing
+a dependency**. `approved` holds ten, not nine. A curated repository holding nine
+of ten collections is not curated, it is broken — and only the resolver could say
+so, which is why `link_hub.yml` ends with a real project sync rather than an
+object-existence check.
+
+**Gate 3's premise was false, and the correction does not help.** The issue
+called the PAH API token "per-user and short-lived". `GALAXY_TOKEN_EXPIRATION` is
+`null` — there is no time-based expiry; that phrase is inherited from Red Hat's
+*cloud* Automation Hub. But the token dies with the RHDP environment anyway, so
+the cadence was never 30 days: **it is every environment rebuild.** A vaulted
+copy is stale the moment the cluster is replaced. The credential is therefore
+minted at run time from `aap_username` / `aap_password`, which already rotate
+with the environment, and stored nowhere.
+
+**And it is a *gateway* token, not a PAH API token.** This is the trap that cost
+a failed run. `POST /api/galaxy/v3/auth/token/` exists on 2.7 and issues a real
+40-character token; the gateway rejects it. Measured against the hub's collection
+index:
+
+| Credential | Result |
+|---|---|
+| basic auth | `200` |
+| galaxy_ng token, `Token` or `Bearer` | `403` |
+| **gateway token, either scheme** | **`200`** |
+
+The project sync then fails with `403 ... Authentication credentials were not
+provided`, which reads like a credential that was never attached rather than one
+that was rejected. So the mint is `POST /api/gateway/v1/tokens/` at `read` scope
+— the same endpoint `utilities/make-aap-mcp.sh` uses. **Gateway tokens
+accumulate** rather than reset, so the playbook retires its own earlier tokens
+before minting a new one.
+
+**One distribution, not four.** #69 originally asked for one credential per
+distribution with fallback ordering. Pointing at the mirrors as fallbacks gives
+up the only claim this use case makes.
+
+**Verified on `sandbox` 2026-09-04**: `--check` mints nothing; first run links and
+the project sync succeeds; second run retires one token and mints one, leaving
+exactly one; the literal gate-2 `ansible-galaxy install -s .../approved/` inside
+the EE downloads every artifact from `/content/approved/`; `Sales Demos -
+Provision VM` builds a real VM green; and the unlink restores the pre-#69 state.
+
+**`demo` is deliberately not linked**, and that is the remaining work.
 
 ---
 
@@ -350,8 +408,8 @@ narrow there.
 
 ## Open items
 
-- **#69 — point AAP projects at PAH.** Deferred behind six gates. Gate 2 already
-  fails; see above.
+- **#69 — point AAP projects at PAH.** Done on `sandbox`; see above. `demo` is
+  a separate PR, after sandbox has been stable across a real demo.
 - **No collection signing.** Not configured on this platform; `signed_only:
   false` on every remote. Requiring signatures would sync nothing while
   reporting success.
