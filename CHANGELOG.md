@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added -- AAP MCP servers (aap-sandbox, aap-demo) in /sales-demos-mcp (#150)
+- `/sales-demos-mcp` now sets up **four** MCP servers in one run: the two
+  existing OpenShift servers (`openshift-sandbox`, `openshift-demo`) plus two
+  new AAP servers (`aap-sandbox`, `aap-demo`).
+- `utilities/make-aap-mcp.sh` automates the full AAP MCP client flow: resolves
+  AAP hostname and password from the vault, creates a personal access token via
+  the gateway API, finds the `aap-mcp` route, and registers the server with
+  `claude mcp add --scope local`.
+- `aap-demo` is read-only (`scope=read` on the token), matching the
+  `openshift-demo` posture — the environment customers watch should not be
+  mutated by the agent.
+- The script prints token cleanup instructions, since these are the documented
+  exception tokens that must be retired by hand.
+
 ### Fixed -- config.yml created job templates against a stale project checkout (#148)
 - AAP validates a job template's `playbook:` against the project's **SCM
   checkout**, and `config.yml` never synced the project. A project whose last
