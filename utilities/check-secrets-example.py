@@ -83,7 +83,7 @@ BUILTINS = set(
     """default bool int float string list join map select reject selectattr rejectattr attribute
     trim upper lower replace regex_replace regex_search regex_findall to_nice_yaml to_nice_json
     to_json from_json to_yaml from_yaml first last unique sort combine ternary items2dict dict2items
-    difference union intersect flatten batch min max sum round abs urlsplit basename dirname splitext
+    difference union intersect flatten batch min max sum round abs urlsplit urlencode basename dirname splitext
     path_join expanduser quote split splitlines b64encode b64decode hash checksum password_hash
     strftime to_datetime human_readable human_to_bytes json_query mandatory type_debug comment indent
     truncate wordwrap capitalize title center format count reverse defined undefined equalto match

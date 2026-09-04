@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed -- config.yml created job templates against a stale project checkout (#148)
+- AAP validates a job template's `playbook:` against the project's **SCM
+  checkout**, and `config.yml` never synced the project. A project whose last
+  sync predated a newly added playbook failed template creation with
+  `{'playbook': ['Playbook not found for project.']}` -- and
+  `infra.aap_configuration` censors that message with `no_log`, so the run died
+  showing a bare `fatal:` and `censored:` with no reason.
+- **It aborted a routine `demo` build at stage 2 of 5.** Nobody had changed
+  anything; the project simply sat at a revision from earlier in the day. CNV
+  installed, then the MCP server, Automation Orchestrator and the VM
+  verification never ran. #141 had recorded this as an ordering note beside the
+  template, which described the trap instead of removing it.
+- `config.yml` now looks the project up and syncs it **before** the dispatch
+  role, blocking until the sync finishes. An async update would leave the same
+  race, only narrower.
+- **Only when the project already exists.** On a fresh environment it does not,
+  and dispatch creates it -- which syncs at current HEAD as part of creation, so
+  there is nothing stale to fix. Verified: with a project name that does not
+  exist the lookup returns nothing and the sync skips cleanly rather than
+  failing.
+- **`scm_update_on_launch` stays `false`,** and that is not in tension with
+  this. Syncing at *configuration* time is a different moment from syncing at
+  *launch* time, and only the second would make a running demo unpredictable.
+- **Cost measured, not assumed:** 2.4 seconds on demo. The module reports `ok`
+  rather than `changed` because a project update is an action rather than a
+  configuration change -- it still launched update id 37 and waited for it.
+  Skippable with `-e sync_project=false`.
+- `ansible.controller.project_update` rather than `ansible.platform`, by
+  necessity: projects are a controller concept and `ansible.platform` ships no
+  equivalent, the same reason the inventory/group/host modules are controller
+  ones. Declared in `.ansible-lint` `mock_modules`, since CI lints offline.
+
+
 ### Added -- CI fails when the renderer diverges from the linux_configure role (#145)
 - `utilities/check-renderer-fixture.py` + a `renderer-matches-role` job. #85
   proved the docs match `render-demo-assets.py`; this proves the *script*

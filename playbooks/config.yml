@@ -31,6 +31,12 @@
   hosts: aap
   gather_facts: false
 
+  vars:
+    # Named once rather than repeated, because #148's project sync and
+    # controller_projects.yml must agree on which project they mean.
+    sales_demos_project: "Sales Demos"
+    sales_demos_organization: "IT Service Automation"
+
   tasks:
     - name: Assert the environment is unambiguous
       ansible.builtin.include_tasks: tasks/assert_target_environment.yml
@@ -56,6 +62,68 @@
     - name: Report the target
       ansible.builtin.debug:
         msg: "Applying configuration to {{ aap_env_name }} ({{ aap_hostname }})."
+
+    # -------------------------------------------------------------------
+    # Sync the project BEFORE the job templates are applied (#148).
+    #
+    # AAP validates a job template's `playbook:` against the project's SCM
+    # CHECKOUT, not against the repository. A project whose last sync predates
+    # a newly added playbook therefore fails template creation with
+    #
+    #   {'playbook': ['Playbook not found for project.']}
+    #
+    # and infra.aap_configuration censors that message with no_log, so the run
+    # dies showing only a bare `fatal:` and `censored:`. That aborted a routine
+    # demo build at stage 2 of 5 on an environment where nobody had changed
+    # anything -- the project was simply stale.
+    #
+    # ONLY WHEN THE PROJECT ALREADY EXISTS. On a fresh environment it does not,
+    # and dispatch creates it below -- which syncs it at current HEAD as part of
+    # creation, so there is nothing stale to fix. Updating a project that does
+    # not exist yet would just fail.
+    #
+    # THIS DOES NOT TOUCH scm_update_on_launch, which stays false on purpose
+    # (see controller_projects.yml): a demo should run the revision that was
+    # tested, not whatever landed on main five minutes ago. Syncing at
+    # CONFIGURATION time is a different moment from syncing at LAUNCH time, and
+    # only the second one would make a demo unpredictable.
+    #
+    # ansible.controller rather than ansible.platform, and that is not drift:
+    # projects are a controller concept and ansible.platform ships no
+    # equivalent module.
+    - name: Look up the project, if this environment already has one
+      ansible.builtin.uri:
+        url: "https://{{ aap_hostname }}/api/controller/v2/projects/?name={{ sales_demos_project | urlencode }}"
+        user: "{{ aap_username }}"
+        password: "{{ aap_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ aap_validate_certs | default(false) | bool }}"
+        return_content: true
+      register: config_project_lookup
+      no_log: true
+      when: sync_project | default(true) | bool
+
+    - name: Sync the project so job templates validate against current content
+      # Blocking on purpose. An async update leaves exactly the race this
+      # exists to close, only narrower.
+      #
+      # IT REPORTS `ok`, NOT `changed`, AND STILL DID THE WORK. A project
+      # update is an action rather than a configuration change, so the module
+      # returns changed=false even though it launched one -- measured on demo,
+      # it returned the update's own id and blocked 2.4s waiting for it.
+      # Do not read the `ok` as a no-op and "fix" it.
+      ansible.controller.project_update:
+        name: "{{ sales_demos_project }}"
+        organization: "{{ sales_demos_organization }}"
+        wait: true
+        timeout: "{{ sync_project_timeout | default(600) | int }}"
+        controller_host: "https://{{ aap_hostname }}"
+        controller_username: "{{ aap_username }}"
+        controller_password: "{{ aap_password }}"
+        validate_certs: "{{ aap_validate_certs | default(false) | bool }}"
+      when:
+        - sync_project | default(true) | bool
+        - config_project_lookup.json.count | default(0) | int > 0
 
     - name: Apply all objects via the dispatch role
       # Basic auth on purpose. dispatch supports it directly, so no OAuth token

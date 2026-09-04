@@ -41,6 +41,11 @@ mock_modules:
   - ansible.controller.inventory
   - ansible.controller.group
   - ansible.controller.host
+  # Project sync before job templates are applied (#148,
+  # playbooks/config.yml). Also ansible.controller by necessity rather than by
+  # habit: projects are a controller concept and ansible.platform ships no
+  # equivalent, the same reasoning as the three lines above.
+  - ansible.controller.project_update
   # Guest configuration (Phase 4, playbooks/run_demo.yml).
   - ansible.posix.firewalld
 
