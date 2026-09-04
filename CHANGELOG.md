@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed -- hub_ee_registries.yml describes our registry in isolation (#181)
+- Clarified that of the three dispatched roles, only `hub_ee_registry` does work
+  here — `hub_ee_registry_index` and `hub_ee_registry_sync` default to false
+  deliberately, so "Never synced" on the registry in the Hub UI is expected.
+- Pointed at `hub_ee_repositories.yml` as the object that actually mirrors the
+  image, with measured evidence of a completed sync.
+- Named the two stock registries (`Red Hat Ecosystem Catalog`,
+  `Red Hat Quay.io`) and explained why we create our own `quay_io` entry rather
+  than reusing the stock one that covers the same endpoint.
+- Qualified the name-rule claim: alphanumerics and underscores only applies to
+  API-created objects; stock registries provisioned by the installer are exempt.
+
 ### Added -- `sales-demos-talk-track` skill (#182, closes #62)
 - New laptop-only skill to scaffold or verify a use-case directory under
   `docs/demos/`. Two modes: **scaffold** copies `_template/` and sets up

@@ -6,13 +6,37 @@
 # image to mirror is named in hub_ee_repositories.yml; this only supplies the
 # endpoint and, if it were ever needed, the credentials to reach it.
 #
-# Defining this variable is what makes dispatch run three roles, in order:
-#   hub_ee_registry -> hub_ee_registry_index -> hub_ee_registry_sync
+# DISPATCH AND THE THREE ROLES. Defining this variable makes dispatch run
+# three roles in order: hub_ee_registry → hub_ee_registry_index →
+# hub_ee_registry_sync. Only the first does work here. The other two are
+# gated on per-item flags (`index | default(false)` and
+# `sync | default(false)`) that this repo does not set, because a
+# registry-level sync would mean indexing all of quay.io.
 #
-# WHY PAH AT ALL, when quay.io already works (#31). The demo stops depending on
-# quay being reachable and on a public repository staying public, and the pull
-# becomes cluster-local instead of an internet round trip — which is the kind of
-# thing that decides whether a cold environment is demo-ready (#30).
+# "NEVER SYNCED" IN THE UI IS EXPECTED. The Hub shows the registry's own
+# sync status, which is the operation we deliberately skip. The actual
+# mirroring happens one level down, at the repository object defined in
+# hub_ee_repositories.yml (with `sync: true`), and that sync completes
+# normally — measured 2026-09-04, state=completed with no errors.
+#
+# STOCK REGISTRIES BESIDE OURS. PAH ships with two registries created by
+# the installer during environment provisioning:
+#
+#   Red Hat Ecosystem Catalog   https://registry.redhat.io
+#   Red Hat Quay.io             https://quay.io
+#
+# Both also show "Never synced" — same reason, same expected status.
+# Our `quay_io` entry is a third registry pointing at the same quay.io
+# endpoint. It exists rather than reusing `Red Hat Quay.io` because that
+# stock name contains characters (spaces, dots) the API rejects for
+# user-created objects — see the name-rule note below. The installer is
+# exempt from its own validation; CaC and the API are not.
+#
+# WHY PAH AT ALL, when quay.io already works (#31). The demo stops depending
+# on quay being reachable and on a public repository staying public, and the
+# pull becomes cluster-local instead of an internet round trip — which is
+# the kind of thing that decides whether a cold environment is demo-ready
+# (#30).
 #
 # VERIFIED ON THIS PLATFORM, so the usual objections do not apply here:
 #   - PAH is deployed (`hub disabled=False`; five hub pods running).
@@ -31,8 +55,10 @@
 # ============================================================================
 
 hub_ee_registries_all:
-  # Name allows alphanumerics and underscores only — a Hub requirement, which is
-  # why this is not "quay.io".
+  # Name allows alphanumerics and underscores only for API-created objects —
+  # stock registries provisioned by the installer are exempt (the stock
+  # "Red Hat Quay.io" has both spaces and a dot). This is why we create our
+  # own rather than reuse the stock entry, and why the name is quay_io.
   - name: quay_io
     url: https://quay.io
     tls_validation: true
