@@ -288,3 +288,26 @@ Environment secrets.
   the repository, so a merged PR cleans up its own branch and no manual pruning
   is needed. That is a repository setting, not a tracked file, so it is recorded
   here — it cannot be seen by reading the tree (#97).
+
+  **`main` is now protected, and the rule above is enforced rather than
+  trusted.** Recorded here for the same reason as the line above: it is a
+  repository setting and invisible in the tree.
+
+  - **A pull request is required**, with **0 required approvals**. Zero is
+    deliberate, not laziness: there is one collaborator, GitHub does not let you
+    approve your own PR, and requiring one approval would deadlock every PR.
+    Zero still forces the branch-and-PR flow, which is the part that matters.
+  - **All 8 lint checks are required** — `yamllint`, `ansible-lint`,
+    `secret-guard`, `secrets-example-sync`, `generated-files`,
+    `skills-frontmatter`, `docs-artifacts-current`, `renderer-matches-role`.
+    **Adding or renaming a CI job means updating this list**, or PRs will either
+    wait forever on a check that never reports, or merge without one that should
+    have run.
+  - **It applies to admins.** Anything less would not have prevented what
+    prompted it: a commit went straight to `main` because a `git checkout -b`
+    failed on an existing branch and `|| true` swallowed the error. Admin bypass
+    would have let that through, since the push already carried admin rights.
+    Turning enforcement off for a genuine emergency is two clicks — doing that
+    deliberately is a different thing from doing it by accident.
+  - Force pushes and branch deletion on `main` are blocked, and PR conversations
+    must be resolved before merging.

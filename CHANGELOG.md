@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added -- `main` is branch-protected, and CI is now a gate rather than a convention
+- A pull request is **required** to change `main`, with **0 required approvals**
+  -- zero because there is one collaborator and GitHub does not permit approving
+  your own PR, so requiring one would deadlock every PR. Zero still forces the
+  branch-and-PR flow.
+- **All 8 lint jobs are required checks.** `CLAUDE.md` said "a green CI run does
+  not mean a playbook works", and that is still true; what changed is that a red
+  one can no longer be merged past. Adding or renaming a job means updating the
+  required list, or PRs hang on a check that never reports.
+- **Enforced for admins**, which is the only setting that addresses what
+  prompted it: a commit reached `main` directly because `git checkout -b` failed
+  on an existing branch and `|| true` swallowed the error. Admin bypass would
+  have allowed it, since the push already had admin rights.
+- Force pushes and deletion of `main` are blocked; PR conversations must be
+  resolved before merge.
+- Verified by attempting a direct push, which was refused with
+  `GH006: Protected branch update failed`.
+
+
 ### Added -- MCP server demo documentation in docs/demos/mcp-servers/ (#153)
 - **Six files following the demo template, plus a status-table reference.** The
   MCP servers are both tooling and a demonstrable use case — the demo argument is
