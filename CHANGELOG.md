@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added -- `sales-demos-talk-track` skill (#182, closes #62)
+- New laptop-only skill to scaffold or verify a use-case directory under
+  `docs/demos/`. Two modes: **scaffold** copies `_template/` and sets up
+  placeholders; **verify** checks the five required files, discovers renderable
+  artifacts, runs the renderer when applicable, visually inspects the output,
+  and validates the "Where the words come from" source table.
+- Issue #62's gate condition — write a second use case before building the
+  skill — was met: three use cases now exist (OpenShift Virtualization, Private
+  Automation Hub, MCP Servers).
+
 ### Fixed -- `-d` is not a merge check, and CLAUDE.md said it was (#179)
 - #177 corrected the branch-cleanup note and introduced a new overstatement in
   the same breath: *"`-d` refuses a branch that is not actually merged."*
