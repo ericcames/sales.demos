@@ -154,9 +154,10 @@ All credentials originate from `playbooks/group_vars/all/secrets.yml`
 - **Network vendor MCP servers** — Cisco, Palo Alto, Aruba. Options brief at
   [`docs/plan/network-mcp-plan.md`](../../plan/network-mcp-plan.md), tracked as
   [#94](https://github.com/ericcames/sales.demos/issues/94)
-- **Agentic ITSM** — ServiceNow MCP server, read-only, with Ansible as the
-  write path.
-  [#93](https://github.com/ericcames/sales.demos/issues/93)
+- **Agentic ITSM** — no ServiceNow MCP server here. The native MCP Server
+  Console needs a platform version the demo instance does not have, and the
+  Ansible write path needs no MCP server at all — see
+  [`servicenow.md`](servicenow.md)
 - **Agentic observability** — Dynatrace MCP server.
   [#99](https://github.com/ericcames/sales.demos/issues/99)
 

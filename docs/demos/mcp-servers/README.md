@@ -14,7 +14,7 @@ nothing except through the governed automation path — in about twenty minutes.
 
 ---
 
-## The five documents (plus one)
+## The five documents (plus three)
 
 | File | Read it when |
 |---|---|
@@ -23,14 +23,19 @@ nothing except through the governed automation path — in about twenty minutes.
 | [`architecture.md`](architecture.md) | **When asked "how does that work".** The four servers, the credential flow, the access posture |
 | [`objections.md`](objections.md) | **Before you go in.** What this audience asks — especially the security questions |
 | [`server-inventory.md`](server-inventory.md) | **When asked "what can it do".** Full tool listings, status tables, verification commands |
+| [`building-a-server.md`](building-a-server.md) | **When asked "what about *my* platform".** When no MCP server exists: whether to build one, what language, transport, packaging, hosting |
+| [`servicenow.md`](servicenow.md) | **When asked about ITSM.** Why the native console is the one to wait for, and why the Ansible write path needs no MCP server |
 
-Present from the run sheet. Rehearse from the talk track. The other three are
+Present from the run sheet. Rehearse from the talk track. The other five are
 reference.
 
-**Why a sixth file.** The detailed status tables, per-server tool listings, and
-verification commands that `run-sheet.md` and `architecture.md` cite would
+**Why the extra files.** The detailed status tables, per-server tool listings,
+and verification commands that `run-sheet.md` and `architecture.md` cite would
 overwhelm either one — the same reason Private Automation Hub earned
-[`clickops.md`](../private-automation-hub/clickops.md).
+[`clickops.md`](../private-automation-hub/clickops.md). The last two answer the
+question this demo reliably provokes — *"what about the platform I care about,
+which has no MCP server?"* — which is a different question from how the four
+servers here work.
 
 ---
 

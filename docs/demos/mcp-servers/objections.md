@@ -89,6 +89,42 @@ Source: `docs/plan/network-mcp-plan.md`,
 
 ---
 
+## "There's no MCP server for the platform I care about."
+
+**Then you build one, and that is not the consolation prize.**
+
+> **"Most platforms don't have one yet, and some that do ship a server you
+> can't constrain — every tool enabled, no read-only mode. When you build it
+> yourself you choose the tool surface, so you can ship a server that has no
+> write tools at all. Not disabled, not behind a flag — absent. That's a
+> stronger guarantee than anything you can bolt onto someone else's server."**
+
+If they ask what it takes: an official SDK in one of five Tier 1 languages,
+stdio first because it needs no hosting, then streamable HTTP if it has to run
+in a cluster.
+
+Source: [`building-a-server.md`](building-a-server.md).
+
+---
+
+## "What about ServiceNow?"
+
+**No server here, and the demo does not need one.**
+
+> **"The one worth showing is ServiceNow's own MCP Server Console, and it needs
+> Zurich Patch 9 or later — our demo instance is on Yokohama, so it's not
+> available to us yet. But the write path is the part that matters, and that's
+> `servicenow.itsm` in a job template. It's already pinned in this repo. An MCP
+> server would let the agent *read* the incident for context; Ansible would
+> still be the only thing that writes."**
+
+Do not offer to wire up a community server. That is a deliberate omission —
+they are read-write with no way to constrain them.
+
+Source: [`servicenow.md`](servicenow.md), `hub/certified-requirements.yml`.
+
+---
+
 ## "What happens when the token expires?"
 
 **Silent failure, then 401.**
@@ -168,3 +204,5 @@ Source: `inventory/group_vars/aap/probe_workloads.yml` (resource estimates).
   cluster" not "it knows"
 - Any promise of a date for network MCP servers (#94) — the options brief has
   three open decisions
+- "We can hook up ServiceNow" — not on this instance, and not with a community
+  server. Say what the write path already does instead

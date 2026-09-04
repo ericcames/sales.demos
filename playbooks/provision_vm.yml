@@ -15,7 +15,9 @@
 #     repo's connection.yml or from an AAP OpenShift credential (K8S_AUTH_*).
 #   - The azurerm backend became the kubernetes backend (see backend.tf).
 #   - The ServiceNow rescue path is dropped. There is no ServiceNow node in this
-#     repo's workflows; re-add it with the incident node, not before.
+#     repo's workflows; re-add it with the incident node, not before. Why that
+#     node does not exist yet -- the demo instance cannot host the MCP server
+#     worth showing -- is docs/demos/mcp-servers/servicenow.md.
 #
 # TWO ENTRY POINTS, ONE CONTRACT. This runs identically from the
 # `ocpvirt-provision` skill and from an AAP job template. Every input arrives as

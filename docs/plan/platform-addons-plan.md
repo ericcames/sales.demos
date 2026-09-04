@@ -142,7 +142,14 @@ Every investigative tool survives, including `vm_guest_info` and
 `vm_troubleshoot`. You can still diagnose a broken VM on `demo`; you just cannot
 change it. That is #93's *"the agent reads, Ansible writes"* thesis costing
 nothing, which is the happy case — on Dynatrace (#99) the same stance costs a
-withheld scope, and on ServiceNow (#93) a dedicated `snc_read_only` account.
+withheld scope, and on ServiceNow it costs the whole server. This line used to
+say the price there was a dedicated `snc_read_only` account; that was the
+community-server design, and it did not survive review. Neither community
+ServiceNow server can be constrained at all — no read-only mode, no tool
+filtering — so an account was the *only* available boundary rather than a
+chosen one. A missing tool is a stronger guarantee than a credential, which is
+why [`docs/demos/mcp-servers/servicenow.md`](../demos/mcp-servers/servicenow.md)
+recommends waiting for the native console instead of adopting one.
 
 The `kubevirt` toolset is enabled because this repo is an OpenShift
 Virtualization demo: it adds `vm_create`, `vm_clone`, `vm_lifecycle`,

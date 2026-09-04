@@ -27,6 +27,11 @@ sandbox's hostname and sandbox's token. The environment is in the server's
 watch. The write path runs against `sandbox` — the environment you break for
 velocity.
 
+**Four is the whole list.** There is no ServiceNow, Dynatrace or network vendor
+server here, and the tables below are complete rather than abridged. For why
+ServiceNow is absent rather than pending, see [`servicenow.md`](servicenow.md);
+for what building one would take, [`building-a-server.md`](building-a-server.md).
+
 ---
 
 ## OpenShift MCP servers — tool listing
