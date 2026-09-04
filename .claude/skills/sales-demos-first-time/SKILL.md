@@ -27,7 +27,7 @@ Setting up sales.demos on this machine. About 10 minutes, once.
   3. Pinned collections            via /collections-sync
   4. Python kubernetes client
   5. Run-log directory             ~/ansible-logs/
-  6. Your environment's values     local.yml + the vault
+  6. Your environment's values     local.yml OR connection.yml + the vault
 
 Nothing here has to be asked of anyone. Since #130 you create the vault
 password and the secrets file yourself — step 2, case A.
@@ -285,8 +285,18 @@ checking.** `connection.yml` is committed with a working RHDP cluster — there
 are no `cluster-<id>` placeholders to look for, so grepping the file tells you
 nothing about whether it is *yours*.
 
-If the hostname is not your environment, do **not** edit `connection.yml`.
-Create a gitignored overlay beside it (#131):
+If the hostname is not your environment, **ask where you will run from before
+changing anything** — there are two correct answers and they are not
+interchangeable (#166).
+
+| You will run | Change | Why |
+|---|---|---|
+| `ansible-playbook` from this laptop | a gitignored `local.yml` overlay | You keep pulling upstream without conflicts |
+| AAP job templates | `connection.yml`, committed to your own branch | Gitignored files are **not** in the SCM checkout AAP runs from |
+
+Most people setting up a laptop want the first. Create the overlay beside
+`connection.yml`, holding **only the keys that differ** — not a copy of the
+file; everything else keeps coming from upstream:
 
 ```bash
 cat > inventory/group_vars/$ENV/local.yml <<'YAML'
@@ -301,6 +311,11 @@ Re-run the command above; it must now print your hostname. **The filename must
 be `local.yml`** — files in a `group_vars/` directory load in sorted order and
 the last wins, and `connection.local.yml` sorts *before* `connection.yml`, so it
 would be silently ignored and leave you pointed at the committed cluster.
+
+**If you are heading for AAP, edit `connection.yml` on a branch instead** and
+point your AAP project's `scm_url` at your own fork. Doing both is fine and they
+do not interfere: the overlay serves laptop runs, the committed file serves job
+templates.
 
 Then add that environment's credentials to the vault:
 

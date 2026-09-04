@@ -33,14 +33,33 @@ well as a checklist if you would rather work through it by hand.
 | Automation Hub token | `~/.ansible.cfg` | One authoritative copy; a second would go stale on rotation (#22) |
 | Vault password | `~/secrets/.vault_pass_sales_demos` | The one secret that cannot itself be vaulted |
 | `secrets.yml` | `playbooks/group_vars/all/` | Built from `secrets.yml.example`; shipping one person's encrypted credentials is what made this repo un-reusable (#130) |
-| Your cluster's hostnames | `inventory/group_vars/<env>/local.yml` | Gitignored overlay, so you never diverge from upstream (#131) |
+| Your cluster's hostnames | `connection.yml` **or** a `local.yml` overlay | Two legitimate paths — see below; which one depends on whether you run from a laptop or from AAP (#131) |
 
 ### Pointing it at your own environment
 
 `inventory/group_vars/sandbox/connection.yml` and `demo/connection.yml` are
 committed with working RHDP values — those URLs are a documented non-secret
-here, not an oversight. **Do not edit them to repoint the repo.** Create a
-gitignored `local.yml` beside the one you want to change:
+here, not an oversight. Three lines identify the cluster:
+
+```yaml
+aap_hostname:          "aap-aap.apps.cluster-<id>.dyn.redhatworkshops.io"
+openshift_api_url:     "https://api.cluster-<id>.dyn.redhatworkshops.io:6443"
+openshift_apps_domain: "apps.cluster-<id>.dyn.redhatworkshops.io"
+```
+
+**There are two legitimate ways to change them, and which one is right depends
+on where you run from.**
+
+| You are | Repoint by | Why |
+|---|---|---|
+| On a laptop, tracking this repo for updates | a gitignored `local.yml` overlay | You pull upstream fixes without ever conflicting |
+| Forked, running from AAP | editing `connection.yml` on your own branch | Gitignored files are **not** in the SCM checkout a job template runs from |
+
+#### From a laptop: the `local.yml` overlay
+
+Create it beside the `connection.yml` you want to change, holding **only the
+keys that differ** — not a copy of the file. Everything else keeps coming from
+upstream:
 
 ```bash
 cat > inventory/group_vars/sandbox/local.yml <<'YAML'
@@ -52,17 +71,43 @@ YAML
 ```
 
 Ansible loads every file in a `group_vars/<group>/` directory in sorted order
-and the **last one wins**, so `local.yml` overrides `connection.yml` with no
-code change at all — and you never conflict on a pull.
+and the **last one wins**, so this overrides `connection.yml` with no code
+change at all.
+
+**What it buys you is conflict avoidance, and that is worth quantifying.** Since
+March, ten commits have touched these two files and eighteen of those edits were
+to the three identity lines above — roughly monthly, as RHDP environments are
+rebuilt and repointed. Edit `connection.yml` directly and you conflict on every
+one of those pulls. Keep your values in `local.yml` and you never do.
 
 **The name must be `local.yml`.** `connection.local.yml` sorts *before*
 `connection.yml` and therefore loses: it would be loaded, silently overridden,
 and leave you running against the committed cluster while believing you had
 repointed it.
 
-This is a laptop mechanism. AAP checks the repo out from SCM and gitignored
-files are not in that checkout, so repointing a job template means changing
-`connection.yml` on a branch of your own.
+Confirm what is actually in effect rather than trusting the file you edited:
+
+```bash
+ansible -i inventory --limit sandbox aap -m debug -a 'msg={{ aap_hostname }}'
+```
+
+#### From AAP: edit `connection.yml`
+
+An AAP job template gets its playbooks and inventory from the SCM project
+checkout, and a gitignored file is not in it. So `local.yml` does nothing for a
+job template, and repointing one means committing the change:
+
+```bash
+git checkout -b my-environment
+$EDITOR inventory/group_vars/sandbox/connection.yml
+```
+
+Point your AAP project's `scm_url` at your own fork —
+`inventory/group_vars/aap/controller_projects.yml` currently hardcodes this
+repo, which is [#132](https://github.com/ericcames/sales.demos/issues/132).
+
+You can do both: the overlay for laptop runs, the committed file for AAP. They
+do not interfere — `local.yml` simply is not present in the checkout.
 
 If your vault password lives somewhere other than the default path, export
 `SALES_DEMOS_VAULT_PASS`; both `utilities/make-kubeconfig.sh` and the AAP Vault
@@ -216,7 +261,9 @@ environment from picking up another's credentials.
 Everything that is *not* a credential — `aap_hostname`, `openshift_api_url`,
 usernames, namespaces — lives in the committed plaintext
 `inventory/group_vars/<env>/connection.yml`. So a new RHDP environment means
-editing that environment's `connection.yml` plus two keys in the vault.
+editing that environment's `connection.yml` plus two keys in the vault — or, if
+you are a reuser running from a laptop, a `local.yml` overlay plus those same
+two keys. See [Pointing it at your own environment](#pointing-it-at-your-own-environment).
 
 `secrets.yml.example` is the only `.example` file in the repo, and shows the
 shape of the real one. **It is a contract, not a courtesy**, and CI enforces
