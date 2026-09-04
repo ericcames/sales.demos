@@ -142,6 +142,65 @@ for c in yaml.safe_load(open("collections/requirements.yml"))["collections"]:
 sys.exit(1 if bad else 0)
 PY
 
+# --- The published image must carry NO credential -------------------------
+# #172. execution-environment.yml stages ~/.ansible.cfg -- which holds the Red
+# Hat offline token -- via prepend_galaxy, so it lands in the GALAXY BUILD STAGE
+# only. The final image is built FROM base and copies the installed collections
+# out, not that file.
+#
+# THAT WAS TRUE WHEN MEASURED AND NOTHING ENFORCED IT. Move that ADD from
+# prepend_galaxy to append_final, add a COPY for some other reason, or let a
+# future base image ship its own /etc/ansible/ansible.cfg, and a token-bearing
+# image would build, verify green on every check above, and push to a PUBLIC
+# registry. We would learn about it from a scraper.
+#
+# This is the same reasoning as check 2 in utilities/check-no-secrets.sh: the
+# mechanism that keeps the secret out is not trusted, it is verified.
+#
+# Four checks, because no one of them is sufficient. Each was proven against a
+# deliberately poisoned image before being written here, not reasoned about.
+echo "==> Verifying $EE_IMAGE carries no credential"
+
+# 1. The path the staged config would land on.
+podman run --rm --user 1000 --entrypoint /bin/bash "$EE_IMAGE" \
+     -c 'test ! -e /etc/ansible/ansible.cfg' \
+  || die "$EE_IMAGE contains /etc/ansible/ansible.cfg — the Hub token may be baked in"
+
+# 2. Any config Ansible would ACTUALLY load, wherever it lives -- this one also
+#    covers a config placed somewhere unexpected, or reached via ANSIBLE_CONFIG.
+active_cfg="$(podman run --rm --user 1000 --entrypoint ansible "$EE_IMAGE" --version 2>/dev/null \
+              | sed -n 's/^ *config file *= *//p')"
+[ "$active_cfg" = "None" ] \
+  || die "$EE_IMAGE loads a config file ($active_cfg) — it should have none"
+
+# 3. A config file present but INERT, which check 2 cannot see. Scoped to *.cfg
+#    because a README is never config: two upstream collection READMEs document
+#    a [galaxy_server.*] section with a `token=<SuperSecretToken>` placeholder,
+#    and a looser grep flags both. The value must also not be a <placeholder>
+#    or a {{ template }}, which is what rules out infra.aap_configuration's
+#    ansible.cfg.j2.
+leaked="$(podman run --rm --user 1000 --entrypoint /bin/bash "$EE_IMAGE" -c '
+  find /etc /root /home /runner /opt /usr/share/ansible -name "*.cfg" -type f 2>/dev/null |
+  while read -r f; do
+    grep -qs "^\[galaxy_server\." "$f" &&
+    grep -qsE "^[[:space:]]*token[[:space:]]*=[[:space:]]*[^[:space:]<{]" "$f" && echo "$f"
+  done' 2>/dev/null || true)"
+[ -z "$leaked" ] \
+  && : \
+  || die "$EE_IMAGE has a galaxy_server token in: $leaked"
+
+# 4. A layer that ADDs the config and a LATER layer that deletes it. Checks 1-3
+#    all pass on such an image -- the merged filesystem is genuinely clean -- and
+#    the credential is still sitting in the layer blob in plaintext. Verified by
+#    building exactly that image and recovering the token from a 224-byte layer,
+#    so this is the one check with a failure mode nothing else here can see.
+hist="$(podman history --no-trunc --format '{{.CreatedBy}}' "$EE_IMAGE" \
+        | grep -iE '(ADD|COPY).*(/etc/ansible|ansible\.cfg)' || true)"
+[ -z "$hist" ] \
+  || die "$EE_IMAGE has a layer copying a config in, even if the file is gone now: $hist"
+
+echo "    no /etc/ansible/ansible.cfg, no active config, no galaxy_server token, no config layer"
+
 echo "==> Verified"
 
 # --- Publish --------------------------------------------------------------
