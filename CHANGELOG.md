@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed -- repointing has two correct answers, and the docs asserted only one (#166)
+- #131's README section said flatly **"do not edit them to repoint the repo"**
+  and sent every reader to a `local.yml` overlay. That is wrong for anyone
+  running from AAP: the overlay is gitignored, so it is absent from the SCM
+  checkout a job template runs from. The caveat saying so was five paragraphs
+  below the instruction. `sales-demos-first-time` step 6 had the same defect,
+  in the same words.
+- Both now lead with the choice: **laptop + tracking upstream -> `local.yml`;
+  forked + running from AAP -> edit `connection.yml` on your branch.** Doing
+  both is fine and they do not interfere.
+- **The overlay's benefit is conflict avoidance, and it is now quantified
+  rather than asserted.** Since March, ten commits have touched the two
+  `connection.yml` files with eighteen edits to the three cluster-identity
+  lines -- three of them pure repoints (#135, #101, and one in August), roughly
+  monthly. A reuser who edits those lines conflicts on every such pull.
+- Made explicit that `local.yml` holds **only the keys that differ**, typically
+  three lines, not a copy of `connection.yml`. That was a real misreading of
+  the previous wording.
+- **`CLAUDE.md` did not mention either mechanism #131 introduced.** It now
+  records the overlay (including why the filename is load-bearing) and
+  `SALES_DEMOS_VAULT_PASS`, and states that a job-template question is never
+  answered with the overlay.
+- Checked every relative link in every tracked Markdown file: none broken.
+
+
 ### Added -- clone-and-configure: a local overlay and a real onboarding path (#131)
 - **`inventory/group_vars/<env>/local.yml`, gitignored, overrides
   `connection.yml`.** #130 fixed credentials for a reuser; it did not fix

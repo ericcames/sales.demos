@@ -96,7 +96,25 @@ ansible-vault edit playbooks/group_vars/all/secrets.yml \
   credential: `aap_hostname`, `openshift_api_url`, usernames, namespaces. It
   *does* vary per environment — that is the point.
 - A new RHDP environment means editing that environment's `connection.yml` plus
-  two keys in the vault.
+  two keys in the vault. **That is still the path for this repo's own two
+  environments, and for anything that runs from AAP** — a job template reads the
+  SCM checkout, so the change has to be committed.
+- **`inventory/group_vars/<env>/local.yml` is a gitignored overlay for reusers**
+  (#131). Ansible loads a `group_vars/<group>/` directory in sorted order and
+  the last file wins, so it overrides `connection.yml` with no code change. It
+  exists so someone who clones can point this at their own cluster and still
+  `git pull` without conflicting on the three identity lines, which move roughly
+  monthly here. It does **nothing** for AAP — gitignored files are not in the
+  checkout — so do not offer it as the answer to a job-template question (#166).
+
+  **The name is load-bearing.** `connection.local.yml` sorts *before*
+  `connection.yml` and loses; it would be read, silently overridden, and leave
+  the user on the committed cluster believing otherwise. Measured, not assumed.
+- **`SALES_DEMOS_VAULT_PASS` overrides the vault password path** for the only
+  two places that *execute* it — the `file` lookup in
+  `inventory/group_vars/aap/main.yml` and `utilities/make-kubeconfig.sh`. One
+  variable for both, so they cannot disagree. The ~73 documentation mentions of
+  the default path are deliberately left alone.
 - The vault password is at `~/secrets/.vault_pass_sales_demos` (`600`, in a
   `700` directory), outside this repo, following the same convention as
   `aap_config`'s `.vault_pass_<env>` files.
