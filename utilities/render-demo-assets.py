@@ -84,6 +84,10 @@ FIXTURE = {
     "linux_configure_repo_url": "https://github.com/ericcames/sales.demos",
     "linux_configure_banner_owner": "Red Hat, Inc.",
     "linux_configure_motd_tagline": "V I R T U A L I Z A T I O N   D E M O",
+    # MIRRORS linux_configure/defaults/main.yml, AND CI ENFORCES IT (#145).
+    # These are data rather than markup — motd.j2 iterates them — so a copy
+    # here is what lets this script render without the role. check-renderer-
+    # fixture.py fails if the two lists diverge; the role's defaults win.
     "linux_configure_motd_credits": [
         "OpenShift Virtualization    (host)",
         "Terraform                   (provision)",
@@ -133,7 +137,13 @@ def render(name: str, **overrides: object) -> str:
 
 
 def facts_json() -> str:
-    """The curated facts.json, matching linux_configure/tasks/main.yml."""
+    """The curated facts.json, matching linux_configure/tasks/main.yml.
+
+    THAT CLAIM IS ENFORCED, NOT ASSERTED (#145). utilities/check-renderer-fixture.py
+    renders the role's own `content:` block with the FIXTURE below and diffs it
+    against this function, in CI. The ROLE is the source of truth; if the two
+    disagree, this is what changes.
+    """
     f = FIXTURE
     return json.dumps(
         {

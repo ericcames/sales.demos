@@ -71,6 +71,24 @@ jobs:
         # Cheap because it renders text only: jinja2, no Chrome, seconds.
         run: python3 utilities/check-docs-artifacts.py
 
+  renderer-matches-role:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - run: pip install jinja2 pyyaml
+      - name: render-demo-assets.py still matches the linux_configure role
+        # #145, the half #85 could not close. docs-artifacts-current proves the
+        # docs match the SCRIPT; this proves the script matches the ROLE.
+        #
+        # Without it the two checks can agree with each other while both
+        # disagree with the machine linux_configure actually builds -- a green
+        # tick asserting something it does not mean, which is worse than no
+        # check at all.
+        run: python3 utilities/check-renderer-fixture.py
+
   secrets-example-sync:
     runs-on: ubuntu-latest
     steps:

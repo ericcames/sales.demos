@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added -- CI fails when the renderer diverges from the linux_configure role (#145)
+- `utilities/check-renderer-fixture.py` + a `renderer-matches-role` job. #85
+  proved the docs match `render-demo-assets.py`; this proves the *script*
+  matches the *role*.
+- **The gap this closes was worse than no check.** The renderer necessarily
+  carries its own copies of things the role owns -- that is what lets it render
+  without a cluster. If those diverged, #85's gate stayed green: the renderer
+  and the docs agreed with each other while both disagreed with the machine
+  `linux_configure` actually builds. The green tick asserted something it did
+  not mean.
+- **`facts.json` is verified by rendering the role's own task**, not by
+  comparing key names. The role writes it from a Jinja dict literal piped
+  through `to_nice_json`; the checker renders that same `content:` block with
+  the renderer's fixture and diffs the result against `facts_json()`. That
+  covers structure *and* values, and makes the role the source of truth rather
+  than something a docstring claims to match. `to_nice_json` is supplied as
+  `json.dumps(indent=4)` -- Ansible's own default for that filter, and what
+  `facts_json()` already passes.
+- **This was more tractable than #145 expected.** The issue offered "enforce it
+  or downgrade the claim to an honest comment" and thought the second was
+  likely. Rendering the task turned out to work exactly, so the docstring on
+  `facts_json()` now says the claim is enforced rather than asserted.
+- **`linux_configure_motd_credits`** is compared directly. The MOTD "Powered by"
+  list is data, defined in the role defaults and again in the fixture.
+- **A renamed or deleted task fails**, rather than silently checking nothing --
+  a vanished source of truth is the same drift one level up.
+- Verified in four directions: a clean tree passes; changing a credit in the
+  role fails with a diff; renaming a `facts.json` key in the role fails naming
+  the key; renaming the task fails saying the mirror can no longer be found.
+- **Not every fixture value is reconciled, deliberately.** Gathered facts like
+  `ansible_kernel`, and the pinned `ansible_date_time` that keeps output
+  deterministic, exist precisely because there is no cluster. Only what the role
+  owns is checked.
+
+
 ### Added -- CI fails when a committed banner block drifts from its template (#85)
 - `utilities/check-docs-artifacts.py` + a `docs-artifacts-current` job. The demo
   docs quote `/etc/issue.net`, `/etc/motd` and `facts.json` in fenced blocks, and
