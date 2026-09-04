@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed -- sync_hub.yml now enforces the hub-remotes premise instead of asserting it in a comment (#124)
+- `group_vars/aap/hub_collection_remotes.yml` is written **entirely as updates**,
+  on the premise that `rh-certified`, `validated` and `community` already exist
+  on a stock Private Automation Hub. If one were absent, every item in the file
+  would be trying to update something that is not there.
+- #116 verified that by hand against the live 2.7 hub and recorded the
+  measurement. **The premise was then only a comment** -- true on the day it was
+  taken, and inherited untested by the next environment.
+- `playbooks/sync_hub.yml` now makes the same read-only
+  `GET /api/galaxy/pulp/api/v3/remotes/ansible/collection/` before it applies
+  anything, and fails with the missing names. **In the playbook, not the skill**,
+  so it fails identically from both entry points -- `/pah-sync`'s preflight would
+  enforce it on the laptop path only.
+- **One assert over the set difference, not a loop.** A looped assert stops at
+  the first failing item, so a hub missing two remotes would name one, get
+  fixed, and fail again. Verified: with two bogus remotes declared, the run
+  fails naming both, having applied nothing (`changed=0`).
+- **Skipped under `--check`**, because `uri` does not run there and the assert
+  would die on a missing `json` key rather than saying anything about the hub --
+  the same lesson as the verification block at the foot of the file (#68).
+  Verified skipping cleanly.
+- `ansible.builtin.uri` with the credentials the playbook already uses, not
+  `curl -u`: the password reaches the endpoint without passing through a shell
+  variable or a process argument. No new credential path and no new file.
+- **This is a behaviour change.** A run that previously proceeded on a hub
+  missing a remote now fails early with a sentence explaining why, instead of a
+  dispatch error several tasks later.
+
 ### Changed -- the two pieces of repo identity a fork must repoint are now variables (#132)
 - **`scm_url` in `controller_projects.yml` is the sharp one.** A fork whose AAP
   still names this repo syncs *upstream*: job templates run this repo's

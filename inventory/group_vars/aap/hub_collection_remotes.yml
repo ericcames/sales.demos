@@ -19,6 +19,13 @@
 # bumped: the claim has now held on both 2.6 and 2.7, and pinning it to one
 # release understates that.
 #
+# AND IT IS NO LONGER ONLY THIS COMMENT SAYING SO (#124). playbooks/sync_hub.yml
+# makes that same GET before it applies anything and fails with the missing
+# names if the hub disagrees. A hand measurement recorded in a comment is true
+# on the day it is taken; the next environment inherits the assumption untested.
+# Note that `config.yml` reaches these items through dispatch and does NOT run
+# that check — sync_hub.yml is the guarded path.
+#
 # Defining this variable is what makes dispatch run the hub_collection_remote
 # role. The repositories that consume these remotes, and the sync itself, are in
 # hub_collection_repositories.yml.
