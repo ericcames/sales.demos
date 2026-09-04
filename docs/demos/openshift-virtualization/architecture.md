@@ -118,6 +118,8 @@ provider driving `kubernetes_manifest`. No community KubeVirt provider.
 | `kubernetes_service.linux` | **Headless.** Stable in-cluster DNS for the AAP inventory |
 | `kubernetes_service.linux_web` | ClusterIP on :80, existing solely to back the Route |
 | `kubernetes_manifest.linux_web_route` | The public URL, edge TLS |
+| `kubernetes_service.linux_cockpit` | ClusterIP on :9090, backing the Cockpit Route |
+| `kubernetes_manifest.linux_cockpit_route` | Cockpit (browser terminal), edge TLS |
 
 **Two Services per Linux VM is not redundancy.** A headless Service gives the VM
 a stable DNS name so AAP can reach it, but a headless Service cannot back a

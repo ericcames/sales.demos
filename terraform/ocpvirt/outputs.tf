@@ -87,6 +87,11 @@ output "web_url" {
   value       = local.create_web_route ? local.linux_web_url : null
 }
 
+output "cockpit_url" {
+  description = "Cockpit (RHEL web console) URL for the Linux VM. Provides a browser-based terminal. Null when os_type excludes linux or openshift_apps_domain is not set."
+  value       = local.create_web_route ? local.linux_cockpit_url : null
+}
+
 output "ssh_command" {
   description = "SSH command for the Linux VM using virtctl (rides port 6443, no NodePort needed). Null when os_type excludes linux."
   # `vm/` is not decoration — virtctl takes a (VM|VMI) resource, and every

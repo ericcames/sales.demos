@@ -64,6 +64,7 @@ openshift_validate_certs: false
 # `--limit demo` can never pick up sandbox's credentials (#16).
 aap_password: "{{ env_secrets[aap_env_name].aap_password }}"
 openshift_api_token: "{{ env_secrets[aap_env_name].openshift_api_token }}"
+linux_admin_password: "{{ env_secrets[aap_env_name].linux_admin_password | default('') }}"
 
 # --- Demo VM defaults (not secret) -----------------------------------------
 windows_admin_username: "demoadmin"

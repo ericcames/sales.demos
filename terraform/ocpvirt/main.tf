@@ -144,6 +144,7 @@ resource "kubernetes_manifest" "linux_vm" {
                   ${var.linux_admin_password != "" ? "password: ${var.linux_admin_password}\nchpasswd: { expire: False }" : ""}
                   ssh_pwauth: ${var.demo_ssh_public_key != "" ? "false" : "true"}
                   ${var.demo_ssh_public_key != "" ? "ssh_authorized_keys:\n  - ${var.demo_ssh_public_key}" : ""}
+                  ${var.openshift_apps_domain != "" ? "write_files:\n  - path: /etc/cockpit/cockpit.conf\n    content: |\n      [WebService]\n      AllowUnencrypted = true\n      Origins = https://${local.linux_cockpit_route_host}" : ""}
                 EOT
               }
             },
@@ -428,5 +429,81 @@ resource "kubernetes_manifest" "linux_web_route" {
   depends_on = [
     kubernetes_namespace.demo,
     kubernetes_service.linux_web,
+  ]
+}
+
+# ---------------------------------------------------------------------------
+# Cockpit (RHEL web console) — browser terminal for customers (#63).
+#
+# Same pattern as the web Service and Route above, on port 9090 instead of 80.
+# Cockpit is already installed, socket-activated, and firewall-opened by
+# playbooks/roles/linux_configure — this adds the external path.
+#
+# cockpit.conf is written at first boot by cloud-init (write_files above) with
+# AllowUnencrypted=true (because the Route terminates TLS, not Cockpit) and the
+# Route hostname as an allowed Origin (Cockpit validates websocket Origins).
+# ---------------------------------------------------------------------------
+
+resource "kubernetes_service" "linux_cockpit" {
+  count = local.create_linux ? 1 : 0
+
+  metadata {
+    name      = local.linux_cockpit_svc_name
+    namespace = var.namespace
+    labels    = local.common_labels
+  }
+
+  spec {
+    selector = {
+      "sales-demos/vm" = local.linux_vm_name
+    }
+
+    port {
+      name        = "cockpit"
+      port        = 9090
+      target_port = 9090
+    }
+  }
+
+  depends_on = [kubernetes_namespace.demo]
+}
+
+resource "kubernetes_manifest" "linux_cockpit_route" {
+  count = local.create_web_route ? 1 : 0
+
+  computed_fields = [
+    "metadata.annotations",
+    "metadata.labels",
+  ]
+
+  manifest = {
+    apiVersion = "route.openshift.io/v1"
+    kind       = "Route"
+    metadata = {
+      name      = local.linux_cockpit_svc_name
+      namespace = var.namespace
+      labels    = local.common_labels
+    }
+    spec = {
+      host = local.linux_cockpit_route_host
+      to = {
+        kind   = "Service"
+        name   = local.linux_cockpit_svc_name
+        weight = 100
+      }
+      port = {
+        targetPort = "cockpit"
+      }
+      tls = {
+        termination                   = "edge"
+        insecureEdgeTerminationPolicy = "Redirect"
+      }
+      wildcardPolicy = "None"
+    }
+  }
+
+  depends_on = [
+    kubernetes_namespace.demo,
+    kubernetes_service.linux_cockpit,
   ]
 }
