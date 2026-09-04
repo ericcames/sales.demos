@@ -146,7 +146,7 @@ cd terraform/ocpvirt
 terraform init -reconfigure \
   -backend-config=secret_suffix=sandbox \
   -backend-config=namespace=sales-demos-tfstate \
-  -backend-config=config_path=$HOME/.kube/config \
+  -backend-config=config_path=../../.kube/<env>.kubeconfig \
   -backend-config=insecure=true
 terraform force-unlock <lock-id>
 ```

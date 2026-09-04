@@ -459,12 +459,25 @@ ports, so a direct `ssh -p <nodePort>` from a laptop never connects. SSH access
 uses `virtctl ssh`, which tunnels over the Kubernetes API (port 6443, confirmed
 open).
 
-Prerequisites: `virtctl` (download from the cluster's ConsoleCLIDownload) and
-`oc` logged in. Then:
+Prerequisites: `virtctl` (download from the cluster's ConsoleCLIDownload), and
+this repo's kubeconfig for the environment — **not** `oc login` (#161):
 
 ```bash
-virtctl ssh -n sales-demos-sandbox cloud-user@vm/sd-lnx-small-1cpu-2gb
+KUBECONFIG=.kube/sandbox.kubeconfig \
+  virtctl ssh -n sales-demos-sandbox cloud-user@vm/sd-lnx-small-1cpu-2gb
 ```
+
+**Name the kubeconfig; do not rely on whatever `~/.kube/config` points at.**
+`virtctl` defaults to that file, it is shared with other demo repos, and an
+environment that has been rebuilt leaves it pointing at a cluster whose DNS no
+longer resolves — the failure reads `dial tcp: lookup api.cluster-... no such
+host` and says nothing about kubeconfigs. Generate the per-environment file with
+`utilities/make-kubeconfig.sh <env>`, and check it still matches with
+`utilities/check-kubeconfig.sh <env>`.
+
+No `-i` is needed: the VM's authorized key is `demo_ssh_public_key`, whose
+private half is an ordinary default identity in `~/.ssh`, which ssh offers
+automatically.
 
 > **No `--local-ssh`.** Older notes and anything copied from a pre-#49
 > `ssh_command` output carry that flag. virtctl v1.x removed its built-in SSH
