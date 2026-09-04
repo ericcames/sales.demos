@@ -7,6 +7,60 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added -- how to get started with a ServiceNow MCP server, and with any MCP server that does not exist (#93)
+- Two pages in `docs/demos/mcp-servers/`, taking the file set from six to eight.
+- **`servicenow.md`** -- measure `/stats.do` first, then the fork. The
+  recommendation is ServiceNow's **native MCP Server Console**, once an instance
+  reaches Zurich Patch 9+ or Australia Patch 2+ with a Now Assist SKU, because
+  there governance stops being asserted and becomes a screen you can show. The
+  demo instance is Yokohama (measured 2026-09-02), so that path is closed today
+  and the page says when to re-check.
+- **The demo does not depend on it.** `servicenow.itsm` is already pinned at
+  `hub/certified-requirements.yml:411`; a job template creates the incident,
+  writes the work note and closes the record with no MCP server anywhere. An MCP
+  server would add the *read* half. Losing it costs a beat, not the thesis --
+  the agent reads, Ansible writes.
+- **`building-a-server.md`** -- the general question underneath: what to do when
+  no server exists, which is also #94's situation with every network vendor.
+  Four questions to decide whether to build; **Go when the server ships**
+  (static binary, no interpreter -- which is exactly why `kubernetes-mcp-server`
+  runs via `npx` and `/sales-demos-first-time` adds only that one prerequisite),
+  **Python when you are reaching**; stdio first, streamable HTTP to ship;
+  packaging via `ansible.mcp_builder`.
+- **`ansible.mcp_builder` does not scaffold a server** -- it installs pre-built
+  ones from npm, PyPI, Go binaries or source into an EE via `append_final`.
+  Recorded because the name suggests otherwise. Same `append_final` root-user
+  gotcha `utilities/build-ee.sh:18-19` already documents.
+- Hosting is described and **not decided** -- `network-mcp-plan.md` holds that
+  open as Decision C pending network SME review, and this page points there
+  rather than pre-empting it.
+
+### Changed -- #93's premise did not survive research, and the issue closes on the finding (#93)
+- #93 planned an agentic ITSM demo built on a **community** ServiceNow MCP
+  server, on the reasoning that Yokohama ruled out the native console.
+- **Neither community server can be constrained.** No read-only mode, no tool
+  filtering: `jschuller/mcp-server-servicenow` ships 8 write tools,
+  `michaelbuckner/servicenow-mcp` ships `natural_language_update` and
+  `update_script`. #93's "enforce read-only at the ServiceNow end" was not a
+  preference but the only available lever -- and an account is a weaker,
+  far less demonstrable place to put a boundary than a missing tool.
+- `snc_read_only` is additionally **incompatible with OAuth** (ServiceNow
+  Support: the role blocks client registration and token refresh), so the design
+  would have had to decline the server's own headline auth.
+- Their tools are Table API wrappers -- discoverability, not capability, over a
+  REST credential. **Decision: the community path is not documented here.**
+- The two code comments that waited on #93 --
+  `playbooks/provision_vm.yml:17` (*"re-add it with the incident node, not
+  before"*) and the no-`failure_nodes` note in `controller_workflows.yml` -- now
+  point at `servicenow.md` instead of an issue number, so they explain
+  themselves rather than citing a closed issue.
+- `docs/plan/platform-addons-plan.md` said the read-only stance "costs ... on
+  ServiceNow (#93) a dedicated `snc_read_only` account". Corrected in place: an
+  account was the only available boundary, not a chosen one, and the page now
+  says so rather than leaving a plan doc asserting the rejected design.
+- No successor issue: the research lives in the two pages. If the demo instance
+  reaches Zurich, the work gets re-filed then.
+
 ### Fixed -- the demo page and facts.json disagreed about virtualization (#160)
 - A live VM served a page saying `Virtualization: KVM (guest)` while
   `facts.json` **on the same host, from the same run** said

@@ -16,7 +16,9 @@
 # THE NODES ARE CHAINED ON success_nodes, so a failure stops the chain rather
 # than cascading. There are deliberately NO failure_nodes: this repo has no
 # ServiceNow incident path, and a failure node that does nothing useful is worse
-# than an obvious stop.
+# than an obvious stop. Why there is no incident path -- and why the write path
+# would be servicenow.itsm rather than an MCP server -- is written up in
+# docs/demos/mcp-servers/servicenow.md.
 #
 # THE SURVEY LIVES HERE as well as on the provision template. A workflow survey
 # feeds its answers to every node, so one prompt drives the whole chain; the
