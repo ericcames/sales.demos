@@ -53,6 +53,24 @@ jobs:
         # the end of a long demo build.
         run: bash utilities/check-no-secrets.sh
 
+  docs-artifacts-current:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - run: pip install jinja2
+      - name: Committed banner blocks still match their templates
+        # #85. The demo docs quote /etc/issue.net, /etc/motd and facts.json in
+        # fenced blocks, every copy hand-pasted from render-demo-assets.py.
+        # Edit motd.j2 and they go stale with CI green -- and these blocks are
+        # what the demo falls back to when there is no cluster, so a stale
+        # banner has a presenter describing a machine that does not exist.
+        #
+        # Cheap because it renders text only: jinja2, no Chrome, seconds.
+        run: python3 utilities/check-docs-artifacts.py
+
   secrets-example-sync:
     runs-on: ubuntu-latest
     steps:

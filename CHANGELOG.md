@@ -7,6 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added -- CI fails when a committed banner block drifts from its template (#85)
+- `utilities/check-docs-artifacts.py` + a `docs-artifacts-current` job. The demo
+  docs quote `/etc/issue.net`, `/etc/motd` and `facts.json` in fenced blocks, and
+  every copy is hand-pasted -- `render-demo-assets.py` prints to stdout and
+  writes nothing into markdown. Editing `motd.j2` used to leave the docs stale
+  with CI green.
+- **Why this one matters more than a normal docs-lint.** These blocks are what
+  the demo falls back to when there is no cluster, so a stale banner has a
+  presenter describing a machine that does not exist, in front of a customer.
+- **Blocks are located by an explicit marker**, `<!-- rendered: motd.j2 -->` on
+  the line above the fence, rather than by matching surrounding prose. Prose
+  matching breaks the moment someone rewords a sentence, and the marker makes
+  the coupling visible to whoever edits the doc next -- which is the actual
+  failure being guarded against. Four sites gained one.
+- **The checker imports the renderer rather than parsing its stdout.**
+  `render-demo-assets.py` wraps each artifact in a decorative banner for humans;
+  scraping that would couple the docs gate to the presentation of a script whose
+  job is to print things nicely. It calls `render()` and `facts_json()` instead.
+- **A missing marker is a failure, not a pass.** If no document carries a given
+  marker the artifact is no longer verified anywhere -- the same drift one level
+  up -- so the checker fails rather than reporting a cheerful zero.
+- Verified in both directions: editing `motd.j2` and touching no docs fails and
+  names *both* copies with line numbers, which is #85's stated "done when";
+  editing a doc fails with a unified diff; deleting a marker fails; and a clean
+  tree passes with all four blocks matching.
+- **`demo-page.png` is deliberately not checked.** It is a Chrome screenshot, so
+  a byte diff would fail on a font or Chrome change rather than on real drift.
+
+### Fixed -- nothing had actually drifted yet (#85)
+- All four committed copies still matched their templates when the gate went in,
+  22 days after #85 was filed. The check arrives clean rather than with a
+  backlog, which is the good case and worth recording as the baseline.
+
+
 ### Changed -- Automation Orchestrator's admin password is now AAP's (#143)
 - `install_ao.yml` seeds `spec.secrets.initialAdminPasswordSecretRef` from
   `env_secrets[<env>].aap_password`, so **AO and AAP are one credential** rather
