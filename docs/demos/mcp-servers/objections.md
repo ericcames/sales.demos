@@ -112,7 +112,7 @@ a committed cluster name.
 > later. The deployment guide is in Red Hat's documentation."**
 
 Source: `.mcp.json`, [kubernetes-mcp-server](https://github.com/containers/kubernetes-mcp-server),
-[AAP MCP Server docs](https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.5/html/using_ansible_automation_platform/extend-assembly_deploying_ansible_mcp_server).
+[AAP MCP Server docs](https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.7/html/using_ansible_automation_platform/extend-assembly_deploying_ansible_mcp_server).
 
 ---
 

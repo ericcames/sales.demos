@@ -102,20 +102,27 @@
 
     - name: Assert the AAP admin password is available to seed the AO admin
       # AO's admin password IS the AAP admin password, so the two are one
-      # credential rather than a second one to hunt for (#143). It reaches this
-      # play the same way every other credential does — from the vaulted
-      # secrets.yml, or from the "Sales Demos - Env Secrets" credential type
-      # when this runs as a job template.
+      # credential rather than a second one to hunt for (#143).
+      #
+      # READ `aap_password`, NEVER `env_secrets[...]` DIRECTLY. That distinction
+      # is the whole bug this replaces. On a laptop, connection.yml resolves
+      # aap_password from the vaulted env_secrets; from AAP there IS no vaulted
+      # file — secrets.yml is untracked (#130) and the "Sales Demos - Env
+      # Secrets" credential type injects `aap_password` as an extra_var instead.
+      # So env_secrets is undefined in a job template, and reaching for it made
+      # this playbook work from a laptop and fail from AAP — exactly the split
+      # CLAUDE.md's "both entry points fail identically" rule exists to prevent.
+      # config.yml and curate_hub.yml have always read aap_password; this now
+      # matches them.
       ansible.builtin.assert:
         that:
-          - env_secrets is defined
-          - env_secrets[aap_env_name] is defined
-          - env_secrets[aap_env_name].aap_password is defined
-          - env_secrets[aap_env_name].aap_password | length > 0
+          - aap_password | default('') | length > 0
         fail_msg: >-
-          env_secrets[{{ aap_env_name }}].aap_password is required — it seeds
-          Automation Orchestrator's admin password so it matches AAP. It lives
-          in playbooks/group_vars/all/secrets.yml (gitignored, vault-encrypted).
+          aap_password is not set for '{{ aap_env_name | default("?") }}' — it
+          seeds Automation Orchestrator's admin password so it matches AAP.
+          On a laptop it resolves from playbooks/group_vars/all/secrets.yml
+          (gitignored, vault-encrypted) via connection.yml; from a job template
+          it comes from the "Sales Demos - Env Secrets" credential.
         quiet: true
 
     - name: Confirm the cluster is reachable and the token is valid
@@ -417,7 +424,7 @@
             namespace: "{{ ao_namespace }}"
           type: Opaque
           data:
-            password: "{{ env_secrets[aap_env_name].aap_password | b64encode }}"
+            password: "{{ aap_password | b64encode }}"
       no_log: true
 
     - name: Create the Automation Orchestrator instance

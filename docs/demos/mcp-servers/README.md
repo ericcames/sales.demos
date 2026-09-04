@@ -91,7 +91,7 @@ New to this repo? Run `/sales-demos-first-time` first.
 |---|---|
 | [Model Context Protocol specification](https://modelcontextprotocol.io/) | The protocol itself — what MCP is and why it exists |
 | [kubernetes-mcp-server](https://github.com/containers/kubernetes-mcp-server) | The upstream project powering the OpenShift MCP servers (Apache-2.0) |
-| [Deploying the Ansible MCP Server](https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.5/html/using_ansible_automation_platform/extend-assembly_deploying_ansible_mcp_server) | Official Red Hat guide for the AAP MCP server |
+| [Deploying the Ansible MCP Server](https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.7/html/using_ansible_automation_platform/extend-assembly_deploying_ansible_mcp_server) | Official Red Hat guide for the AAP MCP server |
 | [Deploy MCP servers on OpenShift using ToolHive](https://developers.redhat.com/articles/2025/10/01/how-deploy-mcp-servers-openshift-using-toolhive) | Red Hat Developer article on containerised MCP hosting |
 | [ansible.mcp_builder](https://github.com/redhat-cop/ansible.mcp_builder) | Red Hat CoP collection for building MCP servers into container images |
 
