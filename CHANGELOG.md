@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed -- "no manual pruning is needed" was true of the remote only (#177)
+- CLAUDE.md recorded `delete_branch_on_merge` and concluded that a merged PR
+  cleans up after itself. It cleans up **`origin/<branch>`**. The local branch in
+  the working clone survives the merge untouched -- observed straight after #176
+  merged, with `origin/fix-173-...` gone and the local copy still sitting there.
+- The wrong half was the reassuring half: the note told you no pruning was
+  needed, so leftovers accumulate silently and nobody looks. Now it says which
+  half is automatic and gives the sweep --
+  `git checkout main && git pull && git branch -d <branch>`, with
+  `git branch --merged main` to catch any missed.
+- **`-d`, never `-D`**, written down deliberately: `-d` refuses a branch that is
+  not actually merged, which is what makes the sweep safe to run without reading
+  the branch list first.
+- Docs only. CLAUDE.md is the single place this was stated -- CONTRIBUTING.md and
+  README.md do not mention branch cleanup at all, so there was no second copy to
+  correct.
+
 ### Fixed -- validate.yml had never run a single check-mode code path (#173)
 - It failed inside the EE at `infra.aap_configuration.gateway_organizations`
   with *"check mode and async cannot be used on same task"* while passing on the
