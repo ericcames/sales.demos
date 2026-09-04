@@ -175,6 +175,66 @@
         - validated
         - community
 
+    # -------------------------------------------------------------------
+    # THE REMOTES FILE IS ENTIRELY UPDATES, SO ASSERT WHAT IT ASSUMES (#124).
+    #
+    # group_vars/aap/hub_collection_remotes.yml declares three remotes and every
+    # item in it is an UPDATE, on the premise that `rh-certified`, `validated`
+    # and `community` already exist on a stock Private Automation Hub. That
+    # premise is load-bearing: if one were absent, the item would be trying to
+    # update something that is not there.
+    #
+    # #116 verified it by hand against the live 2.7 hub and wrote the
+    # measurement into a comment. A comment does not check anything -- the next
+    # environment inherits the assumption untested. This does the same GET, in
+    # the playbook rather than the skill, so it fails identically from both
+    # entry points.
+    #
+    # ansible.builtin.uri rather than `curl -u`: the password goes to a network
+    # endpoint without passing through a shell variable or a process argument.
+    #
+    # SKIPPED IN CHECK MODE, and not as an optimisation. `uri` does not run
+    # under --check, so the registered result is a bare skip marker with no
+    # `json` key and the assert would die on a missing attribute instead of
+    # saying anything about the hub. Same lesson as the verification block at
+    # the foot of this file (#68).
+    # -------------------------------------------------------------------
+    - name: Check the hub has the remotes this repo only updates
+      when: not ansible_check_mode
+      block:
+        - name: Ask the hub which collection remotes exist
+          # limit=100 against a stock hub's three. Paging would be a false
+          # failure rather than a silent pass, and no PAH has 100 remotes.
+          ansible.builtin.uri:
+            url: "https://{{ aap_hostname }}/api/galaxy/pulp/api/v3/remotes/ansible/collection/?limit=100"
+            url_username: "{{ aap_username }}"
+            url_password: "{{ aap_password }}"
+            force_basic_auth: true
+            validate_certs: "{{ aap_validate_certs | default(false) }}"
+          register: hub_existing_remotes
+
+        - name: Assert every declared remote already exists
+          # ONE assert over the set difference, not a loop over the
+          # declarations. A looped assert stops at the first failing item, so a
+          # hub missing two remotes would name one, get fixed, and fail again.
+          # This names all of them at once.
+          ansible.builtin.assert:
+            that:
+              - (hub_collection_remotes | map(attribute='name') | list)
+                | difference(hub_existing_remotes.json.results | map(attribute='name') | list)
+                | length == 0
+            fail_msg: >-
+              {{ (hub_collection_remotes | map(attribute='name') | list)
+                 | difference(hub_existing_remotes.json.results | map(attribute='name') | list) }}
+              is declared in group_vars/aap/hub_collection_remotes.yml but does
+              not exist on {{ aap_hostname }}, which holds
+              {{ hub_existing_remotes.json.results | map(attribute='name') | list }}.
+              That file only UPDATES remotes; it never creates them. Either this
+              is not a stock Private Automation Hub, or the remote was deleted --
+              recreate it in the hub UI under Automation Content > Remotes, or
+              add the missing creation to that file.
+            quiet: true
+
     - name: Report the target
       ansible.builtin.debug:
         msg:

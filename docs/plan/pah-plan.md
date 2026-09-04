@@ -24,7 +24,7 @@ Probed against the live sandbox before anything was written.
 |---|---|
 | PAH deployment | Present on every environment. Five hub pods, `hub disabled=False` |
 | Gateway routing | AAP 2.6 fronts Hub by **path**, at `/api/galaxy/`. No separate hub route; `ansible.hub`'s `ah_path_prefix` already defaults to `galaxy` |
-| Stock remotes | `rh-certified`, `validated`, `community` all **already exist**. Every object this repo defines is an update, not a creation |
+| Stock remotes | `rh-certified`, `validated`, `community` all **already exist**. Every object this repo defines is an update, not a creation. `sync_hub.yml` re-checks this at run time rather than trusting the finding (#124) |
 | Certified content | **214** collections upstream, not the ~130 estimated |
 | Validated content | **47** collections upstream, not the ~30 estimated |
 | `ansible.hub` | Already pinned at 1.1.0 and already in the EE. No new collection, no EE rebuild |
