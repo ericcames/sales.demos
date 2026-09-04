@@ -81,3 +81,7 @@ linux_configure_motd_credits:
 # empty — /etc/issue.net is shown to anyone who can open port 22, before they
 # have proved who they are, and the demo URL does not need to be part of that.
 linux_configure_motd_url: "{{ web_url | default('', true) }}"
+
+# Cockpit (RHEL web console) URL for the browser terminal. Like web_url, this
+# is a host variable set by provision_vm.yml (#63).
+linux_configure_cockpit_url: "{{ cockpit_url | default('', true) }}"

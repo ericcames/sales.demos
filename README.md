@@ -685,6 +685,29 @@ export TF_VAR_openshift_apps_domain=apps.cluster-<id>.dyn.redhatworkshops.io
 ([#5](https://github.com/ericcames/sales.demos/issues/5)). That is expected, not
 a bug.
 
+### Cockpit (browser terminal)
+
+When `openshift_apps_domain` is set and `linux_admin_password` is non-empty,
+Terraform creates a `-cockpit` ClusterIP Service on port 9090 and an OpenShift
+Route targeting it. The `cockpit_url` output gives the public URL.
+
+Open the URL in a browser, log in as `cloud-user` with the vaulted password, and
+you get a terminal plus a system dashboard — the RHEL web console, which is a
+product feature that demos better than a bare terminal.
+
+**No `virtctl` needed.** This is the customer-facing path.
+[`virtctl ssh`](#ssh-access) remains the operator path for anyone with a
+kubeconfig.
+
+**The Route is publicly reachable** and Cockpit is a root-capable shell. Use a
+strong vaulted password and rely on nightly teardown. Acceptable on an ephemeral
+RHDP sandbox; it would not be on anything long-lived.
+
+**`cockpit.conf` is written at first boot** via cloud-init `write_files` with
+`AllowUnencrypted = true` (the edge Route terminates TLS, not Cockpit) and the
+Route hostname as an allowed Origin (Cockpit validates websocket Origin headers —
+get this wrong and login appears to succeed but the terminal hangs).
+
 ## Running a phase
 
 **Nothing deploys from CI.** GitHub Actions is a pull-request gate only — lint,

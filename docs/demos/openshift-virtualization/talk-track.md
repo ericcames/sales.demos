@@ -397,6 +397,7 @@ restart:
                        ||     ||
 
    Demo page:  https://sd-lnx-small-1cpu-2gb-web-sales-demos-demo.apps.cluster-abcde.dyn.redhatworkshops.io
+   Console:    https://sd-lnx-small-1cpu-2gb-cockpit-sales-demos-demo.apps.cluster-abcde.dyn.redhatworkshops.io
 ```
 
 Let them enjoy the cow — a laugh here is worth having. Then take it somewhere:

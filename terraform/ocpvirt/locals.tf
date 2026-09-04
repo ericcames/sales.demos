@@ -79,6 +79,11 @@ locals {
   # while the Route had no TLS, which made every browser either warn about an
   # insecure page or fail outright on auto-upgrade.
   linux_web_url = "https://${local.linux_web_route_host}"
+
+  # Cockpit (RHEL web console) Service and Route — browser terminal (#63).
+  linux_cockpit_svc_name   = "${local.linux_vm_name}-cockpit"
+  linux_cockpit_route_host = "${local.linux_cockpit_svc_name}-${var.namespace}.${var.openshift_apps_domain}"
+  linux_cockpit_url        = "https://${local.linux_cockpit_route_host}"
 }
 
 # ---------------------------------------------------------------------------

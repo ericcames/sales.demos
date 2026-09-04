@@ -33,4 +33,7 @@
 
    Demo page:  {{ linux_configure_motd_url }}
 {% endif %}
+{% if linux_configure_cockpit_url | length > 0 %}
+   Console:    {{ linux_configure_cockpit_url }}
+{% endif %}
 

@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added -- Browser terminal via Cockpit Route (#63)
+- Cockpit (RHEL web console) exposed through an OpenShift Route for
+  customer-facing browser terminal access without `virtctl`.
+- New Terraform resources: `kubernetes_service.linux_cockpit` on port 9090 and
+  `kubernetes_manifest.linux_cockpit_route` with edge TLS.
+- `cockpit.conf` written at first boot via cloud-init `write_files`, with
+  `AllowUnencrypted = true` (the Route terminates TLS) and the Route's Origin
+  (Cockpit validates the websocket Origin header).
+- `linux_admin_password` wired through `env_secrets`, `connection.yml`, the
+  "Sales Demos - Env Secrets" credential type, and `provision_vm.yml` into
+  Terraform cloud-init.
+- `cockpit_url` added as Terraform output, AAP host variable, and MOTD line.
+
 ### Changed -- Use the stock `Red Hat Quay.io` registry instead of creating our own (#186)
 - Removed `hub_ee_registries_all` from `hub_ee_registries.yml`. The stock
   `Red Hat Quay.io` registry, provisioned by the installer on every RHDP

@@ -111,6 +111,7 @@ FIXTURE = {
     "vm_size_chosen": "sd1.small",
 }
 FIXTURE["linux_configure_motd_url"] = f"https://{VM_NAME}-web-{NAMESPACE}.apps.{CLUSTER}"
+FIXTURE["linux_configure_cockpit_url"] = f"https://{VM_NAME}-cockpit-{NAMESPACE}.apps.{CLUSTER}"
 
 # MIRRORS linux_configure/vars/main.yml, AND CI ENFORCES IT (#160). On a KubeVirt
 # guest the virtualization facts come back as the literal string "NA", so both
