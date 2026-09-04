@@ -15,6 +15,7 @@ building the automation. For *why* something is built the way it is, read
 |---|---|---|---|
 | [OpenShift Virtualization](openshift-virtualization/) | Linux / platform sysadmins | 30 min | **Ready** |
 | [Private Automation Hub — ClickOps vs. configuration-as-code](private-automation-hub/) | Sysadmins and automation leads | 30 min | **Draft** ([#68](https://github.com/ericcames/sales.demos/issues/68)) |
+| [MCP Servers — Agentic Automation with Governance](mcp-servers/) | Platform engineers and automation leads | 20 min | **Draft** ([#153](https://github.com/ericcames/sales.demos/issues/153)) |
 
 ---
 
