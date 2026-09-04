@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added -- MCP server demo documentation in docs/demos/mcp-servers/ (#153)
+- **Six files following the demo template, plus a status-table reference.** The
+  MCP servers are both tooling and a demonstrable use case — the demo argument is
+  governed agentic automation: the AI reads everything, changes nothing except
+  through Ansible. `README.md`, `run-sheet.md`, `talk-track.md`,
+  `architecture.md`, `objections.md`, and `server-inventory.md` (earned sixth
+  file, same justification as PAH's `clickops.md`).
+- **Phase 1: OpenShift MCP content is complete.** Tool listings, credential
+  flows, verification commands, and troubleshooting tables are sourced from the
+  `/sales-demos-mcp` skill and measured against live servers. AAP MCP sections
+  are marked placeholders for Phase 2.
+- **`server-inventory.md` is the canonical status table.** The same format
+  Claude Code renders when asked "show me the MCP servers" — server name,
+  transport, access posture, tool count, auth method. Per-server tool listings
+  with the nine mutating tools `--read-only` removes called out explicitly.
+- **Red Hat links included:** the MCP protocol spec, `kubernetes-mcp-server`
+  upstream, the AAP MCP Server deployment guide, ToolHive on OpenShift, and
+  `ansible.mcp_builder`.
+- **Four existing docs updated.** `docs/demos/README.md` and root `README.md`
+  gain a use-cases row. `ROADMAP.md` is reframed from "Not a use case: tooling"
+  to "Both tooling and a demonstrable use case." This CHANGELOG entry.
+
 ### Fixed -- the EE build clobbered its own python interpreter (#122)
 - **Two defects, one cause, and the second is the dangerous one.** `assemble`
   installs the system packages the collections' bindep files ask for, and that

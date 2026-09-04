@@ -15,6 +15,7 @@ Automation Platform — driving the same playbooks either way.
 |---|---|---|---|
 | **OpenShift Virtualization** | Linux / platform sysadmins | [`docs/plan/ocpvirt-demo-plan.md`](docs/plan/ocpvirt-demo-plan.md) | [`docs/demos/openshift-virtualization/`](docs/demos/openshift-virtualization/) |
 | **Private Automation Hub — ClickOps vs. config-as-code** | Sysadmins and automation leads | [`docs/plan/pah-plan.md`](docs/plan/pah-plan.md) | [`docs/demos/private-automation-hub/`](docs/demos/private-automation-hub/) |
+| **MCP Servers — Agentic Automation** | Platform engineers and automation leads | [`docs/plan/platform-addons-plan.md`](docs/plan/platform-addons-plan.md) | [`docs/demos/mcp-servers/`](docs/demos/mcp-servers/) |
 
 ## The demo: OpenShift Virtualization on the RHDP "Ansible Product Demo"
 

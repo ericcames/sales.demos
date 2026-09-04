@@ -11,10 +11,13 @@ below.
 
 ## Platform add-ons — MCP servers
 
-Not a use case: tooling. Connects Claude Code straight to the clusters so asking
-an environment a question costs a tool call rather than a hand-rolled `curl`
-plus a vault read. Full detail in
-[`docs/plan/platform-addons-plan.md`](docs/plan/platform-addons-plan.md).
+Both tooling and a demonstrable use case. Connects Claude Code straight to the
+clusters so asking an environment a question costs a tool call rather than a
+hand-rolled `curl` plus a vault read — and the governed read/write boundary is
+itself a demo worth showing customers. Full detail in
+[`docs/plan/platform-addons-plan.md`](docs/plan/platform-addons-plan.md);
+demo documentation in
+[`docs/demos/mcp-servers/`](docs/demos/mcp-servers/).
 
 | | Skill | Playbook | Outcome | Status |
 |---|---|---|---|---|
