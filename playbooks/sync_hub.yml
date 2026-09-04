@@ -89,6 +89,11 @@
     # secure logging; only this one gives up its output.
     hub_configuration_collection_repository_sync_secure_logging: false
 
+    # The stock-remotes check (#170) is a DEMO-READINESS gate, not a
+    # correctness one -- ansible.hub would happily create a missing remote. Set
+    # false to let it do that on a hub you know is not stock.
+    hub_require_stock_remotes: "{{ hub_require_stock_remotes_override | default(true) | bool }}"
+
     # See the header. Not a merge — a rename.
     hub_collection_remotes: "{{ hub_collection_remotes_all }}"
     hub_collection_repositories: "{{ hub_collection_repositories_all }}"
@@ -176,19 +181,27 @@
         - community
 
     # -------------------------------------------------------------------
-    # THE REMOTES FILE IS ENTIRELY UPDATES, SO ASSERT WHAT IT ASSUMES (#124).
+    # THE CLICKOPS DEMO EDITS THESE REMOTES AS STOCK, SO CHECK THEY ARE (#170).
     #
-    # group_vars/aap/hub_collection_remotes.yml declares three remotes and every
-    # item in it is an UPDATE, on the premise that `rh-certified`, `validated`
-    # and `community` already exist on a stock Private Automation Hub. That
-    # premise is load-bearing: if one were absent, the item would be trying to
-    # update something that is not there.
+    # docs/demos/private-automation-hub/clickops.md opens on the stock hub UI and
+    # changes the `community` remote by hand, on the claim that `rh-certified`,
+    # `validated` and `community` are all there on a fresh install. If an
+    # environment ever ships without one, that half of the demo breaks in front
+    # of a customer. Failing here is how you find out first.
     #
-    # #116 verified it by hand against the live 2.7 hub and wrote the
-    # measurement into a comment. A comment does not check anything -- the next
-    # environment inherits the assumption untested. This does the same GET, in
-    # the playbook rather than the skill, so it fails identically from both
-    # entry points.
+    # #116 verified the three exist against the live 2.7 hub and wrote the
+    # measurement into a comment; #124 turned it into this check, because a
+    # comment is true on the day it is taken and the next environment inherits
+    # it untested.
+    #
+    # WHAT THIS IS *NOT*, AND #124 GOT WRONG: it is not protecting an update of
+    # something absent. `ansible.hub.collection_remote` CREATES a missing remote
+    # -- collection_remote.py:277 calls create_or_update, and
+    # ah_pulp_object.py:365-367 is `if self.exists: update() else: create()`.
+    # Measured on sandbox: declaring a remote that did not exist returned
+    # changed=True, failed=False, and the hub then listed it (#170). So a
+    # missing remote is not a failure waiting to happen -- it is a demo that
+    # will not match its own script.
     #
     # ansible.builtin.uri rather than `curl -u`: the password goes to a network
     # endpoint without passing through a shell variable or a process argument.
@@ -198,9 +211,17 @@
     # `json` key and the assert would die on a missing attribute instead of
     # saying anything about the hub. Same lesson as the verification block at
     # the foot of this file (#68).
+    #
+    # NOT IN config.yml, deliberately (#170). That path applies the same items
+    # through dispatch on every setup.yml, where this would prevent nothing,
+    # put a hub call and a hard failure on the main build path of a fresh
+    # environment still settling, and apply a demo-readiness check to every
+    # config apply.
     # -------------------------------------------------------------------
-    - name: Check the hub has the remotes this repo only updates
-      when: not ansible_check_mode
+    - name: Check the hub is stock, as the ClickOps demo assumes
+      when:
+        - not ansible_check_mode
+        - hub_require_stock_remotes | bool
       block:
         - name: Ask the hub which collection remotes exist
           # limit=100 against a stock hub's three. Paging would be a false
@@ -213,7 +234,7 @@
             validate_certs: "{{ aap_validate_certs | default(false) }}"
           register: hub_existing_remotes
 
-        - name: Assert every declared remote already exists
+        - name: Assert every declared remote is already on the hub
           # ONE assert over the set difference, not a loop over the
           # declarations. A looped assert stops at the first failing item, so a
           # hub missing two remotes would name one, get fixed, and fail again.
@@ -226,13 +247,16 @@
             fail_msg: >-
               {{ (hub_collection_remotes | map(attribute='name') | list)
                  | difference(hub_existing_remotes.json.results | map(attribute='name') | list) }}
-              is declared in group_vars/aap/hub_collection_remotes.yml but does
-              not exist on {{ aap_hostname }}, which holds
+              is declared in group_vars/aap/hub_collection_remotes.yml but is not
+              on {{ aap_hostname }}, which holds
               {{ hub_existing_remotes.json.results | map(attribute='name') | list }}.
-              That file only UPDATES remotes; it never creates them. Either this
-              is not a stock Private Automation Hub, or the remote was deleted --
-              recreate it in the hub UI under Automation Content > Remotes, or
-              add the missing creation to that file.
+              This run WOULD have created it and succeeded -- ansible.hub creates
+              a remote that is missing. It stops instead because this hub is no
+              longer stock, and the ClickOps demo in
+              docs/demos/private-automation-hub/clickops.md opens by editing a
+              stock remote by hand. Recreate it in the hub UI under Automation
+              Content > Remotes, or re-run with
+              -e hub_require_stock_remotes=false to let this apply create it.
             quiet: true
 
     - name: Report the target
