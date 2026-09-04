@@ -4,7 +4,8 @@
     "allow": [
       "mcp__openshift-sandbox__*",
       "mcp__openshift-demo__*",
-      "mcp__aap-sandbox__*"
+      "mcp__aap-sandbox__*",
+      "mcp__aap-demo__*"
     ]
   }
 }
