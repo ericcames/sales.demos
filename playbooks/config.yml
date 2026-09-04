@@ -9,7 +9,9 @@
 #     -e target_env=sandbox \
 #     --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
 #
-# Run playbooks/validate.yml first. It is the same play in check mode.
+# Run playbooks/validate.yml --check first. It is the same play in check mode,
+# and it requires --check: without it the collection's check-mode branches all
+# take their non-check path, which is what #173 turned out to be.
 #
 # HOW VARS ARRIVE: implicitly, from inventory/group_vars/. There is deliberately
 # no vars_files or include_vars. `--limit sandbox` loads group_vars/aap/*

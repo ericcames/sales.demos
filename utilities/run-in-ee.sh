@@ -242,11 +242,36 @@ LOG_DIR="${SALES_DEMOS_LOG_DIR:-$HOME/ansible-logs}"
 mkdir -p "$LOG_DIR"
 LOG_FILE="$LOG_DIR/ansible-navigator.log"
 
+# ---------------------------------------------------------------------------
+# The ansible-core comparison. Pinned collections are NOT a pinned environment,
+# and nothing else in this repo says so out loud (#173).
+#
+# collections/requirements.yml pins every collection exactly, and build-ee.sh
+# verifies every pin matched -- both were green while validate.yml passed here
+# and failed inside the image, because the divergence was entirely UNDERNEATH
+# the collections: core 2.18.18rc1 on the laptop against 2.16.19 in the EE.
+# Two minors apart, and the laptop on a release candidate.
+#
+# So print both, every run, and flag a mismatch. This is deliberately a NOTE and
+# not a failure: the whole purpose of this wrapper is to run the EE's dependency
+# set rather than the laptop's, so a difference here is expected and is the
+# reason to be running it. What is not acceptable is the difference being
+# invisible, which is what let #173 sit unexplained.
+# ---------------------------------------------------------------------------
+LAPTOP_CORE="$(ansible --version 2>/dev/null | sed -n '1s/.*\[core \([^]]*\)\].*/\1/p')"
+EE_CORE="$(podman run --rm "$EE_IMAGE" ansible --version 2>/dev/null \
+           | sed -n '1s/.*\[core \([^]]*\)\].*/\1/p')"
+
 # Say exactly what crosses into the container before it does. An SE running
 # this in front of a customer should be able to point at this block and say
 # "that is everything, and none of it is in the image".
 echo "==> execution environment : $EE_IMAGE"
 echo "==> playbook              : $PLAYBOOK"
+echo "==> ansible-core          : ${EE_CORE:-unknown} in the EE, ${LAPTOP_CORE:-unknown} on this laptop"
+if [[ -n "$EE_CORE" && -n "$LAPTOP_CORE" && "$EE_CORE" != "$LAPTOP_CORE" ]]; then
+  echo "                            NOTE: these differ. The EE's is the one AAP runs."
+  echo "                            Collection pins can all match and still leave this gap (#173)."
+fi
 echo "==> log                   : $LOG_FILE"
 echo "==> mounts (read-only):"
 for m in "${MOUNTS[@]}"; do echo "      $m"; done
