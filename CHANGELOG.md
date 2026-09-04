@@ -7,11 +7,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed -- #124 guarded the wrong thing: ansible.hub CREATES a missing remote (#170)
+- `hub_collection_remotes.yml` had said since #68 that the file being written
+  entirely as updates was load-bearing, because *"if a remote did not already
+  exist, these items would try to update something absent"*. **That is false,
+  and went unchecked for the whole life of the claim.**
+  `collection_remote.py:277` calls `create_or_update`, and
+  `ah_pulp_object.py:365-367` is `if self.exists: update() else: create()`.
+- **Measured on sandbox rather than only read.** Declaring `zz-probe-124`, which
+  did not exist, returned `changed=True failed=False` and the hub then listed
+  four remotes; deleting it returned the hub to its stock three.
+- #116 measured correctly that the three remotes **exist**. The *consequence* it
+  attached to that measurement was never tested, and #124 inherited it.
+- **Two things that broke.** The `fail_msg` told the reader the file "never
+  creates them" and sent them hunting for a creation path that already exists;
+  and the assert **blocked self-healing** -- a hub missing a remote used to have
+  it recreated on the next apply, and since #124 that hard-stopped instead.
+- **The check stays, with a different justification.** What genuinely depends on
+  the three being stock is the demo:
+  `docs/demos/private-automation-hub/clickops.md` opens on the stock hub UI and
+  edits the `community` remote by hand. An environment missing one would apply
+  cleanly and break the demo in front of a customer. So it is a
+  **demo-readiness gate, not a correctness one**, and the message now says so --
+  including that the run *would* have succeeded.
+- **New escape hatch `hub_require_stock_remotes`** (`-e hub_require_stock_remotes_override=false`),
+  which restores the pre-#124 self-healing behaviour on a hub you know is not
+  stock. Skips the API call as well as the assert.
+- **`config.yml` is deliberately still unguarded**, and the reasoning is now
+  recorded in the playbook so it is not re-proposed: on the dispatch path it
+  would prevent nothing, put a hub call and a hard failure on the main build of
+  a fresh environment known to flap 503 while it settles, and apply a
+  demo-readiness check to every config apply.
+- Corrections to `playbooks/sync_hub.yml`, `hub_collection_remotes.yml`,
+  `docs/plan/pah-plan.md`, and the #124 entry below.
+
 ### Changed -- sync_hub.yml now enforces the hub-remotes premise instead of asserting it in a comment (#124)
 - `group_vars/aap/hub_collection_remotes.yml` is written **entirely as updates**,
   on the premise that `rh-certified`, `validated` and `community` already exist
-  on a stock Private Automation Hub. If one were absent, every item in the file
-  would be trying to update something that is not there.
+  on a stock Private Automation Hub.
+  **The stated reason for that mattering was wrong and is corrected below (#170).**
 - #116 verified that by hand against the live 2.7 hub and recorded the
   measurement. **The premise was then only a comment** -- true on the day it was
   taken, and inherited untested by the next environment.

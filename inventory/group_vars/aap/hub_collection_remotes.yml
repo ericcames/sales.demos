@@ -7,10 +7,21 @@
 # creation. That is why the demo can open on the stock UI and change one of them
 # by hand — there is nothing to create first.
 #
-# THE WHOLE FILE IS WRITTEN AS UPDATES, so that claim is load-bearing rather
-# than decorative: if a remote did not already exist, these items would try to
-# update something absent. It said "a fresh AAP 2.6 hub" and the platform moved
-# to 2.7 (#115), so it was re-measured rather than re-typed (#116).
+# WHY THAT MATTERS IS NOT WHAT THIS FILE USED TO SAY (#170). It claimed the
+# premise was load-bearing because "if a remote did not already exist, these
+# items would try to update something absent". FALSE, and it went unchecked from
+# #68 until #170: ansible.hub CREATES a missing remote -- collection_remote.py:277
+# calls create_or_update, and ah_pulp_object.py:365-367 is `if self.exists:
+# update() else: create()`. Measured on sandbox, declaring a remote that did not
+# exist returned changed=True, failed=False, and the hub then listed it.
+#
+# What actually depends on the three being stock is the DEMO. clickops.md opens
+# on the stock hub UI and edits the `community` remote by hand -- "there is
+# nothing to create first" is a script, not a constraint. An environment missing
+# one would apply cleanly and break the demo instead.
+#
+# It said "a fresh AAP 2.6 hub" and the platform moved to 2.7 (#115), so it was
+# re-measured rather than re-typed (#116).
 #
 # Verified 2026-09-03 against the live 2.7 hub on cluster-kbjvc, via
 # GET /api/galaxy/pulp/api/v3/remotes/ansible/collection/ — count 3, named
@@ -19,12 +30,17 @@
 # bumped: the claim has now held on both 2.6 and 2.7, and pinning it to one
 # release understates that.
 #
-# AND IT IS NO LONGER ONLY THIS COMMENT SAYING SO (#124). playbooks/sync_hub.yml
-# makes that same GET before it applies anything and fails with the missing
-# names if the hub disagrees. A hand measurement recorded in a comment is true
-# on the day it is taken; the next environment inherits the assumption untested.
-# Note that `config.yml` reaches these items through dispatch and does NOT run
-# that check — sync_hub.yml is the guarded path.
+# AND IT IS NO LONGER ONLY THIS COMMENT SAYING SO (#124, corrected in #170).
+# playbooks/sync_hub.yml makes that same GET before it applies anything and
+# fails with the missing names if the hub disagrees. A hand measurement recorded
+# in a comment is true on the day it is taken; the next environment inherits the
+# assumption untested.
+#
+# It is a DEMO-READINESS gate, not a correctness one — the apply would succeed
+# either way — so it carries an escape hatch, `hub_require_stock_remotes`, and
+# `config.yml` deliberately does NOT run it. Putting it on the dispatch path
+# would prevent nothing and would add a hub call and a hard failure to the main
+# build of a fresh environment that is still settling.
 #
 # Defining this variable is what makes dispatch run the hub_collection_remote
 # role. The repositories that consume these remotes, and the sync itself, are in
