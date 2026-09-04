@@ -32,7 +32,14 @@ hub_ee_repositories_all:
       redhat.openshift_virtualization · infra.aap_configuration. Mirrored from
       quay.io/zigfreed/sales-demos-ee.
     registry: quay_io
-    upstream_name: zigfreed/sales-demos-ee
+    # A fork that builds and pushes its OWN execution environment mirrors from
+    # its own namespace (#132). Pulls from the default are public and work for
+    # anyone, so this only matters once you push your own image -- but leaving
+    # it hardcoded means a fork silently mirrors someone else's EE. Keep it in
+    # step with EE_IMAGE in utilities/build-ee.sh, which is already
+    # env-overridable.
+    upstream_name: >-
+      {{ sales_demos_ee_upstream | default('zigfreed/sales-demos-ee', true) }}
     # Only the pinned immutable tag. Deliberately NOT `latest`: nothing in this
     # repo publishes or references a floating tag, and mirroring one would
     # create a second, moving copy of an image the whole design treats as

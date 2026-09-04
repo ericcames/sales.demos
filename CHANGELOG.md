@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed -- the two pieces of repo identity a fork must repoint are now variables (#132)
+- **`scm_url` in `controller_projects.yml` is the sharp one.** A fork whose AAP
+  still names this repo syncs *upstream*: job templates run this repo's
+  playbooks rather than the fork's, and nothing looks wrong -- changes simply
+  never take effect. Now `sales_demos_scm_url`, following the idiom `scm_branch`
+  on the next line already used.
+- **`upstream_name` in `hub_ee_repositories.yml`** is now `sales_demos_ee_upstream`.
+  Pulls from the default namespace are public and work for anyone, so this only
+  matters once a fork pushes its own EE -- but hardcoded, a fork silently
+  mirrors someone else's image.
+- Both use `default(..., true)`, so an empty override falls back rather than
+  being passed through. Verified default, overridden, and empty.
+- `EE_IMAGE` in `utilities/build-ee.sh` was already env-overridable and is
+  unchanged. **`.github/CODEOWNERS` is deliberately left alone** -- correct for
+  this repo, and a fork's own to rewrite.
+- A `### Forking` section in `README.md` with the two commands, and the same
+  facts recorded in `CLAUDE.md`, which mentioned none of this.
+
+### Fixed -- an unguarded copy of the repo URL that #132 did not list (#132)
+- `render-demo-assets.py` carries its own `linux_configure_repo_url`, and
+  `check-renderer-fixture.py` reconciled only `linux_configure_motd_credits` and
+  `facts.json`. So a fork could change the role default and go on rendering a
+  demo page crediting **upstream** -- with CI green, which is precisely the
+  "green tick asserts something it does not mean" failure #145 exists to stop.
+- The check now iterates a `MIRRORED_DEFAULTS` tuple instead of hardcoding one
+  key, and handles scalars as well as lists. Proven by mutating the role default
+  and confirming a non-zero exit and a readable diff, then restoring it.
+
+
 ### Changed -- repointing has two correct answers, and the docs asserted only one (#166)
 - #131's README section said flatly **"do not edit them to repoint the repo"**
   and sent every reader to a `local.yml` overlay. That is wrong for anyone

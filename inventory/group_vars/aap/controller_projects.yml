@@ -22,7 +22,20 @@ controller_projects_all:
     description: "sales.demos — OpenShift Virtualization demo platform"
     organization: "IT Service Automation"
     scm_type: git
-    scm_url: "https://github.com/ericcames/sales.demos.git"
+    # THE SHARP ONE FOR A FORK (#132). A fork whose AAP still names this URL
+    # syncs UPSTREAM, so job templates run this repo's playbooks rather than the
+    # fork's -- and nothing about that looks wrong until a change fails to take
+    # effect. Overridable exactly like scm_branch below; the default keeps this
+    # repo's own behaviour identical.
+    #
+    #   ansible-playbook playbooks/config.yml -i inventory --limit sandbox \
+    #     -e sales_demos_scm_url=https://github.com/<you>/sales.demos.git ...
+    #
+    # `true` as default()'s second argument matters: an empty override would
+    # otherwise be passed through as an empty scm_url.
+    scm_url: >-
+      {{ sales_demos_scm_url
+         | default('https://github.com/ericcames/sales.demos.git', true) }}
     # `main` unless deliberately overridden. The override exists because a job
     # template validates its `playbook:` against the project's CURRENT checkout,
     # so a playbook that has not merged yet cannot be wired up at all — there is

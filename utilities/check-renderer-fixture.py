@@ -14,11 +14,14 @@ WHY THAT GAP IS WORSE THAN NO CHECK. If the renderer and the role diverge,
 both disagree with the machine `linux_configure` actually builds. The green tick
 then asserts something it does not mean. This script closes that.
 
-TWO PAIRINGS ARE CHECKED.
+TWO KINDS OF PAIRING ARE CHECKED.
 
-1. `linux_configure_motd_credits`. The MOTD "Powered by" list is data, not
-   markup — motd.j2 iterates it — and it is defined in the role defaults and
-   again in the renderer's FIXTURE. A straight list comparison.
+1. Role defaults the FIXTURE copies, listed in MIRRORED_DEFAULTS. The MOTD
+   "Powered by" list is data, not markup — motd.j2 iterates it — and it is
+   defined in the role defaults and again in the renderer's FIXTURE. So is
+   `linux_configure_repo_url`, which went unchecked until #132: a fork sets it
+   to its own repo and the rendered demo page would go on crediting upstream,
+   silently, because nothing compared the two.
 
 2. `facts.json`. The role writes it from a Jinja dict literal piped through
    `to_nice_json`; the renderer builds the same document in `facts_json()`.
@@ -85,24 +88,47 @@ def report(name: str, want, got, source: str, mirror: str) -> int:
     return 1
 
 
-def check_motd_credits(renderer) -> int:
+# Role defaults the renderer keeps its own copy of. Each must match the role
+# exactly; the role wins. Add a key here whenever FIXTURE gains another value
+# the role owns -- an unreconciled copy is the whole failure mode this exists
+# to catch.
+MIRRORED_DEFAULTS = (
+    "linux_configure_motd_credits",
+    # #132: a fork changes this to its own URL and the demo page would otherwise
+    # keep crediting upstream, because nothing compared the two.
+    "linux_configure_repo_url",
+)
+
+
+def check_role_defaults(renderer) -> int:
     defaults = yaml.safe_load(DEFAULTS.read_text(encoding="utf-8")) or {}
-    key = "linux_configure_motd_credits"
+    failures = 0
 
-    if key not in defaults:
-        print(f"::error file={DEFAULTS.relative_to(REPO)}::{key} is no longer defined")
-        return 1
-    if key not in renderer.FIXTURE:
-        print(f"::error::{key} is no longer in render-demo-assets.py's FIXTURE")
-        return 1
+    for key in MIRRORED_DEFAULTS:
+        if key not in defaults:
+            print(f"::error file={DEFAULTS.relative_to(REPO)}::{key} is no longer defined")
+            failures += 1
+            continue
+        if key not in renderer.FIXTURE:
+            print(f"::error::{key} is no longer in render-demo-assets.py's FIXTURE")
+            failures += 1
+            continue
 
-    return report(
-        key,
-        list(defaults[key]),
-        list(renderer.FIXTURE[key]),
-        str(DEFAULTS.relative_to(REPO)),
-        "utilities/render-demo-assets.py",
-    )
+        want, got = defaults[key], renderer.FIXTURE[key]
+        if isinstance(want, list) != isinstance(got, list):
+            print(f"::error::{key} is a list in one source and a scalar in the other")
+            failures += 1
+            continue
+
+        failures += report(
+            key,
+            list(want) if isinstance(want, list) else want,
+            list(got) if isinstance(got, list) else got,
+            str(DEFAULTS.relative_to(REPO)),
+            "utilities/render-demo-assets.py",
+        )
+
+    return failures
 
 
 def check_facts_json(renderer) -> int:
@@ -159,7 +185,7 @@ def check_facts_json(renderer) -> int:
 
 def main() -> int:
     renderer = load_renderer()
-    failures = check_motd_credits(renderer) + check_facts_json(renderer)
+    failures = check_role_defaults(renderer) + check_facts_json(renderer)
 
     if failures:
         print(
@@ -171,7 +197,10 @@ def main() -> int:
         )
         return 1
 
-    print("Renderer matches the linux_configure role: motd credits, facts.json.")
+    print(
+        "Renderer matches the linux_configure role: "
+        f"{len(MIRRORED_DEFAULTS)} role default(s), facts.json."
+    )
     return 0
 
 
