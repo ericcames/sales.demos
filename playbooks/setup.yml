@@ -49,12 +49,23 @@
 # not worth configuring", and PAH content is now the subject of the repo's
 # second use case rather than a means to an end.
 #
-# The step that WOULD invalidate it — pointing AAP's project syncs at PAH — is
-# tracked separately in #69, behind gates, precisely because a Galaxy credential
-# on the organization makes every project sync depend on the hub being complete.
-# It is already known to be incomplete: two of the nine collections this repo
-# pins sit below their version window and are not in the hub. Check it with
-# `python3 utilities/refresh-hub-requirements.py --audit-pins`.
+# THE STEP THAT WOULD INVALIDATE IT NOW EXISTS, AND IS STILL NOT PART OF THIS
+# PLAYBOOK. playbooks/link_hub.yml (#69) attaches a Galaxy credential aimed at
+# the curated `approved` repository, and from then on every project sync in the
+# organization depends on that repository being complete. It is deliberately a
+# separate, opt-in run rather than a stage here: setup.yml must leave an
+# environment whose job templates work, and this is the one change that can stop
+# them working. Run it — and its reversal — through /pah-link-aap.
+#
+# The hub being "already known to be incomplete" is fixed rather than still
+# true. Two pins sat below their version window when this was written; #70's
+# generator lowers a floor to any version this repo pins, and `approved` copies
+# exact versions so the window stops applying to it at all. What #69 then found
+# is a different incompleteness the audit could not see: `approved` held the
+# nine DIRECT dependencies and a project sync resolves the TRANSITIVE ones, so
+# it failed on ansible.eda. Check both with
+# `python3 utilities/refresh-hub-requirements.py --audit-pins` and
+# `--write-approved`, which now refuses to write a set missing a dependency.
 #
 # WHAT PAH CONFIGURATION COSTS THIS PLAYBOOK: seconds. Stage 2 creates the three
 # remotes and repositories and STARTS the sync without waiting for it, so the

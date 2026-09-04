@@ -1,0 +1,493 @@
+---
+# ===========================================================================
+# link_hub.yml — point AAP project syncs at the curated Hub repository. #69.
+#
+#   ansible-playbook playbooks/link_hub.yml -i inventory --limit sandbox \
+#     -e target_env=sandbox \
+#     --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
+#
+# AND THE REVERSAL, which is half of why this is safe to run at all:
+#
+#   ansible-playbook playbooks/link_hub.yml -i inventory --limit sandbox \
+#     -e target_env=sandbox -e hub_galaxy_link_state=absent \
+#     --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
+#
+# WHAT THIS DOES. Creates a Galaxy credential pointed at this hub's `approved`
+# repository and assigns it to the organization, so every project sync resolves
+# collections/requirements.yml from Private Automation Hub instead of the
+# internet. That is the payoff of #68 and #70 — until now the hub was a
+# populated thing nobody pointed at.
+#
+# WHAT IT RISKS, STATED FIRST. A Galaxy credential on the organization makes
+# EVERY project sync in it resolve from PAH. If `approved` is short one
+# collection, the sync fails and every job template in the OpenShift
+# Virtualization demo fails with it. Three things bound that, and all three are
+# load-bearing: this playbook REFUSES to link an empty repository, it ships with
+# the reversal above already proven, and it goes to sandbox alone first.
+#
+# -------------------------------------------------------------------------
+# WHY THE TOKEN IS MINTED HERE RATHER THAN READ FROM THE VAULT
+# -------------------------------------------------------------------------
+# #69 originally called the credential's token "per-user and short-lived" and
+# asked for a rotation story. The premise was wrong. Measured on the live hub:
+#
+#     GALAXY_TOKEN_EXPIRATION: null
+#
+# There is no time-based expiry; "short-lived" is inherited from Red Hat's
+# CLOUD Automation Hub, which issues SSO refresh tokens that die after 30 days.
+# That is not a property of on-prem PAH.
+#
+# IT DOES NOT LOWER THE COST, BECAUSE THE ENVIRONMENT ITSELF IS EPHEMERAL. The
+# token lives exactly as long as the RHDP environment holding it, and those are
+# torn down and rebuilt regularly. So the rotation cadence was never 30 days —
+# it is every environment rebuild, roughly the cadence at which the identity
+# lines in connection.yml move. A vaulted copy is garbage the moment the cluster
+# is replaced.
+#
+# So the question is not where to store it but how to MINT it, and the answer
+# was already in the repo: aap_username / aap_password are exactly the
+# credentials that already rotate with the environment. Nothing new is stored
+# and there is no second copy to go stale.
+#
+# -------------------------------------------------------------------------
+# IT IS A GATEWAY TOKEN, NOT A PAH API TOKEN. THIS COST A FAILED RUN TO LEARN.
+# -------------------------------------------------------------------------
+# The obvious mint is token #2 of the three-token table in
+# docs/plan/pah-plan.md — the hub's own API token, POST /api/galaxy/v3/auth/token/.
+# That endpoint exists on AAP 2.7 and cheerfully issues a 40-character token.
+#
+# THE GATEWAY DOES NOT ACCEPT IT. Measured on sandbox 2026-09-04, against
+# /api/galaxy/v3/plugin/ansible/content/approved/collections/index/:
+#
+#     basic auth (admin/password)          200
+#     galaxy token, Authorization: Token   403
+#     galaxy token, Authorization: Bearer  403
+#     GATEWAY token, either scheme         200
+#
+# So a Galaxy credential built from a galaxy_ng token fails the project sync
+# with `HTTP Code: 403, Message: Authentication credentials were not provided`
+# — which reads like a credential that was never attached, not one that was
+# rejected, and sends you looking in entirely the wrong place. It was the first
+# real run of this playbook that said so, and the verification step at the
+# bottom is what caught it.
+#
+# The mint is therefore POST /api/gateway/v1/tokens/, the same endpoint
+# utilities/make-aap-mcp.sh already uses for the MCP client token. One
+# mechanism, two consumers.
+#
+# SCOPE IS `read`, DELIBERATELY. A project sync only ever downloads. A gateway
+# token inherits the creating user's permissions (Red Hat's words), so minting
+# this as admin with `write` would hand a project sync admin-level write on the
+# whole platform for no benefit. `read` was verified sufficient against the hub
+# index before it was chosen.
+#
+# TWO CONSEQUENCES, SAID OUT LOUD RATHER THAN DISCOVERED:
+#
+#   1. GATEWAY TOKENS ACCUMULATE. Unlike the galaxy_ng endpoint, which RESETS
+#      the user's token, every POST here creates another one. So this playbook
+#      retires its own previous tokens — matched on description — before minting
+#      a fresh one. Without that, every run leaves an orphan behind.
+#   2. THE SURVIVING TOKEN IS A DURABLE ONE A PLAYBOOK CREATES, so it cannot be
+#      deleted in an `always:` block — you cannot clean up the thing you made it
+#      to be. Same shape as the AAP MCP client token (#102) and the same
+#      exception to CLAUDE.md's rule, for the same reason: the token IS the
+#      deliverable. `-e hub_galaxy_link_state=absent` is how you retire it, and
+#      it deletes the token as well as the credential.
+#
+# THE TOKENLESS ALTERNATIVE WAS CONSIDERED AND REJECTED. The credential type
+# requires only `url`; token and auth_url are optional. Setting
+# GALAXY_ENABLE_UNAUTHENTICATED_COLLECTION_ACCESS and _DOWNLOAD to true would
+# make a tokenless credential work, with nothing to mint at all. The cost is
+# that anything able to reach the route reads every collection in the hub.
+# Defensible on an ephemeral demo cluster; a poor pattern to demonstrate to a
+# customer who will copy it.
+#
+# -------------------------------------------------------------------------
+# WHY THE CREDENTIAL IS NOT IN inventory/group_vars/aap/controller_credentials.yml
+# -------------------------------------------------------------------------
+# Because it carries a minted token, and group_vars/aap/aap_settings.yml sets
+# dispatch_include_wildcard_vars: true. Any variable named
+# controller_credentials_* is merged into config.yml's dispatch run, which has
+# no minted token — it would create this credential with an undefined one and
+# break the very project sync it exists to fix. The list lives in this
+# playbook's own vars for that reason. Do not "tidy" it into group_vars.
+#
+# The ORGANIZATION assignment is safe to own out here too, and that was checked
+# rather than hoped: gateway_organizations resolves an absent galaxy_credentials
+# key to `omit` unless gateway_organizations_enforce_defaults is true, and
+# roles/gateway_organizations/defaults/main.yml:17 defaults it to false. So a
+# later config.yml run leaves the assignment alone.
+#
+# ansible.controller RATHER THAN ansible.platform, DELIBERATELY. CLAUDE.md
+# prefers ansible.platform, but there is no platform equivalent to prefer here:
+# ansible/platform/plugins/modules/ has no credential module, and
+# galaxy_credentials is set by ansible.controller.organization inside
+# infra.aap_configuration itself. This is the collection's own choice, not a
+# missed migration.
+# ===========================================================================
+
+- name: Point AAP project syncs at Private Automation Hub
+  hosts: aap
+  gather_facts: false
+
+  vars:
+    # `-e hub_galaxy_link_state=absent` reverses everything below. Extra-vars
+    # outrank play vars, so the plain default here is the whole mechanism.
+    hub_galaxy_link_state: "present"
+
+    hub_curated_repository: "{{ hub_curated_repository_override | default('approved') }}"
+    hub_galaxy_credential_name: "Sales Demos - PAH Galaxy"
+
+    # Named once rather than repeated, the same way config.yml does it, so the
+    # verification sync and the credential's organization cannot drift apart.
+    sales_demos_project: "Sales Demos"
+    sales_demos_organization: "IT Service Automation"
+
+    hub_base: "https://{{ aap_hostname }}"
+    hub_pulp: "https://{{ aap_hostname }}/api/galaxy/pulp/api/v3"
+    controller_api: "https://{{ aap_hostname }}/api/controller/v2"
+    gateway_api: "https://{{ aap_hostname }}/api/gateway/v1"
+
+    # How this playbook recognises the tokens it minted on an earlier run, so it
+    # can retire them. Gateway tokens accumulate; nothing else matches on this.
+    hub_galaxy_token_description: "sales.demos PAH Galaxy (#69)"
+
+    # What the credential points at. Exactly the string curate_hub.yml prints
+    # at the end of its run — one distribution, not four. Pointing at the three
+    # mirrors as fallbacks would weaken the claim this demo makes (your teams
+    # install what you approved) and pointing at public Galaxy would defeat the
+    # no-egress claim entirely.
+    hub_galaxy_url: "https://{{ aap_hostname }}/api/galaxy/content/{{ hub_curated_repository }}/"
+
+    # Shared by every uri call below. Basic auth against the gateway, which
+    # fronts Hub on the same hostname.
+    hub_auth: &hub_auth
+      url_username: "{{ aap_username }}"
+      url_password: "{{ aap_password }}"
+      force_basic_auth: true
+      validate_certs: "{{ aap_validate_certs | default(false) }}"
+
+  tasks:
+    - name: Assert the environment is unambiguous
+      ansible.builtin.include_tasks: tasks/assert_target_environment.yml
+
+    - name: Assert AAP connection variables are set
+      ansible.builtin.assert:
+        that:
+          - aap_hostname | default('') | length > 0
+          - aap_username | default('') | length > 0
+          - aap_password | default('') | length > 0
+        fail_msg: >-
+          aap_hostname / aap_username / aap_password are not set for
+          '{{ aap_env_name | default("?") }}'. Check that environment's
+          connection.yml, that playbooks/group_vars/all/secrets.yml exists (it is
+          gitignored -- a fresh clone has only the .example, #130), and that
+          --vault-id was passed so env_secrets resolves.
+        quiet: true
+
+    - name: Assert the requested state is one this playbook knows
+      ansible.builtin.assert:
+        that:
+          - hub_galaxy_link_state in ['present', 'absent']
+        fail_msg: >-
+          hub_galaxy_link_state must be 'present' or 'absent', not
+          '{{ hub_galaxy_link_state }}'.
+        quiet: true
+
+    - name: Report the target
+      ansible.builtin.debug:
+        msg:
+          - "{{ (hub_galaxy_link_state == 'present') | ternary('LINKING', 'UNLINKING') }} {{ aap_env_name }} ({{ aap_hostname }})."
+          - "Organization: {{ sales_demos_organization }}"
+          - "Credential:   {{ hub_galaxy_credential_name }}"
+          - "Repository:   {{ hub_galaxy_url }}"
+
+    # -------------------------------------------------------------------
+    # Refuse to link an empty repository.
+    #
+    # THIS IS THE CHECK THAT PREVENTS THE FAILURE THIS ISSUE OPENS BY WARNING
+    # ABOUT. A Galaxy credential over an empty `approved` does not fail here —
+    # it fails later, in every project sync in the organization, with an error
+    # that points at the collection rather than at this playbook.
+    #
+    # check_mode: false on the reads so --check is a real preflight rather than
+    # a play that skips its own gates.
+    # -------------------------------------------------------------------
+    - name: Verify the curated repository before pointing anything at it
+      when: hub_galaxy_link_state == 'present'
+      block:
+        - name: Find the curated repository
+          ansible.builtin.uri:
+            url: "{{ hub_pulp }}/repositories/ansible/ansible/?name={{ hub_curated_repository }}"
+            <<: *hub_auth
+          register: hub_repo_lookup
+          check_mode: false
+
+        - name: Assert the curated repository exists
+          ansible.builtin.assert:
+            that:
+              - hub_repo_lookup.json.count | int == 1
+            fail_msg: >-
+              No '{{ hub_curated_repository }}' repository on this hub. Apply the
+              configuration first: ansible-playbook playbooks/config.yml -i inventory
+              --limit {{ aap_env_name }} -e target_env={{ aap_env_name }}
+            quiet: true
+
+        - name: Read what the curated repository holds
+          ansible.builtin.uri:
+            url: >-
+              {{ hub_pulp }}/content/ansible/collection_versions/?repository_version={{ hub_repo_lookup.json.results[0].latest_version_href }}&limit=500
+            <<: *hub_auth
+          register: hub_contents
+          check_mode: false
+
+        - name: Assert the curated repository is not empty
+          ansible.builtin.assert:
+            that:
+              - hub_contents.json.count | int > 0
+            fail_msg: >-
+              '{{ hub_curated_repository }}' is empty, so pointing AAP at it
+              would break every project sync in
+              '{{ sales_demos_organization }}'. Populate it first:
+              ansible-playbook playbooks/curate_hub.yml -i inventory
+              --limit {{ aap_env_name }} -e target_env={{ aap_env_name }}
+            quiet: true
+
+        - name: Report what the credential will resolve against
+          ansible.builtin.debug:
+            msg: >-
+              '{{ hub_curated_repository }}' holds {{ hub_contents.json.count }}
+              collection versions.
+
+    # -------------------------------------------------------------------
+    # Mint, wire.
+    # -------------------------------------------------------------------
+    - name: Create the Galaxy credential and assign it to the organization
+      when:
+        - hub_galaxy_link_state == 'present'
+        # --check must not mint a token: a POST here rotates the real one, and
+        # a check run that quietly invalidates a working credential is worse
+        # than one that reports nothing.
+        - not ansible_check_mode
+      block:
+        - name: Find tokens this playbook minted on an earlier run
+          ansible.builtin.uri:
+            url: "{{ gateway_api }}/tokens/?description={{ hub_galaxy_token_description | urlencode }}"
+            <<: *hub_auth
+          register: hub_token_existing
+          check_mode: false
+
+        - name: Retire them before minting a replacement
+          # Gateway tokens accumulate — unlike the galaxy_ng endpoint, a POST
+          # here adds one rather than replacing. Without this, every run leaves
+          # an orphan credential behind on the platform.
+          ansible.builtin.uri:
+            url: "{{ gateway_api }}/tokens/{{ item.id }}/"
+            method: DELETE
+            status_code: [202, 204]
+            <<: *hub_auth
+          loop: "{{ hub_token_existing.json.results | default([]) }}"
+          loop_control:
+            label: "token {{ item.id }} ({{ item.created | default('?') }})"
+
+        - name: Mint a read-scoped gateway token from the environment's own credentials
+          # NOT /api/galaxy/v3/auth/token/. That endpoint issues a token the 2.7
+          # gateway rejects with 403 not_authenticated — see the header.
+          ansible.builtin.uri:
+            url: "{{ gateway_api }}/tokens/"
+            method: POST
+            body_format: json
+            body:
+              description: "{{ hub_galaxy_token_description }}"
+              scope: read
+            status_code: [200, 201]
+            <<: *hub_auth
+          register: hub_token_mint
+          no_log: true
+          changed_when: true
+
+        - name: Assert the gateway returned a token
+          ansible.builtin.assert:
+            that:
+              - hub_token_mint.json.token | default('') | length > 0
+            fail_msg: >-
+              POST /api/gateway/v1/tokens/ returned no token. The gateway
+              authenticated the request but did not issue one.
+            quiet: true
+
+        - name: Create the Galaxy credential
+          ansible.builtin.include_role:
+            name: infra.aap_configuration.controller_credentials
+          vars:
+            controller_credentials:
+              - name: "{{ hub_galaxy_credential_name }}"
+                organization: "{{ sales_demos_organization }}"
+                credential_type: "Ansible Galaxy/Automation Hub API Token"
+                description: >-
+                  Resolves collections from this environment's Private Automation
+                  Hub, curated repository '{{ hub_curated_repository }}'. Token
+                  minted by playbooks/link_hub.yml (#69) — not stored anywhere.
+                inputs:
+                  url: "{{ hub_galaxy_url }}"
+                  token: "{{ hub_token_mint.json.token }}"
+
+        - name: Assign the credential to the organization
+          ansible.builtin.include_role:
+            name: infra.aap_configuration.gateway_organizations
+          vars:
+            aap_organizations:
+              - name: "{{ sales_demos_organization }}"
+                galaxy_credentials:
+                  - "{{ hub_galaxy_credential_name }}"
+
+    # -------------------------------------------------------------------
+    # The reversal. Order matters: unassign before deleting, or the credential
+    # is removed out from under an organization still referencing it.
+    # -------------------------------------------------------------------
+    - name: Unlink the organization from the hub
+      when:
+        - hub_galaxy_link_state == 'absent'
+        - not ansible_check_mode
+      block:
+        - name: Remove the Galaxy credential from the organization
+          ansible.builtin.include_role:
+            name: infra.aap_configuration.gateway_organizations
+          vars:
+            aap_organizations:
+              - name: "{{ sales_demos_organization }}"
+                galaxy_credentials: []
+
+        - name: Delete the Galaxy credential
+          ansible.builtin.include_role:
+            name: infra.aap_configuration.controller_credentials
+          vars:
+            controller_credentials:
+              - name: "{{ hub_galaxy_credential_name }}"
+                organization: "{{ sales_demos_organization }}"
+                credential_type: "Ansible Galaxy/Automation Hub API Token"
+                state: absent
+
+        - name: Find the gateway tokens this playbook minted
+          ansible.builtin.uri:
+            url: "{{ gateway_api }}/tokens/?description={{ hub_galaxy_token_description | urlencode }}"
+            <<: *hub_auth
+          register: hub_token_leftover
+          check_mode: false
+
+        - name: Retire them
+          # The one place the durable token IS cleaned up. Unlinking without this
+          # would leave a live read-scoped credential on the platform with
+          # nothing referencing it — the exact orphan CLAUDE.md's rule exists to
+          # prevent, and the reason that rule's exception is narrow.
+          ansible.builtin.uri:
+            url: "{{ gateway_api }}/tokens/{{ item.id }}/"
+            method: DELETE
+            status_code: [202, 204]
+            <<: *hub_auth
+          loop: "{{ hub_token_leftover.json.results | default([]) }}"
+          loop_control:
+            label: "token {{ item.id }} ({{ item.created | default('?') }})"
+
+    # -------------------------------------------------------------------
+    # Verification. Ask AAP, not the recap.
+    # -------------------------------------------------------------------
+    - name: Verify the result against AAP
+      when: not ansible_check_mode
+      block:
+        - name: Look up the organization
+          ansible.builtin.uri:
+            url: "{{ controller_api }}/organizations/?name={{ sales_demos_organization | urlencode }}"
+            <<: *hub_auth
+          register: link_org_lookup
+          check_mode: false
+
+        - name: Assert the organization exists
+          ansible.builtin.assert:
+            that:
+              - link_org_lookup.json.count | int == 1
+            fail_msg: >-
+              No organization named '{{ sales_demos_organization }}' on
+              {{ aap_env_name }}. Run playbooks/config.yml first.
+            quiet: true
+
+        - name: Read the organization's Galaxy credentials
+          ansible.builtin.uri:
+            url: "{{ hub_base }}{{ link_org_lookup.json.results[0].related.galaxy_credentials }}"
+            <<: *hub_auth
+          register: link_org_galaxy
+          check_mode: false
+
+        - name: Assert the organization is linked to the hub
+          ansible.builtin.assert:
+            that:
+              - hub_galaxy_credential_name in (link_org_galaxy.json.results | map(attribute='name') | list)
+            fail_msg: >-
+              '{{ sales_demos_organization }}' does not carry
+              '{{ hub_galaxy_credential_name }}'. It has:
+              {{ link_org_galaxy.json.results | map(attribute='name') | list | join(', ') | default('nothing', true) }}
+            quiet: true
+          when: hub_galaxy_link_state == 'present'
+
+        - name: Assert the organization is no longer linked to the hub
+          ansible.builtin.assert:
+            that:
+              - hub_galaxy_credential_name not in (link_org_galaxy.json.results | map(attribute='name') | list)
+            fail_msg: >-
+              '{{ hub_galaxy_credential_name }}' is still assigned to
+              '{{ sales_demos_organization }}' after an unlink.
+            quiet: true
+          when: hub_galaxy_link_state == 'absent'
+
+        # THE REAL TEST. Everything above proves the objects exist; this proves
+        # they work. A project update runs the collection install, which is the
+        # thing that breaks if the hub cannot serve all nine.
+        #
+        # It reports `ok`, not `changed`, and still did the work — a project
+        # update is an action rather than a configuration change. Do not read
+        # the `ok` as a no-op and "fix" it. (Same note as config.yml.)
+        - name: Look up the project
+          ansible.builtin.uri:
+            url: "{{ controller_api }}/projects/?name={{ sales_demos_project | urlencode }}"
+            <<: *hub_auth
+          register: link_project_lookup
+          check_mode: false
+
+        - name: Sync the project so the new Galaxy credential is actually exercised
+          ansible.controller.project_update:
+            name: "{{ sales_demos_project }}"
+            organization: "{{ sales_demos_organization }}"
+            wait: true
+            timeout: "{{ sync_project_timeout | default(600) | int }}"
+            controller_host: "{{ hub_base }}"
+            controller_username: "{{ aap_username }}"
+            controller_password: "{{ aap_password }}"
+            validate_certs: "{{ aap_validate_certs | default(false) | bool }}"
+          when:
+            - verify_project_sync | default(true) | bool
+            - link_project_lookup.json.count | default(0) | int > 0
+
+        - name: Summarize
+          ansible.builtin.debug:
+            msg: >-
+              {{
+                (hub_galaxy_link_state == 'present') | ternary(
+                  [
+                    'LINKED. ' ~ sales_demos_organization ~ ' on ' ~ aap_env_name ~ ' now resolves collections from ' ~ hub_galaxy_url,
+                    'The Sales Demos project sync succeeded against it.',
+                    'The gateway token was minted from the credentials this environment already holds, and stored nowhere. Re-running retires it and mints another.',
+                    'Reverse with: -e hub_galaxy_link_state=absent'
+                  ],
+                  [
+                    'UNLINKED. ' ~ sales_demos_organization ~ ' on ' ~ aap_env_name ~ ' no longer carries a Galaxy credential.',
+                    'Project syncs resolve as they did before #69, from the execution environment.',
+                    'The minted gateway token was deleted along with the credential.'
+                  ]
+                )
+              }}
+
+    - name: Report that --check changed nothing
+      ansible.builtin.debug:
+        msg:
+          - "CHECK MODE: no token was minted and nothing was created or removed."
+          - "The curated repository was still verified, so this is a real preflight."
+      when: ansible_check_mode

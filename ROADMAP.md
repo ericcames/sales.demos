@@ -49,7 +49,7 @@ the Palo Alto and Aruba issues *are*. See
 |---|---|---|---|---|
 | Populate PAH | `pah-sync` | `playbooks/sync_hub.yml` | Certified (214) and validated (47) windowed to 3 versions each, plus 15 curated community collections at their current version. Configured on every build by `config.yml`. | **Draft** ([#68](https://github.com/ericcames/sales.demos/issues/68)) |
 | Curate a repository | `pah-sync` | `playbooks/curate_hub.yml` | A fourth repository, `approved`, with no remote. Contents declared in `hub/approved-collections.yml` and reconciled — it adds **and removes**, which a sync cannot. The one to point consumers at. | **Done** ([#70](https://github.com/ericcames/sales.demos/issues/70)) |
-| Point AAP at PAH | — | — | Organization Galaxy credentials, so project syncs resolve from the hub. Deliberately deferred behind gates — gate 2 already fails. | Not started ([#69](https://github.com/ericcames/sales.demos/issues/69)) |
+| Point AAP at PAH | `pah-link-aap` | `playbooks/link_hub.yml` | An organization Galaxy credential aimed at `approved`, so project syncs resolve from the hub with no internet egress. The token is minted at run time from credentials the environment already holds, never stored. Reversible in one flag. | **Done on `sandbox`** ([#69](https://github.com/ericcames/sales.demos/issues/69)) |
 
 **`pah-sync` has no job template, on purpose.** The Red Hat offline token lives
 in `~/.ansible.cfg` and an execution environment has no such file. A vaulted

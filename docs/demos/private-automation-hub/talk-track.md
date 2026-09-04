@@ -336,5 +336,6 @@ Cut Beat 5 first. The content inventory is the least portable part.
 | "Exactly one version each, and no other" | `sync_hub.yml`'s community pin assert — **verified 15/15 live** |
 | "The token fails quietly" | `sync_hub.yml`'s token assert; `invalid_grant` observed during the build |
 | "One bad dependency fails the whole sync" | `hub_collection_remotes.yml` — the `containers.podman` 404 |
-| "AAP is not pointed at the hub" | No `galaxy_credentials` in `aap_organizations.yml`; [#69](https://github.com/ericcames/sales.demos/issues/69) |
-| "Two pinned collections are below the window" | `refresh-hub-requirements.py --audit-pins` |
+| "AAP resolves from the hub, not the internet" | `playbooks/link_hub.yml` — **verified live on sandbox**, project sync green against `approved` ([#69](https://github.com/ericcames/sales.demos/issues/69)) |
+| "A curated set must be the dependency closure, not the pin list" | `refresh-hub-requirements.py --write-approved`; the `ansible.eda` failure |
+| "Two pinned collections were below the window" | `refresh-hub-requirements.py --audit-pins` — now reports all nine ok |

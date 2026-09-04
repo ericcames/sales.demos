@@ -290,23 +290,44 @@ Environment secrets.
 - **Always clean up tokens** — any playbook creating a token must delete it in an
   `always:` block so stale tokens do not accumulate.
 
-  **One documented exception: the AAP MCP client token** (#102). An MCP client
-  needs a *durable* credential, so it cannot be cleaned up in an `always:` block
-  without destroying the thing it was created for. Three things keep that from
-  becoming a hole in the rule:
+  **The exception is a token that IS the deliverable**, and there are two. A
+  credential created so that something else can keep using it cannot be deleted
+  in an `always:` block without destroying the thing it was created for. The rule
+  still holds without exception for every token created *incidentally*, to get a
+  playbook's own work done.
 
-  - **No playbook creates it.** `/sales-demos-mcp` does, on a laptop. The rule
-    above still holds without exception for everything that runs from AAP.
-  - **It is never committed.** It is registered with
-    `claude mcp add --scope local`, which writes to the operator's own config
-    rather than the tracked `.mcp.json` — the same reasoning that keeps the Red
-    Hat offline token (#22) and the PAH API token (#68) to a single copy.
-  - **It is the one token you must retire by hand.** The skill documents how to
-    list and delete them. Say so out loud when handing this to anyone.
+  **1. The AAP MCP client token** (#102), created by `/sales-demos-mcp` on a
+  laptop. It is never committed — `claude mcp add --scope local` writes to the
+  operator's own config rather than the tracked `.mcp.json`, the same reasoning
+  that keeps the Red Hat offline token (#22) and the PAH API token (#68) to a
+  single copy. **It is retired by hand**; the skill documents how to list and
+  delete them, and you should say so out loud when handing this to anyone.
 
-  It also **inherits the creating user's permissions** — Red Hat's words, not a
-  paraphrase — so making it as `admin` gives the agent admin. The environment's
-  `aap_mcp_allow_write_operations` is a second gate, not the only one.
+  **2. The PAH Galaxy token** (#69), created by `playbooks/link_hub.yml`. This
+  one **is** created by a playbook — the rule's earlier wording said no playbook
+  creates such a token, and that stopped being true here rather than being
+  wrong before. Three things keep it from being a hole:
+
+  - **It is minted, never stored.** It comes from `aap_username` /
+    `aap_password`, which already rotate with the environment, so a rebuilt
+    cluster reconstructs it with nothing to go stale. That is the whole answer
+    to #69's gate 3: ask how long the *environment* lives before designing
+    anything that stores a credential from it.
+  - **The playbook retires its own.** Gateway tokens *accumulate* (unlike the
+    galaxy_ng endpoint, which resets), so `link_hub.yml` deletes the tokens it
+    minted on earlier runs before minting a fresh one, matched on description.
+    Exactly one should ever exist.
+  - **There is a real cleanup path, and it is proven.**
+    `-e hub_galaxy_link_state=absent` unassigns the credential, deletes it, and
+    deletes the token. This is the half that makes the exception narrow, and it
+    ships in the same PR as the link.
+
+  Both **inherit the creating user's permissions** — Red Hat's words, not a
+  paraphrase — so making one as `admin` gives the holder admin. For MCP the
+  environment's `aap_mcp_allow_write_operations` is a second gate, not the only
+  one. For the Galaxy token the mitigation is scope: `read`, verified sufficient
+  against the hub index before it was chosen, because a project sync only ever
+  downloads.
 - **Never ship a project-local `ansible.cfg`** — Ansible picks one cfg file and
   does not merge. A local one shadows `~/.ansible.cfg`, which holds the working
   Automation Hub token, and breaks `ansible-galaxy collection install` for Red

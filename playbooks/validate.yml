@@ -203,28 +203,22 @@
       failed_when: false
 
     - name: Work out which declared EE registries are missing
+      # Since #186, hub_ee_registries_all is no longer defined — we use the
+      # stock "Red Hat Quay.io" registry instead of creating our own. The
+      # default([]) makes the difference empty, so the skip block below is a
+      # no-op. It is kept as a safety net: if a future change re-introduces a
+      # custom registry, the protection returns without anyone remembering to
+      # re-add it.
       ansible.builtin.set_fact:
         validate_missing_registries: >-
           {{ hub_ee_registries_all | default([]) | map(attribute='name') | list
              | difference(validate_ee_registries.json.data | default([]) | map(attribute='name') | list) }}
 
     - name: Skip the EE repository role when its registry does not exist yet
-      # THE COVERAGE GAP, STATED WHERE IT HAPPENS RATHER THAN LEFT IMPLICIT.
-      #
       # hub_ee_repository is the role that crashes, and it crashes only because
       # the registry it reads is absent. Emptying its input makes dispatch
       # include the role with nothing to iterate, so the run completes instead
       # of dying with a KeyError.
-      #
-      # What is NOT validated as a result: the EE repository items themselves —
-      # a typo in `name`, `registry` or `upstream_name` in
-      # hub_ee_repositories.yml would not be caught on this run. That is a real
-      # loss, and it is the price of validate being runnable at all on a fresh
-      # environment.
-      #
-      # It is conditional on purpose. Once config.yml has created the registry,
-      # this does nothing and full coverage returns — so the gap exists only on
-      # the first run, and the next validate closes it.
       ansible.builtin.set_fact:
         hub_ee_repositories_all: []
       when: validate_missing_registries | length > 0

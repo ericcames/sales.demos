@@ -240,37 +240,57 @@ treats them differently.
 
 ## "So AAP now installs its collections from your hub?"
 
-**Not yet, and deliberately — but the blocker is gone.** No organization has a
-Galaxy credential, so nothing in AAP resolves from this hub today.
+**Yes — and it took three attempts to get right, which is the interesting part.**
+This environment's project syncs resolve every collection from `approved`, with
+no call to the internet.
 
-The reason for the caution is worth giving in full. A Galaxy credential on the
-organization makes *every* project sync depend on the hub being complete, and if
-one collection is missing every job template breaks.
+The reason for the long caution is worth giving in full. A Galaxy credential on
+the organization makes *every* project sync depend on the hub being complete, and
+if one collection is missing every job template breaks. So it was held back
+behind explicit gates rather than switched on because it sounded good.
 
-It genuinely was incomplete. Two of the nine collections this repo pins sat
-*below* the certified 3-version window, so they were not in the hub at all:
+**The hub was incomplete three separate ways, and each was found by a different
+kind of check.**
+
+*Offline, by an audit.* Two of the nine collections this repo pins sat *below*
+the certified 3-version window, so they were not in the hub at all:
 
 ```
 BELOW  ansible.controller  — pinned 4.8.0,        floor >=4.8.2
 BELOW  ansible.platform    — pinned 2.7.20260604, floor >=2.7.20260615
 ```
 
-Found by writing an offline check (`--audit-pins`), not by having it fail in
-front of a customer — and then found *again*, for real, when the first attempt
-to build the curated repository refused to proceed because that exact version
-was missing.
+Caught by writing `--audit-pins`, not by failing in front of anyone. The
+generator now lowers a floor to any version this repo pins.
 
-The fix: the generator now lowers a version floor to any version this repo has
-pinned. Cost, two extra versions across the whole hub. `--audit-pins` now reports
-**"Every pinned collection is inside its window."**
+*At curation time, by a refusal.* The first attempt to build the curated
+repository stopped rather than proceed, because that exact version was genuinely
+absent.
 
-**And this is what the curated repository is for.** When AAP is pointed at a hub,
-it should be pointed at `approved` — nine collections at exactly the versions
-this repo declares — not at a mirror whose contents Red Hat and the community
-control. Tracked as [#69](https://github.com/ericcames/sales.demos/issues/69).
+*At resolve time, by the resolver — and nothing else could have found it.* A
+project sync does not install a list, it resolves a dependency graph:
 
-**This answer lands better than a yes would.** It shows the failure mode was
-found deliberately, twice, and closed.
+```
+ERROR! Failed to resolve the requested dependencies map. Could not satisfy
+the following requirements:
+* ansible.eda:>=2.5.0 (dependency of infra.aap_configuration:4.7.0)
+```
+
+`approved` held the nine collections this repo *names*. It needed the ten it
+*depends on*. The generator now computes the closure and refuses to write a set
+missing one.
+
+**That is the honest shape of "config as code" and worth saying plainly:** the
+declaration is only as good as the check behind it, and the checks that matter
+are the ones that run the real thing. Every claim here is verified by a project
+sync and a job template that actually builds a VM, not by an object existing in
+a UI.
+
+**And it is pointed at `approved`, not at a mirror** — ten collections at exactly
+the versions this repo declares, rather than whatever Red Hat and the community
+shipped this week. That distinction is the whole reason the curated repository
+exists. Delivered in
+[#69](https://github.com/ericcames/sales.demos/issues/69); reversible in one flag.
 
 ---
 

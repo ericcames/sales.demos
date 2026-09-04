@@ -376,6 +376,7 @@ in this repo, which for repo-specific skills is the correct scope.
 | `ocpvirt-teardown` | `playbooks/teardown.yml` | Destroy VMs; keep CNV and the golden image | Done ([#6](https://github.com/ericcames/sales.demos/issues/6)) |
 | `sales-demos-probe-env` | `playbooks/probe_env.yml` | Measure what the cluster actually has and recommend `available_memory_gb` | Done ([#100](https://github.com/ericcames/sales.demos/issues/100)) |
 | `pah-sync` | `playbooks/sync_hub.yml`, `playbooks/curate_hub.yml` | Populate Private Automation Hub, and reconcile the curated `approved` repository | Done ([#68](https://github.com/ericcames/sales.demos/issues/68), [#70](https://github.com/ericcames/sales.demos/issues/70)) |
+| `pah-link-aap` | `playbooks/link_hub.yml` | Point AAP project syncs at the curated `approved` repository, reversibly | Done ([#69](https://github.com/ericcames/sales.demos/issues/69)) |
 | `sales-demos-portal` | `playbooks/portal.yml` | Deploy the AAP self-service portal (RHDH + AAP plugin) via Helm | Done ([#103](https://github.com/ericcames/sales.demos/issues/103)) |
 | `sales-demos-orchestrator` | `playbooks/install_ao.yml` | Install Automation Orchestrator and its CloudNativePG database | Done ([#141](https://github.com/ericcames/sales.demos/issues/141)) |
 
