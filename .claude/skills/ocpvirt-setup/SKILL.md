@@ -188,7 +188,7 @@ Only one input, and it has a default. Ask the user only if it is ambiguous:
 
 Everything else is resolved for you: hostname and API URL from that
 environment's committed `connection.yml`, credentials from the environment's
-slice of the vault-encrypted `group_vars/aap/secrets.yml`, StorageClass and
+slice of the vault-encrypted `playbooks/group_vars/all/secrets.yml`, StorageClass and
 channel discovered on the cluster. Do not prompt for a token and never pass one
 on the command line; that would put it in shell history.
 

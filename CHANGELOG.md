@@ -7,6 +7,64 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added -- clone-and-configure: a local overlay and a real onboarding path (#131)
+- **`inventory/group_vars/<env>/local.yml`, gitignored, overrides
+  `connection.yml`.** #130 fixed credentials for a reuser; it did not fix
+  connection values. A stranger who cloned this passed CI and then ran against
+  *this* repo's clusters. Now they drop in one file and never diverge from
+  upstream or conflict on a pull. Ansible loads a `group_vars/<group>/`
+  directory in sorted order and the last file wins, so no code changed.
+- **The filename is not the one #131 proposed, and that matters.** The issue
+  specified `connection.local.yml` on the reasoning that it sorts *after*
+  `connection.yml`. It sorts **before** it -- `'l' < 'y'` -- so it would have
+  been loaded, silently overridden, and left the user pointed at the committed
+  cluster while believing they had repointed it. Measured before building:
+  with both files present Ansible returned the `connection.yml` value.
+  `local.yml` (`'l' > 'c'`) wins, and is what shipped.
+- **A `## Getting started` section in `README.md`**, which had no
+  getting-started, prerequisites or quick-start heading anywhere. The real
+  onboarding document is `sales-demos-first-time`, previously discoverable only
+  by opening the repo in Claude Code; README now links it in prose and states
+  the three things a clone deliberately does not carry.
+
+### Changed -- the two EXECUTED vault-password paths are now overridable (#131)
+- Of ~75 mentions of `~/secrets/.vault_pass_sales_demos`, only two are code:
+  the `file` lookup building the AAP Vault credential, and
+  `utilities/make-kubeconfig.sh`. Both now read **one** env var,
+  `SALES_DEMOS_VAULT_PASS`, defaulting to the current path -- so one export
+  moves both and they cannot end up disagreeing. Nothing changes for an
+  existing setup. The ~73 documentation mentions are left alone; they are
+  examples, and churning them is noise.
+- `sales_demos_vault_password_file` uses `default(..., true)` deliberately: an
+  unset env var resolves to `''`, not Undefined, and a plain `default()` would
+  hand the lookup an empty path. Verified unset, set, and set-but-empty.
+- **`sales-demos-first-time` step 6 no longer looks for placeholders that do
+  not exist.** It told the user to check `connection.yml` for `cluster-<id>`;
+  the committed files hold real IDs, so that check could never fire. It now
+  asks Ansible for the value *in effect* and points at `local.yml`.
+- Step 2's orientation line said one prerequisite "you cannot create yourself".
+  Untrue since #130 -- you choose the vault password. Step 0 gained `oc` and a
+  `local.yml` probe; step 4.5 gained `oc`, which three skills shell out to and
+  nothing checked; step 7 gained `rhsm_ok`, because `rhsm_org_id` and
+  `rhsm_activation_key` are top-level rather than per-environment keys and fail
+  late, at Phase 4 guest registration, far from their cause (#128).
+
+### Fixed -- 13 references to a secrets file that moved in #5 (#131)
+- `group_vars/aap/secrets.yml` has been `playbooks/group_vars/all/secrets.yml`
+  since #5. Nine files still named the old path, including both
+  `connection.yml` headers and the AAP Vault credential's own description --
+  every one of them a place a new user would look and find nothing.
+- **`CHANGELOG.md` and the superseded block in `docs/plan/ocpvirt-demo-plan.md`
+  were deliberately NOT rewritten.** Both are historical records; the plan doc
+  already marks that passage superseded, so it gained a further note recording
+  the #5 move and the #130 untracking rather than having its history edited.
+- Documented in `sales-demos-mcp` why `.claude/settings.json` allowlists
+  `mcp__aap-sandbox__*` and `mcp__aap-demo__*` while `.mcp.json` defines neither:
+  the AAP servers carry bearer tokens and are registered `--scope local`. A
+  fresh clone showing two entries pointing at nothing is the expected state.
+  Neither file can say so in place -- both are strict JSON and take no comments.
+
+
 ### Added -- how to get started with a ServiceNow MCP server, and with any MCP server that does not exist (#93)
 - Two pages in `docs/demos/mcp-servers/`, taking the file set from six to eight.
 - **`servicenow.md`** -- measure `/stats.do` first, then the fork. The

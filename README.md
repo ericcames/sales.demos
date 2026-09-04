@@ -9,6 +9,65 @@ Automation Platform — driving the same playbooks either way.
 > the other daily-demo repos has been migrated and that decision is
 > deliberately open.
 
+## Getting started
+
+New machine, or a fresh clone? **Start here.** A clone passes CI and still
+cannot run a playbook until you have supplied three things that deliberately do
+not live in this repo: an Automation Hub token, a vault password, and a
+`secrets.yml` you build yourself.
+
+```bash
+git clone https://github.com/ericcames/sales.demos.git
+cd sales.demos
+claude .
+# then:  /sales-demos-first-time
+```
+
+[`.claude/skills/sales-demos-first-time/SKILL.md`](.claude/skills/sales-demos-first-time/SKILL.md)
+is the real onboarding document — it walks every prerequisite and validates each
+one. It is written to be *run* as a skill in Claude Code, but it reads perfectly
+well as a checklist if you would rather work through it by hand.
+
+| You need | Where it goes | Why it is not in the repo |
+|---|---|---|
+| Automation Hub token | `~/.ansible.cfg` | One authoritative copy; a second would go stale on rotation (#22) |
+| Vault password | `~/secrets/.vault_pass_sales_demos` | The one secret that cannot itself be vaulted |
+| `secrets.yml` | `playbooks/group_vars/all/` | Built from `secrets.yml.example`; shipping one person's encrypted credentials is what made this repo un-reusable (#130) |
+| Your cluster's hostnames | `inventory/group_vars/<env>/local.yml` | Gitignored overlay, so you never diverge from upstream (#131) |
+
+### Pointing it at your own environment
+
+`inventory/group_vars/sandbox/connection.yml` and `demo/connection.yml` are
+committed with working RHDP values — those URLs are a documented non-secret
+here, not an oversight. **Do not edit them to repoint the repo.** Create a
+gitignored `local.yml` beside the one you want to change:
+
+```bash
+cat > inventory/group_vars/sandbox/local.yml <<'YAML'
+---
+aap_hostname: "aap-aap.apps.cluster-<id>.dyn.redhatworkshops.io"
+openshift_api_url: "https://api.cluster-<id>.dyn.redhatworkshops.io:6443"
+openshift_apps_domain: "apps.cluster-<id>.dyn.redhatworkshops.io"
+YAML
+```
+
+Ansible loads every file in a `group_vars/<group>/` directory in sorted order
+and the **last one wins**, so `local.yml` overrides `connection.yml` with no
+code change at all — and you never conflict on a pull.
+
+**The name must be `local.yml`.** `connection.local.yml` sorts *before*
+`connection.yml` and therefore loses: it would be loaded, silently overridden,
+and leave you running against the committed cluster while believing you had
+repointed it.
+
+This is a laptop mechanism. AAP checks the repo out from SCM and gitignored
+files are not in that checkout, so repointing a job template means changing
+`connection.yml` on a branch of your own.
+
+If your vault password lives somewhere other than the default path, export
+`SALES_DEMOS_VAULT_PASS`; both `utilities/make-kubeconfig.sh` and the AAP Vault
+credential in `inventory/group_vars/aap/main.yml` read that same variable.
+
 ## Use cases
 
 | Use case | Audience | Plan | Talk track |
@@ -527,7 +586,7 @@ ansible-playbook playbooks/setup.yml \
 ```
 
 **`--vault-id` is required** — credentials come from the vault-encrypted
-`group_vars/aap/secrets.yml`. Without it the run fails with
+`playbooks/group_vars/all/secrets.yml`. Without it the run fails with
 *"Attempting to decrypt but no vault secrets found"*.
 
 ### Keep the run log

@@ -58,6 +58,15 @@ route, and register the server. For `demo`, the token scope is `read`; for
 `sandbox`, it is `write`. The environment's own
 `aap_mcp_allow_write_operations` is a second gate on the server side.
 
+**`.claude/settings.json` allowlists `mcp__aap-sandbox__*` and `mcp__aap-demo__*`
+for servers that are deliberately NOT in `.mcp.json`, and that mismatch is
+correct** (#131). A fresh clone therefore carries two permission entries
+pointing at nothing until this skill runs — that is the expected state, not a
+broken config, and it resolves the moment the servers are registered. The
+alternative would be putting a bearer token in a tracked file. Neither file can
+say so in place: both are strict JSON and take no comments, which is why it is
+recorded here.
+
 **These tokens do not clean themselves up.** They are the documented exception
 in CLAUDE.md — an MCP client needs a durable credential, so the `always:` block
 rule does not apply. The script prints cleanup instructions; retiring them is

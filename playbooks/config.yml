@@ -44,7 +44,7 @@
     - name: Assert AAP connection variables are set
       # aap_hostname and aap_username come from the committed
       # group_vars/<env>/connection.yml; aap_password is resolved from the
-      # vault-encrypted group_vars/aap/secrets.yml via env_secrets.
+      # vault-encrypted playbooks/group_vars/all/secrets.yml via env_secrets.
       ansible.builtin.assert:
         that:
           - aap_hostname | default('') | length > 0

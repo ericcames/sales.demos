@@ -27,9 +27,10 @@ Setting up sales.demos on this machine. About 10 minutes, once.
   3. Pinned collections            via /collections-sync
   4. Python kubernetes client
   5. Run-log directory             ~/ansible-logs/
-  6. Your environment's values     connection.yml + the vault
+  6. Your environment's values     local.yml + the vault
 
-One of these you cannot create yourself — see step 2.
+Nothing here has to be asked of anyone. Since #130 you create the vault
+password and the secrets file yourself — step 2, case A.
 ```
 
 Confirm the working directory first. Everything below assumes the repo root:
@@ -57,7 +58,7 @@ Read-only. Run it all, then work only on what is missing.
 ```bash
 test -f ~/.ansible.cfg && grep -q 'galaxy_server.rh_certified' ~/.ansible.cfg \
   && echo "EXISTS   Hub token in ~/.ansible.cfg" || echo "MISSING  Hub token"
-test -s ~/secrets/.vault_pass_sales_demos \
+test -s "${SALES_DEMOS_VAULT_PASS:-$HOME/secrets/.vault_pass_sales_demos}" \
   && echo "EXISTS   vault password" || echo "MISSING  vault password  <-- blocker"
 test -f playbooks/group_vars/all/secrets.yml \
   && echo "EXISTS   secrets.yml" || echo "MISSING  secrets.yml  <-- blocker, build it from the .example"
@@ -69,6 +70,11 @@ python3 -c "import kubernetes" 2>/dev/null \
   && echo "EXISTS   python kubernetes client" || echo "MISSING  python kubernetes client"
 test -d ~/ansible-logs \
   && echo "EXISTS   ~/ansible-logs" || echo "MISSING  ~/ansible-logs"
+command -v oc >/dev/null \
+  && echo "EXISTS   oc" || echo "MISSING  oc"
+ls inventory/group_vars/*/local.yml >/dev/null 2>&1 \
+  && echo "EXISTS   local.yml override(s) — you have repointed at least one env" \
+  || echo "NONE     no local.yml — you will run against the committed clusters"
 ```
 
 ## Step 1 — Automation Hub token
@@ -166,6 +172,13 @@ losing the file loses both environments' credentials.
 `~/secrets/` also holds `.vault_pass_azure` and `.vault_pass_qa` for
 `aap_config`. Same convention, one file per vault ID.
 
+**Keeping vault passwords somewhere else?** Export `SALES_DEMOS_VAULT_PASS` with
+the full path. One variable moves both consumers that actually *read* the file —
+`utilities/make-kubeconfig.sh` and the AAP Vault credential built by
+`inventory/group_vars/aap/main.yml` — so they cannot end up disagreeing (#131).
+The default stays `~/secrets/.vault_pass_sales_demos`, and every command below
+spells that path out because it is still the convention.
+
 ## Step 3 — Collections
 
 Do not hand-install. Use the skill that already owns this, which pins, installs,
@@ -198,6 +211,11 @@ Phases 1–3 landed, and a machine without them completes every other step here
 and still cannot provision a VM.
 
 ```bash
+# oc — the OpenShift CLI. Playbooks and several skills shell out to it, and it
+# is also how you get an API token for the vault in step 6.
+command -v oc >/dev/null && echo "✅ $(oc version --client 2>/dev/null | head -1)" \
+  || echo "❌ oc missing — download it from the OpenShift console's CLI tools page"
+
 # terraform — provision_vm.yml and teardown.yml invoke it directly.
 command -v terraform >/dev/null && echo "✅ $(terraform version | head -1)" \
   || echo "❌ terraform missing — https://developer.hashicorp.com/terraform/install"
@@ -226,7 +244,7 @@ podman login --get-login registry.redhat.io >/dev/null 2>&1 \
   || echo "⚠️  not logged in — run: podman login registry.redhat.io"
 ```
 
-`terraform` and `virtctl` are the two that block real work. The podman pair only
+`oc`, `terraform` and `virtctl` are the three that block real work. The podman pair only
 matter if you are rebuilding the execution environment, which is rare — it is
 published to quay and mirrored into each environment's Private Automation Hub.
 `npx` matters only for the MCP servers, and is the one prerequisite here that is
@@ -258,11 +276,33 @@ Two places, by design. Non-secrets are committed; only credentials are vaulted.
 
 ```bash
 ENV=${ENV:-sandbox}
-grep -E '^(aap_hostname|openshift_api_url):' inventory/group_vars/$ENV/connection.yml
+ansible -i inventory --limit "$ENV" aap -m debug \
+  -a 'msg={{ aap_hostname }}' 2>/dev/null | grep msg
 ```
 
-If those still show `cluster-<id>`, paste the real values from your RHDP
-provisioning email. Then add that environment's credentials to the vault:
+**That prints the value actually in effect, which is the only one worth
+checking.** `connection.yml` is committed with a working RHDP cluster — there
+are no `cluster-<id>` placeholders to look for, so grepping the file tells you
+nothing about whether it is *yours*.
+
+If the hostname is not your environment, do **not** edit `connection.yml`.
+Create a gitignored overlay beside it (#131):
+
+```bash
+cat > inventory/group_vars/$ENV/local.yml <<'YAML'
+---
+aap_hostname: "aap-aap.apps.cluster-<id>.dyn.redhatworkshops.io"
+openshift_api_url: "https://api.cluster-<id>.dyn.redhatworkshops.io:6443"
+openshift_apps_domain: "apps.cluster-<id>.dyn.redhatworkshops.io"
+YAML
+```
+
+Re-run the command above; it must now print your hostname. **The filename must
+be `local.yml`** — files in a `group_vars/` directory load in sorted order and
+the last wins, and `connection.local.yml` sorts *before* `connection.yml`, so it
+would be silently ignored and leave you pointed at the committed cluster.
+
+Then add that environment's credentials to the vault:
 
 ```bash
 ansible-vault edit playbooks/group_vars/all/secrets.yml \
@@ -313,21 +353,33 @@ ansible-vault view playbooks/group_vars/all/secrets.yml --vault-id "$VAULT_ID" \
   | ENV="$ENV" python3 -c '
 import sys, yaml, os
 env = os.environ["ENV"]
-e = ((yaml.safe_load(sys.stdin) or {}).get("env_secrets") or {}).get(env, {})
+doc = yaml.safe_load(sys.stdin) or {}
+e = (doc.get("env_secrets") or {}).get(env, {})
+def filled(v):
+    return bool(v) and "CHANGEME" not in str(v)
 pw = e.get("aap_password", "")
 tok = e.get("openshift_api_token", "")
-pw_set = bool(pw) and "CHANGEME" not in pw
+pw_set = filled(pw)
 token_ok = tok.startswith("sha256~") or (tok.startswith("eyJ") and "." in tok)
-print("env=%s pw_set=%s token_ok=%s" % (env, pw_set, token_ok))
+rhsm_ok = filled(doc.get("rhsm_org_id")) and filled(doc.get("rhsm_activation_key"))
+print("env=%s pw_set=%s token_ok=%s rhsm_ok=%s" % (env, pw_set, token_ok, rhsm_ok))
 '
 ```
 
-Both must be `True`. `token_ok` checks the shape rather than mere presence: a
+All three must be `True`. `token_ok` checks the shape rather than mere presence: a
 value that is non-empty but not a recognised token form will fail later as a
 confusing `401`, which is exactly how #86 hid for as long as it did. Both
 `sha256~` OAuth tokens and `eyJ` ServiceAccount JWTs are accepted; an Ansible
 error string (the #86 failure mode) contains spaces and starts with neither
 prefix, so it is still rejected.
+
+**`rhsm_ok` is checked here because it fails LATE and far from its cause.**
+`rhsm_org_id` and `rhsm_activation_key` are top-level keys, not per-environment
+ones, and nothing needs them until Phase 4 registers a guest against the Red Hat
+CDN — where `playbooks/roles/linux_register` asserts them and stops. They were
+missing from `secrets.yml.example` entirely, so a secrets file built from it
+passed every preflight and then died there (#128). Get them from
+**console.redhat.com → Inventory → System Configuration → Activation Keys**.
 
 ## When it all passes
 

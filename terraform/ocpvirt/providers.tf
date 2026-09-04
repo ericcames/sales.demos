@@ -7,7 +7,7 @@
 #
 # Auth accepts either a kubeconfig or an explicit host + token. The token path
 # is what AAP uses in Phase 3, where the values come from the vault-encrypted
-# group_vars/aap/secrets.yml rather than a file on a runner.
+# playbooks/group_vars/all/secrets.yml rather than a file on a runner.
 # ---------------------------------------------------------------------------
 
 terraform {
