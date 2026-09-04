@@ -63,12 +63,38 @@ test -f ansible.cfg && echo "❌ project-local ansible.cfg present — delete it
 ```
 
 Builds and verifies without publishing. The verify step runs **as UID 1000**,
-which is who AAP runs a job as, and checks two things: that `terraform version`
-executes, and that every collection pinned in `collections/requirements.yml` is
-present at exactly that version.
+which is who AAP runs a job as, and checks that `terraform version` executes and
+that every collection pinned in `collections/requirements.yml` is present at
+exactly that version.
 
 Report the verify output verbatim. A build that says `Complete!` has not been
 verified — the `==> Verified` line is the one that matters.
+
+### It also proves the image carries no credential (#172)
+
+`execution-environment.yml` stages `~/.ansible.cfg` — which holds the Red Hat
+offline token — into the **galaxy build stage only**, so the published image gets
+the installed collections and not that file. **That was true when measured and
+nothing enforced it**, which is the same gap `check-no-secrets.sh` closed for
+`.gitignore`: the mechanism keeping the secret out is verified, not trusted.
+
+Four checks, and none is redundant — each was proven against a deliberately
+poisoned image:
+
+| Check | Catches what the others cannot |
+|---|---|
+| no `/etc/ansible/ansible.cfg` | the staged config landing on its usual path |
+| `ansible --version` → `config file = None` | a config Ansible loads from *anywhere*, including via `ANSIBLE_CONFIG` |
+| no `*.cfg` with a `[galaxy_server.*]` section and a real `token=` | a config that is present but **inert**, which the check above cannot see |
+| no layer `ADD`/`COPY`-ing a config in | a config added in one layer and **deleted in a later one** — the merged filesystem is genuinely clean and the token is still in the layer blob in plaintext |
+
+That last row is not theoretical: building exactly that image and recovering the
+token from a 224-byte layer is how the check was justified.
+
+**If one of these fails, do not push.** Work out which build step put the file
+there — `additional_build_steps` is the usual answer — and fix that, rather than
+deleting the file in a later step, which defeats three of the four checks and
+none of the risk.
 
 ## Publish
 

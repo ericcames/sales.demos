@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added -- build-ee.sh proves the published EE carries no credential (#172)
+- `execution-environment.yml` stages `~/.ansible.cfg` -- which holds the rotating
+  Red Hat offline token -- into the **galaxy build stage only**, so the published
+  image gets the installed collections and not that file. #120 measured that and
+  found it true. **Nothing enforced it.** Move that `ADD` from `prepend_galaxy`
+  to `append_final`, add a `COPY` for another reason, or let a future base image
+  ship its own `/etc/ansible/ansible.cfg`, and a token-bearing image would build,
+  pass every existing check, and push to a **public** registry.
+- Same reasoning as check 2 in `utilities/check-no-secrets.sh`: the mechanism
+  keeping the secret out is **verified, not trusted**. Deleting it fails the
+  build.
+- **Four checks, none redundant, each proven against a deliberately poisoned
+  image rather than reasoned about:**
+  1. no `/etc/ansible/ansible.cfg`
+  2. `ansible --version` reports `config file = None` -- catches a config Ansible
+     loads from anywhere, including via `ANSIBLE_CONFIG`
+  3. no `*.cfg` carrying a `[galaxy_server.*]` section **and** a real `token=` --
+     catches a config that is present but inert, which check 2 cannot see. Scoped
+     to `*.cfg` because two upstream collection READMEs document the section with
+     a `token=<SuperSecretToken>` placeholder, and `infra.aap_configuration` ships
+     an `ansible.cfg.j2`; a looser grep flags all three.
+  4. no layer `ADD`/`COPY`-ing a config in -- catches a config **added in one
+     layer and deleted in a later one**, where the merged filesystem is genuinely
+     clean and checks 1-3 all pass. Justified by building that image and
+     recovering the token from a 224-byte layer blob in plaintext, not by
+     assertion.
+- Runs before the `--push` gate, so a leaking image cannot be published.
+
+
 ### Added -- run playbooks inside the EE AAP actually uses (#120)
 - **`utilities/run-in-ee.sh`** runs any playbook through `ansible-navigator`
   inside `sales-demos-ee`, the image AAP runs job templates on, instead of beside
