@@ -355,9 +355,27 @@ Environment secrets.
   git checkout main && git pull && git branch -d <branch>
   ```
 
-  `git branch --merged main` lists any that were missed. Use `-d`, never `-D`:
-  `-d` refuses a branch that is not actually merged, which is what makes the
-  sweep safe to run without reading the list first.
+  `git branch --merged main` lists any that were missed.
+
+  **Use `-d`, never `-D` — but `-d` is not a merge check, and this note used to
+  say it was** (#179). `git branch --help`: *"The branch must be fully merged in
+  its upstream branch, or in HEAD if no upstream was set with `--track` or
+  `--set-upstream-to`."* `git push -u` sets an upstream, so every branch here has
+  one, and `-d` is really asking "have you pushed?" It deleted
+  `docs-177-local-branch-cleanup` while that PR was still open, and said so:
+
+  ```
+  warning: deleting branch '...' that has been merged to
+           'refs/remotes/origin/...', but not yet merged to HEAD
+  ```
+
+  **So the order in the command above is load-bearing, not incidental.** Pulling
+  `main` first means it already contains the merge, so the branch is merged on
+  both criteria and `-d` is checking something real. Run `-d` before the pull and
+  it waves through a branch whose PR never merged.
+
+  `-d` still beats `-D`: it refuses to drop **unpushed** work, which is the loss
+  that actually matters.
 
   **`main` is now protected, and the rule above is enforced rather than
   trusted.** Recorded here for the same reason as the line above: it is a

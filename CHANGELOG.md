@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed -- `-d` is not a merge check, and CLAUDE.md said it was (#179)
+- #177 corrected the branch-cleanup note and introduced a new overstatement in
+  the same breath: *"`-d` refuses a branch that is not actually merged."*
+- **Disproved while shipping the PR that introduced it.** Deleting
+  `docs-177-local-branch-cleanup` before #178 merged, `-d` allowed it:
+  `warning: deleting branch '...' that has been merged to
+  'refs/remotes/origin/...', but not yet merged to HEAD`.
+- `git branch --help` says why: *"The branch must be fully merged in its upstream
+  branch, or in HEAD if no upstream was set."* `git push -u` sets an upstream, so
+  every branch in this workflow has one -- `-d` is asking "have you pushed?", not
+  "did the PR merge?"
+- **The command does not change, and the correction is what explains why it
+  works.** `git checkout main && git pull && git branch -d <branch>` is right
+  because the pull puts the merge in `main` first, so the branch is merged on
+  both criteria. That ordering was already correct and had been presented as
+  incidental; it is load-bearing. Run `-d` before the pull and it waves through a
+  branch whose PR never merged.
+- `-d` still beats `-D`: it refuses to drop **unpushed** work, which is the loss
+  that actually matters. Nothing was lost in the incident -- the commit was safe
+  on `origin` and the merge picked it up. The defect was the claim sitting in the
+  standards file where it would be trusted.
+- Docs only, one paragraph. CLAUDE.md remains the single place this is stated.
+
 ### Fixed -- "no manual pruning is needed" was true of the remote only (#177)
 - CLAUDE.md recorded `delete_branch_on_merge` and concluded that a merged PR
   cleans up after itself. It cleans up **`origin/<branch>`**. The local branch in
