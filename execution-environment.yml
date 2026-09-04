@@ -16,7 +16,19 @@ version: 3
 
 images:
   base_image:
-    # AAP 2.6 supported EE, pinned by DIGEST rather than tag.
+    # AAP 2.7 supported EE, pinned by DIGEST rather than tag.
+    #
+    # MOVED 2.6 -> 2.7 IN #122. The platform went to 2.7 in #115 while this
+    # image still came from the ansible-automation-platform-26 stream, and the
+    # repo was already pinning 2.7-generation collections (ansible.platform
+    # 2.7.x, ansible.controller 4.8.x) into a base built for 2.6. Whether that
+    # combination was supported or merely happened to work was never
+    # established; on the 2.7 base the question does not arise.
+    #
+    # The 2.7 base ships ansible.controller 4.8.6 and ansible.platform
+    # 2.7.20260812 -- both NEWER than collections/requirements.yml pins. That is
+    # a deliberate downgrade-within-generation, which is what pinning means, and
+    # is a different thing from the cross-generation mismatch this issue fixed.
     #
     # The tag is not a usable pin here: `latest` moves, and this repository
     # publishes no immutable tag matching the build `latest` currently resolves
@@ -25,13 +37,15 @@ images:
     # aap_config, which pins its EE images the same way.
     #
     # To re-pin after a base-image refresh:
-    #   skopeo inspect docker://registry.redhat.io/ansible-automation-platform-26/ee-supported-rhel9:latest | jq -r .Digest
-    name: registry.redhat.io/ansible-automation-platform-26/ee-supported-rhel9@sha256:0c3b74f2b6b9eb8f4a144e10b27208c53bc104fb548b0371f905150f75fe6861
+    #   skopeo inspect docker://registry.redhat.io/ansible-automation-platform-27/ee-supported-rhel9:latest | jq -r .Digest
+    name: registry.redhat.io/ansible-automation-platform-27/ee-supported-rhel9@sha256:563d524b17ece380ed4392adfc3bb98b7e3340d0c9daac3e6f7db28bce026e68
 
 options:
   # ee-supported-rhel9 ships microdnf, NOT dnf. ansible-builder defaults to
   # /usr/bin/dnf and the build fails at the first system-package step without
-  # this. Verified against the pinned digest above.
+  # this. RE-VERIFIED against the 2.7 digest above (#122), by running the image:
+  # microdnf present, dnf absent. Still true, but it was re-checked rather than
+  # assumed to carry over from the 2.6 pin.
   package_manager_path: /usr/bin/microdnf
 
 dependencies:
@@ -114,6 +128,30 @@ additional_build_steps:
       && unzip -q -o -d /usr/local/bin /tmp/terraform.zip
       && chmod 0755 /usr/local/bin/terraform
       && rm -f /tmp/terraform.zip
+
+    # RESTORE /usr/bin/python3 TO 3.12, WHICH THE BINDEP STEP HIJACKS (#122).
+    #
+    # assemble installs the system packages the collections' bindep files ask
+    # for, and that list includes python3-devel. On RHEL 9 that pulls in
+    # python3-3.9, which repoints /usr/bin/python3 from the base's 3.12 to 3.9.
+    #
+    # THE BUILD FAILING IS THE HARMLESS HALF -- utilities/build-ee.sh pins
+    # PYCMD=/usr/bin/python3.12 for that. This is the dangerous half: it also
+    # lands in the FINAL image, where ansible's own shebang still says 3.12 but
+    # anything resolving `python3` gets 3.9, whose site-packages has no
+    # kubernetes, no yaml, none of the collections' python dependencies.
+    # Ansible's interpreter discovery finds /usr/bin/python3, so every
+    # kubernetes.core task in this repo would fail at runtime on an image that
+    # built and pushed cleanly.
+    #
+    # Measured: on the 2.7 base, `python3 -c "import kubernetes"` traces back
+    # while python3.12 imports it fine. The 2.6-based v1.0.0 never showed this
+    # because its build did not reach the step that installs python3-devel.
+    - RUN ln -sf /usr/bin/python3.12 /usr/bin/python3
+
+    # Prove the interpreter is the one carrying the collections' dependencies.
+    # A build that produced a 3.9 python3 would pass every other check here.
+    - RUN /usr/bin/python3 -c "import kubernetes, yaml; print('python3 ->', __import__('sys').version.split()[0])"
 
     # Fail the BUILD, not a demo, if the binary did not land or will not run.
     # This executes as root — ansible-builder emits `USER 1000` after every

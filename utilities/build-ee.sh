@@ -33,7 +33,7 @@
 set -euo pipefail
 
 # Default tag follows the aap_config convention: quay.io/zigfreed/<demo>-ee:vX.Y.Z
-EE_IMAGE="${EE_IMAGE:-quay.io/zigfreed/sales-demos-ee:v1.0.0}"
+EE_IMAGE="${EE_IMAGE:-quay.io/zigfreed/sales-demos-ee:v1.1.0}"
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repo_root"
@@ -73,10 +73,31 @@ trap 'rm -f "$repo_root/.ee-build/ansible.cfg"' EXIT
 
 # --- Build ----------------------------------------------------------------
 echo "==> Building $EE_IMAGE"
+# PYCMD IS PINNED TO python3.12 ON PURPOSE, AND THE BUILD FAILS WITHOUT IT (#122).
+#
+# assemble installs the system packages the collections' bindep files ask for,
+# and that list includes python3-devel. On RHEL 9 that package pulls in
+# python3-3.9, which REPOINTS /usr/bin/python3 from the base image's 3.12 to
+# 3.9 -- and 3.9 carries no pip. The next thing assemble does is
+# `$PYCMD -m pip install -r requirements.txt`, so with the default
+# PYCMD=/usr/bin/python3 the build dies with:
+#
+#   /usr/bin/python3: No module named pip
+#
+# Naming the interpreter explicitly makes it immune to whatever bindep drags
+# in. Measured on the 2.7 base: after `microdnf install python3-devel`,
+# `/usr/bin/python3 -m pip` is broken while `/usr/bin/python3.12 -m pip` works.
+#
+# THIS WAS ALWAYS LATENT, not something the 2.7 base introduced. The 2.6 build
+# never hit it because introspection found no python requirements, so assemble
+# never reached that pip call. Nothing published is affected either -- the
+# clobber happens in the throwaway builder stage, and the final image is
+# assembled from a fresh base (verified: v1.0.0 has python3 -> 3.12, pip works).
 ansible-builder build \
   --file execution-environment.yml \
   --context .ee-build/context \
   --tag "$EE_IMAGE" \
+  --build-arg PYCMD=/usr/bin/python3.12 \
   --verbosity 2
 
 # --- Verify ---------------------------------------------------------------

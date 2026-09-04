@@ -7,6 +7,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed -- the EE build clobbered its own python interpreter (#122)
+- **Two defects, one cause, and the second is the dangerous one.** `assemble`
+  installs the system packages the collections' bindep files ask for, and that
+  list includes `python3-devel`. On RHEL 9 that pulls in `python3-3.9`, which
+  **repoints `/usr/bin/python3` from the base image's 3.12 to 3.9**.
+  1. *Build-time:* `assemble`'s next step is `$PYCMD -m pip install`, so the
+     build dies with `/usr/bin/python3: No module named pip`.
+     `utilities/build-ee.sh` now passes `--build-arg PYCMD=/usr/bin/python3.12`.
+  2. *Runtime:* it lands in the **final image** too. `ansible`'s own shebang
+     stays 3.12, but Ansible's interpreter discovery resolves `/usr/bin/python3`
+     -- now 3.9, whose site-packages has no `kubernetes`, no `yaml`, none of the
+     collections' python dependencies. Every `kubernetes.core` task in this repo
+     runs on the EE, so the image would have failed in front of a customer.
+     `append_final` restores the symlink and then **asserts** the interpreter
+     can import `kubernetes` and `yaml`.
+- **`build-ee.sh`'s existing checks would not have caught the second one.** It
+  verifies terraform runs as UID 1000 and that every pinned collection is at its
+  pinned version; both passed on the broken image. That is why the assertion is
+  in the build rather than left to the reviewer.
+- **The 2.7 base did not cause this.** The 2.6 build never reached the step that
+  installs `python3-devel`, because introspection found no python requirements.
+  The 2.7 base's different bundled collections surface a fragility that was
+  always in the definition. Nothing published is affected -- `v1.0.0` was
+  checked directly and has `python3 -> 3.12` with working imports.
+
+### Changed -- the EE base moves from the AAP 2.6 stream to 2.7 (#122)
+- `execution-environment.yml` now pins
+  `ansible-automation-platform-27/ee-supported-rhel9@sha256:563d524b...`. The
+  platform went to 2.7 in #115 while the image still came from the 2.6 stream,
+  and the repo was already pinning 2.7-generation collections into it. **On the
+  2.7 base that mismatch does not arise:** the base ships
+  `ansible.controller 4.8.6` and `ansible.platform 2.7.20260812`, so the pins are
+  now same-generation rather than cross-generation.
+- **`microdnf` re-verified against the new digest by running the image** --
+  present, `dnf` absent -- rather than assumed to carry over from the 2.6 pin.
+- Built and published as **`quay.io/zigfreed/sales-demos-ee:v1.1.0`**
+  (`sha256:be41f1ff...`). Verified as UID 1000: `python3 -> 3.12`, imports
+  `kubernetes`/`yaml`, ansible-core 2.16.19, Terraform 1.15.8, all nine
+  collections at their pinned versions.
+- **`v1.0.0` is still mirrored and still what job templates run.** Per the
+  additive rule, `hub_ee_repositories.yml` mirrors both tags, and
+  `controller_execution_environments.yml` is deliberately NOT repointed here --
+  #122 requires the replacement to run a real job template first. Flipping it is
+  a one-line change, and so is rolling back.
+
+
 ### Added -- AAP MCP servers (aap-sandbox, aap-demo) in /sales-demos-mcp (#150)
 - `/sales-demos-mcp` now sets up **four** MCP servers in one run: the two
   existing OpenShift servers (`openshift-sandbox`, `openshift-demo`) plus two
