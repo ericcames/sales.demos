@@ -92,3 +92,25 @@ aap_organization_name: "IT Service Automation"
 automation_hub_token: >-
   {{ lookup('ansible.builtin.ini',
             'token section=galaxy_server.rh_certified file=~/.ansible.cfg') }}
+
+# ---------------------------------------------------------------------------
+# Where the vault password lives (#131).
+#
+# ~/secrets/.vault_pass_sales_demos is the convention and stays the default, so
+# nothing changes for an existing setup. It is a variable because it is one of
+# only two places in this repo where that path is EXECUTED rather than
+# documented -- the other is utilities/make-kubeconfig.sh -- and a cloner who
+# keeps their vault passwords somewhere else had no way to say so.
+#
+# The env var is what makes the two agree: the shell script reads the same
+# SALES_DEMOS_VAULT_PASS, so one export repoints both. Override per-machine
+# with that, or per-environment in inventory/group_vars/<env>/local.yml.
+#
+# `default(..., true)` is deliberate: an UNSET env var resolves to an empty
+# string here, not to Undefined, and a plain `default()` would happily hand the
+# lookup "" and fail with a confusing "file not found: ". The second argument
+# makes it treat empty as absent.
+# ---------------------------------------------------------------------------
+sales_demos_vault_password_file: >-
+  {{ lookup('ansible.builtin.env', 'SALES_DEMOS_VAULT_PASS')
+     | default('~/secrets/.vault_pass_sales_demos', true) }}

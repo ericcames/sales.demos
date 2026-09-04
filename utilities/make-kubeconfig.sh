@@ -44,11 +44,16 @@ if [[ ! -d "inventory/group_vars/$ENV_NAME" ]]; then
   exit 2
 fi
 
-VAULT_PASS="$HOME/secrets/.vault_pass_sales_demos"
+# The default is the convention; SALES_DEMOS_VAULT_PASS repoints it for someone
+# who keeps vault passwords elsewhere. The SAME env var is read by
+# inventory/group_vars/aap/main.yml, so one export moves both this script and
+# the AAP Vault credential together rather than leaving them disagreeing (#131).
+VAULT_PASS="${SALES_DEMOS_VAULT_PASS:-$HOME/secrets/.vault_pass_sales_demos}"
 VAULT_ID="sales.demos@$VAULT_PASS"
 if [[ ! -s "$VAULT_PASS" ]]; then
-  echo "❌ $VAULT_PASS missing — without it the committed secrets cannot be decrypted." >&2
-  echo "   See /sales-demos-first-time, step 2." >&2
+  echo "❌ $VAULT_PASS missing — without it the secrets file cannot be decrypted." >&2
+  echo "   Build it with /sales-demos-first-time, step 2, or set" >&2
+  echo "   SALES_DEMOS_VAULT_PASS if yours lives somewhere else." >&2
   exit 1
 fi
 

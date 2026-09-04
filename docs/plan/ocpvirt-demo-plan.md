@@ -109,6 +109,14 @@ that file must look like. No `connection.yml.example`, no proliferation of `.exa
 > for the change is recorded below; the original argument is kept because the *shape* of the
 > split — one obvious place to look, no `.example` twins, no second sourceable file — was
 > right and survived.
+>
+> **Superseded again, twice more.** #5 moved the file from `group_vars/aap/` to
+> `playbooks/group_vars/all/secrets.yml`, because the `aap` group scope did not
+> cover plays targeting the demo VMs. #130 then **untracked** it: this repo is
+> public, and shipping one person's encrypted credentials hands everyone else a
+> blob they cannot decrypt or replace without diverging from upstream. So the
+> path and the word "committed" below are both historical. The current model is
+> `CLAUDE.md` -> *Secrets: exactly one mechanism*.
 
 **Credentials go in `group_vars/aap/secrets.yml`, vault-encrypted and committed.** It sits in
 the `aap` group directory so it loads for every environment: one file, both `sandbox` and

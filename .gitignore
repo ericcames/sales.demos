@@ -29,6 +29,25 @@
 playbooks/group_vars/all/secrets.yml
 !playbooks/group_vars/all/secrets.yml.example
 
+# ---------------------------------------------------------------------------
+# Per-environment LOCAL OVERRIDES (#131). This is what lets someone clone this
+# repo and point it at their own RHDP environment without diverging from
+# upstream: drop inventory/group_vars/<env>/local.yml next to the committed
+# connection.yml and redefine only the keys you need.
+#
+# THE FILENAME IS LOAD-BEARING AND IT IS NOT connection.local.yml. Ansible
+# loads every file in a group_vars/<group>/ directory in sorted order and the
+# LAST one wins. "connection.local.yml" sorts BEFORE "connection.yml" -- the
+# '.' and 'l' lose to 'y' -- so upstream would win and the override would be
+# silently ignored, which is the worst failure this file could have: you would
+# run against someone else's cluster believing you had repointed it. "local.yml"
+# sorts after "connection.yml" ('l' > 'c') and wins. Measured, not assumed.
+#
+# connection.yml itself stays TRACKED and keeps working RHDP values -- they are
+# a documented non-secret here (CLAUDE.md -> This repo is public).
+# ---------------------------------------------------------------------------
+inventory/group_vars/*/local.yml
+
 .vault_pass
 .vault_pass*
 .vault_password
