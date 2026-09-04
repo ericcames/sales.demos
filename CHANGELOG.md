@@ -32,6 +32,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   always in the definition. Nothing published is affected -- `v1.0.0` was
   checked directly and has `python3 -> 3.12` with working imports.
 
+### Changed -- docs catch up to AAP 2.7 (#122)
+- `README.md` said the EE base was "AAP 2.6" and, under Conventions, that the
+  platform is 2.6; `CONTRIBUTING.md` told contributors to **pin to 2.6** because
+  "this catalog item ships 2.6". All three contradicted `CLAUDE.md`, which has
+  said 2.7 since #101, and the CONTRIBUTING line was actively wrong guidance.
+- `.claude/skills/sales-demos-ee-build/SKILL.md`'s re-pin command still queried
+  the `ansible-automation-platform-26` stream, so following the skill would have
+  re-pinned the base back to 2.6.
+- Grouped here rather than split out: this is docs catching up to code under one
+  theme, which is what `CLAUDE.md` asks for.
+
 ### Changed -- the EE base moves from the AAP 2.6 stream to 2.7 (#122)
 - `execution-environment.yml` now pins
   `ansible-automation-platform-27/ee-supported-rhel9@sha256:563d524b...`. The

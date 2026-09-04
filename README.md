@@ -340,7 +340,7 @@ AAP runs this repo's playbooks on a custom image,
 
 It exists for one reason: Phase 3 drives `terraform/ocpvirt/` by shelling out to
 the terraform CLI, and no stock execution environment ships that binary.
-Everything else in the image is `ee-supported-rhel9` (AAP 2.6, pinned by digest)
+Everything else in the image is `ee-supported-rhel9` (AAP 2.7, pinned by digest)
 plus the same `collections/requirements.yml` your laptop installs — so the skill
 path and the job-template path resolve identical collection code.
 
@@ -576,7 +576,7 @@ secrets. See [#7](https://github.com/ericcames/sales.demos/issues/7).
 
 ## Conventions
 
-See [`CLAUDE.md`](CLAUDE.md). The short version: AAP 2.6, `ansible.platform`
+See [`CLAUDE.md`](CLAUDE.md). The short version: AAP 2.7, `ansible.platform`
 over `ansible.controller`, tokens always deleted in an `always:` block, no
 project-local `ansible.cfg`, issues before code.
 

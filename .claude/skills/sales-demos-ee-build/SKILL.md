@@ -123,7 +123,7 @@ see what is in the image.
   `https://releases.hashicorp.com/terraform/<version>/terraform_<version>_SHA256SUMS`.
 - **Base image** — re-pin the digest, never a tag:
   ```bash
-  skopeo inspect docker://registry.redhat.io/ansible-automation-platform-26/ee-supported-rhel9:latest | jq -r .Digest
+  skopeo inspect docker://registry.redhat.io/ansible-automation-platform-27/ee-supported-rhel9:latest | jq -r .Digest
   ```
 
 ## Gotchas — learned from the build, do not "simplify" away
