@@ -7,6 +7,62 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed -- validate.yml had never run a single check-mode code path (#173)
+- It failed inside the EE at `infra.aap_configuration.gateway_organizations`
+  with *"check mode and async cannot be used on same task"* while passing on the
+  laptop -- same commit, same cluster, minutes apart. **The symptom was an
+  ansible-core version gap. The cause was not.**
+- **`check_mode: true` on a play sets the TASK's check mode. It does not set the
+  `ansible_check_mode` variable, which is True only for a CLI `--check`.**
+  Measured both ways on core 2.16.19 and 2.18.18rc1. `infra.aap_configuration`
+  writes its check-mode handling entirely against that variable -- so for as
+  long as this playbook has existed, every one of those branches took its
+  *non-check* path, on **both** machines. Eleven of the roles it runs were
+  therefore asking for `async` while in check mode.
+- The laptop forgave it and the EE did not, because **core dropped the guard
+  that rejects the combination in 2.17.0** -- present through 2.16.19, absent
+  from 2.17.0 onward, established by unpacking the 2.16.19, 2.17.0, 2.17.14,
+  2.18.0 and 2.18.18 wheels and reading
+  `ansible/plugins/action/__init__.py`, not off a release note.
+- **`validate.yml` now requires `--check` and refuses without it.** Asserting
+  rather than warning: a validate run reporting success while exercising the
+  non-check path is the wrong answer that looks right. The play keeps
+  `check_mode: true` as well, so nothing can be applied by accident either way.
+- **Three shapes of `async` across the roles dispatch runs here, three answers,
+  and only the last costs coverage.** The rule is to use the override wherever
+  the collection provides one, because it is free, and skip a role only where it
+  does not:
+
+  | Roles | How they set `async` | Answer |
+  |---|---|---|
+  | 11 controller/gateway | `ansible_check_mode \| ternary(0, 1000)` | `--check`. Nothing lost. |
+  | 8 `hub_*` | a per-role variable descending from `aap_configuration_async_timeout` | set the parent to `0` in the play. Nothing lost, and it covers hub roles added later. |
+  | 1 `gateway_organizations` | flat `async: 1000` -- no knob, no guard | skip the role on core < 2.17, loudly. |
+
+- The `gateway_organizations` case is an upstream miss rather than a design
+  choice, and the proof is 55 lines below it in the same file: the *controller*
+  task in that same role does carry the ternary
+  (`roles/gateway_organizations/tasks/main.yml`, lines 26 and 81, at 4.7.0).
+  Its skip empties the wildcard **source** var `aap_organizations_all`, not the
+  base -- dispatch re-derives the base from every `aap_organizations_*` var, so
+  setting the base would simply be overwritten. Same shape as the #106 skip
+  directly above it, and it says out loud what it did not validate.
+- **`utilities/run-in-ee.sh` now prints both ansible-core versions on every run**
+  and flags a mismatch. Every collection pin matched exactly while the laptop ran
+  `2.18.18rc1` and the EE ran `2.16.19`; `build-ee.sh`'s drift check was green
+  and correct throughout, because the divergence was entirely underneath the
+  collections. **Pinned collections are not a pinned environment.** A note and
+  not a failure -- running the EE's dependency set instead of the laptop's is
+  the whole point of the wrapper -- but never again an invisible one.
+- Verified in the EE against `sandbox`: `ok=13 changed=0 failed=1` before,
+  `ok=57 changed=4 failed=0` after, against a laptop run of
+  `ok=87 changed=4 failed=0`. Identical task banners and identical `changed` in
+  both; the `ok` gap is the organizations role iterating an empty list in the EE.
+- #68 had already hit one instance of this same `ansible_check_mode` gap and
+  guarded it locally with `hub_sync_enabled: false`. That override stays: it is
+  now belt-and-braces rather than load-bearing, it costs nothing, and it is the
+  safe direction to be wrong in.
+
 ### Added -- build-ee.sh proves the published EE carries no credential (#172)
 - `execution-environment.yml` stages `~/.ansible.cfg` -- which holds the rotating
   Red Hat offline token -- into the **galaxy build stage only**, so the published

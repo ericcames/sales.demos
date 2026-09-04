@@ -740,6 +740,12 @@ It has already earned it. [#122](https://github.com/ericcames/sales.demos/issues
 (`validate.yml` failing on the EE's older ansible-core) were both invisible to CI,
 to a laptop run, and to `build-ee.sh`.
 
+Every run now prints both ansible-core versions, because #173 turned out not to
+be a collection problem at all — every pin matched exactly while the laptop ran
+core `2.18.18rc1` and the EE ran `2.16.19`. **Pinned collections are not a
+pinned environment**, and the difference is a note rather than an error: running
+the EE's dependency set instead of the laptop's is the point of the wrapper.
+
 ### Keep the run log
 
 Phase 0 takes 10–20 minutes. If it fails and the terminal is gone, so is the
@@ -759,10 +765,14 @@ exit 0 for a playbook that had actually failed.
 
 To apply the AAP configuration itself — organization, sign-in banner, the
 environment-badged logo, analytics settings — use the config-as-code pair.
-Always run `validate.yml` first; it is the same play in check mode:
+Always run `validate.yml` first; it is the same play in check mode. **It needs
+`--check`, and refuses to run without it** — a play-level `check_mode: true`
+sets the task's check mode but leaves the `ansible_check_mode` variable False,
+and `infra.aap_configuration`'s entire check-mode handling keys off that
+variable ([#173](https://github.com/ericcames/sales.demos/issues/173)):
 
 ```bash
-ansible-playbook playbooks/validate.yml -i inventory --limit sandbox \
+ansible-playbook playbooks/validate.yml --check -i inventory --limit sandbox \
   -e target_env=sandbox --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
 
 ansible-playbook playbooks/config.yml -i inventory --limit sandbox \

@@ -234,6 +234,13 @@ Two guards, because one does not cover both entry points:
 reason the second guard exists. Confirmed by counting Pulp sync tasks either side
 of a validate run: 13 before, 13 after.
 
+**#173 later showed this was one instance of a general problem, not a quirk of
+`ansible.hub`.** The same `ansible_check_mode` gap silenced *every*
+check-mode branch in `infra.aap_configuration`, and it surfaced as
+`validate.yml` dying on the EE's older ansible-core. `validate.yml` now requires
+`--check`, so the first row covers it and the second is belt-and-braces. Both
+stay: the second costs nothing and is the safe direction to be wrong in.
+
 ### Approval does not gate synced content, and the content is signed
 
 `GALAXY_REQUIRE_CONTENT_APPROVAL` is `true`, which sounds like it should hold
@@ -323,8 +330,8 @@ narrow there.
 2. No token in any tracked file — the standard audit pattern plus a targeted grep
    for the `eyJ` JWT prefix.
 3. `refresh-hub-requirements.py` twice; `git diff hub/` empty on the second run.
-4. `validate.yml` against `sandbox` reports the remotes and repositories as
-   changes and creates nothing.
+4. `validate.yml --check` against `sandbox` reports the remotes and repositories
+   as changes and creates nothing. `--check` is required (#173).
 5. `sync_hub.yml` against `sandbox` with the default `hub_sync_wait=true`.
 6. Ask the hub: all three repositories non-empty, ~214 + ~47 + 15.
 7. Ask the hub about the pins: every community collection at exactly its pinned

@@ -7,9 +7,40 @@
 # config.yml, always — it is the cheapest way to find out that a variable name
 # is wrong or an object is malformed.
 #
-#   ansible-playbook playbooks/validate.yml -i inventory --limit sandbox \
+#   ansible-playbook playbooks/validate.yml --check -i inventory --limit sandbox \
 #     -e target_env=sandbox \
 #     --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
+#
+# --check IS REQUIRED, AND THE PLAY REFUSES TO RUN WITHOUT IT (#173). The play
+# still carries `check_mode: true` so nothing can be applied by accident, but
+# that alone was never enough, and from this playbook's first commit until #173
+# it quietly was not:
+#
+#   `check_mode: true` on the play sets the TASK's check mode. It does NOT set
+#   the `ansible_check_mode` magic variable, which is True only for a CLI
+#   --check. Measured both ways, on core 2.16.19 and 2.18.18rc1.
+#
+# infra.aap_configuration's check-mode handling is written entirely against
+# `ansible_check_mode`. With it False, every one of those branches took its
+# non-check path while the tasks themselves ran in check mode. Eleven of the
+# roles dispatch runs for this repo set `async: "{{ ansible_check_mode |
+# ternary(0, 1000) }}"` — so they were asking for async in check mode, which is
+# a combination ansible-core 2.16 rejects outright:
+#
+#   fatal: [sandbox-local]: FAILED! =>
+#     {"msg": "check mode and async cannot be used on same task."}
+#
+# The laptop never saw it because core dropped that guard in 2.17.0 — present
+# through 2.16.19, absent from 2.17.0 onward, measured by unpacking the 2.16.19,
+# 2.17.0, 2.17.14, 2.18.0 and 2.18.18 wheels and reading
+# ansible/plugins/action/__init__.py, not read off a release note.
+#
+# So validate passed on the laptop's 2.18 and failed in the EE's 2.16 — same
+# commit, same cluster, minutes apart. See #120: the EE is what AAP runs, so
+# the EE is the one that counts.
+#
+# Passing --check makes all eleven take their intended check-mode path. It also
+# turns on dispatch's own check-mode error reporting, which was dead code here.
 #
 # HOW VARS ARRIVE: implicitly, from inventory/group_vars/. There is deliberately
 # no vars_files or include_vars. `--limit sandbox` loads group_vars/aap/*
@@ -54,6 +85,15 @@
 # A play-level `check_mode: true` like the one below leaves it False — verified
 # both ways. So this play has to say so explicitly, or "Nothing will be changed"
 # becomes a lie and a validate run kicks three live PAH syncs.
+#
+# #173 FOUND THAT THIS WAS THE SAME BUG TWICE, not a quirk of one collection.
+# The `ansible_check_mode` gap diagnosed above is general: it silenced
+# infra.aap_configuration's check-mode handling wholesale, and #68 had already
+# hit one instance of it without either of us seeing the shape. Requiring
+# --check closes it at the source, so this override is now belt-and-braces
+# rather than the only thing standing between a dry run and three live syncs.
+# It stays exactly as it is: it costs nothing, and it is the safe direction to
+# be wrong in.
 # ===========================================================================
 
 - name: Validate AAP configuration in check mode
@@ -62,11 +102,59 @@
   check_mode: true
 
   vars:
-    # See the header. Not redundant with the group_vars guard — that one only
-    # catches `--check`, and this play does not use it.
+    # See the header. Kept as belt-and-braces: now that the play requires
+    # --check, the group_vars guard covers this too, but a second guard against
+    # kicking three live PAH syncs costs nothing.
     hub_sync_enabled: false
 
+    # ONE VARIABLE COVERS EVERY hub_* ROLE (#173).
+    #
+    # The sixteen hub roles all take their async timeout from a per-role
+    # variable that defaults to `aap_configuration_async_timeout | default(1000)`
+    # — so setting the parent to 0 makes every one of them synchronous, now and
+    # for any hub role added later. Eight of them run for this repo.
+    #
+    # That matters because async in check mode is a hard error on the
+    # ansible-core the EE ships (2.16), and unlike the controller and gateway
+    # roles the hub ones have no `ansible_check_mode` guard of their own, so
+    # --check alone does not save them.
+    #
+    # UNCONDITIONAL, not conditional on the core version, and deliberately so.
+    # Async buys nothing in check mode — nothing is being written to overlap
+    # with — and the entire point of #120 is that the laptop run and the EE run
+    # should take the SAME path. A version-conditional here would reintroduce
+    # exactly the divergence this playbook was failing to detect.
+    aap_configuration_async_timeout: 0
+
   tasks:
+    - name: Refuse to run without --check
+      # HOW YOU INVOKED IT, CHECKED BEFORE WHAT YOU INVOKED IT AGAINST.
+      #
+      # Without --check this play still changes nothing -- `check_mode: true`
+      # above sees to that -- but it validates almost nothing either, because
+      # every check-mode branch in infra.aap_configuration keys off
+      # `ansible_check_mode` and that is False. On the EE's ansible-core it does
+      # not even get that far; it dies on async. See the header.
+      #
+      # Asserting rather than warning: a validate run that reports success
+      # having exercised the wrong code path is precisely the wrong answer that
+      # looks right.
+      ansible.builtin.assert:
+        that:
+          - ansible_check_mode
+        fail_msg: >-
+          Run this with --check. A play-level `check_mode: true` sets the task's
+          check mode but leaves the `ansible_check_mode` variable False, and
+          infra.aap_configuration's check-mode handling is written entirely
+          against that variable -- so without --check the roles take their
+          non-check path, and on ansible-core 2.16 (which is what the execution
+          environment ships, and therefore what AAP runs) they fail with
+          "check mode and async cannot be used on same task" (#173). Re-run as:
+          ansible-playbook playbooks/validate.yml --check -i inventory
+          --limit {{ aap_env_name | default('<env>') }} -e target_env={{ aap_env_name | default('<env>') }}
+          --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
+        quiet: true
+
     - name: Assert the environment is unambiguous
       ansible.builtin.include_tasks: tasks/assert_target_environment.yml
 
@@ -153,6 +241,65 @@
           - "Run playbooks/config.yml to create the registry, then re-run this"
           - "playbook — the skip disappears and coverage is complete."
       when: validate_missing_registries | length > 0
+
+    # -----------------------------------------------------------------------
+    # THE ONE ROLE NEITHER FIX REACHES (#173).
+    #
+    # The roles dispatch runs for this repo set async three different ways, and
+    # only the third needs anything from this file:
+    #
+    #   11 controller/gateway roles  `ansible_check_mode | ternary(0, 1000)`
+    #                                --check fixes all eleven. No coverage lost.
+    #    8 hub_* roles               a per-role variable descending from
+    #                                aap_configuration_async_timeout, set to 0
+    #                                in this play's vars. No coverage lost.
+    #    1 gateway_organizations     a flat `async: 1000`. No knob, no guard.
+    #
+    # So the rule is: use the override wherever the collection provides one,
+    # because it is free, and skip a role only where it does not — which is
+    # here, and only here.
+    #
+    # It is an upstream miss rather than a design choice, and the proof is 55
+    # lines below it in the same file: the *controller* task in that same role
+    # does carry the ternary. infra.aap_configuration 4.7.0,
+    # roles/gateway_organizations/tasks/main.yml, lines 26 and 81.
+    # -----------------------------------------------------------------------
+    - name: Skip the organizations role on an ansible-core that rejects async in check mode
+      # SAME SHAPE AS THE SKIP ABOVE: empty the wildcard SOURCE var, not the
+      # base one. dispatch re-derives `aap_organizations` from every
+      # `aap_organizations_*` var when it runs, so setting the base here would
+      # simply be overwritten -- the role would still get its list, and still
+      # crash.
+      #
+      # The role is still included, with nothing to iterate, so the run
+      # completes instead of dying.
+      #
+      # WHAT IS NOT VALIDATED AS A RESULT: the items in aap_organizations.yml.
+      # A malformed organization would not be caught on a run where this fires.
+      #
+      # IT IS CONDITIONAL FOR THAT REASON. The guard core raises from lives in
+      # plugins/action/__init__.py and is present through 2.16.19 and gone from
+      # 2.17.0 onward -- measured by unpacking 2.16.19, 2.17.0, 2.17.14, 2.18.0
+      # and 2.18.18 rather than read off a release note. So a laptop on 2.17+
+      # keeps full coverage and only the EE run gives it up, which is the right
+      # way round: the EE run is the one verifying that everything ELSE works
+      # where AAP runs it.
+      ansible.builtin.set_fact:
+        aap_organizations_all: []
+      when: ansible_version.full is version('2.17', '<')
+
+    - name: Say so, loudly, about the organizations skip too
+      ansible.builtin.debug:
+        msg:
+          - "ansible-core {{ ansible_version.full }} rejects async in check mode."
+          - "SKIPPING the gateway_organizations role for this run: its gateway"
+          - "task sets async unconditionally, so it cannot run in check mode"
+          - "here at all (#173)."
+          - ""
+          - "NOT VALIDATED THIS RUN: the items in aap_organizations.yml."
+          - "Everything else IS validated, and on the core AAP actually runs."
+          - "A laptop run on core 2.17 or newer covers the organizations too."
+      when: ansible_version.full is version('2.17', '<')
 
     - name: Dispatch in check mode (reports intended changes, applies nothing)
       # Basic auth on purpose. dispatch supports it directly, so no OAuth token

@@ -159,15 +159,18 @@ cold cluster on a slow link will take longer. The playbook allows 90 minutes.
 -e hub_sync_wait_override=false
 ```
 
-Run `playbooks/validate.yml` first if you only want to see what would change —
-it is `config.yml` in check mode, and it explicitly forces `hub_sync_enabled:
-false` so it cannot start a sync.
+Run `playbooks/validate.yml --check` first if you only want to see what would
+change — it is `config.yml` in check mode, and it explicitly forces
+`hub_sync_enabled: false` so it cannot start a sync. **`--check` is required and
+the play refuses without it** (#173).
 
 **That guard is load-bearing, so do not remove it.** `ansible.hub` 1.1.0's
 `collection_repository_sync` checks for check mode with a parameter that is not
 in its argument_spec, so the check never fires and the sync runs for real. The
 group_vars guard uses `not ansible_check_mode`, which is only True for a CLI
-`--check` — a play-level `check_mode: true` leaves it False.
+`--check` — a play-level `check_mode: true` leaves it False. Now that
+`validate.yml` requires `--check` (#173) the group_vars guard does cover it, but
+keep the explicit one anyway: it costs nothing.
 
 Note also that **check mode cannot validate content**: `uri` does not run under
 `--check`, so `sync_hub.yml` skips its verification block entirely there.

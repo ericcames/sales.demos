@@ -24,7 +24,7 @@ Three times now that gap has held a real defect:
 | | What it was | What saw it |
 |---|---|---|
 | #122 | `python3-devel` repointed `/usr/bin/python3` from 3.12 to 3.9, whose site-packages has no `kubernetes` — every `kubernetes.core` task would fail at runtime on an image that built and pushed clean | nothing, until someone ran it in the image |
-| #173 | `validate.yml` passes on the laptop, fails in the EE — `check mode and async cannot be used on same task` | this skill, first serious use |
+| #173 | `validate.yml` passes on the laptop, fails in the EE — `check mode and async cannot be used on same task`. Underneath it, `validate.yml` had never once exercised `infra.aap_configuration`'s check-mode paths, on either machine | this skill, first serious use |
 | #120 | the gap itself | — |
 
 ## What is different, and it is not the collections
@@ -157,13 +157,35 @@ utilities/run-in-ee.sh --with-hub-token playbooks/sync_hub.yml -i inventory \
 and that has not changed (#68). AAP has no laptop to mount from. This changes the
 laptop story only.
 
-### Known EE-side failure
+### The EE-side failure this skill found, and what fixing it changed (#173)
 
-`validate.yml` currently fails in the EE at
+`validate.yml` used to fail in the EE at
 `infra.aap_configuration.gateway_organizations` with *"check mode and async
-cannot be used on same task"* — core 2.16 rejects the combination, core 2.18
-tolerates it. Tracked in **#173**. It passes on the laptop, so this is a genuine
-divergence and not a wrapper problem.
+cannot be used on same task"* while passing on the laptop. **Fixed** — but the
+cause was not the one the symptom suggested, and the fix changes how you run it:
+
+**`validate.yml` now requires `--check` and refuses without it.** A play-level
+`check_mode: true` sets the *task's* check mode but leaves the
+`ansible_check_mode` *variable* False, and every check-mode branch in
+`infra.aap_configuration` is written against that variable. So for as long as
+this playbook existed, eleven of the roles it runs were taking their non-check
+path — asking for `async` while in check mode. Core dropped the guard that
+rejects that in 2.17.0 (present through 2.16.19, gone from 2.17.0 on, measured
+by unpacking the wheels), so the laptop's 2.18 forgave it and the EE's 2.16
+did not.
+
+Three shapes, three answers, and only the last costs anything:
+
+| Roles | How they set `async` | Answer |
+|---|---|---|
+| 11 controller/gateway | `ansible_check_mode \| ternary(0, 1000)` | `--check`. No coverage lost. |
+| 8 `hub_*` | a variable descending from `aap_configuration_async_timeout` | set the parent to `0`. No coverage lost. |
+| 1 `gateway_organizations` | flat `async: 1000` — no knob, no guard | skip the role on core < 2.17, loudly. |
+
+Measured after the fix, same commit, same cluster: EE `ok=57 changed=4 failed=0`
+against laptop `ok=87 changed=4 failed=0` — identical task banners, identical
+`changed`, and the `ok` gap is the organizations role iterating an empty list in
+the EE, which the run says out loud.
 
 ## Verify against the target, not the recap
 
