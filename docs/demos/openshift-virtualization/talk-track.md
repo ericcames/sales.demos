@@ -294,6 +294,7 @@ hardcoded** — every value came from the machine describing itself.
 
 For the person who asks where the page gets its data — and someone always does:
 
+<!-- rendered: facts.json -->
 ```json
 {
     "hostname": "linuxweb",
@@ -332,6 +333,7 @@ This is a better beat than it looks. Show them in order.
 config that is validated with `sshd -t` and applied with a reload, never a
 restart:
 
+<!-- rendered: issue.j2 -->
 ```
 ###############################################################################
 #                                                                             #
@@ -359,6 +361,7 @@ restart:
 
 **After you authenticate** — `/etc/motd`:
 
+<!-- rendered: motd.j2 -->
 ```
         ___________________________________________________________________
        /                                                                   \

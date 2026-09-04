@@ -85,6 +85,7 @@ the template changes.
 The same run prints `/etc/motd`, which is what somebody sees after they
 authenticate to the guest:
 
+<!-- rendered: motd.j2 -->
 ```
         ___________________________________________________________________
        /                                                                   \
