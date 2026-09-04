@@ -1,0 +1,34 @@
+---
+# ===========================================================================
+# vars/main.yml — values derived from gathered facts, defined ONCE. Issue #160.
+# ===========================================================================
+# WHY THIS FILE EXISTS. The demo page and facts.json both report the guest's
+# virtualization, and both have to cope with the same quirk: on a KubeVirt guest
+# these facts come back as the literal string "NA". `| default()` does not fire,
+# because "NA" is defined.
+#
+# index.html.j2 handled that and facts.json did not, so a live VM served a page
+# saying "KVM (guest)" while the file it invites you to curl said "NA" — on the
+# same host, from the same run. The page makes a claim and the artifact offered
+# as evidence denied it (#160).
+#
+# The fix is not to write the conditional twice more carefully. Two copies of
+# this logic is exactly how the two drifted; this is the one definition both
+# consumers read.
+#
+# vars/ rather than defaults/ on purpose: this is derived, not configuration.
+# Nothing should override it, and defaults/ invites exactly that.
+#
+# Lazily evaluated, so it is safe to reference gathered facts here — they are
+# resolved when a task uses the value, long after fact gathering.
+# ===========================================================================
+
+linux_configure_virt_type: >-
+  {{ (ansible_virtualization_type | default('') | trim)
+     if (ansible_virtualization_type | default('NA')) not in ['NA', '']
+     else 'KVM' }}
+
+linux_configure_virt_role: >-
+  {{ (ansible_virtualization_role | default('') | trim)
+     if (ansible_virtualization_role | default('NA')) not in ['NA', '']
+     else 'guest' }}

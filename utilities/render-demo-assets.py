@@ -112,6 +112,17 @@ FIXTURE = {
 }
 FIXTURE["linux_configure_motd_url"] = f"https://{VM_NAME}-web-{NAMESPACE}.apps.{CLUSTER}"
 
+# MIRRORS linux_configure/vars/main.yml, AND CI ENFORCES IT (#160). On a KubeVirt
+# guest the virtualization facts come back as the literal string "NA", so both
+# the page and facts.json normalise them — and they must normalise identically,
+# because a live VM once served a page saying "KVM (guest)" while facts.json on
+# the same host said "NA". Derived here the same way rather than hardcoded, so
+# changing the fact above carries through as it would on a real guest.
+_vt = FIXTURE["ansible_virtualization_type"]
+_vr = FIXTURE["ansible_virtualization_role"]
+FIXTURE["linux_configure_virt_type"] = _vt if _vt not in ("NA", "") else "KVM"
+FIXTURE["linux_configure_virt_role"] = _vr if _vr not in ("NA", "") else "guest"
+
 
 def jinja() -> Environment:
     """A Jinja environment configured the way ansible.builtin.template is.
@@ -159,8 +170,8 @@ def facts_json() -> str:
                 "memory_mb": f["ansible_memtotal_mb"],
             },
             "virtualization": {
-                "type": f["ansible_virtualization_type"],
-                "role": f["ansible_virtualization_role"],
+                "type": f["linux_configure_virt_type"],
+                "role": f["linux_configure_virt_role"],
             },
             "provisioning": {
                 "vm_size_tier": f["vm_size_tier"],

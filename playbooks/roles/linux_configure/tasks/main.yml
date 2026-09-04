@@ -127,8 +127,8 @@
             'memory_mb': ansible_memtotal_mb,
           },
           'virtualization': {
-            'type': ansible_virtualization_type,
-            'role': ansible_virtualization_role,
+            'type': linux_configure_virt_type,
+            'role': linux_configure_virt_role,
           },
           'provisioning': {
             'vm_size_tier': vm_size_tier | default(none),
