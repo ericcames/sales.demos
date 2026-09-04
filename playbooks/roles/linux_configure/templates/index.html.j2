@@ -102,12 +102,13 @@
       <tr><td class="k">Kernel</td><td class="v">{{ ansible_kernel }}</td></tr>
       <tr><td class="k">Size tier</td><td class="v">{{ vm_size_tier | default('n/a') }}{% if vm_size_chosen is defined %} &rarr; {{ vm_size_chosen }}{% endif %}</td></tr>
       <tr><td class="k">vCPU / memory</td><td class="v">{{ ansible_processor_vcpus }} vCPU &middot; {{ ansible_memtotal_mb }} MB</td></tr>
-      {# `| default()` is not enough: on a KubeVirt guest these facts come back
-         as the literal string "NA", which is defined and therefore keeps the
-         default from firing. It rendered "NA (NA)" until this was caught. #}
+      {# On a KubeVirt guest these facts come back as the literal string "NA",
+         which is defined and so keeps `| default()` from firing — it rendered
+         "NA (NA)" until that was caught. The normalisation now lives in the
+         role's vars/main.yml so facts.json reports the SAME values this shows;
+         it used to be here only, and the two disagreed on a live VM (#160). #}
       <tr><td class="k">Virtualization</td><td class="v">
-        {{- (ansible_virtualization_type | default('') | trim) if (ansible_virtualization_type | default('NA')) not in ['NA', ''] else 'KVM' -}}
-        {{- ' (' ~ ansible_virtualization_role ~ ')' if (ansible_virtualization_role | default('NA')) not in ['NA', ''] else ' (guest)' -}}
+        {{- linux_configure_virt_type }} ({{ linux_configure_virt_role -}})
       </td></tr>
       <tr><td class="k">In-cluster address</td><td class="v">{{ ansible_host | default(inventory_hostname) }}</td></tr>
       <tr><td class="k">Configured</td><td class="v">{{ ansible_date_time.iso8601 }}</td></tr>

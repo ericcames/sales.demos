@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed -- the demo page and facts.json disagreed about virtualization (#160)
+- A live VM served a page saying `Virtualization: KVM (guest)` while
+  `facts.json` **on the same host, from the same run** said
+  `{"type": "NA", "role": "NA"}`.
+- **Cause:** on a KubeVirt guest these facts come back as the literal string
+  `"NA"`, so `| default()` never fires -- it is defined. `index.html.j2`
+  handled that; the `facts.json` task did not. The fix had been applied to one
+  of the two consumers of the same broken fact.
+- **Why it mattered more than a cosmetic mismatch.** #47's stated purpose for
+  `facts.json` is *"same data, curl-able"*, and the page's own footer says
+  *"everything on this page is inspectable"*. The page made a claim and the
+  artifact offered as evidence denied it -- on a demo whose whole story is Red
+  Hat virtualization, where `NA` is the least convincing possible answer.
+- **Normalised once, in `linux_configure/vars/main.yml`,** and read by both the
+  template and the task. Not the conditional written twice more carefully: two
+  copies is how they drifted. `vars/` rather than `defaults/` because this is
+  derived, not configuration, and nothing should override it.
+
+### Changed -- the drift gates did their job, in sequence (#160)
+- Worth recording as the first real exercise of machinery built the same day.
+  Changing the role's fact made `renderer-matches-role` (#145) fail with
+  *"the task now uses a variable the fixture does not define"*; fixing the
+  renderer made `docs-artifacts-current` (#85) fail with a diff of the stale
+  `facts.json` block in `talk-track.md`. One fact changed, and CI named each of
+  the remaining copies in turn.
+
+
 ### Fixed -- documented commands assumed an ambient ~/.kube/config (#161)
 - `virtctl ssh` to a freshly provisioned `demo` VM failed with
   `dial tcp: lookup api.cluster-k59xk-1... no such host` -- a cluster that died

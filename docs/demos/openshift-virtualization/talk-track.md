@@ -309,8 +309,8 @@ For the person who asks where the page gets its data — and someone always does
         "memory_mb": 1743
     },
     "virtualization": {
-        "type": "NA",
-        "role": "NA"
+        "type": "KVM",
+        "role": "guest"
     },
     "provisioning": {
         "vm_size_tier": "small-1cpu-2gb",
