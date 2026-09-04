@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed -- job templates now run on the 2.7-based EE, v1.1.0 (#122)
+- `controller_execution_environments.yml` points at
+  `sales_demos_ee:v1.1.0`, and the description string is corrected from
+  `v1.0.0 ... AAP 2.6` to `v1.1.0 ... AAP 2.7`. The upstream audit-trail digest
+  is updated to `sha256:be41f1ff...`.
+- **Proven before it was flipped**, which is what #122's additive rule asks for.
+  `Sales Demos - Install Automation Orchestrator` ran green on `v1.1.0` in
+  **both** environments -- sandbox job 108 and demo job 51, each `ok=30
+  changed=0`. Idempotent, and `kubernetes.core` end to end, which is exactly
+  what the python-interpreter defect would have broken.
+- **Rollback is one line.** `v1.0.0` stays mirrored in both hubs via
+  `hub_ee_repositories.yml`, so reverting `image:` needs no re-mirror and no
+  quay round trip.
+- The temporary verification EE objects created to run `v1.1.0` without
+  retiring `v1.0.0` first are deleted; the job templates were restored to the
+  managed EE before this change.
+
+
 ### Fixed -- #143 broke the Automation Orchestrator job template (#122 step 2)
 - `install_ao.yml` asserted and read `env_secrets[aap_env_name].aap_password`.
   **That variable does not exist in a job template.** `secrets.yml` is untracked
