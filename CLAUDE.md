@@ -110,6 +110,13 @@ ansible-vault edit playbooks/group_vars/all/secrets.yml \
   **The name is load-bearing.** `connection.local.yml` sorts *before*
   `connection.yml` and loses; it would be read, silently overridden, and leave
   the user on the committed cluster believing otherwise. Measured, not assumed.
+- **A fork must repoint two things, and both are variables** (#132):
+  `sales_demos_scm_url` (the AAP project's `scm_url`) and
+  `sales_demos_ee_upstream` (the PAH EE mirror). The first is the sharp one — a
+  fork that misses it has an AAP syncing *upstream*, so its own changes never
+  take effect and nothing looks wrong. `EE_IMAGE` in `utilities/build-ee.sh` was
+  already env-overridable; `.github/CODEOWNERS` is deliberately left alone, as a
+  fork's own to rewrite.
 - **`SALES_DEMOS_VAULT_PASS` overrides the vault password path** for the only
   two places that *execute* it — the `file` lookup in
   `inventory/group_vars/aap/main.yml` and `utilities/make-kubeconfig.sh`. One

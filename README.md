@@ -109,6 +109,40 @@ repo, which is [#132](https://github.com/ericcames/sales.demos/issues/132).
 You can do both: the overlay for laptop runs, the committed file for AAP. They
 do not interfere — `local.yml` simply is not present in the checkout.
 
+### Forking
+
+Running from AAP means forking, and four things in this repo name *this* repo or
+its author. Two are now variables; two are deliberately left alone (#132).
+
+**Point AAP's project at your fork.** This is the one that bites, because
+nothing looks wrong when it is missed — AAP happily syncs upstream, and your
+changes simply never take effect:
+
+```bash
+ansible-playbook playbooks/config.yml -i inventory --limit sandbox \
+  -e sales_demos_scm_url=https://github.com/<you>/sales.demos.git
+```
+
+**Mirror your own execution environment,** if you build one. Pulls from the
+default namespace are public and work for anyone, so this matters only once you
+push your own image:
+
+```bash
+EE_IMAGE=quay.io/<you>/sales-demos-ee:v1.1.0 ./utilities/build-ee.sh
+ansible-playbook playbooks/config.yml -i inventory --limit sandbox \
+  -e sales_demos_ee_upstream=<you>/sales-demos-ee
+```
+
+Both default to this repo's own values, so nothing changes if you ignore them.
+
+| Baked-in identity | Status |
+|---|---|
+| AAP project `scm_url` | **Variable** — `sales_demos_scm_url` |
+| PAH EE `upstream_name` | **Variable** — `sales_demos_ee_upstream` |
+| `EE_IMAGE` in `utilities/build-ee.sh` | Already env-overridable |
+| `linux_configure_repo_url` (demo page footer) | Already a role default — override it in `group_vars`, and CI now fails if `render-demo-assets.py` is not updated to match |
+| `.github/CODEOWNERS` | **Left alone.** Correct for this repo; a fork's own to rewrite |
+
 If your vault password lives somewhere other than the default path, export
 `SALES_DEMOS_VAULT_PASS`; both `utilities/make-kubeconfig.sh` and the AAP Vault
 credential in `inventory/group_vars/aap/main.yml` read that same variable.
