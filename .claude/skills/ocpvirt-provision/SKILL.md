@@ -63,6 +63,24 @@ ansible-playbook playbooks/provision_vm.yml -i inventory --limit sandbox \
 Idempotent — re-running converges rather than rebuilding. A second run reports
 `changed=0`, and that is the check that it is behaving.
 
+## Verify it in the EE before merging a change
+
+The `ansible-playbook` command above runs on your laptop, against
+`~/.ansible/collections` and your system python. An AAP job template runs this
+same playbook inside `sales-demos-ee`. **Those are two dependency sets and CI
+can see neither** — the lint gate executes nothing. Run it in the image as well:
+
+```bash
+utilities/run-in-ee.sh playbooks/provision_vm.yml \
+  -i inventory --limit sandbox -e target_env=sandbox \
+  --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
+```
+
+Everything after the playbook is unchanged from the command above — the wrapper
+adds the image and two read-only mounts and nothing else.
+
+Full detail, including how to diff the two runs: `/sales-demos-verify-ee`.
+
 ## What it does
 
 1. Ensures the **state namespace** exists — the Terraform kubernetes backend

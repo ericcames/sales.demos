@@ -7,6 +7,70 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added -- run playbooks inside the EE AAP actually uses (#120)
+- **`utilities/run-in-ee.sh`** runs any playbook through `ansible-navigator`
+  inside `sales-demos-ee`, the image AAP runs job templates on, instead of beside
+  it on the laptop. `ansible-playbook` resolves `~/.ansible/collections` and the
+  system python; a job template resolves what the image baked in. **Two
+  dependency sets, and only one is production.** CI cannot tell them apart -- the
+  lint gate executes nothing -- so a local run was this repo's only pre-merge
+  verification and by default it checked the wrong one.
+- **Everything after the playbook is passed through unchanged.** Take the
+  `ansible-playbook` line out of any skill, put the wrapper in front of it, and it
+  runs in the image -- same flags, same `--vault-id`, same `~/` path. That works
+  because navigator runs the EE as root with `HOME=/root` and bind-mounts the
+  project at its own host path, so mounting `~/secrets` at `/root/secrets` makes a
+  `~/`-relative `--vault-id` resolve identically inside. Measured with
+  `ansible-navigator exec --ll debug`, not assumed; the mount is doubled to
+  `/home/runner` as well, which is the same belt-and-braces navigator itself uses
+  for `~/.ssh`.
+- **The EE tag is read from `controller_execution_environments.yml`**, so the
+  verification image cannot drift from the production one -- that drift is the
+  defect being closed, and a second hardcoded copy would reintroduce it. The
+  registry differs deliberately (quay rather than the PAH mirror, which needs a
+  credential and a live environment). It **fails rather than guessing** if that
+  line will not parse. `EE_IMAGE` overrides, matching `build-ee.sh`.
+- **`--with-hub-token` is opt-in and off by default**, mounting `~/.ansible.cfg`
+  read-only for one run. Required by `config.yml`, `validate.yml`, `setup.yml`,
+  `sync_hub.yml` and `curate_hub.yml`; the wrapper **refuses** to start those
+  without it. A run-time bind mount is the same single file #22 and #68 made
+  authoritative -- not a second stored copy of a rotating credential, which is
+  what #68 actually refused. Every other playbook runs with no token reachable in
+  the container at all.
+- **No committed `ansible-navigator.yml`.** A tracked one would put a credential
+  directory path in a public repo, apply silently to anyone running
+  `ansible-navigator` in this directory, and become a second source of truth for
+  the EE tag.
+- New skill **`sales-demos-verify-ee`**, plus a *Verify it in the EE* section in
+  each of the eight phase skills, `README.md`, `CONTRIBUTING.md` and `CLAUDE.md`.
+  **Additive** -- `ansible-playbook` stays the documented everyday command.
+
+### Fixed -- an EE does not resolve the hub token to an empty string, it raises (#120)
+- `inventory/group_vars/aap/main.yml` had said that running inside an EE
+  "resolves this to an empty string, which is not an error". **Measured, that is
+  wrong:** the `ini` lookup on a missing `~/.ansible.cfg` raises
+  `AnsibleParserError: Invalid filename: 'None'`. The quiet failure it warned
+  about is the one that follows an *empty* token, not an absent file. Corrected
+  there, in `playbooks/sync_hub.yml`'s header, and in the #68 assert's `fail_msg`,
+  which now names the wrapper flag instead of declaring the EE impossible.
+- **What has not changed:** `sync_hub.yml` still cannot run as an AAP job
+  template. AAP has no laptop to mount from (#68). This changes the laptop story
+  only.
+
+### Found -- pinned collections are not a pinned environment (#173)
+- The first serious use of the above found `validate.yml` passing on the laptop
+  (`ok=212 failed=0`) and failing in the EE (`ok=13 failed=1`) on the same commit
+  and cluster, minutes apart: *"check mode and async cannot be used on same
+  task"* in `infra.aap_configuration.gateway_organizations`.
+- **Every collection pin matched exactly**, so `build-ee.sh`'s drift check was
+  green throughout. The divergence is underneath them -- laptop ansible-core
+  `2.18.18rc1` on python 3.14, EE `2.16.19` on python 3.12. Nothing in this repo
+  pins or compares ansible-core. Tracked in #173; documented as a known EE-side
+  failure rather than fixed here.
+- Verified working the other way too: `probe_env.yml` returned identical figures
+  and an identical `ok=31 changed=0 failed=0` recap both ways, 2026-09-04.
+
+
 ### Fixed -- #124 guarded the wrong thing: ansible.hub CREATES a missing remote (#170)
 - `hub_collection_remotes.yml` had said since #68 that the file being written
   entirely as updates was load-bearing, because *"if a remote did not already

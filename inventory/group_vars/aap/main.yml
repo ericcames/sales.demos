@@ -83,11 +83,30 @@ aap_organization_name: "IT Service Automation"
 # same as every other config-as-code object here: `config.yml` has never had a
 # job template either, because you cannot use AAP to bootstrap itself.
 #
-# The consequence is worth stating plainly, because it fails QUIETLY. Running
-# any of this inside an EE resolves this to an empty string, which is not an
-# error — the certified and validated remotes are then configured with no
-# credential, authenticate as anonymous, and sync nothing. playbooks/sync_hub.yml
-# asserts the token is non-empty up front for exactly that reason.
+# The consequence is worth stating plainly. An EE has no ~/.ansible.cfg, and
+# what happens then was measured in #120 rather than assumed -- the old wording
+# here said it "resolves to an empty string, which is not an error", and that is
+# wrong. The ini lookup RAISES:
+#
+#   AnsibleParserError: Invalid filename: 'None'
+#
+# Which is the better of the two failures, and it is worth knowing which one you
+# are looking at. The quiet failure is the one that follows if the token is ever
+# empty rather than absent: the certified and validated remotes are configured
+# with no credential, authenticate as anonymous, and sync nothing.
+# playbooks/sync_hub.yml asserts the token is non-empty up front for that case.
+#
+# NEITHER IS A PERMANENT EXCLUSION FROM THE EE ANY MORE (#120).
+# utilities/run-in-ee.sh --with-hub-token mounts this file read-only into the
+# container for the duration of one run. That is not a second stored copy of a
+# rotating credential -- which is what #68 refused -- it is the same single file,
+# read at run time and never persisted. It is required for config.yml,
+# validate.yml, setup.yml, sync_hub.yml and curate_hub.yml, and the wrapper
+# refuses to start those without it.
+#
+# WHAT DOES NOT CHANGE: none of this makes the hub playbooks runnable as an AAP
+# JOB TEMPLATE. AAP has no laptop to mount from. #120 changes the laptop story
+# only.
 # ---------------------------------------------------------------------------
 automation_hub_token: >-
   {{ lookup('ansible.builtin.ini',

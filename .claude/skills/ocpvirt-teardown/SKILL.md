@@ -75,6 +75,24 @@ built them, or Terraform plans against a different shape:
   -e os_type=both -e vm_size_tier=large-2cpu-6gb
 ```
 
+## Verify it in the EE before merging a change
+
+The `ansible-playbook` command above runs on your laptop, against
+`~/.ansible/collections` and your system python. An AAP job template runs this
+same playbook inside `sales-demos-ee`. **Those are two dependency sets and CI
+can see neither** — the lint gate executes nothing. Run it in the image as well:
+
+```bash
+utilities/run-in-ee.sh playbooks/teardown.yml \
+  -i inventory --limit sandbox -e target_env=sandbox \
+  --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
+```
+
+Everything after the playbook is unchanged from the command above — the wrapper
+adds the image and two read-only mounts and nothing else.
+
+Full detail, including how to diff the two runs: `/sales-demos-verify-ee`.
+
 ## Verify against the cluster, not the recap
 
 ```bash

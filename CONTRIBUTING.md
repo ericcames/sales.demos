@@ -120,6 +120,20 @@ skill never reimplements logic — both drive the same playbook.
 - Survey variable names, skill prompts, and playbook `extra_vars` must match
   exactly. **The variable names are the contract.**
 
+**Verify a playbook change in the EE before it merges** (#120). `ansible-playbook`
+runs against your laptop's collections and python; a job template runs against
+what the execution environment baked in. CI cannot tell them apart — the lint
+gate executes nothing — so a laptop run alone verifies the wrong dependency set.
+
+```bash
+utilities/run-in-ee.sh playbooks/<phase>.yml -i inventory --limit sandbox \
+  -e target_env=sandbox --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
+```
+
+Everything after the playbook is identical to the `ansible-playbook` command.
+Add `--with-hub-token` for `config.yml`, `validate.yml`, `setup.yml`,
+`sync_hub.yml`, `curate_hub.yml`. `/sales-demos-verify-ee` walks it.
+
 ## Workflow
 
 1. **Open an issue before writing code.** Label it — run
@@ -131,8 +145,10 @@ skill never reimplements logic — both drive the same playbook.
 4. Update [`CHANGELOG.md`](CHANGELOG.md) under `[Unreleased]`.
 5. Update [`ROADMAP.md`](ROADMAP.md) if the plan changes, and
    [`CLAUDE.md`](CLAUDE.md) if a convention changes.
-6. Run the leak audit above.
-7. Open a PR with a summary, a test plan, and a rollback note.
+6. Run the phase against `sandbox` — and run it in the EE too, per
+   *Skills and playbooks* above. A green CI run proves neither.
+7. Run the leak audit above.
+8. Open a PR with a summary, a test plan, and a rollback note.
 
 **Additive only** — do not remove a working capability until its replacement is
 proven.

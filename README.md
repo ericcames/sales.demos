@@ -397,6 +397,7 @@ never a demo environment, so they must never run from AAP:
 | `collections-sync` | Pin, install, and verify `collections/requirements.yml` |
 | `sales-demos-ee-build` | Build, verify, and publish the execution environment |
 | `sales-demos-mcp` | Connect Claude Code to the clusters over MCP — per-environment kubeconfigs |
+| `sales-demos-verify-ee` | Run a playbook *inside* the EE AAP uses, and diff it against a laptop run |
 
 New machine? Run `/sales-demos-first-time` first. It walks every prerequisite and
 validates each one, including the vault password — without which nothing in this
@@ -483,7 +484,39 @@ It exists for one reason: Phase 3 drives `terraform/ocpvirt/` by shelling out to
 the terraform CLI, and no stock execution environment ships that binary.
 Everything else in the image is `ee-supported-rhel9` (AAP 2.7, pinned by digest)
 plus the same `collections/requirements.yml` your laptop installs — so the skill
-path and the job-template path resolve identical collection code.
+path and the job-template path resolve identical collection *code*.
+
+**Identical collections is not an identical environment**, and the difference is
+underneath them. Measured 2026-09-04: the laptop ran ansible-core `2.18.18rc1` on
+python 3.14 while `sales-demos-ee:v1.1.0` runs core `2.16.19` on python 3.12 —
+two minor versions of core apart, with every collection pin matching exactly.
+That gap is invisible to CI, to a laptop run, and to `build-ee.sh`'s drift check,
+and it is currently holding a real defect (#173). See
+[*Verify it in the EE*](#verify-it-in-the-ee) below.
+
+### The published image carries no credential
+
+The image is public. It holds **no token**, and that is checkable rather than
+asserted:
+
+```bash
+podman run --rm --entrypoint /bin/bash quay.io/zigfreed/sales-demos-ee:v1.1.0 \
+  -c 'ls /etc/ansible 2>&1; ansible --version | grep "config file"'
+# ls: cannot access '/etc/ansible': No such file or directory
+#   config file = None
+
+podman history --no-trunc quay.io/zigfreed/sales-demos-ee:v1.1.0 | grep ansible.cfg
+# (no match)
+```
+
+`execution-environment.yml` stages `~/.ansible.cfg` — which carries the Red Hat
+offline token — into the **galaxy build stage only**. The final image is built
+`FROM base` and copies the installed collections out, not that file.
+
+Anything that needs a credential at run time gets it **mounted read-only from
+your laptop for that run and never persisted**, which is why
+`utilities/run-in-ee.sh` prints every mount before it starts. Making the build
+*enforce* the emptiness rather than merely achieve it is [#172](https://github.com/ericcames/sales.demos/issues/172).
 
 ```bash
 ./utilities/build-ee.sh          # build + verify
@@ -669,6 +702,43 @@ ansible-playbook playbooks/setup.yml \
 **`--vault-id` is required** — credentials come from the vault-encrypted
 `playbooks/group_vars/all/secrets.yml`. Without it the run fails with
 *"Attempting to decrypt but no vault secrets found"*.
+
+### Verify it in the EE
+
+That command runs on **your laptop**, against `~/.ansible/collections` and your
+system python. An AAP job template runs the same playbook inside
+`sales-demos-ee`, against whatever that image baked in. Two dependency sets, and
+only one of them is what production uses.
+
+Nothing else here can tell them apart — CI executes nothing, so a local run is
+this repo's only pre-merge verification and by default it verifies the wrong one.
+Before a playbook change merges, run it in the image as well:
+
+```bash
+utilities/run-in-ee.sh playbooks/probe_env.yml \
+  -i inventory --limit sandbox -e target_env=sandbox \
+  --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
+```
+
+**Everything after the playbook is byte-identical to the `ansible-playbook`
+command above it.** The wrapper adds `ansible-navigator`, the right image, and
+two read-only mounts; it changes none of your arguments. `~/` paths resolve
+inside the container because the mounts are placed where the container's home is.
+
+Add `--with-hub-token` for `config.yml`, `validate.yml`, `setup.yml`,
+`sync_hub.yml` and `curate_hub.yml`, which read the Red Hat offline token from
+`~/.ansible.cfg`. The wrapper refuses rather than warns if you forget — without
+the mount the `ini` lookup **raises** (`Invalid filename: 'None'`) rather than
+returning an empty string.
+
+This is a verification path, not a replacement: `ansible-playbook` stays the
+everyday command. `/sales-demos-verify-ee` walks the whole thing, including which
+playbooks need what and how to diff the two runs.
+
+It has already earned it. [#122](https://github.com/ericcames/sales.demos/issues/122)
+(a hijacked python interpreter) and [#173](https://github.com/ericcames/sales.demos/issues/173)
+(`validate.yml` failing on the EE's older ansible-core) were both invisible to CI,
+to a laptop run, and to `build-ee.sh`.
 
 ### Keep the run log
 
