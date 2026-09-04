@@ -172,6 +172,27 @@ group_vars guard uses `not ansible_check_mode`, which is only True for a CLI
 Note also that **check mode cannot validate content**: `uri` does not run under
 `--check`, so `sync_hub.yml` skips its verification block entirely there.
 
+## Verify it in the EE before merging a change
+
+The `ansible-playbook` command above runs on your laptop, against
+`~/.ansible/collections` and your system python. An AAP job template runs this
+same playbook inside `sales-demos-ee`. **Those are two dependency sets and CI
+can see neither** — the lint gate executes nothing. Run it in the image as well:
+
+```bash
+utilities/run-in-ee.sh --with-hub-token playbooks/sync_hub.yml \
+  -i inventory --limit sandbox -e target_env=sandbox \
+  --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
+```
+
+Everything after the playbook is unchanged from the command above — the wrapper
+adds the image and two read-only mounts and nothing else.
+`--with-hub-token` mounts `~/.ansible.cfg` read-only for the run. The wrapper
+refuses to start this playbook without it: the token lookup **raises** on a
+missing file rather than returning empty.
+
+Full detail, including how to diff the two runs: `/sales-demos-verify-ee`.
+
 ## Curating the `approved` repository
 
 The three synced repositories are mirrors and **a sync cannot remove anything**.

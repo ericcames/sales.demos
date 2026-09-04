@@ -19,7 +19,14 @@
 #
 # LAPTOP-ONLY, ON PURPOSE, AND UNLIKE EVERY OTHER PHASE HERE THERE IS NO JOB
 # TEMPLATE. The Red Hat offline token lives in ~/.ansible.cfg and nowhere else
-# (#68), and an execution environment has no such file. A vaulted fallback was
+# (#68), and an execution environment has no such file of its own.
+#
+# IT CAN NOW RUN IN AN EE ON A LAPTOP, AND THAT IS A DIFFERENT CLAIM (#120).
+# utilities/run-in-ee.sh --with-hub-token bind-mounts ~/.ansible.cfg read-only
+# for the duration of one run -- the same single file, never persisted, not a
+# second copy. What stays true is the sentence above about the JOB TEMPLATE:
+# AAP has no laptop to mount from, so there is still none. Do not read a green
+# navigator run as "PAH can run from AAP". A vaulted fallback was
 # built and verified working, then removed: it bought one job template at the
 # cost of a second copy of a rotating credential. This is the same position
 # config.yml has always been in — you cannot use AAP to bootstrap itself.
@@ -158,9 +165,10 @@
           The Red Hat offline token did not resolve from ~/.ansible.cfg
           [galaxy_server.rh_certified]. Without it rh-certified and validated
           sync nothing while reporting success. Add it from
-          https://console.redhat.com/ansible/automation-hub/token — and note
-          this playbook cannot run inside an execution environment, which has no
-          ~/.ansible.cfg at all.
+          https://console.redhat.com/ansible/automation-hub/token. If you are
+          running inside an execution environment, it has no ~/.ansible.cfg of
+          its own — use utilities/run-in-ee.sh --with-hub-token, which mounts
+          yours read-only for the run (#120).
         quiet: true
 
     - name: Assert the generated requirements files are present and parse

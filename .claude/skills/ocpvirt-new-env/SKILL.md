@@ -82,6 +82,24 @@ It creates a VM in its own `sales-demos-smoke` namespace, waits for `Running`,
 reports the time, and deletes the namespace in an `always:` block — so a failed
 or slow run does not leave a VM eating the memory budget the real demo needs.
 
+## Verify it in the EE before merging a change
+
+The `ansible-playbook` command above runs on your laptop, against
+`~/.ansible/collections` and your system python. An AAP job template runs this
+same playbook inside `sales-demos-ee`. **Those are two dependency sets and CI
+can see neither** — the lint gate executes nothing. Run it in the image as well:
+
+```bash
+utilities/run-in-ee.sh playbooks/prepare_env.yml \
+  -i inventory --limit sandbox -e target_env=sandbox \
+  --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
+```
+
+Everything after the playbook is unchanged from the command above — the wrapper
+adds the image and two read-only mounts and nothing else.
+
+Full detail, including how to diff the two runs: `/sales-demos-verify-ee`.
+
 ## Reading the result
 
 - **`WARM — this environment is demo-ready`** (≤120s) — go.
