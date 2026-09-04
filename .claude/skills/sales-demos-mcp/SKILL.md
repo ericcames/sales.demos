@@ -90,6 +90,13 @@ test -f .mcp.json \
   && echo "✅ .mcp.json present" \
   || echo "❌ .mcp.json missing — it is committed; you may be outside the repo root"
 
+# The kubeconfig for this environment still points AT this environment.
+# Generating it once is not enough: repointing an environment edits
+# connection.yml and the vault and does NOT regenerate this file (#161). The
+# failure is otherwise a DNS error naming a dead cluster, which says nothing
+# about kubeconfigs.
+bash utilities/check-kubeconfig.sh "$ENV" 2>&1 || true
+
 test -d "inventory/group_vars/$ENV" \
   && echo "✅ environment '$ENV' exists" \
   || echo "❌ no such environment '$ENV'"

@@ -7,6 +7,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed -- documented commands assumed an ambient ~/.kube/config (#161)
+- `virtctl ssh` to a freshly provisioned `demo` VM failed with
+  `dial tcp: lookup api.cluster-k59xk-1... no such host` -- a cluster that died
+  two days earlier. The VM was fine; `virtctl` defaults to `~/.kube/config`,
+  whose `current-context` still named the dead environment.
+- **The automation was never affected, and that bounds the fix.**
+  `provision_vm.yml` has zero references to `~/.kube/config` -- it synthesises a
+  temporary kubeconfig from `connection.yml` plus the vault and deletes it in an
+  `always:` block. Only *instructions to people* assumed the ambient file.
+- `README.md`'s SSH section listed "`oc` logged in" as the prerequisite and gave
+  a bare `virtctl ssh`. It now names `KUBECONFIG=.kube/<env>.kubeconfig` and
+  explains why the ambient file is not trusted.
+- **Both force-unlock recovery blocks** -- `terraform_lock_check.yml` and
+  `ocpvirt-provision/SKILL.md`, which are the same text in two files on purpose
+  -- pointed at `$HOME/.kube/config` after an `oc login`. That is the worst
+  place to trust an ambient kubeconfig: a force-unlock aimed at the wrong
+  cluster is a bad afternoon. Both now use the repo's per-environment file.
+- **`utilities/check-kubeconfig.sh` verifies rather than trusts**, the same
+  shape as `check-no-secrets.sh`'s second check (#130). `make-kubeconfig.sh`
+  writes the file once; repointing an environment edits `connection.yml` and the
+  vault and does **not** regenerate it, so the two drift silently. The check
+  compares the kubeconfig's `server` against that environment's
+  `openshift_api_url` and names the fix. Verified against a deliberately
+  staled kubeconfig -- it fails with both URLs printed.
+- Wired into `/sales-demos-mcp`'s preflight, which is where kubeconfigs are
+  generated.
+
+### Fixed -- the relative path in the force-unlock instructions
+- Both blocks `cd terraform/ocpvirt` first, so a repo-root-relative
+  `.kube/<env>.kubeconfig` would have resolved to
+  `terraform/ocpvirt/.kube/...` and failed. They use `../../.kube/` and the
+  path was checked from that directory.
+
+### Not a bug -- the SSH key
+- Initially suspected. `~/.ssh/id_rsa` matches `demo_ssh_public_key` and is a
+  default identity ssh offers automatically, so **no `-i` is needed and no key
+  should be written anywhere**. Recorded because the obvious next move --
+  extracting `demo_ssh_private_key` from the vault to disk -- would put a
+  private key on the filesystem to solve a problem that does not exist.
+
+
 ### Changed -- job templates now run on the 2.7-based EE, v1.1.0 (#122)
 - `controller_execution_environments.yml` points at
   `sales_demos_ee:v1.1.0`, and the description string is corrected from

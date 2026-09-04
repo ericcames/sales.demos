@@ -77,13 +77,15 @@
         oc get lease lock-tfstate-default-{{ aap_env_name }} \
           -n {{ ocpvirt_state_namespace }} -o jsonpath='{.spec.holderIdentity}'
 
-      Then, from a laptop with `oc login` to {{ aap_env_name }} already done:
+      Then, from a laptop, using this repo's kubeconfig for the environment
+      rather than `oc login` (#161 — the ambient ~/.kube/config goes stale and a
+      force-unlock aimed at the wrong cluster is a bad afternoon):
 
         cd terraform/ocpvirt
         terraform init -reconfigure \
           -backend-config=secret_suffix={{ aap_env_name }} \
           -backend-config=namespace={{ ocpvirt_state_namespace }} \
-          -backend-config=config_path=$HOME/.kube/config \
+          -backend-config=config_path=../../.kube/{{ aap_env_name }}.kubeconfig \
           -backend-config=insecure=true
         terraform force-unlock {{ tf_lock_id }}
 
