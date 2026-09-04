@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed -- Use the stock `Red Hat Quay.io` registry instead of creating our own (#186)
+- Removed `hub_ee_registries_all` from `hub_ee_registries.yml`. The stock
+  `Red Hat Quay.io` registry, provisioned by the installer on every RHDP
+  environment, already points at `https://quay.io` — creating a second
+  `quay_io` entry was duplication.
+- `hub_ee_repositories.yml` now references `registry: Red Hat Quay.io`
+  directly instead of `registry: quay_io`.
+- Remote Registries in the Hub UI shows two entries (the stock pair) instead
+  of three.
+
 ### Added -- AAP project syncs now resolve from Private Automation Hub (#69)
 - `playbooks/link_hub.yml` and the `pah-link-aap` skill: a
   `Sales Demos - PAH Galaxy` credential aimed at the curated `approved`

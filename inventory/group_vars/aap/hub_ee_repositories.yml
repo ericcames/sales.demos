@@ -2,8 +2,8 @@
 # ============================================================================
 # group_vars/aap/hub_ee_repositories.yml — mirror the EE into PAH (#35)
 # ============================================================================
-# Creates the Hub-side EE repository and syncs the image from the quay_io remote
-# registry defined in hub_ee_registries.yml, so the image is present in PAH by
+# Creates the Hub-side EE repository and syncs the image from the stock
+# "Red Hat Quay.io" registry (see hub_ee_registries.yml), so the image is present in PAH by
 # the time controller_execution_environments.yml points Controller at it.
 # Dispatch ordering guarantees the registry is created first.
 #
@@ -31,7 +31,7 @@ hub_ee_repositories_all:
       sales.demos EE — Terraform 1.15.8 · cloud.terraform · kubernetes.core ·
       redhat.openshift_virtualization · infra.aap_configuration. Mirrored from
       quay.io/zigfreed/sales-demos-ee.
-    registry: quay_io
+    registry: Red Hat Quay.io
     # A fork that builds and pushes its OWN execution environment mirrors from
     # its own namespace (#132). Pulls from the default are public and work for
     # anyone, so this only matters once you push your own image -- but leaving

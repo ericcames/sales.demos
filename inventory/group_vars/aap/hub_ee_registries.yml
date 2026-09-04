@@ -2,35 +2,28 @@
 # ============================================================================
 # group_vars/aap/hub_ee_registries.yml — where PAH fetches the EE from (#35)
 # ============================================================================
-# Tells Private Automation Hub that quay.io exists as a remote registry. The
-# image to mirror is named in hub_ee_repositories.yml; this only supplies the
-# endpoint and, if it were ever needed, the credentials to reach it.
+# This file USED TO define a `hub_ee_registries_all` variable that created a
+# `quay_io` registry object. It no longer does (#186): the stock `Red Hat
+# Quay.io` registry, provisioned by the installer on every RHDP environment,
+# already points at `https://quay.io`, so creating a second entry for the same
+# endpoint was duplication. `hub_ee_repositories.yml` now references the stock
+# registry by name.
 #
-# DISPATCH AND THE THREE ROLES. Defining this variable makes dispatch run
-# three roles in order: hub_ee_registry → hub_ee_registry_index →
-# hub_ee_registry_sync. Only the first does work here. The other two are
-# gated on per-item flags (`index | default(false)` and
-# `sync | default(false)`) that this repo does not set, because a
-# registry-level sync would mean indexing all of quay.io.
-#
-# "NEVER SYNCED" IN THE UI IS EXPECTED. The Hub shows the registry's own
-# sync status, which is the operation we deliberately skip. The actual
-# mirroring happens one level down, at the repository object defined in
-# hub_ee_repositories.yml (with `sync: true`), and that sync completes
-# normally — measured 2026-09-04, state=completed with no errors.
-#
-# STOCK REGISTRIES BESIDE OURS. PAH ships with two registries created by
-# the installer during environment provisioning:
+# STOCK REGISTRIES. PAH ships with two registries created during environment
+# provisioning:
 #
 #   Red Hat Ecosystem Catalog   https://registry.redhat.io
 #   Red Hat Quay.io             https://quay.io
 #
-# Both also show "Never synced" — same reason, same expected status.
-# Our `quay_io` entry is a third registry pointing at the same quay.io
-# endpoint. It exists rather than reusing `Red Hat Quay.io` because that
-# stock name contains characters (spaces, dots) the API rejects for
-# user-created objects — see the name-rule note below. The installer is
-# exempt from its own validation; CaC and the API are not.
+# Both show "Never synced" in the UI — that is expected. Registry-level sync
+# would mean indexing the entire registry. The actual mirroring happens at the
+# repository level, in hub_ee_repositories.yml (with `sync: true`).
+#
+# WHY THE STOCK NAME WORKS. The API restricts user-created registry names to
+# alphanumerics and underscores, which is why the old entry was `quay_io`. The
+# stock `Red Hat Quay.io` contains spaces and a dot — the installer is exempt
+# from its own validation. We do not need to create the object, only reference
+# it, and a reference is a plain string.
 #
 # WHY PAH AT ALL, when quay.io already works (#31). The demo stops depending
 # on quay being reachable and on a public repository staying public, and the
@@ -53,15 +46,3 @@
 #     trusted. `insecureRegistries` and `additionalTrustedCA` are both empty on
 #     this cluster and must stay that way.
 # ============================================================================
-
-hub_ee_registries_all:
-  # Name allows alphanumerics and underscores only for API-created objects —
-  # stock registries provisioned by the installer are exempt (the stock
-  # "Red Hat Quay.io" has both spaces and a dot). This is why we create our
-  # own rather than reuse the stock entry, and why the name is quay_io.
-  - name: quay_io
-    url: https://quay.io
-    tls_validation: true
-    # No credentials. quay.io/zigfreed/sales-demos-ee is deliberately PUBLIC
-    # (#31) — it holds only pinned open-source collections and the terraform
-    # binary. Add username/password here if it ever moves to a private org.
