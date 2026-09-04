@@ -46,4 +46,15 @@ controller_projects_all:
     # "false". False on purpose — a demo should run the revision that was
     # tested, not whatever landed on main five minutes ago. Sync deliberately
     # from the UI or by re-running config.yml.
+    #
+    # RE-RUNNING config.yml NOW GENUINELY SYNCS IT (#148). That sentence used to
+    # describe an intention rather than a behaviour: config.yml created job
+    # templates against whatever checkout the project happened to hold, and a
+    # stale one failed the run with "Playbook not found for project." The sync
+    # is a task in config.yml itself now, before the dispatch role.
+    #
+    # scm_update_on_launch stays false regardless, and the two are not in
+    # tension: syncing at CONFIGURATION time is a different moment from syncing
+    # at LAUNCH time, and only the second would make a running demo
+    # unpredictable.
     scm_update_on_launch: false
