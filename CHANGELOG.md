@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed -- point quay_windows_image at the published golden image (#220)
+- Both environments' `connection.yml` now reference the real containerdisk
+  (`quay.io/zigfreed/win2k22-golden:20260905-1826`) instead of a placeholder.
+  The repo is private, so `quay_username` and `quay_password` must be set in
+  the vault before running `link_windows_image.yml`.
+- Updated the stale "NOT YET CONSUMED" comment in `secrets.yml.example` — the
+  quay credentials have been consumed since #3 merged.
+
 ### Added -- compliance report URL in the MOTD banner (#217)
 - The SSH login banner now shows the CIS L1 compliance report URL alongside
   the Demo page and Console URLs, so an SE lands on the VM and sees all three
