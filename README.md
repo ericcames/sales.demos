@@ -838,6 +838,29 @@ That is deliberate: keeping deploys out of CI means no runner ever needs the
 vault password, and there is no second copy of it living in GitHub Environment
 secrets. See [#7](https://github.com/ericcames/sales.demos/issues/7).
 
+## Related repositories
+
+| Repo | What it is | Which way the dependency runs |
+|---|---|---|
+| [image.builder.pipeline](https://github.com/ericcames/image.builder.pipeline) | The **image factory** — CIS-hardened RHEL AMIs and the Windows Server 2022 containerDisk | **Produces** what this repo consumes |
+| [rego_policy_libraries](https://github.com/ynotbhatc/rego_policy_libraries) | OPA policy library | Consumes the factory's compliance data, not this repo |
+
+**The Windows golden image is deliberately split across both repos.** The
+consumer half — pointing a cluster at a published containerdisk — is
+[#3](https://github.com/ericcames/sales.demos/issues/3) here, and ships. The
+producer half — building and publishing that image — is
+[image.builder.pipeline#24](https://github.com/ericcames/image.builder.pipeline/issues/24).
+**The only thing binding them is one string: a containerdisk tag**, carried in
+`quay_windows_image` in `inventory/group_vars/<env>/connection.yml`.
+
+That split is intentional, and the factory repo's own `CLAUDE.md` states why:
+*"Producer/consumer across repos is intentional. Different audiences, different
+lifecycles."* Hardening and compliance evidence are that repo's purpose; running
+demos is this one's.
+
+**These are links, not a workflow dependency.** This repo stays self-contained —
+nothing here requires running anything in another repo. See *Conventions* below.
+
 ## Conventions
 
 See [`CLAUDE.md`](CLAUDE.md). The short version: AAP 2.7, `ansible.platform`
