@@ -122,6 +122,7 @@ authenticate to the guest:
 
    Demo page:  https://sd-lnx-small-1cpu-2gb-web-sales-demos-demo.apps.cluster-abcde.dyn.redhatworkshops.io
    Console:    https://sd-lnx-small-1cpu-2gb-cockpit-sales-demos-demo.apps.cluster-abcde.dyn.redhatworkshops.io
+   Compliance: https://sd-lnx-small-1cpu-2gb-web-sales-demos-demo.apps.cluster-abcde.dyn.redhatworkshops.io/compliance/report.html
 ```
 
 Let the cow get its laugh, then land the line under it: *"This host is managed
