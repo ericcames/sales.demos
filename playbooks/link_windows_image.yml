@@ -15,10 +15,14 @@
 #     --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
 #
 # WHAT THIS DOES. Creates a pull secret for the private quay repository holding
-# the Windows containerdisk, then adds a DataImportCron template to the
-# HyperConverged CR so CDI imports it and keeps the `win2k22` DataSource
-# populated. Terraform already clones that DataSource
-# (terraform/ocpvirt/main.tf) and has been blocked on it since Phase 1.
+# the Windows containerdisk, adds a DataImportCron template to the
+# HyperConverged CR, and creates a DataVolume to import the image. The
+# DataImportCron is there for future refresh; the DataVolume is the actual
+# import trigger because CDI 4.20's DataImportCron controller cannot
+# authenticate to a private registry for its initial digest check (#224).
+# Once imported, the DataSource `win2k22` is updated to point at the PVC.
+# Terraform already clones that DataSource (terraform/ocpvirt/main.tf) and
+# has been blocked on it since Phase 1.
 #
 # ---------------------------------------------------------------------------
 # WHY A DataImportCron AND NOT A HAND-CREATED PVC
@@ -87,7 +91,15 @@
     # at a moving tag is what makes the cron actually refresh anything.
     win_image_schedule: "9 10/12 * * *"
 
-    win_wait_retries: 60
+    # The manual DataVolume name. Deterministic so re-runs are idempotent.
+    win_import_name: "win2k22-initial-import"
+
+    # The image is ~4.5 GiB compressed; cluster-side pull takes ~80 min.
+    win_import_retries: 100
+    win_import_delay: 60
+
+    # Short wait for the DataSource after the PVC is already Bound.
+    win_wait_retries: 30
     win_wait_delay: 10
 
   tasks:
@@ -147,19 +159,11 @@
           (DataSource {{ win_managed_datasource }} in {{ win_datasource_namespace }}).
 
     # --- The pull secret ----------------------------------------------------
-    - name: Derive the registry hostname from the image reference
-      ansible.builtin.set_fact:
-        win_registry: "{{ quay_windows_image | regex_replace('/.*$', '') }}"
-      when: windows_image_link_state == 'present'
-
     - name: Create the pull secret for the private quay repository
-      # Private is not optional: a Windows image cannot be redistributed
-      # publicly, so CDI needs credentials to pull it at all.
-      #
-      # The dockerconfigjson is built as an inline Jinja dict rather than a
-      # YAML dict in vars: because Ansible does not template dictionary KEYS
-      # in vars: blocks — the registry hostname ended up as a literal Jinja
-      # expression (#222).
+      # CDI's importer pod reads the secret as accessKeyId / secretKey env
+      # vars, NOT as a dockerconfigjson. The earlier dockerconfigjson format
+      # produced CreateContainerConfigError: "couldn't find key accessKeyId"
+      # (#222 → #224).
       kubernetes.core.k8s:
         state: present
         definition:
@@ -168,11 +172,10 @@
           metadata:
             name: "{{ win_pull_secret_name }}"
             namespace: "{{ win_datasource_namespace }}"
-          type: kubernetes.io/dockerconfigjson
+          type: Opaque
           data:
-            .dockerconfigjson: >-
-              {{ {'auths': {win_registry: {'auth': (quay_username ~ ':' ~ quay_password) | b64encode}}}
-                 | to_json | b64encode }}
+            accessKeyId: "{{ quay_username | b64encode }}"
+            secretKey: "{{ quay_password | b64encode }}"
       no_log: true
       when: windows_image_link_state == 'present'
 
@@ -241,6 +244,86 @@
           spec:
             dataImportCronTemplates: "{{ win_desired_crons }}"
 
+    # --- Import the image via a manual DataVolume ----------------------------
+    # CDI's DataImportCron controller cannot get the image digest from a
+    # private registry — it fails silently with "No source digest" and never
+    # creates a DataVolume (#224). The cron template stays in HCO for future
+    # CDI versions; this DataVolume is the explicit import trigger.
+    - name: Check if the DataSource is already Ready
+      kubernetes.core.k8s_info:
+        api_version: cdi.kubevirt.io/v1beta1
+        kind: DataSource
+        name: "{{ win_managed_datasource }}"
+        namespace: "{{ win_datasource_namespace }}"
+      register: win_ds_check
+      when: windows_image_link_state == 'present'
+
+    - name: Decide whether an import is needed
+      ansible.builtin.set_fact:
+        win_needs_import: >-
+          {{ (win_ds_check.resources | default([]) | length == 0)
+             or (win_ds_check.resources[0].status.conditions | default([])
+                 | selectattr('type', 'equalto', 'Ready')
+                 | selectattr('status', 'equalto', 'True') | list | length == 0) }}
+      when: windows_image_link_state == 'present'
+
+    - name: Create the DataVolume to import the Windows image
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: cdi.kubevirt.io/v1beta1
+          kind: DataVolume
+          metadata:
+            name: "{{ win_import_name }}"
+            namespace: "{{ win_datasource_namespace }}"
+            annotations:
+              cdi.kubevirt.io/storage.bind.immediate.requested: "true"
+          spec:
+            source:
+              registry:
+                url: "docker://{{ quay_windows_image }}"
+                secretRef: "{{ win_pull_secret_name }}"
+            storage:
+              resources:
+                requests:
+                  storage: "{{ win_image_storage_size }}"
+      when:
+        - windows_image_link_state == 'present'
+        - win_needs_import | bool
+
+    - name: Wait for the DataVolume import to complete
+      kubernetes.core.k8s_info:
+        api_version: cdi.kubevirt.io/v1beta1
+        kind: DataVolume
+        name: "{{ win_import_name }}"
+        namespace: "{{ win_datasource_namespace }}"
+      register: win_dv
+      retries: "{{ win_import_retries }}"
+      delay: "{{ win_import_delay }}"
+      until:
+        - win_dv.resources | default([]) | length > 0
+        - win_dv.resources[0].status.phase | default('') == 'Succeeded'
+      when:
+        - windows_image_link_state == 'present'
+        - win_needs_import | bool
+
+    - name: Point the DataSource at the imported PVC
+      kubernetes.core.k8s:
+        state: patched
+        api_version: cdi.kubevirt.io/v1beta1
+        kind: DataSource
+        name: "{{ win_managed_datasource }}"
+        namespace: "{{ win_datasource_namespace }}"
+        definition:
+          spec:
+            source:
+              pvc:
+                name: "{{ win_import_name }}"
+                namespace: "{{ win_datasource_namespace }}"
+      when:
+        - windows_image_link_state == 'present'
+        - win_needs_import | bool
+
     # --- Verify, by asking the cluster --------------------------------------
     - name: Wait for the Windows DataSource to report Ready
       kubernetes.core.k8s_info:
@@ -258,54 +341,28 @@
           | selectattr('status', 'equalto', 'True') | list | length > 0
       when: windows_image_link_state == 'present'
 
-    - name: Find what actually backs the DataSource
-      # Same dual-path read as prepare_env.yml: either a VolumeSnapshot or a
-      # PVC depending on dataImportCronSourceFormat. Read it rather than guess.
-      ansible.builtin.set_fact:
-        win_backing_kind: >-
-          {{ 'VolumeSnapshot' if (win_datasource.resources[0].spec.source.snapshot is defined) else 'PersistentVolumeClaim' }}
-        win_backing_name: >-
-          {{ (win_datasource.resources[0].spec.source.snapshot
-              | default(win_datasource.resources[0].spec.source.pvc)).name }}
-        win_backing_namespace: >-
-          {{ (win_datasource.resources[0].spec.source.snapshot
-              | default(win_datasource.resources[0].spec.source.pvc)).namespace
-             | default(win_datasource_namespace) }}
-      when: windows_image_link_state == 'present'
-
-    - name: Look up the backing volume
+    - name: Assert the backing PVC is Bound
       kubernetes.core.k8s_info:
-        api_version: "{{ 'snapshot.storage.k8s.io/v1' if win_backing_kind == 'VolumeSnapshot' else 'v1' }}"
-        kind: "{{ win_backing_kind }}"
-        namespace: "{{ win_backing_namespace }}"
-        name: "{{ win_backing_name }}"
-      register: win_backing
-      retries: "{{ win_wait_retries }}"
-      delay: "{{ win_wait_delay }}"
-      until:
-        - win_backing.resources | default([]) | length > 0
-        - >-
-          (win_backing.resources[0].status.readyToUse | default(false))
-          if win_backing_kind == 'VolumeSnapshot'
-          else (win_backing.resources[0].status.phase | default('') == 'Bound')
-      when: windows_image_link_state == 'present'
-
-    - name: Assert the backing volume is genuinely usable
-      # The DataSource condition alone is not enough — it reports Ready while
-      # the snapshot behind it is still materializing, which is the slow-clone
-      # case prepare_env.yml exists to catch.
-      ansible.builtin.assert:
-        that:
-          - win_backing.resources | default([]) | length > 0
-        fail_msg: >-
-          {{ win_backing_kind }} '{{ win_backing_name }}' backing DataSource
-          '{{ win_managed_datasource }}' never became usable. Check the
-          DataImportCron and its importer pod in {{ win_datasource_namespace }};
-          a pull failure on the private repository shows up there.
-        quiet: true
+        api_version: v1
+        kind: PersistentVolumeClaim
+        name: "{{ win_import_name }}"
+        namespace: "{{ win_datasource_namespace }}"
+      register: win_backing_pvc
+      failed_when:
+        - win_backing_pvc.resources | default([]) | length == 0
+          or win_backing_pvc.resources[0].status.phase | default('') != 'Bound'
       when: windows_image_link_state == 'present'
 
     # --- Reversal -----------------------------------------------------------
+    - name: Remove the import DataVolume and its PVC
+      kubernetes.core.k8s:
+        state: absent
+        api_version: cdi.kubevirt.io/v1beta1
+        kind: DataVolume
+        name: "{{ win_import_name }}"
+        namespace: "{{ win_datasource_namespace }}"
+      when: windows_image_link_state == 'absent'
+
     - name: Remove the pull secret
       kubernetes.core.k8s:
         state: absent
@@ -320,11 +377,12 @@
         msg: >-
           {{
             (windows_image_link_state == 'present') | ternary(
-              'DataSource ' ~ win_managed_datasource ~ ' is Ready, backed by '
-              ~ (win_backing_kind | default('?')) ~ ' ' ~ (win_backing_name | default('?'))
+              'DataSource ' ~ win_managed_datasource ~ ' is Ready, backed by PVC '
+              ~ win_import_name
               ~ '. terraform -var os_type=windows can now boot. Reverse with: '
               ~ '-e windows_image_link_state=absent',
-              'Unlinked. The ' ~ win_cron_name ~ ' template and the pull secret are gone; '
-              ~ win_managed_datasource ~ ' returns to its empty SSP placeholder state.'
+              'Unlinked. The ' ~ win_cron_name ~ ' template, the DataVolume, and the '
+              ~ 'pull secret are gone; ' ~ win_managed_datasource
+              ~ ' returns to its empty SSP placeholder state.'
             )
           }}

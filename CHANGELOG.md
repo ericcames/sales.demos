@@ -7,11 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Fixed -- pull secret registry key was literal Jinja, not templated (#222)
-- `link_windows_image.yml` built the `.dockerconfigjson` with the registry
-  hostname as a dictionary key in a `vars:` block. Ansible does not template
-  dict keys there, so CDI received `{{ quay_windows_image | ... }}` instead of
-  `quay.io` and could never authenticate. Rebuilt as an inline Jinja dict.
+### Fixed -- pull secret format and import path for private registries (#222, #224)
+- CDI's importer pod expects `accessKeyId`/`secretKey` keys in an Opaque
+  secret, not a `kubernetes.io/dockerconfigjson` secret. The old format
+  produced `CreateContainerConfigError: couldn't find key accessKeyId`.
+- CDI 4.20's DataImportCron controller cannot authenticate to a private
+  registry for its digest check — it silently reports "No source digest" and
+  never creates a DataVolume. The playbook now creates a DataVolume explicitly
+  as the import trigger, then updates the DataSource to point at the resulting
+  PVC. The DataImportCron template stays in HCO for future CDI versions.
+- Supersedes the earlier dict-key fix (#222); that bug was real but the
+  corrected dockerconfigjson was still the wrong secret type for CDI.
 
 ### Changed -- point quay_windows_image at the published golden image (#220)
 - Both environments' `connection.yml` now reference the real containerdisk
