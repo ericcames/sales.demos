@@ -57,6 +57,13 @@
     ocpvirt_windows_group: windemo
     ocpvirt_linux_group: linuxweb
 
+    # --- Windows boot source, for the preflight below ------------------------
+    # Must match windows_datasource_name / datasource_namespace in
+    # terraform/ocpvirt/variables.tf and win_managed_datasource in
+    # playbooks/link_windows_image.yml. One name, three places.
+    ocpvirt_windows_datasource: "win2k22"
+    ocpvirt_datasource_namespace: "openshift-virtualization-os-images"
+
     # --- OpenShift, from connection.yml or an AAP OpenShift credential -------
     # `default(..., true)` also rejects an empty string, so an injected-but-blank
     # environment variable falls through to the other source instead of winning.
@@ -113,18 +120,6 @@
           alphanumeric.
         quiet: true
 
-    - name: Warn that Windows cannot boot yet
-      # Phase 2 (#3) has not run: CNV ships win2k22 as an EMPTY DataSource
-      # placeholder and every win* DataSource reports Ready=False. Terraform will
-      # happily create the VM and it will never come up. Say so here rather than
-      # let it look like a provisioning bug.
-      ansible.builtin.debug:
-        msg: >-
-          os_type={{ ocpvirt_os_type }} includes Windows, but the Windows golden
-          image (#3) is not built yet — the VM will be created and will NOT boot.
-          Use os_type=linux until Phase 2 lands.
-      when: ocpvirt_os_type in ['windows', 'both']
-
     - name: Assert the OpenShift connection is resolved
       ansible.builtin.assert:
         that:
@@ -153,6 +148,41 @@
           group_vars/<env>/connection.yml plus the vault; from AAP, attach a Red
           Hat Ansible Automation Platform credential (it injects CONTROLLER_*).
         quiet: true
+
+    # --- Windows boot source, checked rather than assumed --------------------
+    # This used to be an unconditional "Windows cannot boot yet" warning, true
+    # while #3 was open and misleading afterwards. Ask the cluster instead: the
+    # DataSource either has a populated backing volume or it does not.
+    #
+    # It WARNS rather than refusing, deliberately. Terraform will still create
+    # the VM, and someone linking the image a minute later gets a working guest
+    # without re-provisioning. Refusing would also break the reverse case,
+    # os_type=both, where the Linux half is fine.
+    - name: Look up the Windows boot-source DataSource
+      kubernetes.core.k8s_info:
+        api_version: cdi.kubevirt.io/v1beta1
+        kind: DataSource
+        name: "{{ ocpvirt_windows_datasource }}"
+        namespace: "{{ ocpvirt_datasource_namespace }}"
+      register: ocpvirt_win_ds
+      when: ocpvirt_os_type in ['windows', 'both']
+
+    - name: Warn if the Windows boot source is not populated
+      ansible.builtin.debug:
+        msg: >-
+          os_type={{ ocpvirt_os_type }} includes Windows, but DataSource
+          '{{ ocpvirt_windows_datasource }}' in {{ ocpvirt_datasource_namespace }}
+          is not Ready — CNV ships it as an empty placeholder. The VM will be
+          created and will NOT boot; it waits forever on a DataVolume that never
+          imports. Link this environment to a published golden image first:
+          playbooks/link_windows_image.yml, or the ocpvirt-windows-image skill.
+      when:
+        - ocpvirt_os_type in ['windows', 'both']
+        - >-
+          (ocpvirt_win_ds.resources | default([]) | length == 0)
+          or (ocpvirt_win_ds.resources[0].status.conditions | default([])
+              | selectattr('type', 'equalto', 'Ready')
+              | selectattr('status', 'equalto', 'True') | list | length == 0)
 
     - name: Report the target
       ansible.builtin.debug:

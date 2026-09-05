@@ -219,20 +219,24 @@ real: it logs in, gathers facts and caches them, and that is all it needs to do.
 
 ## Windows
 
-**Wired end to end. Does not boot.**
+**Wired end to end, and the plumbing is now built. What is missing is the image.**
 
 Terraform creates the VM, the `windemo` inventory group exists with WinRM
-configured, and the outputs are the same shape as Linux. What is missing is the
-image: OpenShift Virtualization ships `win2k22` as an **empty DataSource
-placeholder**, because Red Hat cannot redistribute Windows media.
+configured on 5986, and the outputs are the same shape as Linux. OpenShift
+Virtualization ships `win2k22` as an **empty DataSource placeholder**, because
+Red Hat cannot redistribute Windows media.
 
-The provision playbook **warns rather than refuses** — pick `windows` or `both`
-and it will build a VM that waits forever on a volume that never imports.
+`ocpvirt-windows-image` fills it the same way CNV fills `rhel9` — a
+`DataImportCron` that imports a containerdisk from a private registry and takes
+the placeholder over. That is the consumer half, and it is done (issue #3).
 
-The fix is a one-time golden-image build — import the ISO, install the drivers
-and guest agent, sysprep, snapshot, publish to a private registry — tracked in
-public as issue #3. Teardown is written to preserve that image so it stays a
-one-time cost.
+What remains is producing the image: an unattended, CIS-hardened Windows Server
+2022 build, published once to a private quay repository (issue #193). It is a
+one-time cost, and teardown is written to preserve the result.
+
+Until that lands the provision playbook **preflights the DataSource and warns
+rather than refusing** — pick `windows` or `both` and it will build a VM that
+waits forever on a volume that never imports, but it tells you why first.
 
 ---
 
@@ -241,7 +245,7 @@ one-time cost.
 | Destroyed | Preserved |
 |---|---|
 | The demo VMs | OpenShift Virtualization itself |
-| Their Services and Route | Boot-source DataSources (incl. the future Windows image) |
+| Their Services and Route | Boot-source DataSources (incl. the Windows image, once published) |
 | Their AAP host entries | The `sales-demos-tfstate` namespace |
 | The RHSM subscription and Insights host | The published container image |
 

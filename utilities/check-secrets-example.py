@@ -51,9 +51,7 @@ EXAMPLE = Path("playbooks/group_vars/all/secrets.yml.example")
 # named here so that *adding* an orphan is a deliberate act and not an accident.
 # Delete an entry from this list the moment the code starts consuming the key.
 STAGED = {
-    "quay_username": "Phase 2 — private repo for the Windows golden containerdisk",
-    "quay_password": "Phase 2 — private repo for the Windows golden containerdisk",
-    "windows_admin_password": "Phase 2 — terraform/ocpvirt has no Windows password var yet",
+    "windows_admin_password": "#193 — terraform/ocpvirt has no Windows password var yet",
 }
 
 # Structural Jinja that survives the extractor and is not a variable. Keep this

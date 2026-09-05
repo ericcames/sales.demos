@@ -187,7 +187,7 @@ your other demos.
 |---|---|---|
 | `ocpvirt-setup` | `playbooks/setup.yml` | Phase 0 — bootstrap AAP *and* install CNV, self-contained |
 | `ocpvirt-provision` | `playbooks/provision_vm.yml` | Phase 1/3 — run Terraform, register hosts in AAP |
-| `ocpvirt-windows-image` | `playbooks/build_windows_golden.yml` | Phase 2 — build and publish the golden image |
+| `ocpvirt-windows-image` | `playbooks/link_windows_image.yml` | Phase 2 — point CNV at the published golden image |
 | `ocpvirt-demo` | `playbooks/run_demo.yml` | Phase 4 — launch the layered daily demo |
 | `ocpvirt-teardown` | `playbooks/teardown.yml` | `terraform destroy`, leave CNV and golden image intact |
 
@@ -399,43 +399,96 @@ project sales-demos-<env>` is the obvious way to clean up a demo and must not
 take the state with it. `secret_suffix` keys `sandbox` and `demo` apart. See
 `terraform/ocpvirt/backend.tf`.
 
-### Phase 2 — `ocpvirt-windows-image`: golden image (one time, ~45 min)
+### Phase 2 — `ocpvirt-windows-image`: point CNV at a published golden image
 
-1. CDI-import a Windows Server 2022 ISO to a PVC (`DataVolume` with `source.blank` + ISO
-   `cdrom` volume).
-2. Boot a VM with the virtio-win containerdisk attached
-   (`registry.redhat.io/container-native-virtualization/virtio-win`), install Windows, install
-   virtio drivers and the QEMU guest agent, enable and configure WinRM for Ansible.
-3. `sysprep /generalize /oobe /shutdown`.
-4. Snapshot the disk to a `DataSource` named `windows2k22-golden`.
-5. Publish it durably — below.
+**Split producer/consumer.** This phase is the *consumer* half only —
+`playbooks/link_windows_image.yml`, issue #3. Building and publishing the
+containerdisk is #193, deliberately written portably so its permanent home can
+be decided later. The contract between the halves is one string: a containerdisk
+tag in a private quay repository.
+
+Splitting it means this half ships without waiting on a factory decision, and it
+can be proven with a throwaway plain image before the real hardened one exists.
+
+#### Superseded: "snapshot to a DataSource", replaced by a DataImportCron
+
+This section used to say: CDI-import a Windows ISO, boot it, sysprep, then
+*"snapshot the disk to a `DataSource` named `windows2k22-golden`"*. **That is not
+how boot sources are kept on a cluster, and the cluster is the proof.**
+
+Measured on sandbox, CNV 4.20.24: `HyperConverged.status.dataImportCronTemplates`
+carries six entries — fedora, centos-stream 9/10, rhel 8/9/10 — each with
+`managedDataSource`, `garbageCollect: Outdated` and a registry source. Windows is
+absent only because Red Hat cannot redistribute the media, not because the
+mechanism differs. A hand-created PVC is a one-shot artifact with no refresh
+path; a cron makes a fresh RHDP environment a *config* step instead of a
+data-movement one.
+
+**Taking over the SSP placeholder is the designed handoff, not a fight.**
+
+| | `win2k22` (placeholder) | `rhel9` (managed) |
+|---|---|---|
+| `managed-by` | `ssp-operator` | `cdi-controller` |
+| `dataImportCron` label | absent | `rhel9-image-cron` |
+| `spec.source` | `pvc {name: win2k22}` | `snapshot {name: rhel9-…}` |
+| `generation` | 2 | 7 |
+| Ready | `False` — "PVC not found" | `True` |
+
+SSP creates the placeholder; the cron takes ownership, relabels it, and rewrites
+`spec.source` from `pvc` to `snapshot`. The six built-in templates are not at
+risk: `spec.dataImportCronTemplates` is *empty* on a stock cluster — they live in
+HCO itself and appear only in `status`, flagged `commonTemplate: true`.
+
+**Fallback if HCO ever refuses the takeover:** set `win_managed_datasource` to a
+name SSP does not own and repoint `windows_datasource_name` in
+`terraform/ocpvirt/variables.tf` to match. One line each.
+
+#### What the consumer half does
+
+1. Create a `kubernetes.io/dockerconfigjson` pull secret for the **private** quay
+   repository. Private is not optional — a Windows image cannot be redistributed
+   publicly.
+2. Patch `HyperConverged.spec.dataImportCronTemplates` with a `win2k22-image-cron`
+   entry sourcing `docker://{{ quay_windows_image }}` via `secretRef`, at 60Gi to
+   match `windows_min_disk_gb`. No `pullMethod`: the default (`pod`) is the one
+   that honours `secretRef`; `node` ignores it and needs cluster-wide credentials.
+3. Wait for the DataSource to report Ready, then verify the **backing volume** —
+   expect a `VolumeSnapshot`, not a PVC. A DataSource reports Ready while the
+   snapshot behind it is still materializing, which is the slow-clone case
+   `prepare_env.yml` exists to catch.
+4. Reverse with `-e windows_image_link_state=absent`.
 
 #### Durable storage: private quay.io containerdisk
 
-The image must outlive the cluster — RHDP envs expire, and rebuilding from ISO every time
-defeats the purpose. **Decision: a private `quay.io` repository, in containerdisk format.**
+Unchanged, and still the right call. The image must outlive the cluster — RHDP
+environments expire, and rebuilding from ISO every time defeats the purpose.
 
-- **Not the GitHub repo.** A sysprepped Windows Server 2022 qcow2 is ~8–12 GB; GitHub's file
-  limit is 100 MB and Git LFS caps at 2 GB per file. Beyond size, `sales.demos` is public and
-  a Windows image cannot be redistributed publicly — that rules it out regardless of backend.
-- **Why quay works.** Containerdisk is KubeVirt's native format, consumed directly by a
-  `containerDisk` volume or CDI `source.registry`. The cluster already pulls from quay.io
-  (verified). Survives teardown, free on a personal account.
-- **Private is required**, for the same Windows redistribution reason.
-- **Not in-cluster NooBaa S3** — it dies with the cluster, which is the whole problem.
+- **Not the GitHub repo.** A sysprepped Windows Server 2022 qcow2 is ~8–12 GB;
+  GitHub's file limit is 100 MB and Git LFS caps at 2 GB per file. Beyond size,
+  `sales.demos` is public and a Windows image cannot be redistributed publicly —
+  that rules it out regardless of backend.
+- **Why quay works.** Containerdisk is KubeVirt's native format, consumed
+  directly by CDI `source.registry`. The cluster already pulls from quay.io.
+  Survives teardown, free on a personal account.
+- **Private is required**, for the same redistribution reason.
+- **Not in-cluster NooBaa S3** — it dies with the cluster, which is the whole
+  problem.
 
-```
-podman build -t quay.io/<user>/windows2k22-golden:<date> -f - . <<'EOF'
-FROM scratch
-ADD --chown=107:107 windows2k22-golden.qcow2 /disk/
-EOF
-podman push quay.io/<user>/windows2k22-golden:<date>
-```
+Tag by date, never overwrite a tag. Quay credentials go in `secrets.yml`. Note
+that with an immutable date tag the cron's poll is a no-op by design; pointing
+`quay_windows_image` at a moving tag is what makes it refresh anything.
 
-Cluster side: create an image pull secret for the private quay repo and link it to the CDI
-service account. On a fresh RHDP env, Phase 2 then collapses to a single CDI import from the
-registry — minutes instead of ~45. Tag by date, never overwrite a tag. Quay credentials go in
-`secrets.yml`.
+#### The producer half (#193), in one paragraph
+
+Unattended install from an answer file — nobody clicks through an installer in a
+real image factory. Apply `ansible-lockdown/Windows-2022-CIS` (MIT) with patch
+tags, install virtio drivers and the QEMU guest agent, configure **WinRM over
+HTTPS on 5986** (the contract this repo settles on; the Service published 5985
+until #3, a mismatch nothing had exercised), re-run the role with audit tags to
+capture evidence, `sysprep /generalize /oobe /shutdown`, wrap as a containerdisk
+and push. Media is the 180-day evaluation ISO — **the expiry must be documented
+in the tag, the run-sheet and the cron comment**, because a hardened image on
+eval media is doubly a time bomb.
 
 ### Phase 3 — `ocpvirt-provision`: AAP integration
 
@@ -474,8 +527,9 @@ one `dc1.azure` already produces.
 2. **Terraform** — `terraform init && terraform plan` clean, then apply each tier:
    `-var os_type=linux -var vm_size_tier=small-1cpu-2gb`, then `medium`, then `large`.
    Confirm `oc get vm,vmi -n <ns>` shows Running and the instance type matches the tier.
-3. **Windows** — apply `-var os_type=both -var vm_size_tier=large-2cpu-8gb`; confirm the
-   Windows VMI reaches Running and WinRM answers.
+3. **Windows** — link the golden image, then apply `-var os_type=both -var
+   vm_size_tier=large-2cpu-6gb`; confirm the Windows VMI reaches Running and WinRM
+   answers on 5986. (This step said `large-2cpu-8gb`, a tier that has never existed.)
 4. **Resource ceiling** — with all VMs up, `oc adm top node` must stay under ~90% memory.
    This is the test that proves the tier table fits the box.
 5. **Both entry points agree** — run each phase once via its skill and once via its AAP job

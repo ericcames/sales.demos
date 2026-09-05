@@ -57,7 +57,7 @@ variable "vm_size_tier" {
 # ---------------------------------------------------------------------------
 
 variable "os_type" {
-  description = "Which OS to provision: windows only, linux (RHEL 9) only, or both. Windows requires the golden image from Phase 2 (#3)."
+  description = "Which OS to provision: windows only, linux (RHEL 9) only, or both. Windows requires this environment to be linked to a published golden image — playbooks/link_windows_image.yml (#3)."
   type        = string
   default     = "linux"
 
@@ -179,7 +179,12 @@ variable "linux_datasource_name" {
 }
 
 variable "windows_datasource_name" {
-  description = "DataSource cloned for the Windows VM. CNV ships win2k22 as an EMPTY placeholder (Ready=False) — Phase 2 (#3) populates it. Windows cannot boot until then."
+  # CNV ships win2k22 as an EMPTY placeholder (Ready=False, "PVC not found").
+  # playbooks/link_windows_image.yml adds a DataImportCron whose
+  # managedDataSource is this same name, which takes the placeholder over and
+  # populates it. Change this and win_managed_datasource in that playbook
+  # together — they are one contract.
+  description = "DataSource cloned for the Windows VM. Populated by playbooks/link_windows_image.yml (#3); empty until that runs."
   type        = string
   default     = "win2k22"
 }

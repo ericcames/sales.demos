@@ -1,0 +1,324 @@
+---
+# ===========================================================================
+# link_windows_image.yml — point this environment's CNV at the published
+# Windows golden containerdisk, so os_type=windows can boot. Issue #3.
+#
+#   ansible-playbook playbooks/link_windows_image.yml -i inventory --limit sandbox \
+#     -e target_env=sandbox \
+#     --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
+#
+# AND THE REVERSAL, which ships in the same change for the same reason it did
+# in link_hub.yml — the thing this touches is a cluster-wide boot source:
+#
+#   ansible-playbook playbooks/link_windows_image.yml -i inventory --limit sandbox \
+#     -e target_env=sandbox -e windows_image_link_state=absent \
+#     --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
+#
+# WHAT THIS DOES. Creates a pull secret for the private quay repository holding
+# the Windows containerdisk, then adds a DataImportCron template to the
+# HyperConverged CR so CDI imports it and keeps the `win2k22` DataSource
+# populated. Terraform already clones that DataSource
+# (terraform/ocpvirt/main.tf) and has been blocked on it since Phase 1.
+#
+# ---------------------------------------------------------------------------
+# WHY A DataImportCron AND NOT A HAND-CREATED PVC
+# ---------------------------------------------------------------------------
+# #3 originally said "snapshot the disk to a DataSource named
+# windows2k22-golden". That is not how boot sources are kept on a cluster, and
+# this cluster is the proof. Measured on sandbox, CNV 4.20.24:
+# HyperConverged.status.dataImportCronTemplates carries six entries — fedora,
+# centos-stream 9/10, rhel 8/9/10 — each with managedDataSource,
+# garbageCollect: Outdated and a registry source. Windows is absent only
+# because Red Hat cannot redistribute the media, not because the mechanism
+# differs.
+#
+# A hand-created PVC is a one-shot artifact with no refresh path. A cron makes
+# a fresh RHDP environment a CONFIG step rather than a data-movement one.
+#
+# TAKING OVER THE SSP PLACEHOLDER IS THE DESIGNED HANDOFF, NOT A FIGHT.
+# Compare the two DataSources on an untouched cluster:
+#
+#                     win2k22 (placeholder)      rhel9 (managed)
+#   managed-by        ssp-operator               cdi-controller
+#   dataImportCron    (absent)                   rhel9-image-cron
+#   spec.source       pvc {name: win2k22}        snapshot {name: rhel9-...}
+#   Ready             False — "PVC not found"    True
+#
+# SSP creates the placeholder; the cron takes ownership, relabels it, and
+# rewrites spec.source from pvc to snapshot. If that ever misbehaves, set
+# win_managed_datasource to a name SSP does not own and repoint
+# windows_datasource_name in terraform/ocpvirt/variables.tf to match.
+#
+# THE BUILT-IN TEMPLATES ARE NOT AT RISK. spec.dataImportCronTemplates is
+# EMPTY on a stock cluster — the six common ones live in HCO itself and appear
+# only in status, flagged commonTemplate: true. Custom entries coexist.
+# ===========================================================================
+
+- name: Point CNV at the published Windows golden image
+  hosts: aap
+  gather_facts: false
+
+  environment:
+    # kubernetes.core reads these; keeps the token out of every task's args
+    # and out of any -vvv output.
+    K8S_AUTH_HOST: "{{ openshift_api_url }}"
+    K8S_AUTH_API_KEY: "{{ openshift_api_token }}"
+    K8S_AUTH_VERIFY_SSL: "{{ openshift_validate_certs | default(false) | bool }}"
+
+  vars:
+    # `-e windows_image_link_state=absent` reverses everything below.
+    windows_image_link_state: "present"
+
+    win_cnv_namespace: "openshift-cnv"
+    win_datasource_namespace: "openshift-virtualization-os-images"
+
+    # The SSP-shipped placeholder. terraform/ocpvirt/variables.tf defaults
+    # windows_datasource_name to this same string — change both together.
+    win_managed_datasource: "win2k22"
+    win_cron_name: "win2k22-image-cron"
+    win_pull_secret_name: "windows-golden-pull"
+
+    # 60Gi matches windows_min_disk_gb in terraform/ocpvirt/locals.tf. The
+    # shipped Linux boot sources are 30Gi; Windows does not fit in that.
+    win_image_storage_size: "60Gi"
+
+    # The cadence the shipped crons use. NOTE: with an immutable date tag in
+    # quay_windows_image the poll is a no-op by design — pointing that variable
+    # at a moving tag is what makes the cron actually refresh anything.
+    win_image_schedule: "9 10/12 * * *"
+
+    win_wait_retries: 60
+    win_wait_delay: 10
+
+  tasks:
+    - name: Assert exactly one environment is targeted
+      ansible.builtin.include_tasks: tasks/assert_target_environment.yml
+
+    - name: Assert the requested state is valid
+      ansible.builtin.assert:
+        that:
+          - windows_image_link_state in ['present', 'absent']
+        fail_msg: >-
+          windows_image_link_state must be 'present' or 'absent', not
+          '{{ windows_image_link_state }}'.
+        quiet: true
+
+    - name: Assert the OpenShift connection is set
+      ansible.builtin.assert:
+        that:
+          - openshift_api_url | default('') | length > 0
+          - openshift_api_token | default('') | length > 0
+        fail_msg: >-
+          openshift_api_url and openshift_api_token are required. They come
+          from inventory/group_vars/<env>/connection.yml plus the vaulted
+          playbooks/group_vars/all/secrets.yml; pass --vault-id so the token
+          resolves.
+        quiet: true
+
+    - name: Assert the image reference and quay credentials are set
+      # Referenced bare on purpose. utilities/check-secrets-example.py only
+      # counts a key as consumed when it appears in an expression with no
+      # `default`, and quay_username / quay_password have to leave its STAGED
+      # allowlist in the same change that starts reading them.
+      ansible.builtin.assert:
+        that:
+          - quay_windows_image is defined
+          - quay_windows_image | length > 0
+          - "'<user>' not in quay_windows_image"
+          - quay_username is defined
+          - quay_username | length > 0
+          - quay_username != 'CHANGEME'
+          - quay_password is defined
+          - quay_password | length > 0
+          - quay_password != 'CHANGEME'
+        fail_msg: >-
+          quay_windows_image must name a real published containerdisk (it is a
+          `quay.io/<user>/windows2k22-golden:<date>` placeholder in
+          inventory/group_vars/<env>/connection.yml until #193 publishes one),
+          and quay_username / quay_password must be set in the vaulted
+          secrets.yml. See docs/plan/ocpvirt-demo-plan.md.
+        quiet: true
+      when: windows_image_link_state == 'present'
+
+    - name: Say what is about to happen
+      ansible.builtin.debug:
+        msg: >-
+          {{ (windows_image_link_state == 'present') | ternary('LINKING', 'UNLINKING') }}
+          the Windows golden image on {{ aap_env_name }}
+          (DataSource {{ win_managed_datasource }} in {{ win_datasource_namespace }}).
+
+    # --- The pull secret ----------------------------------------------------
+    - name: Create the pull secret for the private quay repository
+      # Private is not optional: a Windows image cannot be redistributed
+      # publicly, so CDI needs credentials to pull it at all.
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: v1
+          kind: Secret
+          metadata:
+            name: "{{ win_pull_secret_name }}"
+            namespace: "{{ win_datasource_namespace }}"
+          type: kubernetes.io/dockerconfigjson
+          data:
+            .dockerconfigjson: "{{ win_dockerconfig | to_json | b64encode }}"
+      vars:
+        win_dockerconfig:
+          auths:
+            "{{ quay_windows_image | regex_replace('/.*$', '') }}":
+              auth: "{{ (quay_username ~ ':' ~ quay_password) | b64encode }}"
+      no_log: true
+      when: windows_image_link_state == 'present'
+
+    # --- The DataImportCron template ---------------------------------------
+    - name: Read the current HyperConverged CR
+      kubernetes.core.k8s_info:
+        api_version: hco.kubevirt.io/v1beta1
+        kind: HyperConverged
+        name: kubevirt-hyperconverged
+        namespace: "{{ win_cnv_namespace }}"
+      register: win_hco
+
+    - name: Assert OpenShift Virtualization is installed
+      ansible.builtin.assert:
+        that:
+          - win_hco.resources | default([]) | length > 0
+        fail_msg: >-
+          No HyperConverged CR in {{ win_cnv_namespace }}. OpenShift
+          Virtualization is not installed — run playbooks/install_cnv.yml
+          (or the ocpvirt-setup skill) first.
+        quiet: true
+
+    - name: Build the desired dataImportCronTemplates list
+      # Everything already in spec, minus any earlier copy of ours, plus ours
+      # when present. Computing the whole list keeps this idempotent under a
+      # merge patch, which replaces lists wholesale.
+      ansible.builtin.set_fact:
+        win_desired_crons: >-
+          {{
+            (win_hco.resources[0].spec.dataImportCronTemplates | default([]))
+            | rejectattr('metadata.name', 'equalto', win_cron_name) | list
+            + ((windows_image_link_state == 'present') | ternary([win_cron_entry], []))
+          }}
+      vars:
+        win_cron_entry:
+          metadata:
+            name: "{{ win_cron_name }}"
+            annotations:
+              cdi.kubevirt.io/storage.bind.immediate.requested: "true"
+          spec:
+            managedDataSource: "{{ win_managed_datasource }}"
+            garbageCollect: Outdated
+            schedule: "{{ win_image_schedule }}"
+            template:
+              spec:
+                source:
+                  registry:
+                    url: "docker://{{ quay_windows_image }}"
+                    # No pullMethod: the default (pod) is the one that honours
+                    # secretRef. pullMethod: node ignores it and would need
+                    # cluster-wide pull credentials instead.
+                    secretRef: "{{ win_pull_secret_name }}"
+                storage:
+                  resources:
+                    requests:
+                      storage: "{{ win_image_storage_size }}"
+
+    - name: Patch the HyperConverged CR
+      kubernetes.core.k8s:
+        state: patched
+        api_version: hco.kubevirt.io/v1beta1
+        kind: HyperConverged
+        name: kubevirt-hyperconverged
+        namespace: "{{ win_cnv_namespace }}"
+        definition:
+          spec:
+            dataImportCronTemplates: "{{ win_desired_crons }}"
+
+    # --- Verify, by asking the cluster --------------------------------------
+    - name: Wait for the Windows DataSource to report Ready
+      kubernetes.core.k8s_info:
+        api_version: cdi.kubevirt.io/v1beta1
+        kind: DataSource
+        name: "{{ win_managed_datasource }}"
+        namespace: "{{ win_datasource_namespace }}"
+      register: win_datasource
+      retries: "{{ win_wait_retries }}"
+      delay: "{{ win_wait_delay }}"
+      until:
+        - win_datasource.resources | default([]) | length > 0
+        - win_datasource.resources[0].status.conditions | default([])
+          | selectattr('type', 'equalto', 'Ready')
+          | selectattr('status', 'equalto', 'True') | list | length > 0
+      when: windows_image_link_state == 'present'
+
+    - name: Find what actually backs the DataSource
+      # Same dual-path read as prepare_env.yml: either a VolumeSnapshot or a
+      # PVC depending on dataImportCronSourceFormat. Read it rather than guess.
+      ansible.builtin.set_fact:
+        win_backing_kind: >-
+          {{ 'VolumeSnapshot' if (win_datasource.resources[0].spec.source.snapshot is defined) else 'PersistentVolumeClaim' }}
+        win_backing_name: >-
+          {{ (win_datasource.resources[0].spec.source.snapshot
+              | default(win_datasource.resources[0].spec.source.pvc)).name }}
+        win_backing_namespace: >-
+          {{ (win_datasource.resources[0].spec.source.snapshot
+              | default(win_datasource.resources[0].spec.source.pvc)).namespace
+             | default(win_datasource_namespace) }}
+      when: windows_image_link_state == 'present'
+
+    - name: Look up the backing volume
+      kubernetes.core.k8s_info:
+        api_version: "{{ 'snapshot.storage.k8s.io/v1' if win_backing_kind == 'VolumeSnapshot' else 'v1' }}"
+        kind: "{{ win_backing_kind }}"
+        namespace: "{{ win_backing_namespace }}"
+        name: "{{ win_backing_name }}"
+      register: win_backing
+      retries: "{{ win_wait_retries }}"
+      delay: "{{ win_wait_delay }}"
+      until:
+        - win_backing.resources | default([]) | length > 0
+        - >-
+          (win_backing.resources[0].status.readyToUse | default(false))
+          if win_backing_kind == 'VolumeSnapshot'
+          else (win_backing.resources[0].status.phase | default('') == 'Bound')
+      when: windows_image_link_state == 'present'
+
+    - name: Assert the backing volume is genuinely usable
+      # The DataSource condition alone is not enough — it reports Ready while
+      # the snapshot behind it is still materializing, which is the slow-clone
+      # case prepare_env.yml exists to catch.
+      ansible.builtin.assert:
+        that:
+          - win_backing.resources | default([]) | length > 0
+        fail_msg: >-
+          {{ win_backing_kind }} '{{ win_backing_name }}' backing DataSource
+          '{{ win_managed_datasource }}' never became usable. Check the
+          DataImportCron and its importer pod in {{ win_datasource_namespace }};
+          a pull failure on the private repository shows up there.
+        quiet: true
+      when: windows_image_link_state == 'present'
+
+    # --- Reversal -----------------------------------------------------------
+    - name: Remove the pull secret
+      kubernetes.core.k8s:
+        state: absent
+        api_version: v1
+        kind: Secret
+        name: "{{ win_pull_secret_name }}"
+        namespace: "{{ win_datasource_namespace }}"
+      when: windows_image_link_state == 'absent'
+
+    - name: Summarize
+      ansible.builtin.debug:
+        msg: >-
+          {{
+            (windows_image_link_state == 'present') | ternary(
+              'DataSource ' ~ win_managed_datasource ~ ' is Ready, backed by '
+              ~ (win_backing_kind | default('?')) ~ ' ' ~ (win_backing_name | default('?'))
+              ~ '. terraform -var os_type=windows can now boot. Reverse with: '
+              ~ '-e windows_image_link_state=absent',
+              'Unlinked. The ' ~ win_cron_name ~ ' template and the pull secret are gone; '
+              ~ win_managed_datasource ~ ' returns to its empty SSP placeholder state.'
+            )
+          }}
