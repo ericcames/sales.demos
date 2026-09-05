@@ -162,13 +162,21 @@ resource "kubernetes_manifest" "linux_vm" {
 }
 
 # ---------------------------------------------------------------------------
-# Windows — wired up, but CANNOT BOOT until Phase 2 (#3).
+# Windows — boots once this environment has been linked to a published golden
+# image. Run playbooks/link_windows_image.yml (skill: ocpvirt-windows-image).
 #
-# CNV ships win2k22 as an empty DataSource placeholder: it exists and is listed,
-# but reports Ready=False with no populated PVC, because Red Hat cannot
-# redistribute Windows media. Phase 2 builds and publishes the golden image that
-# fills it. Until then os_type=windows or both will create the VM and it will
-# wait forever on a DataVolume that never imports.
+# CNV ships win2k22 as an EMPTY DataSource placeholder: SSP creates it, it is
+# listed, and it reports Ready=False "PVC not found", because Red Hat cannot
+# redistribute Windows media. link_windows_image.yml adds a DataImportCron
+# template to the HyperConverged CR that imports the containerdisk from a
+# private quay repository and takes ownership of that placeholder — the same
+# mechanism that keeps rhel9 populated.
+#
+# UNLINKED, os_type=windows or both still creates the VM and it waits forever
+# on a DataVolume that never imports. provision_vm.yml preflights the
+# DataSource and warns rather than refusing, so this stays a soft failure.
+#
+# Building and publishing the image itself is #193.
 # ---------------------------------------------------------------------------
 
 resource "kubernetes_manifest" "windows_vm" {
@@ -333,10 +341,15 @@ resource "kubernetes_service" "windows" {
       port        = 3389
       target_port = 3389
     }
+    # WinRM over HTTPS. 5986, not 5985: the AAP `windemo` group registered by
+    # playbooks/provision_vm.yml sets ansible_port 5986 with
+    # ansible_winrm_server_cert_validation ignore, and this Service used to
+    # publish 5985 — a mismatch that went unnoticed because no Windows guest
+    # had ever booted. The golden image (#193) configures 5986.
     port {
       name        = "winrm"
-      port        = 5985
-      target_port = 5985
+      port        = 5986
+      target_port = 5986
     }
   }
 

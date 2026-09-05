@@ -31,8 +31,9 @@ namespace = "sales-demos-sandbox"
 # vm_size_tier: small-1cpu-2gb | medium-1cpu-4gb | large-2cpu-6gb
 # os_type:      linux | windows | both
 #
-# windows and both cannot boot until Phase 2 (#3) populates the Windows
-# DataSource — CNV ships it as an empty placeholder.
+# windows and both cannot boot until this environment is linked to a published
+# golden image — CNV ships the Windows DataSource as an empty placeholder. Run
+# playbooks/link_windows_image.yml, or the ocpvirt-windows-image skill (#3).
 vm_size_tier = "small-1cpu-2gb"
 os_type      = "linux"
 

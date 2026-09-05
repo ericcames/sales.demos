@@ -7,6 +7,73 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added -- CNV now points at a published Windows golden image (#3)
+- `playbooks/link_windows_image.yml` and the `ocpvirt-windows-image` skill: a
+  pull secret for the private quay repository plus a `DataImportCron` template
+  on the HyperConverged CR, so CDI imports the Windows containerdisk and keeps
+  the `win2k22` DataSource populated. Terraform has cloned that DataSource since
+  Phase 1 and has been blocked on it ever since.
+- **`-e windows_image_link_state=absent` reverses it**, removing the cron
+  template and the secret. Shipped in the same change, because the thing it
+  touches is a cluster-wide boot source.
+- **The playbook refuses to link a placeholder.** `quay_windows_image` is still
+  `quay.io/<user>/windows2k22-golden:<date>` in both environments, and a cron
+  pointed at a nonexistent repository fails in an importer pod rather than at
+  link time -- an error that reads as "CDI is broken", not "there is no image".
+
+### Changed -- #3 is now the consumer half only; building the image is #193
+- **Split producer/consumer.** Consumption is small, owned by this repo, and
+  correct no matter who builds the image; the contract between the halves is one
+  string, a containerdisk tag in a private quay repo. Production is written
+  portably so its permanent home -- here, or `image.builder.pipeline` Phase 3,
+  which already lists Windows Server 2022 / CIS L1 -- can be decided later.
+- The consumer half can be proven with a throwaway plain image; the hardened one
+  replaces it at a new tag with no code change here.
+
+### Changed -- a DataImportCron, not a hand-created PVC (#3)
+- #3 originally said "snapshot the disk to a `DataSource` named
+  `windows2k22-golden`". **That is not how boot sources are kept on a cluster,
+  and the cluster is the proof.** Measured on sandbox, CNV 4.20.24:
+  `HyperConverged.status.dataImportCronTemplates` carries six entries -- fedora,
+  centos-stream 9/10, rhel 8/9/10 -- each with `managedDataSource`,
+  `garbageCollect: Outdated` and a registry source. Windows is absent only
+  because Red Hat cannot redistribute the media.
+- A hand-created PVC is a one-shot artifact with no refresh path. A cron makes a
+  fresh RHDP environment a *config* step instead of a data-movement one.
+- **Taking over the SSP placeholder is the designed handoff, not a fight.**
+  `win2k22` is `ssp-operator`-owned with `spec.source.pvc` and `Ready=False`
+  "PVC not found"; `rhel9` is `cdi-controller`-owned, labelled
+  `dataImportCron: rhel9-image-cron`, with `spec.source.snapshot` and
+  `Ready=True`. The cron takes the placeholder over and rewrites `source` from
+  `pvc` to `snapshot`. Fallback if it ever misbehaves: point
+  `win_managed_datasource` and `windows_datasource_name` at a name SSP does not
+  own -- one line each.
+- **The six built-in templates are not at risk.** `spec.dataImportCronTemplates`
+  is empty on a stock cluster; the common ones live in HCO and appear only in
+  `status`, flagged `commonTemplate: true`.
+
+### Fixed -- the WinRM port has never matched itself (#3)
+- `terraform/ocpvirt/main.tf` published **5985** on the Windows Service while
+  `playbooks/provision_vm.yml` registered the `windemo` group with
+  `ansible_port: 5986` and `ansible_winrm_server_cert_validation: ignore`. Both
+  cannot be right, and the mismatch survived because no Windows guest had ever
+  booted to exercise it. Settled on **5986 (HTTPS)**, which is what the
+  cert-validation setting already implied; #193 configures the guest to match.
+
+### Fixed -- provisioning warned about Windows unconditionally (#3)
+- `provision_vm.yml` printed "the Windows golden image (#3) is not built yet" on
+  every `windows`/`both` run regardless of cluster state -- true while #3 was
+  open, misleading afterwards. It now **asks the cluster**: it reads the
+  DataSource and warns only when it is genuinely not Ready.
+- It still **warns rather than refuses**, deliberately. Terraform creates the VM
+  either way, `os_type=both` still yields a working Linux guest, and linking the
+  image a minute later fixes it without re-provisioning.
+
+### Fixed -- the plan doc named a tier that has never existed
+- `docs/plan/ocpvirt-demo-plan.md`'s verification step 3 said
+  `large-2cpu-8gb`. The tier is `large-2cpu-6gb`; the 8 GiB variant was
+  considered and rejected in #2 because `os_type=both` at 8 GiB never schedules.
+
 ### Added -- CLAUDE.md records that this working tree is shared by concurrent sessions (#194)
 - More than one Claude session works in this checkout at a time, and the branch
   can change under you mid-task. Nothing said so, so every session assumed it was

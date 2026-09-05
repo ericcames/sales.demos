@@ -62,17 +62,25 @@ deployment.
 
 ## "Does this do Windows?"
 
-> **"It's wired and it doesn't boot yet. Terraform builds the VM, the inventory
-> group's there, WinRM's configured — but Red Hat can't redistribute Windows
-> media, so somebody has to do a one-time golden image build, and I haven't done
-> it. It's tracked in public as issue #3."**
+> **"The plumbing's done — it points at a Windows boot source the same way the
+> cluster already points at RHEL's. What's missing is the image itself. Red Hat
+> can't redistribute Windows media, so somebody has to build the golden image
+> once, and I haven't. It's tracked in public as issues #3 and #193."**
 
-If they ask what the build involves: import the ISO, install the virtio drivers
-and guest agent, enable WinRM, sysprep, snapshot it, publish it to a private
-registry. About forty-five minutes, once. After that Windows guests provision on
-the same t-shirt sizes as Linux.
+If they ask how it works: OpenShift Virtualization keeps its boot sources current
+with `DataImportCron` objects pointed at a registry — that is how `rhel9` stays
+fresh on every cluster. Windows is the same mechanism with your own image in your
+own private registry. **That is worth saying out loud**, because "bring your own
+Windows boot source" sounds like a gap and is actually the supported pattern.
 
-**Do not promise a date.** It is on the roadmap as Not started.
+If they ask what the build involves: unattended install from an answer file,
+virtio drivers and guest agent, CIS Level 1 hardening via the Ansible Lockdown
+role, WinRM over HTTPS, sysprep, then publish as a containerdisk. About
+forty-five minutes, once. After that Windows guests provision on the same
+t-shirt sizes as Linux.
+
+**Do not promise a date**, and **do not claim the image is hardened until it
+is** — the hardening is the plan for #193, not something already shipped.
 
 ---
 

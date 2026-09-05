@@ -271,9 +271,11 @@ than answering well.
   live migration; this environment cannot show it. *"I'd rather tell you that
   than show you a slide about it."*
 - **Windows is wired and does not boot yet.** Terraform builds the VM, the
-  inventory group exists, WinRM is configured — but Red Hat cannot redistribute
-  Windows media, so the golden image is a one-time build that has not been done.
-  It is tracked in public as issue #3.
+  inventory group exists, WinRM is configured, and `ocpvirt-windows-image` points
+  the cluster at a Windows boot source the same way CNV points at RHEL's. What is
+  missing is the image — Red Hat cannot redistribute Windows media, so the golden
+  image is a one-time build that has not been done. Tracked in public as issues
+  #3 (the link, done) and #193 (the image).
 - **`config.yml` always reports `changed`.** AAP returns one setting as
   `$encrypted$` on every read, so Ansible can never see it as converged. Known,
   cosmetic, documented.
