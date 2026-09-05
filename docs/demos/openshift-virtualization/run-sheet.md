@@ -270,12 +270,20 @@ than answering well.
 - **No live migration in this demo.** The lab cluster is a single node. CNV does
   live migration; this environment cannot show it. *"I'd rather tell you that
   than show you a slide about it."*
-- **Windows is wired and does not boot yet.** Terraform builds the VM, the
-  inventory group exists, WinRM is configured, and `ocpvirt-windows-image` points
-  the cluster at a Windows boot source the same way CNV points at RHEL's. What is
-  missing is the image — Red Hat cannot redistribute Windows media, so the golden
-  image is a one-time build that has not been done. Tracked in public as issues
-  #3 (the link, done) and ericcames/image.builder.pipeline#24 (the image).
+- **Windows boots, and cannot be logged into yet.** The golden image is built,
+  published and linked, and a Windows VM provisions like any other — the 60 GiB
+  disk clones in **under a minute** and the VM is `Running` about 40 seconds
+  later. What it will not do is finish setup: the image is generalized, and it
+  ignores the answer file we hand it because the build left its own cached at a
+  higher-precedence location, so the guest stops at the Windows OOBE screen. The
+  fix is a one-line change in the image build plus a rebuild. Tracked in public
+  as #3 and #201 here (both done) and
+  ericcames/image.builder.pipeline#59 (the blocker).
+
+  **If you are asked to show Windows, show the provisioning, not the guest.** The
+  sub-minute clone of a 60 GiB Windows disk is a genuinely good number and it is
+  a CSI snapshot rather than a copy — that is the interesting part. Do not open
+  the console.
 - **`config.yml` always reports `changed`.** AAP returns one setting as
   `$encrypted$` on every read, so Ansible can never see it as converged. Known,
   cosmetic, documented.

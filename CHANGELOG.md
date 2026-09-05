@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed -- document the measured Windows boot state (#228)
+- `docs/demos/openshift-virtualization/architecture.md` and `run-sheet.md` both
+  said Windows "does not boot yet -- what is missing is the image". The image has
+  been published and linked since #220, and the whole path was measured on
+  sandbox on 2026-09-05. Rewritten to the measured state.
+- Recorded the numbers, because nobody had them before: the 60 GiB Windows disk
+  clones from the `win2k22` DataSource in **under 60 seconds** via the Ceph RBD
+  CSI smart-clone path, and the VM is `Running` about 40 seconds later. That is a
+  demo-worthy number and the run-sheet now says to show it.
+- Recorded why the guest still cannot be logged into. The sysprep unattend added
+  in #201 is attached correctly and ignored anyway: Windows finds the answer file
+  the build cached in `%WINDIR%\Panther` (search-order 3) before the sysprep
+  CD-ROM (search-order 5). Fix belongs to the producer --
+  `ericcames/image.builder.pipeline#59` -- and nothing here changes.
+- Added the same warning as a comment on the sysprep Secret in
+  `terraform/ocpvirt/main.tf`, where it reads as working code. It notes
+  explicitly that **renaming the key to `unattend.xml` is the obvious-looking fix
+  and is wrong** -- rows 4 and 5 of Microsoft's search order want
+  `Autounattend.xml` for every configuration pass, not just `windowsPE`.
+- `docs/plan/ocpvirt-demo-plan.md` gains a "Phase 3 Windows: measured" section
+  carrying the numbers, the precedence table, and the two traps that cost time.
+  It also records a gap the test exposed: there is no Windows configure path at
+  all -- `windemo` is referenced by zero playbooks and zero job templates.
+
 ### Added -- set the Windows password on the clone via a sysprep unattend (#201)
 - `terraform/ocpvirt/main.tf` now builds a `kubernetes_secret` holding an
   `autounattend.xml` and attaches it to the Windows VM as a `sysprep` volume.

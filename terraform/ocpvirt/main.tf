@@ -192,6 +192,32 @@ resource "kubernetes_manifest" "linux_vm" {
 # A Secret, not a ConfigMap: it carries a password. KubeVirt accepts either and
 # reads the key `autounattend.xml`.
 #
+# ---------------------------------------------------------------------------
+# THIS IS CORRECT AND CURRENTLY INERT. DO NOT "FIX" IT HERE.
+# ---------------------------------------------------------------------------
+# Measured on sandbox 2026-09-05: the Secret is created, KubeVirt builds the
+# 1 MiB ISO, `volumeStatus` reports `sysprep -> sdb`, and the XML is well-formed
+# with both passes. Windows ignores it anyway and stops at the OOBE region
+# screen, because of WHERE Windows looks. Its implicit answer-file search order:
+#
+#   3  %WINDIR%\Panther            <- where Setup cached the BUILD's answer file
+#   4  removable read/write media  Autounattend.xml
+#   5  removable read-only media   Autounattend.xml   <- this CD
+#
+# The golden image was built from an answer file and sysprepped without deleting
+# the cached copy, so every clone matches at 3 before it ever reaches 5. KubeVirt
+# documents the trap: "there is no answer file detected when the Sysprep Tool is
+# triggered ... it will just use the cached answer file, ignoring the one we
+# provide through the Sysprep API."
+#
+# The fix is one `del` in the producer's FirstLogonCommands before its sysprep
+# step, plus a rebuild: ericcames/image.builder.pipeline#59. Once that image is
+# republished this block starts working with no change here.
+#
+# AND THE FILENAME IS NOT THE BUG. Rows 4 and 5 want `Autounattend.xml` for
+# EVERY configuration pass, not just windowsPE. Renaming this key to
+# `unattend.xml` is the obvious-looking fix, and it is wrong.
+#
 # WHY THE PASSWORD COMES FROM THE LINUX VARIABLE. `linux_admin_password` is keyed
 # per environment; the old `windows_admin_password` was a single GLOBAL value,
 # because it lived in an image both environments pull. Those scopes cannot be

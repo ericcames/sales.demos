@@ -114,7 +114,7 @@ provider driving `kubernetes_manifest`. No community KubeVirt provider.
 | `kubernetes_namespace.demo` | The VM namespace, `sales-demos-<env>` |
 | `VirtualMachineClusterInstancetype` ×3 | The `sd1.small` / `.medium` / `.large` types |
 | `kubernetes_manifest.linux_vm` | RHEL 9 guest, cloned from the `rhel9` DataSource |
-| `kubernetes_manifest.windows_vm` | Wired, cannot boot — see below |
+| `kubernetes_manifest.windows_vm` | Windows Server 2022, cloned from `win2k22`; boots, but stops at OOBE — see below |
 | `kubernetes_service.linux` | **Headless.** Stable in-cluster DNS for the AAP inventory |
 | `kubernetes_service.linux_web` | ClusterIP on :80, existing solely to back the Route |
 | `kubernetes_manifest.linux_web_route` | The public URL, edge TLS |
@@ -213,30 +213,77 @@ real: it logs in, gathers facts and caches them, and that is all it needs to do.
 | `terraform apply` returns | ~10 s |
 | VM reports `Running` | ~45 s |
 | Guest accepts ssh | ~1 min after that |
-| Windows golden image (one-time, not yet done) | ~45 min |
+| Windows 60 GiB disk clone (CSI smart clone) | < 60 s |
+| Windows VM reports `Running` | ~40 s after that |
 
 ---
 
 ## Windows
 
-**Wired end to end, and the plumbing is now built. What is missing is the image.**
+**The image exists and boots. What is missing is the login.**
+
+This section used to say "what is missing is the image". That stopped being true
+when the golden image was published and linked (#220, #3), and the whole path was
+measured end to end on sandbox on 2026-09-05.
 
 Terraform creates the VM, the `windemo` inventory group exists with WinRM
 configured on 5986, and the outputs are the same shape as Linux. OpenShift
 Virtualization ships `win2k22` as an **empty DataSource placeholder**, because
-Red Hat cannot redistribute Windows media.
+Red Hat cannot redistribute Windows media; `ocpvirt-windows-image` fills it the
+same way CNV fills `rhel9`, with a `DataImportCron` that imports a containerdisk
+from a private registry and takes the placeholder over.
 
-`ocpvirt-windows-image` fills it the same way CNV fills `rhel9` — a
-`DataImportCron` that imports a containerdisk from a private registry and takes
-the placeholder over. That is the consumer half, and it is done (issue #3).
+### What was measured
 
-What remains is producing the image: an unattended, CIS-hardened Windows Server
-2022 build, published once to a private quay repository (issue ericcames/image.builder.pipeline#24). It is a
-one-time cost, and teardown is written to preserve the result.
+Provisioning `os_type=windows` at `large-2cpu-6gb`:
 
-Until that lands the provision playbook **preflights the DataSource and warns
-rather than refusing** — pick `windows` or `both` and it will build a VM that
-waits forever on a volume that never imports, but it tells you why first.
+| Observation | Value |
+|---|---|
+| 60 GiB DataVolume cloned from `win2k22` | `Succeeded` in **under 60 s** |
+| VMI `Running`, `Ready=True` | ~40 s after that |
+| Guest agent | connected, reporting Windows Server 2022 |
+| AAP registration | into `windemo`, `ansible_user: demoadmin` |
+
+The sub-minute clone is the number worth quoting. It is the CSI smart-clone path
+on Ceph RBD — a snapshot, not a copy — so a 60 GiB Windows disk costs about what
+a 30 GiB Linux one does.
+
+### Why you still cannot log in
+
+The published image is **generalized** — the build runs
+`sysprep /generalize /oobe /shutdown` — so a clone boots into the OOBE specialize
+pass and the built-in Administrator holds a random password the build discarded.
+`terraform/ocpvirt` answers that with a `sysprep` volume: a Secret holding an
+`autounattend.xml`, attached as a read-only CD-ROM, which sets the ComputerName,
+creates the local administrator, skips OOBE, and re-mints the WinRM listener
+(#201).
+
+**It is attached correctly and Windows ignores it**, because of where Windows
+looks. Microsoft's implicit answer-file search order:
+
+| Order | Location | Filename |
+|---|---|---|
+| 3 | `%WINDIR%\Panther` — where Setup caches the file it installed from | `Unattend.xml` |
+| 4 | Removable read/write media, root | `Autounattend.xml` |
+| 5 | **Removable read-only media** — our sysprep CD | `Autounattend.xml` |
+
+The image was built from an answer file, Windows cached it to `%WINDIR%\Panther`,
+and the build sysprepped without deleting it. So every clone finds the build's
+file at 3 before it reaches ours at 5. KubeVirt documents this exact trap: *"there
+is no answer file detected when the Sysprep Tool is triggered ... it will just use
+the cached answer file, ignoring the one we provide through the Sysprep API."*
+
+The fix is one `del` in the build's `FirstLogonCommands` plus a rebuild, and it
+belongs to the producer — `ericcames/image.builder.pipeline#59`. Nothing in this
+repo needs to change.
+
+**The filename is not the bug.** Rows 4 and 5 specify `Autounattend.xml` for
+*every* configuration pass, not just `windowsPE`. Assuming `unattend.xml` is
+needed for `oobeSystem` is a natural guess, and wrong; it is written down here so
+the next person does not spend a provisioning cycle proving it.
+
+The provision playbook still **preflights the DataSource and warns rather than
+refusing**, so `os_type=both` is never blocked by the Windows half.
 
 ---
 
@@ -245,7 +292,7 @@ waits forever on a volume that never imports, but it tells you why first.
 | Destroyed | Preserved |
 |---|---|
 | The demo VMs | OpenShift Virtualization itself |
-| Their Services and Route | Boot-source DataSources (incl. the Windows image, once published) |
+| Their Services and Route | Boot-source DataSources (incl. the published Windows image) |
 | Their AAP host entries | The `sales-demos-tfstate` namespace |
 | The RHSM subscription and Insights host | The published container image |
 
