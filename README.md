@@ -400,6 +400,7 @@ never a demo environment, so they must never run from AAP:
 | `sales-demos-mcp` | Connect Claude Code to the clusters over MCP — per-environment kubeconfigs |
 | `sales-demos-verify-ee` | Run a playbook *inside* the EE AAP uses, and diff it against a laptop run |
 | `sales-demos-talk-track` | Scaffold or verify a use-case directory under `docs/demos/` — structure, rendered artifacts, source table |
+| `sales-demos-dev-workflow` | The end-to-end dev/test cycle — branch, PR, merge, `config.yml`, Build Demo VM workflow |
 
 New machine? Run `/sales-demos-first-time` first. It walks every prerequisite and
 validates each one, including the vault password — without which nothing in this
