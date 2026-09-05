@@ -535,6 +535,10 @@
                   # on linuxweb and cannot reach connection.yml.
                   golden_image_source: "{{ quay_rhel9_image | default('') }}"
                   golden_image_cis_level: "L1"
+                  # #212. The check job shows how to set up the kubeconfig
+                  # for virtctl ssh, and the compliance report URLs.
+                  env_name: "{{ aap_env_name }}"
+                  openshift_api_url: "{{ openshift_api_url }}"
 
             - name: Associate the Linux host with its group
               ansible.controller.group:
