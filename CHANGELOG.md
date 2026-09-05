@@ -19,6 +19,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   hardened golden image.
 - `prepare_env.yml` updated to validate `rhel9-cis-l1` by default.
 
+### Added -- OpenSCAP CIS Level 1 compliance scan (#202)
+- New `playbooks/roles/linux_compliance/` role installs `openscap-scanner` and
+  `scap-security-guide` on the guest, runs `oscap xccdf eval` with the CIS L1
+  Server profile, and publishes an HTML report at `<web_url>/compliance/` plus a
+  machine-readable `summary.json` with pass/fail counts and score.
+- New `playbooks/compliance_scan.yml` playbook, targeting `linuxweb`.
+- New **"Sales Demos - Compliance Scan"** job template.
+- Added to the **Build Demo VM** workflow between configure and check, so
+  the full chain is: provision → register → configure → compliance → check.
+- The demo page's golden image card now links to the compliance report.
+
 ### Added -- golden image provenance on the demo page (#202)
 - The demo page now shows a **Golden Image** card with the image source, build
   date (parsed from the containerdisk tag), CIS profile level, and a link to

@@ -1,0 +1,16 @@
+{{ {
+  'hostname': inventory_hostname,
+  'scanned': ansible_date_time.iso8601,
+  'profile': linux_compliance_profile,
+  'results': {
+    'pass': linux_compliance_pass | int,
+    'fail': linux_compliance_fail | int,
+    'notapplicable': linux_compliance_notapplicable | int,
+    'notchecked': linux_compliance_notchecked | int,
+    'score_percent': linux_compliance_score | int,
+  },
+  'golden_image': {
+    'source': golden_image_source | default(none, true),
+    'cis_level': golden_image_cis_level | default(none, true),
+  },
+} | to_nice_json }}

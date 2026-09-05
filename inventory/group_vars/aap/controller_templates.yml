@@ -238,6 +238,28 @@ controller_templates_all:
     use_fact_cache: true
 
   # ---------------------------------------------------------------------
+  # CIS compliance scan (#202). Runs OpenSCAP with the CIS Level 1 Server
+  # profile against the demo VMs and publishes an HTML report at
+  # <web_url>/compliance/report.html. Expected to show some deviations
+  # after linux_configure, since httpd/cockpit/firewall changes depart
+  # from a hardened baseline — that delta is the demo point.
+  # ---------------------------------------------------------------------
+  - name: "Sales Demos - Compliance Scan"
+    description: "Run an OpenSCAP CIS Level 1 scan and publish the report at <web_url>/compliance/."
+    job_type: run
+    organization: "IT Service Automation"
+    inventory: "Sales Demo VMs"
+    project: "Sales Demos"
+    playbook: playbooks/compliance_scan.yml
+    execution_environment: "Sales Demos - OCP Virt EE"
+    credentials:
+      - "Sales Demos - Linux Machine"
+      - "Sales Demos - Vault"
+      - "Sales Demos - Env Secrets"
+    limit: linuxweb
+    ask_limit_on_launch: true
+
+  # ---------------------------------------------------------------------
   # Automation Orchestrator (#141). Installs CloudNativePG, builds the three
   # databases, installs the AO operator and creates the instance.
   #

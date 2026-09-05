@@ -110,9 +110,23 @@ controller_workflows_all:
               name: "IT Service Automation"
           related:
             success_nodes:
+              - identifier: compliance
+
+        # 4. OpenSCAP CIS Level 1 scan (#202). Proves the golden image's
+        #    hardening by running oscap and publishing the report at
+        #    <web_url>/compliance/. Expected to show some deviations after
+        #    configure — httpd, cockpit, and firewall changes are the delta.
+        - identifier: compliance
+          unified_job_template:
+            name: "Sales Demos - Compliance Scan"
+            type: job_template
+            organization:
+              name: "IT Service Automation"
+          related:
+            success_nodes:
               - identifier: check
 
-        # 4. Logs in and gathers facts, so the workflow ends by proving the VM
+        # 5. Logs in and gathers facts, so the workflow ends by proving the VM
         #    is genuinely reachable and configured rather than that the tasks
         #    merely ran. Caches facts into AAP, where they show on the host.
         - identifier: check
