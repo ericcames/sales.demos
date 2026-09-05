@@ -19,6 +19,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   hardened golden image.
 - `prepare_env.yml` updated to validate `rhel9-cis-l1` by default.
 
+### Added -- golden image provenance on the demo page (#202)
+- The demo page now shows a **Golden Image** card with the image source, build
+  date (parsed from the containerdisk tag), CIS profile level, and a link to
+  the image.builder.pipeline repository. The card renders only when
+  `golden_image_source` is set, so VMs booted from the stock `rhel9` image
+  show no change.
+- `facts.json` carries the same fields under `golden_image`.
+- `provision_vm.yml` forwards `golden_image_source` and `golden_image_cis_level`
+  as host vars on the AAP inventory host, following the same pattern as
+  `web_url` and `ssh_command`.
+
 ### Added -- clickable links to the related repositories (#203)
 - A **Related repositories** table in `README.md` linking
   [image.builder.pipeline](https://github.com/ericcames/image.builder.pipeline)

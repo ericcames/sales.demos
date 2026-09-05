@@ -136,6 +136,13 @@
             'in_cluster_address': ansible_host | default(inventory_hostname),
             'repository': linux_configure_repo_url,
           },
+          'golden_image': {
+            'source': linux_configure_golden_image_source | default(none, true),
+            'repo': linux_configure_golden_image_repo | default(none, true),
+            'build_date': linux_configure_golden_image_build_date | default(none, true),
+            'cis_level': linux_configure_golden_image_cis_level | default(none, true),
+            'pipeline': linux_configure_golden_image_pipeline_url,
+          },
         } | to_nice_json
       }}
 

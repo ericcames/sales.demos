@@ -115,6 +115,19 @@
     </table>
   </div>
 
+{% if linux_configure_golden_image_source | default('') | length > 0 %}
+  <div class="card">
+    <table>
+      <tr><td class="k">Golden image</td><td class="v">{{ linux_configure_golden_image_repo }}</td></tr>
+      <tr><td class="k">Build date</td><td class="v">{{ linux_configure_golden_image_build_date }}</td></tr>
+{% if linux_configure_golden_image_cis_level | default('') | length > 0 %}
+      <tr><td class="k">CIS profile</td><td class="v">Level {{ linux_configure_golden_image_cis_level }} Server</td></tr>
+{% endif %}
+      <tr><td class="k">Pipeline</td><td class="v"><a href="{{ linux_configure_golden_image_pipeline_url }}">{{ linux_configure_golden_image_pipeline_url | replace('https://', '') }}</a></td></tr>
+    </table>
+  </div>
+{% endif %}
+
   <div class="notice">
     <strong>This VM is temporary.</strong>
     It is decommissioned automatically at {{ linux_configure_teardown_time }} by a

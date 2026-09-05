@@ -32,3 +32,21 @@ linux_configure_virt_role: >-
   {{ (ansible_virtualization_role | default('') | trim)
      if (ansible_virtualization_role | default('NA')) not in ['NA', '']
      else 'guest' }}
+
+# --- Golden image: derived from the source tag (#202) -----------------------
+# Tag format contract from image.builder.pipeline: YYYYMMDD-HHMM (immutable).
+linux_configure_golden_image_repo: >-
+  {{ linux_configure_golden_image_source | regex_replace(':[^:]+$', '')
+     if linux_configure_golden_image_source | length > 0 else '' }}
+
+linux_configure_golden_image_tag: >-
+  {{ linux_configure_golden_image_source | regex_replace('^.*:', '')
+     if linux_configure_golden_image_source | length > 0 else '' }}
+
+linux_configure_golden_image_build_date: >-
+  {{ (linux_configure_golden_image_tag[:4] ~ '-'
+      ~ linux_configure_golden_image_tag[4:6] ~ '-'
+      ~ linux_configure_golden_image_tag[6:8] ~ ' '
+      ~ linux_configure_golden_image_tag[9:11] ~ ':'
+      ~ linux_configure_golden_image_tag[11:13] ~ ' UTC')
+     if linux_configure_golden_image_tag | length >= 13 else linux_configure_golden_image_tag }}

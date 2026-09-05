@@ -529,6 +529,12 @@
                   web_url: "{{ web_url }}"
                   cockpit_url: "{{ cockpit_url }}"
                   ssh_command: "{{ ssh_command }}"
+                  # #202. The configure role renders the golden image
+                  # provenance on the demo page and in facts.json. Same
+                  # forwarding pattern as web_url: the configure job runs
+                  # on linuxweb and cannot reach connection.yml.
+                  golden_image_source: "{{ quay_rhel9_image | default('') }}"
+                  golden_image_cis_level: "L1"
 
             - name: Associate the Linux host with its group
               ansible.controller.group:
