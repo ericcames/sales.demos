@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed -- pull secret registry key was literal Jinja, not templated (#222)
+- `link_windows_image.yml` built the `.dockerconfigjson` with the registry
+  hostname as a dictionary key in a `vars:` block. Ansible does not template
+  dict keys there, so CDI received `{{ quay_windows_image | ... }}` instead of
+  `quay.io` and could never authenticate. Rebuilt as an inline Jinja dict.
+
 ### Changed -- point quay_windows_image at the published golden image (#220)
 - Both environments' `connection.yml` now reference the real containerdisk
   (`quay.io/zigfreed/win2k22-golden:20260905-1826`) instead of a placeholder.

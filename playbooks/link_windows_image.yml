@@ -147,9 +147,19 @@
           (DataSource {{ win_managed_datasource }} in {{ win_datasource_namespace }}).
 
     # --- The pull secret ----------------------------------------------------
+    - name: Derive the registry hostname from the image reference
+      ansible.builtin.set_fact:
+        win_registry: "{{ quay_windows_image | regex_replace('/.*$', '') }}"
+      when: windows_image_link_state == 'present'
+
     - name: Create the pull secret for the private quay repository
       # Private is not optional: a Windows image cannot be redistributed
       # publicly, so CDI needs credentials to pull it at all.
+      #
+      # The dockerconfigjson is built as an inline Jinja dict rather than a
+      # YAML dict in vars: because Ansible does not template dictionary KEYS
+      # in vars: blocks — the registry hostname ended up as a literal Jinja
+      # expression (#222).
       kubernetes.core.k8s:
         state: present
         definition:
@@ -160,12 +170,9 @@
             namespace: "{{ win_datasource_namespace }}"
           type: kubernetes.io/dockerconfigjson
           data:
-            .dockerconfigjson: "{{ win_dockerconfig | to_json | b64encode }}"
-      vars:
-        win_dockerconfig:
-          auths:
-            "{{ quay_windows_image | regex_replace('/.*$', '') }}":
-              auth: "{{ (quay_username ~ ':' ~ quay_password) | b64encode }}"
+            .dockerconfigjson: >-
+              {{ {'auths': {win_registry: {'auth': (quay_username ~ ':' ~ quay_password) | b64encode}}}
+                 | to_json | b64encode }}
       no_log: true
       when: windows_image_link_state == 'present'
 
