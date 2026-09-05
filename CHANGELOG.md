@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added -- kubeconfig setup and compliance URLs in Check VMs output (#212)
+- The Check VMs job now shows how to set up the kubeconfig for `virtctl ssh`
+  (`make-kubeconfig.sh` + `export KUBECONFIG`, or `oc login`), and the
+  compliance report and summary URLs.
+- `provision_vm.yml` forwards `env_name` and `openshift_api_url` as host vars
+  so `check_vm.yml` can reference them.
+
 ### Fixed -- compliance scan fails without root (#210)
 - Added `become: true` to `compliance_scan.yml` — the dnf install and file
   ownership tasks require root, matching `configure_vm.yml`.
