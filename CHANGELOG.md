@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed -- compliance scan fails without root (#210)
+- Added `become: true` to `compliance_scan.yml` — the dnf install and file
+  ownership tasks require root, matching `configure_vm.yml`.
+
 ### Added -- consume the RHEL 9 CIS L1 golden image from image.builder.pipeline (#202)
 - `playbooks/link_rhel9_image.yml` creates a DataImportCron for the CIS-hardened
   RHEL 9 containerdisk (`quay.io/zigfreed/rhel9-cis-l1-golden`), following the
