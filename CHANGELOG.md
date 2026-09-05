@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added -- compliance report URL in the MOTD banner (#217)
+- The SSH login banner now shows the CIS L1 compliance report URL alongside
+  the Demo page and Console URLs, so an SE lands on the VM and sees all three
+  links immediately.
+
 ### Changed -- Check VMs output: copy-paste SSH access for SEs (#212, #214)
 - The Check VMs job now shows `oc login <api_url>` then `virtctl ssh ...` as
   two copy-pasteable commands that work from any directory. Dropped

@@ -86,6 +86,11 @@ linux_configure_motd_url: "{{ web_url | default('', true) }}"
 # is a host variable set by provision_vm.yml (#63).
 linux_configure_cockpit_url: "{{ cockpit_url | default('', true) }}"
 
+# CIS compliance report URL. Derived from web_url — the report is served at
+# /compliance/report.html by the web server that configure_vm.yml sets up.
+linux_configure_compliance_url: >-
+  {{ (web_url ~ '/compliance/report.html') if (web_url | default('', true) | length > 0) else '' }}
+
 # --- Golden image provenance (#202) -----------------------------------------
 # Carried as HOST VARIABLES from provision_vm.yml, the same path as web_url and
 # ssh_command — the configure role runs on the VM via AAP, which has no access
