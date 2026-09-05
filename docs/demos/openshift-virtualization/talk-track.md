@@ -317,6 +317,13 @@ For the person who asks where the page gets its data — and someone always does
         "instance_type": "sd1.small",
         "in_cluster_address": "sd-lnx-small-1cpu-2gb.sales-demos-demo.svc.cluster.local",
         "repository": "https://github.com/ericcames/sales.demos"
+    },
+    "golden_image": {
+        "source": "quay.io/zigfreed/rhel9-cis-l1-golden:20260905-0411",
+        "repo": "quay.io/zigfreed/rhel9-cis-l1-golden",
+        "build_date": "2026-09-05 04:11 UTC",
+        "cis_level": "L1",
+        "pipeline": "https://github.com/ericcames/image.builder.pipeline"
     }
 }
 ```

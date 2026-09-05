@@ -85,3 +85,11 @@ linux_configure_motd_url: "{{ web_url | default('', true) }}"
 # Cockpit (RHEL web console) URL for the browser terminal. Like web_url, this
 # is a host variable set by provision_vm.yml (#63).
 linux_configure_cockpit_url: "{{ cockpit_url | default('', true) }}"
+
+# --- Golden image provenance (#202) -----------------------------------------
+# Carried as HOST VARIABLES from provision_vm.yml, the same path as web_url and
+# ssh_command — the configure role runs on the VM via AAP, which has no access
+# to connection.yml, so provisioning forwards the metadata.
+linux_configure_golden_image_source: "{{ golden_image_source | default('') }}"
+linux_configure_golden_image_cis_level: "{{ golden_image_cis_level | default('') }}"
+linux_configure_golden_image_pipeline_url: "https://github.com/ericcames/image.builder.pipeline"
