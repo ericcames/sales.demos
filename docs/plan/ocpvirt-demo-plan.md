@@ -453,18 +453,68 @@ name SSP does not own and repoint `windows_datasource_name` in
 
 #### What the consumer half does
 
-1. Create a `kubernetes.io/dockerconfigjson` pull secret for the **private** quay
-   repository. Private is not optional — a Windows image cannot be redistributed
-   publicly.
+> **Corrected after execution (#222, #224, #225).** Steps 1 and 3 below were
+> wrong as originally written. The corrections are inline; the original text is
+> struck through so the mistake is visible.
+
+1. Create ~~a `kubernetes.io/dockerconfigjson`~~ an **`Opaque`** pull secret with
+   keys `accessKeyId` and `secretKey` for the **private** quay repository. Private
+   is not optional — a Windows image cannot be redistributed publicly.
+   CDI's importer pod reads credentials as env vars from those two keys, not from
+   the Docker auth format — `dockerconfigjson` causes
+   `CreateContainerConfigError: couldn't find key accessKeyId` (#224).
 2. Patch `HyperConverged.spec.dataImportCronTemplates` with a `win2k22-image-cron`
    entry sourcing `docker://{{ quay_windows_image }}` via `secretRef`, at 60Gi to
    match `windows_min_disk_gb`. No `pullMethod`: the default (`pod`) is the one
    that honours `secretRef`; `node` ignores it and needs cluster-wide credentials.
-3. Wait for the DataSource to report Ready, then verify the **backing volume** —
-   expect a `VolumeSnapshot`, not a PVC. A DataSource reports Ready while the
-   snapshot behind it is still materializing, which is the slow-clone case
-   `prepare_env.yml` exists to catch.
+3. Create an explicit **DataVolume** as the import trigger, because CDI 4.20's
+   DataImportCron controller cannot authenticate to private registries for its
+   digest check — it silently fails with "No source digest" and never creates a
+   DataVolume (#224). The cron template stays in HCO for future CDI versions.
+   Once the DataVolume import succeeds, patch the DataSource to point at the
+   resulting **PVC** ~~`VolumeSnapshot`~~.
 4. Reverse with `-e windows_image_link_state=absent`.
+
+#### Phase 2: validated — linked and Ready on sandbox
+
+Executed against sandbox (`cluster-kbjvc`) on 2026-09-05. DataSource `win2k22`
+is `Ready=True`, backed by PVC `win2k22-initial-import`. Three stacked bugs,
+all found by executing the playbook and none by lint:
+
+1. **Ansible dict-key templating (#222).** A `vars:` block used
+   `"{{ quay_windows_image }}"` as a dictionary key. Ansible evaluates keys at
+   parse time, before the play's `vars:` are set, so the key resolved to the
+   literal template string. Moved the templated key into the task's inline
+   `definition:`.
+2. **CDI secret format (#224).** CDI's importer pod reads registry credentials
+   as `accessKeyId` / `secretKey` env vars from the referenced secret. It does
+   **not** use `kubernetes.io/dockerconfigjson`. The earlier format produced
+   `CreateContainerConfigError: couldn't find key accessKeyId`. Fixed by
+   switching to `type: Opaque` with the two required keys.
+   Note: secret `type` is immutable — cannot patch from `dockerconfigjson` to
+   `Opaque`; must delete and recreate.
+3. **DataImportCron private-registry limitation (#224).** CDI 4.20's
+   DataImportCron controller cannot authenticate to a private registry for its
+   initial digest check. It silently fails with "No source digest" in the
+   DataImportCron status and never creates a DataVolume. No error in controller
+   logs — zero reconciliation activity for the cron. Bypassed by creating an
+   explicit DataVolume as the import trigger. The cron template stays in HCO
+   for future CDI versions that may fix this.
+
+| Observation | Value |
+|---|---|
+| Image | `quay.io/zigfreed/win2k22-golden:20260905-1826` (private, 8.65 GiB) |
+| Import time | ~5 min (much faster than the estimated 80 min) |
+| DataSource | `win2k22` — `Ready=True`, `spec.source.pvc.name: win2k22-initial-import` |
+| Backing PVC | `win2k22-initial-import` — `Bound`, 60Gi |
+| Re-run | Skips import (DataSource already Ready), idempotent |
+| PRs | #222 (dict-key fix), #225 (secret format + DataVolume workaround) |
+| Issues | #224 (root cause documentation) |
+
+**The RHEL 9 image link (`link_rhel9_image.yml`) had the same two code bugs**
+(dict-key templating, dockerconfigjson format) but never exposed them: the quay
+repository went public before the secret mattered, so the pull secret was dropped
+in a later change. The fix in #222 corrected both playbooks.
 
 #### Durable storage: private quay.io containerdisk
 

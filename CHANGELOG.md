@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed -- document Phase 2 validated state in the plan doc (#225)
+- Updated `docs/plan/ocpvirt-demo-plan.md` consumer-half steps to match what
+  actually works: Opaque secret (not dockerconfigjson), explicit DataVolume
+  import trigger (not DataImportCron alone).
+- Added "Phase 2: validated" section recording the three stacked bugs (#222,
+  #224), the CDI 4.20 private-registry limitation, and the measured import
+  time (~5 min vs. estimated 80 min).
+
 ### Fixed -- pull secret format and import path for private registries (#222, #224)
 - CDI's importer pod expects `accessKeyId`/`secretKey` keys in an Opaque
   secret, not a `kubernetes.io/dockerconfigjson` secret. The old format
