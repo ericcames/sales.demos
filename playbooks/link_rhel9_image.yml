@@ -1,0 +1,284 @@
+---
+# ===========================================================================
+# link_rhel9_image.yml — point this environment's CNV at the published
+# RHEL 9 CIS L1 golden containerdisk. Issue #202.
+#
+#   ansible-playbook playbooks/link_rhel9_image.yml -i inventory --limit sandbox \
+#     -e target_env=sandbox \
+#     --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
+#
+# AND THE REVERSAL:
+#
+#   ansible-playbook playbooks/link_rhel9_image.yml -i inventory --limit sandbox \
+#     -e target_env=sandbox -e rhel9_image_link_state=absent \
+#     --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
+#
+# WHAT THIS DOES. Creates a pull secret for the private quay repository holding
+# the RHEL 9 CIS L1 containerdisk, then adds a DataImportCron template to the
+# HyperConverged CR so CDI imports it and keeps the `rhel9-cis-l1` DataSource
+# populated. Terraform clones that DataSource when linux_datasource_name is set
+# to rhel9-cis-l1 (the default as of this change).
+#
+# ---------------------------------------------------------------------------
+# WHY A SEPARATE DataSource AND NOT THE STOCK rhel9
+# ---------------------------------------------------------------------------
+# The stock rhel9 DataSource is managed by CNV's built-in DataImportCron, which
+# pulls the vanilla RHEL 9 cloud image from Red Hat's registry. Overwriting it
+# would break anyone who expects the stock image (including Red Hat's own
+# templates), and a cron conflict between the built-in and ours would fight
+# over the same DataSource. rhel9-cis-l1 is ours to manage.
+#
+# THE PATTERN IS IDENTICAL TO link_windows_image.yml (#3). Same DataImportCron
+# mechanism, same pull-secret approach, same wait-and-verify loop, same
+# reversal path. The only differences are the names, the storage size (30Gi
+# vs 60Gi), and the fact that the stock DataSource IS populated (unlike the
+# win2k22 placeholder), so we create alongside it rather than taking it over.
+# ===========================================================================
+
+- name: Point CNV at the published RHEL 9 CIS L1 golden image
+  hosts: aap
+  gather_facts: false
+
+  environment:
+    K8S_AUTH_HOST: "{{ openshift_api_url }}"
+    K8S_AUTH_API_KEY: "{{ openshift_api_token }}"
+    K8S_AUTH_VERIFY_SSL: "{{ openshift_validate_certs | default(false) | bool }}"
+
+  vars:
+    # `-e rhel9_image_link_state=absent` reverses everything below.
+    rhel9_image_link_state: "present"
+
+    rhel9_cnv_namespace: "openshift-cnv"
+    rhel9_datasource_namespace: "openshift-virtualization-os-images"
+
+    # A NEW DataSource, not the stock rhel9. terraform/ocpvirt/variables.tf
+    # defaults linux_datasource_name to this same string — change both together.
+    rhel9_managed_datasource: "rhel9-cis-l1"
+    rhel9_cron_name: "rhel9-cis-l1-image-cron"
+    rhel9_pull_secret_name: "rhel9-golden-pull"
+
+    # 30Gi matches the shipped Linux boot sources. The CIS L1 image is a
+    # qcow2 roughly the same size as the stock RHEL 9 cloud image.
+    rhel9_image_storage_size: "30Gi"
+
+    # Same cadence the shipped crons use. With an immutable date tag the poll
+    # is a no-op by design — point quay_rhel9_image at a moving tag to make
+    # the cron actually refresh.
+    rhel9_image_schedule: "9 10/12 * * *"
+
+    rhel9_wait_retries: 60
+    rhel9_wait_delay: 10
+
+  tasks:
+    - name: Assert exactly one environment is targeted
+      ansible.builtin.include_tasks: tasks/assert_target_environment.yml
+
+    - name: Assert the requested state is valid
+      ansible.builtin.assert:
+        that:
+          - rhel9_image_link_state in ['present', 'absent']
+        fail_msg: >-
+          rhel9_image_link_state must be 'present' or 'absent', not
+          '{{ rhel9_image_link_state }}'.
+        quiet: true
+
+    - name: Assert the OpenShift connection is set
+      ansible.builtin.assert:
+        that:
+          - openshift_api_url | default('') | length > 0
+          - openshift_api_token | default('') | length > 0
+        fail_msg: >-
+          openshift_api_url and openshift_api_token are required. They come
+          from inventory/group_vars/<env>/connection.yml plus the vaulted
+          playbooks/group_vars/all/secrets.yml; pass --vault-id so the token
+          resolves.
+        quiet: true
+
+    - name: Assert the image reference and quay credentials are set
+      ansible.builtin.assert:
+        that:
+          - quay_rhel9_image is defined
+          - quay_rhel9_image | length > 0
+          - "'<user>' not in quay_rhel9_image"
+          - quay_username is defined
+          - quay_username | length > 0
+          - quay_username != 'CHANGEME'
+          - quay_password is defined
+          - quay_password | length > 0
+          - quay_password != 'CHANGEME'
+        fail_msg: >-
+          quay_rhel9_image must name a real published containerdisk
+          (quay.io/zigfreed/rhel9-cis-l1-golden:<date>), and quay_username /
+          quay_password must be set in the vaulted secrets.yml.
+        quiet: true
+      when: rhel9_image_link_state == 'present'
+
+    - name: Say what is about to happen
+      ansible.builtin.debug:
+        msg: >-
+          {{ (rhel9_image_link_state == 'present') | ternary('LINKING', 'UNLINKING') }}
+          the RHEL 9 CIS L1 golden image on {{ aap_env_name }}
+          (DataSource {{ rhel9_managed_datasource }} in {{ rhel9_datasource_namespace }}).
+
+    # --- The pull secret ----------------------------------------------------
+    - name: Create the pull secret for the private quay repository
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: v1
+          kind: Secret
+          metadata:
+            name: "{{ rhel9_pull_secret_name }}"
+            namespace: "{{ rhel9_datasource_namespace }}"
+          type: kubernetes.io/dockerconfigjson
+          data:
+            .dockerconfigjson: "{{ rhel9_dockerconfig | to_json | b64encode }}"
+      vars:
+        rhel9_dockerconfig:
+          auths:
+            "{{ quay_rhel9_image | regex_replace('/.*$', '') }}":
+              auth: "{{ (quay_username ~ ':' ~ quay_password) | b64encode }}"
+      no_log: true
+      when: rhel9_image_link_state == 'present'
+
+    # --- The DataImportCron template ---------------------------------------
+    - name: Read the current HyperConverged CR
+      kubernetes.core.k8s_info:
+        api_version: hco.kubevirt.io/v1beta1
+        kind: HyperConverged
+        name: kubevirt-hyperconverged
+        namespace: "{{ rhel9_cnv_namespace }}"
+      register: rhel9_hco
+
+    - name: Assert OpenShift Virtualization is installed
+      ansible.builtin.assert:
+        that:
+          - rhel9_hco.resources | default([]) | length > 0
+        fail_msg: >-
+          No HyperConverged CR in {{ rhel9_cnv_namespace }}. OpenShift
+          Virtualization is not installed — run playbooks/install_cnv.yml
+          (or the ocpvirt-setup skill) first.
+        quiet: true
+
+    - name: Build the desired dataImportCronTemplates list
+      ansible.builtin.set_fact:
+        rhel9_desired_crons: >-
+          {{
+            (rhel9_hco.resources[0].spec.dataImportCronTemplates | default([]))
+            | rejectattr('metadata.name', 'equalto', rhel9_cron_name) | list
+            + ((rhel9_image_link_state == 'present') | ternary([rhel9_cron_entry], []))
+          }}
+      vars:
+        rhel9_cron_entry:
+          metadata:
+            name: "{{ rhel9_cron_name }}"
+            annotations:
+              cdi.kubevirt.io/storage.bind.immediate.requested: "true"
+          spec:
+            managedDataSource: "{{ rhel9_managed_datasource }}"
+            garbageCollect: Outdated
+            schedule: "{{ rhel9_image_schedule }}"
+            template:
+              spec:
+                source:
+                  registry:
+                    url: "docker://{{ quay_rhel9_image }}"
+                    secretRef: "{{ rhel9_pull_secret_name }}"
+                storage:
+                  resources:
+                    requests:
+                      storage: "{{ rhel9_image_storage_size }}"
+
+    - name: Patch the HyperConverged CR
+      kubernetes.core.k8s:
+        state: patched
+        api_version: hco.kubevirt.io/v1beta1
+        kind: HyperConverged
+        name: kubevirt-hyperconverged
+        namespace: "{{ rhel9_cnv_namespace }}"
+        definition:
+          spec:
+            dataImportCronTemplates: "{{ rhel9_desired_crons }}"
+
+    # --- Verify, by asking the cluster --------------------------------------
+    - name: Wait for the RHEL 9 CIS L1 DataSource to report Ready
+      kubernetes.core.k8s_info:
+        api_version: cdi.kubevirt.io/v1beta1
+        kind: DataSource
+        name: "{{ rhel9_managed_datasource }}"
+        namespace: "{{ rhel9_datasource_namespace }}"
+      register: rhel9_datasource
+      retries: "{{ rhel9_wait_retries }}"
+      delay: "{{ rhel9_wait_delay }}"
+      until:
+        - rhel9_datasource.resources | default([]) | length > 0
+        - rhel9_datasource.resources[0].status.conditions | default([])
+          | selectattr('type', 'equalto', 'Ready')
+          | selectattr('status', 'equalto', 'True') | list | length > 0
+      when: rhel9_image_link_state == 'present'
+
+    - name: Find what actually backs the DataSource
+      ansible.builtin.set_fact:
+        rhel9_backing_kind: >-
+          {{ 'VolumeSnapshot' if (rhel9_datasource.resources[0].spec.source.snapshot is defined) else 'PersistentVolumeClaim' }}
+        rhel9_backing_name: >-
+          {{ (rhel9_datasource.resources[0].spec.source.snapshot
+              | default(rhel9_datasource.resources[0].spec.source.pvc)).name }}
+        rhel9_backing_namespace: >-
+          {{ (rhel9_datasource.resources[0].spec.source.snapshot
+              | default(rhel9_datasource.resources[0].spec.source.pvc)).namespace
+             | default(rhel9_datasource_namespace) }}
+      when: rhel9_image_link_state == 'present'
+
+    - name: Look up the backing volume
+      kubernetes.core.k8s_info:
+        api_version: "{{ 'snapshot.storage.k8s.io/v1' if rhel9_backing_kind == 'VolumeSnapshot' else 'v1' }}"
+        kind: "{{ rhel9_backing_kind }}"
+        namespace: "{{ rhel9_backing_namespace }}"
+        name: "{{ rhel9_backing_name }}"
+      register: rhel9_backing
+      retries: "{{ rhel9_wait_retries }}"
+      delay: "{{ rhel9_wait_delay }}"
+      until:
+        - rhel9_backing.resources | default([]) | length > 0
+        - >-
+          (rhel9_backing.resources[0].status.readyToUse | default(false))
+          if rhel9_backing_kind == 'VolumeSnapshot'
+          else (rhel9_backing.resources[0].status.phase | default('') == 'Bound')
+      when: rhel9_image_link_state == 'present'
+
+    - name: Assert the backing volume is genuinely usable
+      ansible.builtin.assert:
+        that:
+          - rhel9_backing.resources | default([]) | length > 0
+        fail_msg: >-
+          {{ rhel9_backing_kind }} '{{ rhel9_backing_name }}' backing DataSource
+          '{{ rhel9_managed_datasource }}' never became usable. Check the
+          DataImportCron and its importer pod in {{ rhel9_datasource_namespace }};
+          a pull failure on the private repository shows up there.
+        quiet: true
+      when: rhel9_image_link_state == 'present'
+
+    # --- Reversal -----------------------------------------------------------
+    - name: Remove the pull secret
+      kubernetes.core.k8s:
+        state: absent
+        api_version: v1
+        kind: Secret
+        name: "{{ rhel9_pull_secret_name }}"
+        namespace: "{{ rhel9_datasource_namespace }}"
+      when: rhel9_image_link_state == 'absent'
+
+    - name: Summarize
+      ansible.builtin.debug:
+        msg: >-
+          {{
+            (rhel9_image_link_state == 'present') | ternary(
+              'DataSource ' ~ rhel9_managed_datasource ~ ' is Ready, backed by '
+              ~ (rhel9_backing_kind | default('?')) ~ ' ' ~ (rhel9_backing_name | default('?'))
+              ~ '. terraform -var linux_datasource_name=rhel9-cis-l1 can now boot '
+              ~ '(this is the default). Reverse with: -e rhel9_image_link_state=absent',
+              'Unlinked. The ' ~ rhel9_cron_name ~ ' template and the pull secret are gone; '
+              ~ rhel9_managed_datasource ~ ' DataSource will be removed by CDI garbage collection.'
+            )
+          }}

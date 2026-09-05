@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added -- consume the RHEL 9 CIS L1 golden image from image.builder.pipeline (#202)
+- `playbooks/link_rhel9_image.yml` creates a DataImportCron for the CIS-hardened
+  RHEL 9 containerdisk (`quay.io/zigfreed/rhel9-cis-l1-golden`), following the
+  same pattern as the Windows image link (#3). DataSource `rhel9-cis-l1` in
+  `openshift-virtualization-os-images` — the stock `rhel9` stays untouched.
+- Integrated into `setup.yml` as stage 2/6, after CNV install. Skippable with
+  `-e link_rhel9_image=false`.
+- `linux_datasource_name` default changed from `rhel9` to `rhel9-cis-l1` in
+  `terraform/ocpvirt/variables.tf` — every new Linux demo VM boots from the
+  hardened golden image.
+- `prepare_env.yml` updated to validate `rhel9-cis-l1` by default.
+
 ### Added -- clickable links to the related repositories (#203)
 - A **Related repositories** table in `README.md` linking
   [image.builder.pipeline](https://github.com/ericcames/image.builder.pipeline)
