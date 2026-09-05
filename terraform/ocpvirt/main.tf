@@ -176,7 +176,7 @@ resource "kubernetes_manifest" "linux_vm" {
 # on a DataVolume that never imports. provision_vm.yml preflights the
 # DataSource and warns rather than refusing, so this stays a soft failure.
 #
-# Building and publishing the image itself is #193.
+# Building and publishing the image itself is ericcames/image.builder.pipeline#24.
 # ---------------------------------------------------------------------------
 
 resource "kubernetes_manifest" "windows_vm" {
@@ -345,7 +345,7 @@ resource "kubernetes_service" "windows" {
     # playbooks/provision_vm.yml sets ansible_port 5986 with
     # ansible_winrm_server_cert_validation ignore, and this Service used to
     # publish 5985 — a mismatch that went unnoticed because no Windows guest
-    # had ever booted. The golden image (#193) configures 5986.
+    # had ever booted. The golden image (ericcames/image.builder.pipeline#24) configures 5986.
     port {
       name        = "winrm"
       port        = 5986

@@ -31,7 +31,7 @@ These names are shared verbatim with the AAP survey and
 **`os_type=windows` or `both` will create a VM that never boots** until this
 environment is linked to a published Windows golden image — CNV ships `win2k22`
 as an empty DataSource placeholder. Run `ocpvirt-windows-image` first; building
-the image itself is #193. The playbook preflights that DataSource and **warns
+the image itself is ericcames/image.builder.pipeline#24. The playbook preflights that DataSource and **warns
 rather than refuses**, because the Terraform side is wired, `os_type=both` still
 gets a working Linux guest, and linking a minute later fixes it without
 re-provisioning.

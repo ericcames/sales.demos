@@ -275,7 +275,7 @@ than answering well.
   the cluster at a Windows boot source the same way CNV points at RHEL's. What is
   missing is the image — Red Hat cannot redistribute Windows media, so the golden
   image is a one-time build that has not been done. Tracked in public as issues
-  #3 (the link, done) and #193 (the image).
+  #3 (the link, done) and ericcames/image.builder.pipeline#24 (the image).
 - **`config.yml` always reports `changed`.** AAP returns one setting as
   `$encrypted$` on every read, so Ansible can never see it as converged. Known,
   cosmetic, documented.
