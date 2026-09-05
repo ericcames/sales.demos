@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added -- Development workflow skill (#191)
+- `sales-demos-dev-workflow` skill documenting the end-to-end dev/test cycle:
+  branch, PR, merge, `config.yml --limit <env>`, then launch the Build Demo VM
+  workflow. Captures the gotchas that cost time when context resets between
+  sessions.
+
 ### Added -- Browser terminal via Cockpit Route (#63)
 - Cockpit (RHEL web console) exposed through an OpenShift Route for
   customer-facing browser terminal access without `virtctl`.
