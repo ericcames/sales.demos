@@ -19,6 +19,7 @@
 - name: Run the CIS Level 1 compliance scan
   hosts: linuxweb
   gather_facts: true
+  become: true
 
   roles:
     - linux_compliance
