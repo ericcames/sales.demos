@@ -173,9 +173,9 @@ variable "windows_admin_username" {
 }
 
 variable "linux_datasource_name" {
-  description = "DataSource cloned for the Linux VM. rhel9 ships with CNV and is Ready on a fresh install."
+  description = "DataSource cloned for the Linux VM. rhel9-cis-l1 is the CIS-hardened golden image from image.builder.pipeline; rhel9 is the stock CNV boot source."
   type        = string
-  default     = "rhel9"
+  default     = "rhel9-cis-l1"
 }
 
 variable "windows_datasource_name" {

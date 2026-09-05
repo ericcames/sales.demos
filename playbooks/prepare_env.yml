@@ -43,7 +43,7 @@
   vars:
     # Empty means "discover the default" — see tasks/resolve_storage_class.yml.
     cnv_storage_class: ""
-    prep_datasource_name: "{{ ocpvirt_linux_datasource | default('rhel9') }}"
+    prep_datasource_name: "{{ ocpvirt_linux_datasource | default('rhel9-cis-l1') }}"
     prep_datasource_namespace: "openshift-virtualization-os-images"
     # Its own namespace, deleted at the end. Never the demo namespace: this must
     # not disturb, or be disturbed by, whatever a demo has running.

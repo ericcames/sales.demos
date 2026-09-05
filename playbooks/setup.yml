@@ -7,25 +7,30 @@
 #     -e target_env=sandbox \
 #     --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
 #
-# Three stages, in this order:
+# Six stages, in this order:
 #
-#   1. install_cnv.yml   Install OpenShift Virtualization on the cluster and
-#                        wait until the rhel9 boot source is genuinely ready.
-#   2. config.yml        Apply the AAP objects — organization, project,
-#                        credentials, inventories, job templates, schedules,
-#                        the execution environment mirrored into this
-#                        environment's Private Automation Hub, and (#68) PAH's
-#                        own collection remotes and repositories.
-#   3. mcp_server.yml    Deploy the AAP MCP server, so a new environment arrives
-#                        with it already on rather than needing a second visit.
-#                        Its write posture comes from the environment's own
-#                        group_vars and is deliberately not defaulted (#102).
-#   4. install_ao.yml    Install Automation Orchestrator and the PostgreSQL it
-#                        cannot run without, via CloudNativePG. Default on,
-#                        skipped with `-e install_ao=false` (#141).
-#   5. prepare_env.yml   Prove it. Checks the boot source, the storage clone
-#                        strategy and ingress, then builds one real VM, times
-#                        it, and destroys it.
+#   1. install_cnv.yml        Install OpenShift Virtualization on the cluster and
+#                             wait until the rhel9 boot source is genuinely ready.
+#   2. link_rhel9_image.yml   Link the CIS-hardened RHEL 9 golden image from
+#                             image.builder.pipeline (#202). Creates a
+#                             DataImportCron for rhel9-cis-l1 alongside the stock
+#                             rhel9. Skippable: `-e link_rhel9_image=false`.
+#   3. config.yml             Apply the AAP objects — organization, project,
+#                             credentials, inventories, job templates, schedules,
+#                             the execution environment mirrored into this
+#                             environment's Private Automation Hub, and (#68) PAH's
+#                             own collection remotes and repositories.
+#   4. mcp_server.yml         Deploy the AAP MCP server, so a new environment
+#                             arrives with it already on rather than needing a
+#                             second visit. Its write posture comes from the
+#                             environment's own group_vars and is deliberately not
+#                             defaulted (#102).
+#   5. install_ao.yml         Install Automation Orchestrator and the PostgreSQL it
+#                             cannot run without, via CloudNativePG. Default on,
+#                             skipped with `-e install_ao=false` (#141).
+#   6. prepare_env.yml        Prove it. Checks the boot source, the storage clone
+#                             strategy and ingress, then builds one real VM, times
+#                             it, and destroys it.
 #
 # WHY THE AAP HALF IS CONFIG-AS-CODE RATHER THAN A BOOTSTRAP STEP. #1 originally
 # described porting a bootstrap path from aap.as.code, and flagged the cost
@@ -81,22 +86,32 @@
 # CNV, config.yml when only AAP objects changed, prepare_env.yml to re-check an
 # environment that has been sitting idle.
 #
-# EXPECT ROUGHLY 15 MINUTES: about 4 for CNV, a few for the AAP objects and the
-# first Hub image mirror, about 5 for Automation Orchestrator and its database,
-# and about 1 to verify. That is on top of RHDP provisioning the environment
-# itself. Pass `-e install_ao=false` to drop back to roughly 10.
+# EXPECT ROUGHLY 17 MINUTES: about 4 for CNV, 1–2 for the RHEL 9 golden image
+# import, a few for the AAP objects and the first Hub image mirror, about 5 for
+# Automation Orchestrator and its database, and about 1 to verify. That is on
+# top of RHDP provisioning the environment itself.
+# Pass `-e install_ao=false` to drop back to roughly 12.
+# Pass `-e link_rhel9_image=false` to skip the golden image import.
 # ===========================================================================
 
-- name: Phase 0 (1/5) — install OpenShift Virtualization
+- name: Phase 0 (1/6) — install OpenShift Virtualization
   ansible.builtin.import_playbook: install_cnv.yml
 
-- name: Phase 0 (2/5) — apply the AAP configuration
+- name: Phase 0 (2/6) — link the RHEL 9 CIS L1 golden image
+  # DEFAULT ON, AND SKIPPABLE. Needs the HyperConverged CR from stage 1 and the
+  # quay credentials in the vault. `-e link_rhel9_image=false` skips it for
+  # environments where the quay creds are not configured yet; the stock rhel9
+  # DataSource still works, it just is not CIS-hardened.
+  ansible.builtin.import_playbook: link_rhel9_image.yml
+  when: link_rhel9_image | default(true) | bool
+
+- name: Phase 0 (3/6) — apply the AAP configuration
   ansible.builtin.import_playbook: config.yml
 
-- name: Phase 0 (3/5) — deploy the AAP MCP server
+- name: Phase 0 (4/6) — deploy the AAP MCP server
   ansible.builtin.import_playbook: mcp_server.yml
 
-- name: Phase 0 (4/5) — install Automation Orchestrator and its database
+- name: Phase 0 (5/6) — install Automation Orchestrator and its database
   # DEFAULT ON, AND SKIPPABLE. #141 wants AO in every build, so the default is
   # true rather than an opt-in nobody remembers. The flag exists because this
   # stage installs two operators and a database and is the longest-running
@@ -106,5 +121,5 @@
   ansible.builtin.import_playbook: install_ao.yml
   when: install_ao | default(true) | bool
 
-- name: Phase 0 (5/5) — prove the environment is demo-ready
+- name: Phase 0 (6/6) — prove the environment is demo-ready
   ansible.builtin.import_playbook: prepare_env.yml
