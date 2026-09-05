@@ -1,0 +1,110 @@
+---
+# ===========================================================================
+# linux_compliance — run an OpenSCAP CIS L1 scan and publish the report.
+#
+# RUNS ON THE GUEST, NOT IN THE EE. openscap-scanner and scap-security-guide
+# are installed via dnf inside the VM. The EE needs no changes.
+#
+# EXPECTED TO SHOW SOME FAILURES. The golden image starts fully CIS L1
+# compliant. After linux_configure installs httpd, cockpit, and opens firewall
+# ports, some controls will report as non-compliant. This is the demo point:
+# "Our golden image starts clean. After configuring for a workload, here's the
+# delta — in production you'd document these as accepted risks or compensating
+# controls."
+#
+# oscap exit codes: 0 = all pass, 2 = some failures. Both are expected.
+# ===========================================================================
+
+- name: Install the OpenSCAP scanner and SCAP content
+  ansible.builtin.dnf:
+    name:
+      - openscap-scanner
+      - scap-security-guide
+    state: present
+    install_weak_deps: false
+
+- name: Create the report directory
+  ansible.builtin.file:
+    path: "{{ linux_compliance_report_dir }}"
+    state: directory
+    owner: apache
+    group: apache
+    mode: "0755"
+
+- name: Run the CIS L1 compliance scan
+  ansible.builtin.command:
+    argv:
+      - oscap
+      - xccdf
+      - eval
+      - "--profile"
+      - "{{ linux_compliance_profile }}"
+      - "--results"
+      - "{{ linux_compliance_report_dir }}/results.xml"
+      - "--report"
+      - "{{ linux_compliance_report_dir }}/report.html"
+      - "{{ linux_compliance_content }}"
+  register: linux_compliance_scan
+  # 0 = all rules pass, 2 = some rules failed (expected after configuration).
+  # Anything else is a scanner error.
+  failed_when: linux_compliance_scan.rc not in [0, 2]
+  changed_when: false
+
+- name: Parse the compliance results
+  # Extract pass/fail/other counts from the results XML without pulling in
+  # lxml. The TestResult element carries a flat list of rule-result children
+  # whose result text is one of: pass, fail, error, unknown, notapplicable,
+  # notchecked, notselected, informational, fixed.
+  ansible.builtin.shell:
+    cmd: |
+      set -o pipefail
+      pass=$(grep -c '<result>pass</result>' "{{ linux_compliance_report_dir }}/results.xml")
+      fail=$(grep -c '<result>fail</result>' "{{ linux_compliance_report_dir }}/results.xml")
+      other=$(grep -c '<result>notapplicable</result>' "{{ linux_compliance_report_dir }}/results.xml" || true)
+      notchecked=$(grep -c '<result>notchecked</result>' "{{ linux_compliance_report_dir }}/results.xml" || true)
+      total=$((pass + fail))
+      if [ "$total" -gt 0 ]; then
+        score=$(( (pass * 100) / total ))
+      else
+        score=0
+      fi
+      echo "${pass} ${fail} ${other} ${notchecked} ${score}"
+  register: linux_compliance_counts
+  changed_when: false
+
+- name: Set compliance facts
+  ansible.builtin.set_fact:
+    linux_compliance_pass: "{{ linux_compliance_counts.stdout.split()[0] | int }}"
+    linux_compliance_fail: "{{ linux_compliance_counts.stdout.split()[1] | int }}"
+    linux_compliance_notapplicable: "{{ linux_compliance_counts.stdout.split()[2] | int }}"
+    linux_compliance_notchecked: "{{ linux_compliance_counts.stdout.split()[3] | int }}"
+    linux_compliance_score: "{{ linux_compliance_counts.stdout.split()[4] | int }}"
+
+- name: Publish the compliance summary
+  ansible.builtin.template:
+    src: summary.json.j2
+    dest: "{{ linux_compliance_report_dir }}/summary.json"
+    owner: apache
+    group: apache
+    mode: "0644"
+
+- name: Fix ownership on the HTML report
+  ansible.builtin.file:
+    path: "{{ linux_compliance_report_dir }}/report.html"
+    owner: apache
+    group: apache
+    mode: "0644"
+
+- name: Report the compliance results
+  ansible.builtin.debug:
+    msg:
+      - "CIS Level 1 Server compliance scan complete."
+      - "Passed: {{ linux_compliance_pass }} / Failed: {{ linux_compliance_fail }} / Score: {{ linux_compliance_score }}%"
+      - >-
+        {{ 'Full report:  ' ~ web_url ~ '/compliance/report.html'
+           if (web_url | default('', true) | length > 0)
+           else 'Full report:  <web_url>/compliance/report.html' }}
+      - >-
+        {{ 'Summary JSON: ' ~ web_url ~ '/compliance/summary.json'
+           if (web_url | default('', true) | length > 0)
+           else 'Summary JSON: <web_url>/compliance/summary.json' }}

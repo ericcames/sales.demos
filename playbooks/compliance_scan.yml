@@ -1,0 +1,24 @@
+---
+# ===========================================================================
+# compliance_scan.yml — run an OpenSCAP CIS L1 scan on the demo VMs. #202.
+#
+# FROM AAP (the normal path, as part of the Build Demo VM workflow):
+#   The "Sales Demos - Compliance Scan" job template runs this against the
+#   linuxweb group.
+#
+# FROM A LAPTOP (against a VM already registered in AAP's inventory):
+#   Not directly — the VMs are reachable only via in-cluster DNS from AAP.
+#   Use the job template, or `virtctl ssh` in and run oscap by hand.
+#
+# EXPECTED TO SHOW FAILURES. The golden image is CIS L1 compliant at build
+# time. After linux_configure installs httpd, cockpit, and opens ports, some
+# controls deviate. That delta is the demo point: "here's what the workload
+# changed, and you'd document these as accepted risks."
+# ===========================================================================
+
+- name: Run the CIS Level 1 compliance scan
+  hosts: linuxweb
+  gather_facts: true
+
+  roles:
+    - linux_compliance

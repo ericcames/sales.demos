@@ -1,0 +1,11 @@
+---
+# The SCAP profile to evaluate. CIS Level 1 Server is the one the golden image
+# was hardened against; using the matching profile is the whole point.
+linux_compliance_profile: "xccdf_org.ssgproject.content_profile_cis_server_l1"
+
+# The SSG data stream shipped by scap-security-guide on RHEL 9.
+linux_compliance_content: "/usr/share/xml/scap/ssg/content/ssg-rhel9-ds.xml"
+
+# Where the HTML report and summary are served. Under the httpd docroot so the
+# presenter can click through from the demo page.
+linux_compliance_report_dir: "/var/www/html/compliance"
