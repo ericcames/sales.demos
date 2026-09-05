@@ -161,6 +161,23 @@ variable "linux_admin_password" {
   sensitive   = true
 }
 
+variable "windows_admin_password" {
+  # NOT the password baked into the golden image. The image ships a random one
+  # generated at build time and thrown away (image.builder.pipeline#24), so a
+  # leaked containerdisk exposes a string nobody uses. The real password is set
+  # here, on the clone, by the sysprep unattend in main.tf — which is why the
+  # quay repository being private is a convenience and not a security control.
+  #
+  # playbooks/provision_vm.yml passes this environment's linux_admin_password:
+  # one password to remember per environment, and windows_admin_password was a
+  # single GLOBAL value that could not be reconciled with a per-environment one
+  # while it lived in the image (#201).
+  description = "Password for the local Windows administrator created by the sysprep unattend. Set per environment; not the throwaway password baked into the golden image."
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
 variable "windows_admin_username" {
   description = "Local Windows administrator username on the new VM."
   type        = string

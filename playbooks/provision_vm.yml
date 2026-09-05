@@ -336,6 +336,13 @@
             TF_VAR_openshift_insecure: "{{ openshift_validate_certs | default(false) | ternary('false', 'true') }}"
             TF_VAR_demo_ssh_public_key: "{{ demo_ssh_public_key | default('') }}"
             TF_VAR_linux_admin_password: "{{ linux_admin_password | default('') }}"
+            # Deliberately the SAME value as the line above (#201). The Windows
+            # password used to live in the golden image, which both environments
+            # pull, so it had to be one global value — irreconcilable with a
+            # per-environment one. Moving it into the sysprep unattend on the
+            # clone makes it per-environment, and reusing linux_admin_password
+            # means one password to remember per environment rather than two.
+            TF_VAR_windows_admin_password: "{{ linux_admin_password | default('') }}"
             TF_IN_AUTOMATION: "1"
           no_log: true
           # dc1.azure hardcodes `changed_when: true`, which reports changed on

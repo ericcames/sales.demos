@@ -50,9 +50,13 @@ EXAMPLE = Path("playbooks/group_vars/all/secrets.yml.example")
 # so they are kept rather than deleted (the repo is additive-only), but they are
 # named here so that *adding* an orphan is a deliberate act and not an accident.
 # Delete an entry from this list the moment the code starts consuming the key.
-STAGED = {
-    "windows_admin_password": "#193 — terraform/ocpvirt has no Windows password var yet",
-}
+# Emptied by #201. windows_admin_password was the only entry: it was declared,
+# read by nothing, and staged for the Windows password variable that did not
+# exist yet. That variable now exists (terraform/ocpvirt/variables.tf), but it is
+# fed from linux_admin_password rather than from a key of its own, so the staged
+# key was deleted from the example rather than wired up. Keep this dict — an
+# empty STAGED still documents that adding an orphan must be deliberate.
+STAGED: dict[str, str] = {}
 
 # Structural Jinja that survives the extractor and is not a variable. Keep this
 # list SHORT and justified: every entry is a hole in filter 2, so an unexplained

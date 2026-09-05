@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added -- set the Windows password on the clone via a sysprep unattend (#201)
+- `terraform/ocpvirt/main.tf` now builds a `kubernetes_secret` holding an
+  `autounattend.xml` and attaches it to the Windows VM as a `sysprep` volume.
+  The golden image is published generalized, so a clone runs the OOBE
+  specialize pass; without an answer file it stopped at the region-select
+  screen and the built-in Administrator password was the random one the build
+  generated and discarded. The disk clone itself always worked -- measured on
+  sandbox, the 60 GiB DataVolume reached `Succeeded` in under 60 seconds.
+- The unattend sets the ComputerName, creates the local administrator named by
+  `windows_admin_username` (default `demoadmin`), skips the OOBE screens, and
+  re-creates the WinRM HTTPS listener on 5986. That last step is not redundant
+  with the identical step in the image build: `sysprep /generalize` strips the
+  listener certificate, which was issued to the pre-sysprep computer name.
+- New `windows_admin_password` Terraform variable, fed by `provision_vm.yml`
+  from this environment's `linux_admin_password`. The password was previously
+  baked into an image both environments pull, so it had to be one global value
+  and could not be per-environment; moving it onto the clone fixes that, and
+  reusing the Linux value means one password to remember per environment.
+- The Windows VM's `domain.devices.disks` is now spelled out. KubeVirt
+  auto-attaches a disk for any volume without one -- measured, the
+  `windows.2k22` preference produced `rootdisk` on the sata bus from an empty
+  `devices` -- but auto-attach produces a `disk`, and Windows reads its answer
+  file from removable media, so the sysprep volume must be a `cdrom`.
+- Removed `windows_admin_password` from `secrets.yml.example` and emptied
+  `STAGED` in `utilities/check-secrets-example.py`. It was declared and read by
+  nothing; the image now bakes in a throwaway, so it should not be a vault key.
+- **Watch the length.** `linux_admin_password` is 8 characters in both
+  environments. That is accepted today, but CIS L1 for Windows Server 2022
+  mandates a 14-character minimum and will reject it once the hardened Windows
+  image lands. Lengthen both before that, not after.
+
 ### Changed -- document Phase 2 validated state in the plan doc (#225)
 - Updated `docs/plan/ocpvirt-demo-plan.md` consumer-half steps to match what
   actually works: Opaque secret (not dockerconfigjson), explicit DataVolume

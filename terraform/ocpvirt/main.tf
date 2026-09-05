@@ -179,6 +179,113 @@ resource "kubernetes_manifest" "linux_vm" {
 # Building and publishing the image itself is ericcames/image.builder.pipeline#24.
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# The sysprep answer file (#201).
+#
+# The golden image is published GENERALIZED — image.builder.pipeline's
+# build_windows_image.yml runs `sysprep /generalize /oobe /shutdown` from its own
+# answer file — so a clone boots into the OOBE specialize pass. Without an answer
+# file waiting for it, it stops at the region-select screen forever, and the
+# Administrator password baked into the image was random and discarded at build
+# time. THAT is what this Secret fixes; the disk clone itself always worked.
+#
+# A Secret, not a ConfigMap: it carries a password. KubeVirt accepts either and
+# reads the key `autounattend.xml`.
+#
+# WHY THE PASSWORD COMES FROM THE LINUX VARIABLE. `linux_admin_password` is keyed
+# per environment; the old `windows_admin_password` was a single GLOBAL value,
+# because it lived in an image both environments pull. Those scopes cannot be
+# reconciled while the credential is in the image, so it moved to the clone —
+# one password to remember per environment, and the Linux one wins.
+# ---------------------------------------------------------------------------
+
+resource "kubernetes_secret" "windows_sysprep" {
+  count = local.create_windows ? 1 : 0
+
+  metadata {
+    name      = "${local.windows_vm_name}-sysprep"
+    namespace = var.namespace
+    labels    = merge(local.common_labels, { "sales-demos/os" = "windows" })
+  }
+
+  data = {
+    "autounattend.xml" = <<-EOT
+      <?xml version="1.0" encoding="utf-8"?>
+      <unattend xmlns="urn:schemas-microsoft-com:unattend">
+        <settings pass="specialize">
+          <component name="Microsoft-Windows-Shell-Setup"
+                     processorArchitecture="amd64"
+                     publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
+            <ComputerName>${local.windows_vm_name}</ComputerName>
+          </component>
+          <component name="Microsoft-Windows-TerminalServices-LocalSessionManager"
+                     processorArchitecture="amd64"
+                     publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
+            <fDenyTSConnections>false</fDenyTSConnections>
+          </component>
+        </settings>
+
+        <settings pass="oobeSystem">
+          <component name="Microsoft-Windows-International-Core"
+                     processorArchitecture="amd64"
+                     publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
+            <InputLocale>en-US</InputLocale>
+            <SystemLocale>en-US</SystemLocale>
+            <UILanguage>en-US</UILanguage>
+            <UserLocale>en-US</UserLocale>
+          </component>
+          <component name="Microsoft-Windows-Shell-Setup"
+                     processorArchitecture="amd64"
+                     publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
+            <OOBE>
+              <HideEULAPage>true</HideEULAPage>
+              <HideLocalAccountScreen>true</HideLocalAccountScreen>
+              <HideOnlineAccountScreens>true</HideOnlineAccountScreens>
+              <HideWirelessSetupInOOBE>true</HideWirelessSetupInOOBE>
+              <NetworkLocation>Work</NetworkLocation>
+              <ProtectYourPC>3</ProtectYourPC>
+            </OOBE>
+
+            <UserAccounts>
+              <LocalAccounts>
+                <LocalAccount wcm:action="add"
+                              xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State">
+                  <Name>${var.windows_admin_username}</Name>
+                  <DisplayName>${var.windows_admin_username}</DisplayName>
+                  <Group>Administrators</Group>
+                  <Password>
+                    <Value>${var.windows_admin_password}</Value>
+                    <PlainText>true</PlainText>
+                  </Password>
+                </LocalAccount>
+              </LocalAccounts>
+            </UserAccounts>
+
+            <FirstLogonCommands>
+              <SynchronousCommand wcm:action="add"
+                                  xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State">
+                <Order>1</Order>
+                <Description>Re-create the WinRM HTTPS listener on 5986</Description>
+                <!-- NOT redundant with the build's identical step. sysprep
+                     /generalize strips the listener's certificate, which was
+                     issued to the PRE-sysprep computer name, so the listener the
+                     image was built with does not survive into the clone. This
+                     mints a fresh one against the specialize-pass ComputerName.
+                     5986 with a self-signed cert is the contract the windemo
+                     inventory group encodes: ansible_port 5986 with
+                     ansible_winrm_server_cert_validation ignore. -->
+                <CommandLine>powershell -ExecutionPolicy Bypass -NoProfile -Command "&amp; { Enable-PSRemoting -Force -SkipNetworkProfileCheck; $c = New-SelfSignedCertificate -DnsName $env:COMPUTERNAME -CertStoreLocation Cert:\LocalMachine\My; New-Item -Path WSMan:\localhost\Listener -Transport HTTPS -Address * -CertificateThumbPrint $c.Thumbprint -Force; Set-Item -Path WSMan:\localhost\Service\Auth\Basic -Value $true; New-NetFirewallRule -DisplayName 'WinRM HTTPS' -Direction Inbound -LocalPort 5986 -Protocol TCP -Action Allow }"</CommandLine>
+              </SynchronousCommand>
+            </FirstLogonCommands>
+          </component>
+        </settings>
+      </unattend>
+    EOT
+  }
+
+  depends_on = [kubernetes_namespace.demo]
+}
+
 resource "kubernetes_manifest" "windows_vm" {
   count = local.create_windows ? 1 : 0
 
@@ -264,18 +371,56 @@ resource "kubernetes_manifest" "windows_vm" {
           })
         }
         spec = {
-          # Required by the VirtualMachine CRD even though the instance type
-          # supplies CPU and memory. It must stay EMPTY: setting cpu or memory
-          # here conflicts with the instancetype and the webhook rejects it.
+          # CPU and memory still come from the instance type and MUST NOT appear
+          # here — setting either conflicts with it and the webhook rejects the
+          # VM. `devices` is no longer empty, and that is not a relaxation of
+          # that rule: disks are not sizing.
+          #
+          # The disks are declared explicitly ONLY because of the sysprep volume.
+          # KubeVirt auto-attaches a disk for any volume that lacks one — measured
+          # on this VM, terraform sent `devices: {}` and the server produced
+          # `disks: [{name: rootdisk, disk: {bus: sata}}]` from the windows.2k22
+          # preference. But auto-attach produces a `disk`, and Windows OOBE reads
+          # its answer file from removable media, so the sysprep volume has to be
+          # a `cdrom` and therefore has to be spelled out. Once the list is
+          # explicit it must be complete, so rootdisk is repeated at the sata bus
+          # the preference already chose. bootOrder pins the boot to the hard
+          # disk rather than relying on the non-bootable CD being skipped.
           domain = {
-            devices = {}
-          }
-          volumes = [{
-            name = "rootdisk"
-            dataVolume = {
-              name = "${local.windows_vm_name}-root"
+            devices = {
+              disks = [
+                {
+                  name      = "rootdisk"
+                  bootOrder = 1
+                  disk = {
+                    bus = "sata"
+                  }
+                },
+                {
+                  name = "sysprep"
+                  cdrom = {
+                    bus = "sata"
+                  }
+                },
+              ]
             }
-          }]
+          }
+          volumes = [
+            {
+              name = "rootdisk"
+              dataVolume = {
+                name = "${local.windows_vm_name}-root"
+              }
+            },
+            {
+              name = "sysprep"
+              sysprep = {
+                secret = {
+                  name = kubernetes_secret.windows_sysprep[0].metadata[0].name
+                }
+              }
+            },
+          ]
         }
       }
     }
