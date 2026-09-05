@@ -376,7 +376,15 @@ Environment secrets.
   git checkout main && git pull && git branch -d <branch>
   ```
 
-  `git branch --merged main` lists any that were missed.
+  **`git branch --merged main` finds leftovers only from merge commits** (#197).
+  It cannot see a squash-merged branch at all — see the squash note below — so it
+  silently misses exactly the leftovers it looks like it is catching. A finder
+  that works under both:
+
+  ```bash
+  gh pr list --state merged --limit 30 --json headRefName -q '.[].headRefName' \
+    | while read -r b; do git show-ref -q --verify "refs/heads/$b" && echo "$b"; done
+  ```
 
   **Use `-d`, never `-D` — but `-d` is not a merge check, and this note used to
   say it was** (#179). `git branch --help`: *"The branch must be fully merged in
@@ -390,10 +398,27 @@ Environment secrets.
            'refs/remotes/origin/...', but not yet merged to HEAD
   ```
 
-  **So the order in the command above is load-bearing, not incidental.** Pulling
-  `main` first means it already contains the merge, so the branch is merged on
-  both criteria and `-d` is checking something real. Run `-d` before the pull and
-  it waves through a branch whose PR never merged.
+  **The order in the command above is load-bearing — but only under a merge
+  commit, and this note used to claim it unconditionally** (#197). Pulling `main`
+  first means it already contains the merge, so the branch is merged on both
+  criteria and `-d` is checking something real. Run `-d` before the pull and it
+  waves through a branch whose PR never merged.
+
+  **Under a squash merge none of that holds, and squash is enabled here.**
+  Measured 2026-09-04 — `squash=true merge=true rebase=true`, and the last three
+  merges on `main` were squash, squash, merge-commit. A squash puts a *new*
+  commit on `main` carrying the same tree, so **the branch tip never becomes an
+  ancestor of `main`**:
+
+  ```
+  beb8872: NOT an ancestor of main      # tip of a squash-merged branch
+  ```
+
+  So after a squash the branch is merged on **one** criterion, never both, and
+  `-d` deletes it on the upstream tracking ref alone while printing the warning
+  above. **That warning is expected after a squash and means nothing** — do not
+  read it as "the PR did not merge". Confirm with `gh pr view <n>` if unsure,
+  never by re-running `-d`.
 
   `-d` still beats `-D`: it refuses to drop **unpushed** work, which is the loss
   that actually matters.
