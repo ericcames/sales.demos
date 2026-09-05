@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed -- the branch-cleanup note assumed merge commits; squash breaks both its claims (#197)
+- `CLAUDE.md` said pulling `main` first makes `git branch -d` "check something
+  real", and offered `git branch --merged main` as the way to find leftovers.
+  **Both are true under a merge commit and false under a squash**, and squash is
+  enabled and in use here: measured 2026-09-04, `squash=true merge=true
+  rebase=true`, and the last three merges on `main` were squash, squash,
+  merge-commit.
+- **A squash puts a new commit on `main` with the same tree, so the branch tip
+  never becomes an ancestor.** Recreating one of each as a local branch:
+  `git branch --merged main` listed the merge-commit branch and **not** the
+  squashed one, and `git branch -d` on the squashed one failed outright with
+  "not fully merged".
+- **The consequence worth knowing is the silent one.** `--merged main` is offered
+  as the leftover-finder and cannot see a squash-merged branch at all -- exactly
+  the leftovers it looks like it is catching. Replaced with a finder that works
+  under both, and verified against a planted leftover.
+- After a squash, `-d` still deletes the branch on its upstream tracking ref and
+  prints "merged to refs/remotes/origin/..., but not yet merged to HEAD".
+  **That warning is expected and means nothing** -- the note now says so, because
+  reading it as "the PR did not merge" is the obvious wrong inference.
+- The rest of the note stands: `-d` really is asking "have you pushed?", and it
+  still beats `-D` because it refuses to drop unpushed work.
+
 ### Added -- CNV now points at a published Windows golden image (#3)
 - `playbooks/link_windows_image.yml` and the `ocpvirt-windows-image` skill: a
   pull secret for the private quay repository plus a `DataImportCron` template
