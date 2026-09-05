@@ -58,10 +58,9 @@
                else '(not set — re-provision to record it)' }}
           - >-
             SSH (laptop):
-            oc login {{ openshift_api_url | default('(not set)', true) }}
-          - >-
-            Then:
-            {{ ssh_command | default('(not set — re-provision to record it)', true) }}
+            {{ (ssh_command | replace('virtctl ssh ', 'virtctl ssh --kubeconfig ~/.kube/' ~ env_name ~ '.kubeconfig '))
+               if (ssh_command | default('', true) and env_name | default('', true))
+               else (ssh_command | default('(not set — re-provision to record it)', true)) }}
 
     - name: Confirm the guest matches the size tier it was provisioned as
       # Catches the failure where a tier maps to an instance type that the

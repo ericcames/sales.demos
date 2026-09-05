@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed -- single copy-paste SSH command in Check VMs output (#218)
+- The Check VMs job output now shows one command an SE can paste directly into
+  a terminal: `virtctl ssh --kubeconfig ~/.kube/<env>.kubeconfig -o
+  StrictHostKeyChecking=accept-new -n <ns> cloud-user@vm/<name>`. The previous
+  two-step `oc login` / `virtctl ssh` pair required interactive browser auth.
+- `utilities/make-kubeconfig.sh` now writes to `~/.kube/<env>.kubeconfig` in
+  addition to the repo-local `.kube/` copy (used by the MCP servers). The
+  `~/.kube/` path is what the `--kubeconfig` flag references so the command
+  works from any directory.
+- Removed `openshift_api_url` from VM host variables in AAP — its only
+  consumer was the `oc login` line.
+
 ### Fixed -- clean up stale SSH host keys when VMs are rebuilt (#216)
 - `terraform/ocpvirt/outputs.tf` `ssh_command` now includes
   `-o StrictHostKeyChecking=accept-new`, so the first connect after a rebuild

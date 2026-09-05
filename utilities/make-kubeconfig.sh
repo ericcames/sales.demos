@@ -123,7 +123,13 @@ contexts:
       user: ${CLUSTER_NAME}-user
 YAML
 
+HOME_OUT="$HOME/.kube/${ENV_NAME}.kubeconfig"
+mkdir -p "$HOME/.kube"
+cp "$OUT" "$HOME_OUT"
+chmod 600 "$HOME_OUT"
+
 echo "✅ wrote $OUT (0600)"
+echo "   also: $HOME_OUT (0600)"
 echo "   environment : $ENV_NAME"
 echo "   cluster     : $CLUSTER_HOST"
 echo "   credential  : $TOKEN_KIND"
