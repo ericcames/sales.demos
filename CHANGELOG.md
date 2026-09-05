@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added -- say that this is the directory to start Claude in (#230)
+- `.mcp.json` defines `openshift-sandbox` (`kubernetes-mcp-server`, toolsets
+  `core,config,kubevirt`, read-write) and `openshift-demo` (read-only), and both
+  are **project-scoped -- they load only when Claude Code starts here.**
+  `CLAUDE.md` never said so. The producer repo `image.builder.pipeline` has no
+  MCP servers at all, so a session started there gets no cluster tools; that is
+  what happened while the Windows sysprep bug was being fixed, and it was noticed
+  only after the work was underway. A session started here can `cd` into that
+  repo and run its playbooks anyway, so the advantage runs one way only.
+- Recorded the half that makes the note honest: **MCP does not supply that
+  repo's credentials.** Its Windows playbooks read `K8S_AUTH_HOST` and
+  `K8S_AUTH_API_KEY` from the environment and assert them non-empty, and those --
+  with `WINDOWS_ADMIN_PASSWORD` -- are maintained *here*, which
+  `image.builder.pipeline/docs/design.md` 4.1 now records. Without that, the
+  note would read as "start there and the credentials sort themselves out".
+- A pointer to `image.builder.pipeline#63`, the handoff for the sysprep defect
+  this repo diagnosed in #228. The producer fix is merged and **unverified** --
+  no rebuild has happened. This repo is where it gets proved, and the path is
+  already built: repoint `quay_windows_image` in
+  `inventory/group_vars/<env>/connection.yml`, re-run `link_windows_image.yml`,
+  clone. `CLAUDE.md` is the file a new session loads automatically, so the
+  pointer belongs there and nowhere else.
+
+
 ### Changed -- document the measured Windows boot state (#228)
 - `docs/demos/openshift-virtualization/architecture.md` and `run-sheet.md` both
   said Windows "does not boot yet -- what is missing is the image". The image has

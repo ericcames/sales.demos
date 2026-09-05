@@ -343,6 +343,37 @@ Environment secrets.
 
 ## Workflow
 
+- **Start Claude here for anything spanning this repo and `image.builder.pipeline`.**
+  `.mcp.json` defines `openshift-sandbox` (`kubernetes-mcp-server`, toolsets
+  `core,config,kubevirt`, read-write) and `openshift-demo` (same, read-only).
+  Both are **project-scoped — they load only when Claude Code starts in this
+  directory.** The producer repo has no MCP servers at all, so a session started
+  there gets no cluster tools; a session started here can `cd` into it and run
+  its playbooks anyway, because the working directory does not restrict shell
+  access. Strictly better in one direction only.
+
+  **It does not supply that repo's credentials.** Its Windows playbooks read
+  `K8S_AUTH_HOST` and `K8S_AUTH_API_KEY` from the environment and assert them
+  non-empty; `image.builder.pipeline/docs/design.md` §4.1 records that both, plus
+  `WINDOWS_ADMIN_PASSWORD`, are maintained *here* and nowhere else. MCP covers
+  cluster inspection and this repo's half, not those.
+
+- **Unfinished, and this repo is where it gets proved:**
+  [`image.builder.pipeline#63`](https://github.com/ericcames/image.builder.pipeline/issues/63).
+  The Windows golden image left its own answer file cached in `%WINDIR%\Panther`,
+  which Windows finds ahead of the sysprep CD this repo attaches, so every clone
+  stopped at the OOBE region screen. **The consumer half here (#201 / PR #227) is
+  correct and needs no change** — it was only ever blocked by the producer. That
+  fix is merged; the rebuild, republish and end-to-end proof are not.
+
+  **The path from a new tag to a booted clone is already built here**, so
+  verifying is a config change, not new work: set `quay_windows_image` in
+  `inventory/group_vars/{sandbox,demo}/connection.yml`, re-run
+  `playbooks/link_windows_image.yml`, then clone as usual. That playbook already
+  creates the private-repo pull secret, adds the `DataImportCron` template and
+  imports via an explicit DataVolume (#224). Tags are immutable, so **repoint —
+  never overwrite**; `20260905-1826` keeps the defect for ever.
+
 - **Document before fixing** — open a GitHub issue before making code changes.
 - **Always label new issues** — run `gh label list --repo ericcames/sales.demos`
   and apply every label that genuinely fits.
