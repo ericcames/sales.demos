@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added -- clickable links to the related repositories (#203)
+- A **Related repositories** table in `README.md` linking
+  [image.builder.pipeline](https://github.com/ericcames/image.builder.pipeline)
+  and [rego_policy_libraries](https://github.com/ynotbhatc/rego_policy_libraries),
+  saying what each is and **which way the dependency runs**. There was no such
+  section at all, which mattered because the Windows work is split across two
+  repos and someone landing in either could not see the other half.
+- **States the contract explicitly**: the consumer half is #3 here, the producer
+  half is `image.builder.pipeline#24`, and the only thing binding them is one
+  string -- a containerdisk tag in `quay_windows_image`.
+- **Scope is navigation, not dependency.** The section says so, because
+  `CLAUDE.md`'s "this repo is self-contained" rule still stands: links so a
+  reader can find the other half, never instructions to go run something there.
+
 ### Changed -- the Windows image producer now lives in the factory repo (#199)
 - `sales.demos#193` was transferred to
   [`image.builder.pipeline#24`](https://github.com/ericcames/image.builder.pipeline/issues/24).
