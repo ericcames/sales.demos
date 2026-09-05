@@ -7,10 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added -- kubeconfig setup and compliance URLs in Check VMs output (#212)
-- The Check VMs job now shows how to set up the kubeconfig for `virtctl ssh`
-  (`make-kubeconfig.sh` + `export KUBECONFIG`, or `oc login`), and the
-  compliance report and summary URLs.
+### Changed -- Check VMs output: copy-paste SSH access for SEs (#212, #214)
+- The Check VMs job now shows `oc login <api_url>` then `virtctl ssh ...` as
+  two copy-pasteable commands that work from any directory. Dropped
+  `make-kubeconfig.sh` (requires repo root + vault access) and `summary.json`
+  (machine-readable, not what an SE clicks). Added Cockpit URL back.
 - `provision_vm.yml` forwards `env_name` and `openshift_api_url` as host vars
   so `check_vm.yml` can reference them.
 

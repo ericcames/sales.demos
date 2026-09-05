@@ -50,21 +50,17 @@
             Web URL:
             {{ web_url | default('(not set — re-provision to record it)', true) }}
           - >-
+            Cockpit:
+            {{ cockpit_url | default('(not set — re-provision to record it)', true) }}
+          - >-
             Compliance:
             {{ (web_url ~ '/compliance/report.html') if (web_url | default('', true) | length > 0)
                else '(not set — re-provision to record it)' }}
           - >-
-            Summary:
-            {{ (web_url ~ '/compliance/summary.json') if (web_url | default('', true) | length > 0)
-               else '(not set)' }}
+            SSH (laptop):
+            oc login {{ openshift_api_url | default('(not set)', true) }}
           - >-
-            SSH setup:
-            bash utilities/make-kubeconfig.sh {{ env_name | default('sandbox') }}
-            && export KUBECONFIG=.kube/{{ env_name | default('sandbox') }}.kubeconfig
-          - >-
-            (or: oc login {{ openshift_api_url | default('(not set)', true) }})
-          - >-
-            Laptop:
+            Then:
             {{ ssh_command | default('(not set — re-provision to record it)', true) }}
 
     - name: Confirm the guest matches the size tier it was provisioned as
