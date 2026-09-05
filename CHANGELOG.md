@@ -41,6 +41,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   as host vars on the AAP inventory host, following the same pattern as
   `web_url` and `ssh_command`.
 
+### Changed -- drop pull secret from RHEL 9 image link (#208)
+- The `quay.io/zigfreed/rhel9-cis-l1-golden` repository is now public, so
+  `link_rhel9_image.yml` no longer creates or references a pull secret. CDI
+  pulls the image without credentials. The Windows image still needs one.
+
 ### Added -- clickable links to the related repositories (#203)
 - A **Related repositories** table in `README.md` linking
   [image.builder.pipeline](https://github.com/ericcames/image.builder.pipeline)
