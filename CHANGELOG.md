@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed -- the Windows image producer now lives in the factory repo (#199)
+- `sales.demos#193` was transferred to
+  [`image.builder.pipeline#24`](https://github.com/ericcames/image.builder.pipeline/issues/24).
+  #3 split producer/consumer and **deliberately deferred** the producer's
+  permanent home; that deferral is now resolved in favour of the image factory.
+- **The deferral cost nothing, which was the point.** The contract between the
+  halves is one string -- a containerdisk tag in a private quay repo -- so moving
+  the producer changed no code here, only references.
+- Why the factory won: that repo's `CLAUDE.md` already states *"producer/consumer
+  across repos is intentional -- different audiences, different lifecycles"*; its
+  README and ROADMAP already claimed Windows Server 2022 / CIS L1 as Phase 3; and
+  its PR #23 has rewritten that Phase 3 to ship Windows as a CIS-hardened
+  containerDisk on Quay.io, naming both halves. Choosing a hardened image pulled
+  that way regardless -- hardening plus compliance evidence is that repo's
+  purpose, not this one's.
+- 24 references across the skills, README, ROADMAP, plan doc, talk-track docs,
+  terraform comments and `link_windows_image.yml` now say
+  `ericcames/image.builder.pipeline#24` explicitly. GitHub redirects a
+  transferred issue so nothing was broken, but a bare `#193` read as though the
+  work were tracked here and silently landed the reader in another repository.
+
 ### Fixed -- the branch-cleanup note assumed merge commits; squash breaks both its claims (#197)
 - `CLAUDE.md` said pulling `main` first makes `git branch -d` "check something
   real", and offered `git branch --merged main` as the way to find leftovers.
@@ -44,12 +65,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   pointed at a nonexistent repository fails in an importer pod rather than at
   link time -- an error that reads as "CDI is broken", not "there is no image".
 
-### Changed -- #3 is now the consumer half only; building the image is #193
+### Changed -- #3 is now the consumer half only; building the image is ericcames/image.builder.pipeline#24
 - **Split producer/consumer.** Consumption is small, owned by this repo, and
   correct no matter who builds the image; the contract between the halves is one
   string, a containerdisk tag in a private quay repo. Production is written
   portably so its permanent home -- here, or `image.builder.pipeline` Phase 3,
-  which already lists Windows Server 2022 / CIS L1 -- can be decided later.
+  which already lists Windows Server 2022 / CIS L1 -- could be decided later.
+  **It was decided: the factory.** See the entry above.
 - The consumer half can be proven with a throwaway plain image; the hardened one
   replaces it at a new tag with no code change here.
 
@@ -81,7 +103,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `ansible_port: 5986` and `ansible_winrm_server_cert_validation: ignore`. Both
   cannot be right, and the mismatch survived because no Windows guest had ever
   booted to exercise it. Settled on **5986 (HTTPS)**, which is what the
-  cert-validation setting already implied; #193 configures the guest to match.
+  cert-validation setting already implied; ericcames/image.builder.pipeline#24 configures the guest to match.
 
 ### Fixed -- provisioning warned about Windows unconditionally (#3)
 - `provision_vm.yml` printed "the Windows golden image (#3) is not built yet" on

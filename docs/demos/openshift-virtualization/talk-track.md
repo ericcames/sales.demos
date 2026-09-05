@@ -486,7 +486,7 @@ Come back to the pause from Beat 2 — *who deletes it?*
 > a Windows boot source the same way it points at RHEL's. What's missing is the
 > image — Red Hat can't redistribute Windows media, so somebody has to build the
 > golden image once, and I haven't. It's tracked in public as issues #3 and
-> #193, and you can go read them."**
+> ericcames/image.builder.pipeline#24, and you can go read them."**
 >
 > **"Three — one of the config jobs always reports 'changed' even when nothing
 > changed, because the platform returns one setting as encrypted on every read
@@ -542,5 +542,5 @@ Every claim in this track is checkable in the repo. If you get pushed on one:
 | Memory budget fails at plan time | `terraform/ocpvirt/locals.tf` |
 | Nightly teardown, preserving CNV and boot sources | `inventory/group_vars/<env>/controller_schedules.yml`, `playbooks/teardown.yml` |
 | Single node, no live migration | `docs/plan/ocpvirt-demo-plan.md` → Constraints |
-| Windows blocked on the golden image | `ROADMAP.md`, issues #3 and #193 |
+| Windows blocked on the golden image | `ROADMAP.md`, issues #3 and ericcames/image.builder.pipeline#24 |
 | The page and banners shown above | `playbooks/roles/linux_configure/templates/` |

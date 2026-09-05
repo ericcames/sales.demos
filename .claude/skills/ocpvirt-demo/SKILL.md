@@ -121,4 +121,4 @@ the Route, the Service, firewalld inside the guest and httpd all have to line up
 
 Not yet. CNV ships `win2k22` as an empty DataSource, so a Windows VM is created
 and never boots. `ocpvirt-windows-image` points the cluster at a published golden
-image (#3, done); publishing one is #193 and has not happened.
+image (#3, done); publishing one is ericcames/image.builder.pipeline#24 and has not happened.

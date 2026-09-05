@@ -134,7 +134,7 @@
         fail_msg: >-
           quay_windows_image must name a real published containerdisk (it is a
           `quay.io/<user>/windows2k22-golden:<date>` placeholder in
-          inventory/group_vars/<env>/connection.yml until #193 publishes one),
+          inventory/group_vars/<env>/connection.yml until ericcames/image.builder.pipeline#24 publishes one),
           and quay_username / quay_password must be set in the vaulted
           secrets.yml. See docs/plan/ocpvirt-demo-plan.md.
         quiet: true

@@ -65,7 +65,7 @@ deployment.
 > **"The plumbing's done — it points at a Windows boot source the same way the
 > cluster already points at RHEL's. What's missing is the image itself. Red Hat
 > can't redistribute Windows media, so somebody has to build the golden image
-> once, and I haven't. It's tracked in public as issues #3 and #193."**
+> once, and I haven't. It's tracked in public as issues #3 and ericcames/image.builder.pipeline#24."**
 
 If they ask how it works: OpenShift Virtualization keeps its boot sources current
 with `DataImportCron` objects pointed at a registry — that is how `rhel9` stays
@@ -80,7 +80,7 @@ forty-five minutes, once. After that Windows guests provision on the same
 t-shirt sizes as Linux.
 
 **Do not promise a date**, and **do not claim the image is hardened until it
-is** — the hardening is the plan for #193, not something already shipped.
+is** — the hardening is the plan for ericcames/image.builder.pipeline#24, not something already shipped.
 
 ---
 

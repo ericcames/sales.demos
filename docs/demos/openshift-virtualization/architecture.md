@@ -231,7 +231,7 @@ Red Hat cannot redistribute Windows media.
 the placeholder over. That is the consumer half, and it is done (issue #3).
 
 What remains is producing the image: an unattended, CIS-hardened Windows Server
-2022 build, published once to a private quay repository (issue #193). It is a
+2022 build, published once to a private quay repository (issue ericcames/image.builder.pipeline#24). It is a
 one-time cost, and teardown is written to preserve the result.
 
 Until that lands the provision playbook **preflights the DataSource and warns

@@ -371,7 +371,7 @@ in this repo, which for repo-specific skills is the correct scope.
 | `ocpvirt-setup` | `playbooks/setup.yml` | Bare RHDP environment to demo-ready in one command | Done ([#1](https://github.com/ericcames/sales.demos/issues/1)) |
 | `ocpvirt-new-env` | `playbooks/prepare_env.yml` | Verify a fresh environment is warm, and time a real VM build | Done ([#30](https://github.com/ericcames/sales.demos/issues/30)) |
 | `ocpvirt-provision` | `playbooks/provision_vm.yml` | Run Terraform, register the new VMs in AAP | Done ([#4](https://github.com/ericcames/sales.demos/issues/4)) |
-| `ocpvirt-windows-image` | `playbooks/link_windows_image.yml` | Point CNV at the published Windows golden image so `os_type=windows` boots | Done ([#3](https://github.com/ericcames/sales.demos/issues/3)); the image itself is [#193](https://github.com/ericcames/sales.demos/issues/193) |
+| `ocpvirt-windows-image` | `playbooks/link_windows_image.yml` | Point CNV at the published Windows golden image so `os_type=windows` boots | Done ([#3](https://github.com/ericcames/sales.demos/issues/3)); the image itself is [image.builder.pipeline#24](https://github.com/ericcames/image.builder.pipeline/issues/24) |
 | `ocpvirt-demo` | `playbooks/run_demo.yml` | Register the VMs and configure the web server | Done ([#5](https://github.com/ericcames/sales.demos/issues/5)) |
 | `ocpvirt-teardown` | `playbooks/teardown.yml` | Destroy VMs; keep CNV and the golden image | Done ([#6](https://github.com/ericcames/sales.demos/issues/6)) |
 | `sales-demos-probe-env` | `playbooks/probe_env.yml` | Measure what the cluster actually has and recommend `available_memory_gb` | Done ([#100](https://github.com/ericcames/sales.demos/issues/100)) |
@@ -629,7 +629,7 @@ Windows boots once the environment is linked to a published golden image. CNV
 ships `win2k22` as an empty DataSource placeholder — Red Hat cannot redistribute
 Windows media — so `ocpvirt-windows-image` adds a `DataImportCron` that imports
 the containerdisk and takes that placeholder over, the same mechanism that keeps
-`rhel9` populated ([#3](https://github.com/ericcames/sales.demos/issues/3)). Building and publishing the image is [#193](https://github.com/ericcames/sales.demos/issues/193);
+`rhel9` populated ([#3](https://github.com/ericcames/sales.demos/issues/3)). Building and publishing the image is [image.builder.pipeline#24](https://github.com/ericcames/image.builder.pipeline/issues/24);
 until it lands, `quay_windows_image` is a placeholder and the link refuses to run.
 
 ### SSH access

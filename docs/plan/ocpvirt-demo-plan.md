@@ -403,9 +403,17 @@ take the state with it. `secret_suffix` keys `sandbox` and `demo` apart. See
 
 **Split producer/consumer.** This phase is the *consumer* half only —
 `playbooks/link_windows_image.yml`, issue #3. Building and publishing the
-containerdisk is #193, deliberately written portably so its permanent home can
-be decided later. The contract between the halves is one string: a containerdisk
-tag in a private quay repository.
+containerdisk is [`image.builder.pipeline#24`](https://github.com/ericcames/image.builder.pipeline/issues/24) — **it lives in the image
+factory repo, not here.** The contract between the halves is one string: a
+containerdisk tag in a private quay repository.
+
+The home was deliberately deferred when #3 shipped, on the grounds that a
+one-string contract keeps the producer swappable at zero cost, and then resolved
+in favour of the factory: that repo's `CLAUDE.md` already states
+*"producer/consumer across repos is intentional — different audiences, different
+lifecycles"*, its ROADMAP already claimed Windows Server 2022 / CIS L1 as Phase 3,
+and choosing a CIS-hardened image pulled that way regardless, because hardening
+plus compliance evidence is that repo's purpose and not this one's.
 
 Splitting it means this half ships without waiting on a factory decision, and it
 can be proven with a throwaway plain image before the real hardened one exists.
@@ -478,7 +486,7 @@ Tag by date, never overwrite a tag. Quay credentials go in `secrets.yml`. Note
 that with an immutable date tag the cron's poll is a no-op by design; pointing
 `quay_windows_image` at a moving tag is what makes it refresh anything.
 
-#### The producer half (#193), in one paragraph
+#### The producer half (ericcames/image.builder.pipeline#24), in one paragraph
 
 Unattended install from an answer file — nobody clicks through an installer in a
 real image factory. Apply `ansible-lockdown/Windows-2022-CIS` (MIT) with patch
