@@ -109,6 +109,9 @@ FIXTURE = {
     "ansible_host": f"{VM_NAME}.{NAMESPACE}.svc.cluster.local",
     "vm_size_tier": "small-1cpu-2gb",
     "vm_size_chosen": "sd1.small",
+    # #202 — golden image provenance, forwarded by provision_vm.yml
+    "golden_image_source": "quay.io/zigfreed/rhel9-cis-l1-golden:20260905-0411",
+    "golden_image_cis_level": "L1",
 }
 FIXTURE["linux_configure_motd_url"] = f"https://{VM_NAME}-web-{NAMESPACE}.apps.{CLUSTER}"
 FIXTURE["linux_configure_cockpit_url"] = f"https://{VM_NAME}-cockpit-{NAMESPACE}.apps.{CLUSTER}"
@@ -123,6 +126,21 @@ _vt = FIXTURE["ansible_virtualization_type"]
 _vr = FIXTURE["ansible_virtualization_role"]
 FIXTURE["linux_configure_virt_type"] = _vt if _vt not in ("NA", "") else "KVM"
 FIXTURE["linux_configure_virt_role"] = _vr if _vr not in ("NA", "") else "guest"
+
+# MIRRORS linux_configure defaults and vars for golden image provenance (#202).
+_gi_src = FIXTURE["golden_image_source"]
+FIXTURE["linux_configure_golden_image_source"] = _gi_src
+FIXTURE["linux_configure_golden_image_cis_level"] = FIXTURE["golden_image_cis_level"]
+FIXTURE["linux_configure_golden_image_pipeline_url"] = "https://github.com/ericcames/image.builder.pipeline"
+_gi_repo = _gi_src.rsplit(":", 1)[0] if _gi_src else ""
+_gi_tag = _gi_src.rsplit(":", 1)[1] if ":" in _gi_src else ""
+FIXTURE["linux_configure_golden_image_repo"] = _gi_repo
+FIXTURE["linux_configure_golden_image_tag"] = _gi_tag
+FIXTURE["linux_configure_golden_image_build_date"] = (
+    f"{_gi_tag[:4]}-{_gi_tag[4:6]}-{_gi_tag[6:8]} {_gi_tag[9:11]}:{_gi_tag[11:13]} UTC"
+    if len(_gi_tag) >= 13
+    else _gi_tag
+)
 
 
 def jinja() -> Environment:
@@ -179,6 +197,13 @@ def facts_json() -> str:
                 "instance_type": f["vm_size_chosen"],
                 "in_cluster_address": f["ansible_host"],
                 "repository": f["linux_configure_repo_url"],
+            },
+            "golden_image": {
+                "source": f["linux_configure_golden_image_source"] or None,
+                "repo": f["linux_configure_golden_image_repo"] or None,
+                "build_date": f["linux_configure_golden_image_build_date"] or None,
+                "cis_level": f["linux_configure_golden_image_cis_level"] or None,
+                "pipeline": f["linux_configure_golden_image_pipeline_url"],
             },
         },
         indent=4,
