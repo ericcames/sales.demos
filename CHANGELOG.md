@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed -- clean up stale SSH host keys when VMs are rebuilt (#216)
+- `terraform/ocpvirt/outputs.tf` `ssh_command` now includes
+  `-o StrictHostKeyChecking=accept-new`, so the first connect after a rebuild
+  auto-accepts the new key instead of erroring. Unlike `StrictHostKeyChecking=no`,
+  `accept-new` still warns on a genuine man-in-the-middle change on subsequent
+  connects.
+- `playbooks/teardown.yml` runs `ssh-keygen -R` for each destroyed VM's virtctl
+  hostname (`vm.<vm-name>.<namespace>`) after `terraform destroy` succeeds,
+  proactively removing entries already cached from a previous build. From an AAP
+  execution environment this is a harmless no-op — the EE has no persistent
+  `known_hosts`.
+
 ### Added -- say that this is the directory to start Claude in (#230)
 - `.mcp.json` defines `openshift-sandbox` (`kubernetes-mcp-server`, toolsets
   `core,config,kubevirt`, read-write) and `openshift-demo` (read-only), and both

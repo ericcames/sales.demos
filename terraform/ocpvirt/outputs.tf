@@ -97,5 +97,5 @@ output "ssh_command" {
   # `vm/` is not decoration — virtctl takes a (VM|VMI) resource, and every
   # example in `virtctl ssh --help` carries the prefix. Without it the bare name
   # is ambiguous between a VM and a VMI.
-  value = local.create_linux ? "virtctl ssh -n ${var.namespace} ${var.linux_admin_username}@vm/${local.linux_vm_name}" : null
+  value = local.create_linux ? "virtctl ssh -o StrictHostKeyChecking=accept-new -n ${var.namespace} ${var.linux_admin_username}@vm/${local.linux_vm_name}" : null
 }

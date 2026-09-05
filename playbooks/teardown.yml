@@ -198,6 +198,16 @@
                    (tf_output.stdout | default('{}') | from_json).windows_inventory.value | default(None, true)
                  ] | select('mapping') | map(attribute='host') | list }}
 
+        - name: Build the virtctl SSH host-key names to clean up
+          ansible.builtin.set_fact:
+            teardown_ssh_keys: >-
+              {{ [
+                   (tf_output.stdout | default('{}') | from_json).linux_inventory.value | default(None, true),
+                   (tf_output.stdout | default('{}') | from_json).windows_inventory.value | default(None, true)
+                 ] | select('mapping') | map(attribute='vm_name')
+                   | map('regex_replace', '^(.*)$', 'vm.\1.' ~ ocpvirt_namespace_resolved)
+                   | list }}
+
         - name: Report what was found in state
           ansible.builtin.debug:
             msg: >-
@@ -325,6 +335,19 @@
           when: tf_destroy_result is failed
           ansible.builtin.fail:
             msg: "terraform destroy exited {{ tf_destroy_result.rc | default('?') }}"
+
+        - name: Remove stale SSH host keys from the operator's known_hosts
+          # virtctl ssh caches keys as vm.<vm-name>.<namespace>. After a
+          # destroy those keys are definitively stale; leaving them causes
+          # REMOTE HOST IDENTIFICATION HAS CHANGED on the next provision.
+          # From an AAP EE this is a harmless no-op — no persistent known_hosts.
+          ansible.builtin.command:
+            argv: [ssh-keygen, -R, "{{ item }}"]
+          loop: "{{ teardown_ssh_keys }}"
+          loop_control:
+            label: "{{ item }}"
+          changed_when: true
+          failed_when: false
 
         - name: Deregister the VMs from the AAP inventory
           # Only the hosts that were in Terraform state. The control hosts
