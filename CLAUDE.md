@@ -420,3 +420,37 @@ Environment secrets.
     deliberately is a different thing from doing it by accident.
   - Force pushes and branch deletion on `main` are blocked, and PR conversations
     must be resolved before merging.
+
+- **This working tree is shared by more than one Claude session at a time, and
+  the branch can change under you.** Recorded here for the same reason as the two
+  notes above: it is invisible from reading the tree, and every session otherwise
+  assumes it is alone in the checkout.
+
+  On 2026-09-04, between a `git checkout -b` and the commit at the end of that
+  same task, another session had merged two PRs, advanced `main`, and checked out
+  its own branch. The commit landed on **theirs**.
+
+  What that breaks, in order of nastiness:
+
+  - The commit goes on someone else's branch, so their PR carries your change and
+    **one concern per PR is violated without either session noticing**.
+  - `git add -A` can stage their uncommitted work in flight.
+  - `git push -u origin <your-branch>` pushes the *stale* ref you created
+    earlier, not your commit — it looks successful and publishes nothing.
+  - `gh pr create` uses the current branch, which is theirs.
+
+  The habits that survive it:
+
+  - Re-run `git branch --show-current` **immediately before** `git add` and
+    `git commit`, not once at the start of the task. This is the whole rule; the
+    rest follows from it.
+  - Prefer `git add <explicit paths>` over `git add -A` here.
+  - `gh pr create --head <branch>` rather than relying on the checkout.
+  - `git show --stat <sha>` after committing, to confirm only your files are in it.
+
+  **Recovering without damage:** `git branch -f <your-branch> <sha>` claims your
+  commit onto the right branch and touches nothing else. Do **not** force-push or
+  rewrite a branch another session has already pushed — that is theirs to fix;
+  say so and let the user decide.
+
+  Consider an isolated worktree for anything long-running.

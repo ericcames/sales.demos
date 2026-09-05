@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added -- CLAUDE.md records that this working tree is shared by concurrent sessions (#194)
+- More than one Claude session works in this checkout at a time, and the branch
+  can change under you mid-task. Nothing said so, so every session assumed it was
+  alone. On 2026-09-04 a commit landed on another session's branch because that
+  session had merged two PRs and checked out its own branch between the
+  `git checkout -b` and the commit.
+- **The rule is to re-run `git branch --show-current` immediately before
+  `git add` and `git commit`**, not once at the start; the rest follows from it.
+  Also: explicit paths over `git add -A`, `gh pr create --head <branch>`, and
+  `git show --stat <sha>` afterwards.
+- **Recovery is `git branch -f <your-branch> <sha>`**, which touches nothing else.
+  Force-pushing a branch another session has pushed is explicitly ruled out --
+  that is theirs to fix.
+- Recorded in `CLAUDE.md` rather than a doc page for the same reason as the
+  `delete_branch_on_merge` and branch-protection notes beside it: it is a
+  property of how the repo is worked in, invisible from reading the tree, and
+  `CLAUDE.md` is the only file every session loads automatically.
+
 ### Added -- Development workflow skill (#191)
 - `sales-demos-dev-workflow` skill documenting the end-to-end dev/test cycle:
   branch, PR, merge, `config.yml --limit <env>`, then launch the Build Demo VM
