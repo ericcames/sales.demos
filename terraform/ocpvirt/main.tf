@@ -237,7 +237,7 @@ resource "kubernetes_secret" "windows_sysprep" {
           <component name="Microsoft-Windows-Shell-Setup"
                      processorArchitecture="amd64"
                      publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
-            <ComputerName>${local.windows_vm_name}</ComputerName>
+            <ComputerName>${local.windows_hostname}</ComputerName>
           </component>
           <component name="Microsoft-Windows-TerminalServices-LocalSessionManager"
                      processorArchitecture="amd64"

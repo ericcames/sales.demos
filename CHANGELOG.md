@@ -15,6 +15,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   cached its own answer file in `%WINDIR%\Panther` (fixed by
   `image.builder.pipeline` PR #71), and the consumer named the file wrong. With
   the cache gone, the filename mismatch became the remaining failure.
+- Shortened the Windows `ComputerName` to ≤15 characters (`sd-win-sm-1c-2g`,
+  `sd-win-md-1c-4g`, `sd-win-lg-2c-6g`) via a `tier_windows_hostname` map in
+  `locals.tf`. The full VM name (`sd-win-small-1cpu-2gb`, 21 chars) exceeded
+  the Windows NetBIOS limit and caused the specialize pass to reject the answer
+  file outright.
 - `quay_windows_image` updated to `20260906-0300`, built with the producer fix.
 
 ### Changed -- single copy-paste SSH command in Check VMs output (#218)

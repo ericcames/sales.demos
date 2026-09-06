@@ -59,6 +59,14 @@ locals {
   windows_vm_name = "sd-win-${var.vm_size_tier}${local.suffix}"
   linux_vm_name   = "sd-lnx-${var.vm_size_tier}${local.suffix}"
 
+  # Windows NetBIOS hostname: max 15 characters.
+  tier_windows_hostname = {
+    "small-1cpu-2gb"  = "sd-win-sm-1c-2g"
+    "medium-1cpu-4gb" = "sd-win-md-1c-4g"
+    "large-2cpu-6gb"  = "sd-win-lg-2c-6g"
+  }
+  windows_hostname = local.tier_windows_hostname[var.vm_size_tier]
+
   common_labels = {
     "app.kubernetes.io/managed-by" = "terraform"
     "app.kubernetes.io/part-of"    = "sales-demos"
