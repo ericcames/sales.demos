@@ -358,16 +358,14 @@ Environment secrets.
   `WINDOWS_ADMIN_PASSWORD`, are maintained *here* and nowhere else. MCP covers
   cluster inspection and this repo's half, not those.
 
-- **Unfinished, and this repo is where it gets proved:**
-  [`image.builder.pipeline#63`](https://github.com/ericcames/image.builder.pipeline/issues/63).
-  The Windows golden image left its own answer file cached in `%WINDIR%\Panther`,
-  which Windows finds ahead of the sysprep CD this repo attaches, so every clone
-  stopped at the OOBE region screen. **The consumer half here (#201 / PR #227) is
-  correct and needs no change** — it was only ever blocked by the producer. That
-  fix is merged; the rebuild, republish and end-to-end proof are not.
+- **The Windows golden image pipeline is proven end-to-end** (2026-09-06).
+  Three stacked bugs blocked it — the producer's cached answer file in
+  `%WINDIR%\Panther` (`image.builder.pipeline` #69), the consumer's Secret key
+  naming (`autounattend.xml` → `Unattend.xml`, #234), and the 15-char NetBIOS
+  `ComputerName` limit (#234). All fixed and verified: clone reaches the
+  desktop, `win_ping` succeeds from AAP (#257).
 
-  **The path from a new tag to a booted clone is already built here**, so
-  verifying is a config change, not new work: set `quay_windows_image` in
+  **To repoint to a new image tag**, set `quay_windows_image` in
   `inventory/group_vars/{sandbox,demo}/connection.yml`, re-run
   `playbooks/link_windows_image.yml`, then clone as usual. That playbook already
   creates the private-repo pull secret, adds the `DataImportCron` template and
