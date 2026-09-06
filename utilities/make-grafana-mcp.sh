@@ -59,10 +59,10 @@ fi
 
 claude mcp remove grafana 2>/dev/null || true
 
-claude mcp add --transport stdio --scope local \
+claude mcp add grafana --scope local \
   -e GRAFANA_URL="$GRAFANA_URL" \
   -e GRAFANA_SERVICE_ACCOUNT_TOKEN="$GRAFANA_TOKEN" \
-  grafana -- uvx mcp-grafana
+  -- uvx mcp-grafana
 
 echo ""
 echo "✅ registered grafana"
