@@ -56,7 +56,16 @@ EXAMPLE = Path("playbooks/group_vars/all/secrets.yml.example")
 # fed from linux_admin_password rather than from a key of its own, so the staged
 # key was deleted from the example rather than wired up. Keep this dict — an
 # empty STAGED still documents that adding an orphan must be deliberate.
-STAGED: dict[str, str] = {}
+STAGED: dict[str, str] = {
+    "grafana_cloud_url": (
+        "Consumed by utilities/make-grafana-mcp.sh (#260), which reads the vault "
+        "directly via ansible-vault view + Python YAML parsing, not via Jinja in "
+        "a playbook. The scanner only covers playbooks/ and inventory/."
+    ),
+    "grafana_cloud_sa_token": (
+        "Consumed by utilities/make-grafana-mcp.sh (#260), same as grafana_cloud_url."
+    ),
+}
 
 # Structural Jinja that survives the extractor and is not a variable. Keep this
 # list SHORT and justified: every entry is a hole in filter 2, so an unexplained

@@ -1,13 +1,14 @@
 ---
 name: sales-demos-mcp
-description: "Connect Claude Code to this repo's OpenShift clusters and AAP instances over MCP — four servers, one skill. Generates per-environment kubeconfigs for OpenShift and auto-creates bearer tokens for AAP, then verifies every server answers. TRIGGER when: the user asks to set up, connect, refresh or fix the MCP servers, says an openshift-sandbox, openshift-demo, aap-sandbox or aap-demo MCP server is failing or shows no tools, or has just repointed an environment or rotated a token. SKIP: if the user wants to install OpenShift Virtualization or apply AAP configuration — that is ocpvirt-setup — or wants to deploy the AAP MCP server into a cluster, which is playbooks/mcp_server.yml run by ocpvirt-setup."
+description: "Connect Claude Code to this repo's OpenShift clusters, AAP instances, and Grafana Cloud over MCP — five servers, one skill. Generates per-environment kubeconfigs for OpenShift, auto-creates bearer tokens for AAP, and registers the Grafana Cloud MCP server, then verifies every server answers. TRIGGER when: the user asks to set up, connect, refresh or fix the MCP servers, says an openshift-sandbox, openshift-demo, aap-sandbox, aap-demo, or grafana MCP server is failing or shows no tools, or has just repointed an environment or rotated a token. SKIP: if the user wants to install OpenShift Virtualization or apply AAP configuration — that is ocpvirt-setup — or wants to deploy the AAP MCP server into a cluster, which is playbooks/mcp_server.yml run by ocpvirt-setup."
 ---
 
 # sales-demos-mcp
 
-Makes both the clusters and AAP instances directly queryable from Claude Code.
-Before this, every question about an environment cost a `curl`, a vault read and
-a JSON parse; after it, `namespaces_list` or `job_templates_list` is a tool call.
+Makes the clusters, AAP instances, and Grafana Cloud directly queryable from
+Claude Code. Before this, every question about an environment cost a `curl`, a
+vault read and a JSON parse; after it, `namespaces_list` or
+`job_templates_list` is a tool call.
 
 **No playbook, by design.** This touches the laptop — it writes kubeconfigs,
 creates tokens, and configures your MCP client. It must never run from AAP,
@@ -16,7 +17,7 @@ which is the same reasoning that keeps `collections-sync`,
 
 ## What it sets up
 
-**Four servers, one per environment per platform:**
+**Five servers — four per-environment, one global:**
 
 | Server | Auth | Access | Source |
 |---|---|---|---|
@@ -24,6 +25,7 @@ which is the same reasoning that keeps `collections-sync`,
 | `openshift-demo` | kubeconfig | read-only | `.mcp.json` (committed) |
 | `aap-sandbox` | bearer token | read-write | `claude mcp add --scope local` |
 | `aap-demo` | bearer token | read-only | `claude mcp add --scope local` |
+| `grafana` | service account token | read-only | `claude mcp add --scope local` |
 
 **One server per environment, named after it, is the whole design.** #16 is the
 precedent: when the two environments were not kept distinct, `--limit demo`
@@ -34,6 +36,14 @@ picking the tool.
 
 `demo` is read-only on both platforms because it is the environment customers
 watch. That is a deliberate asymmetry, not an oversight — see #102.
+
+### Grafana Cloud server
+
+`grafana` is a **single server**, not per-environment — Grafana Cloud is an
+external SaaS instance that survives RHDP rebuilds. That is the whole point of
+choosing it over self-hosted (#260). The service account token has the Viewer
+role (read-only, matching the governance thesis). See
+[`docs/plan/grafana-plan.md`](../../../docs/plan/grafana-plan.md).
 
 ### OpenShift servers
 
@@ -90,6 +100,10 @@ head -c 15 playbooks/group_vars/all/secrets.yml 2>/dev/null | grep -q '^\$ANSIBL
 command -v npx >/dev/null \
   && echo "✅ npx ($(node --version)) — needed to launch kubernetes-mcp-server" \
   || echo "❌ npx not found — install Node.js, or fetch the pinned binary from https://github.com/containers/kubernetes-mcp-server/releases"
+
+command -v uvx >/dev/null \
+  && echo "✅ uvx ($(uvx --version 2>/dev/null || echo 'unknown')) — needed to launch mcp-grafana" \
+  || echo "❌ uvx not found — install uv (https://docs.astral.sh/uv/getting-started/installation/)"
 
 command -v claude >/dev/null \
   && echo "✅ claude CLI available" \
@@ -154,6 +168,22 @@ bash utilities/make-aap-mcp.sh demo
 
 The script creates a personal access token, finds the `aap-mcp` route via the
 kubeconfig, and registers the server with `claude mcp add --scope local`.
+
+### Step 3 — Grafana Cloud MCP server
+
+Independent of the kubeconfig and AAP steps — Grafana Cloud is an external
+service, not tied to any RHDP environment.
+
+```bash
+bash utilities/make-grafana-mcp.sh
+```
+
+The script reads `grafana_cloud_url` and `grafana_cloud_sa_token` from the
+vault and registers the server with `claude mcp add --scope local`.
+
+**Prerequisite:** a Grafana Cloud account with a service account token
+(Viewer role). See [`docs/plan/grafana-plan.md`](../../../docs/plan/grafana-plan.md)
+for the manual browser setup steps.
 
 **Restart Claude Code after running for the first time.** MCP servers are
 launched at startup; a server that was not registered then stays absent until
@@ -225,6 +255,50 @@ than assuming a misconfiguration. Measured on a working sandbox: **140 tools**,
 including `job_templates_launch_create`, `workflow_job_templates_launch_create`
 and `jobs_stdout_retrieve`.
 
+### Grafana Cloud
+
+Verify the Grafana MCP server starts and can reach the Grafana Cloud instance:
+
+```bash
+python3 - <<'PY'
+import json, subprocess, sys, os
+
+vault_pass = os.path.expanduser("~/secrets/.vault_pass_sales_demos")
+vault_id = f"sales.demos@{vault_pass}"
+
+import yaml
+raw = subprocess.check_output(
+    ["ansible-vault", "view", "playbooks/group_vars/all/secrets.yml",
+     "--vault-id", vault_id], text=True)
+secrets = yaml.safe_load(raw)
+url = secrets["grafana_cloud_url"]
+token = secrets["grafana_cloud_sa_token"]
+
+p = subprocess.Popen(
+    ["uvx", "mcp-grafana"],
+    stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+    text=True, env={**os.environ, "GRAFANA_URL": url,
+                    "GRAFANA_SERVICE_ACCOUNT_TOKEN": token})
+send = lambda o: (p.stdin.write(json.dumps(o)+"\n"), p.stdin.flush())
+send({"jsonrpc":"2.0","id":1,"method":"initialize","params":{
+    "protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"verify","version":"0"}}})
+info = json.loads(p.stdout.readline())["result"]["serverInfo"]
+send({"jsonrpc":"2.0","method":"notifications/initialized"})
+send({"jsonrpc":"2.0","id":2,"method":"tools/list"})
+tools = json.loads(p.stdout.readline())["result"]["tools"]
+send({"jsonrpc":"2.0","id":3,"method":"tools/call",
+      "params":{"name":"list_datasources","arguments":{}}})
+got = json.loads(p.stdout.readline())
+p.terminate()
+ok = len(tools) >= 10 and "result" in got
+print(f"server        : {info.get('name')} {info.get('version')}")
+print(f"tools exposed : {len(tools)}")
+print(f"live call     : {'list_datasources returned data' if 'result' in got else got}")
+print("\nGRAFANA MCP VERIFIED" if ok else "\nVERIFICATION FAILED — do not report success")
+sys.exit(0 if ok else 1)
+PY
+```
+
 Finally, confirm the client sees all servers:
 
 ```bash
@@ -245,6 +319,9 @@ claude mcp list
 | AAP MCP write tools missing | `aap_mcp_allow_write_operations` is false for this environment | Intentional on `demo`. Changing it needs a delete-and-recreate — re-run `mcp_server.yml`, which handles that |
 | `npx: command not found` | Node not installed | See preflight; a standalone binary is the alternative |
 | `no aap-mcp route` from make-aap-mcp.sh | MCP server not deployed | Run `/ocpvirt-setup` or `playbooks/mcp_server.yml` first |
+| Grafana `grafana_cloud_url not set` | Vault keys missing or still CHANGEME | `ansible-vault edit` and add real values — see `docs/plan/grafana-plan.md` |
+| Grafana MCP tools present but calls fail | Token expired or revoked | Create a new SA token in the Grafana Cloud UI, update the vault |
+| `uvx: command not found` | uv not installed | See preflight; install from https://docs.astral.sh/uv/ |
 
 Never paste a live token into a commit message, issue, or PR. This repo is
 public — see `CLAUDE.md`.

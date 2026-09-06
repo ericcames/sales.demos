@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added -- Grafana Cloud MCP server (#260)
+- Official `grafana/mcp-grafana` server wired up via `--scope local`,
+  following the AAP MCP server pattern. One server named `grafana`
+  (not per-environment — Grafana Cloud is a single external instance).
+- `utilities/make-grafana-mcp.sh` reads vault credentials and registers
+  the server with Claude Code.
+- `docs/plan/grafana-plan.md` documents the design and future phases.
+- Vault keys `grafana_cloud_url` and `grafana_cloud_sa_token` added to
+  `secrets.yml.example`.
+- `.claude/settings.json` allowlists `mcp__grafana__*`.
+- `sales-demos-mcp` skill updated to include Grafana as a fifth server.
+
 ### Fixed -- AAP cannot WinRM into Windows VMs (#257)
 - Added `LocalAccountTokenFilterPolicy = 1` as a second `FirstLogonCommands`
   step in the sysprep answer file. Without it, Windows UAC remote access

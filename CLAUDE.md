@@ -10,6 +10,7 @@ including *why* each choice was made.
 | Private Automation Hub as code | [`docs/plan/pah-plan.md`](docs/plan/pah-plan.md) |
 | Network MCP servers | [`docs/plan/network-mcp-plan.md`](docs/plan/network-mcp-plan.md) |
 | Platform add-ons (MCP servers) | [`docs/plan/platform-addons-plan.md`](docs/plan/platform-addons-plan.md) |
+| Grafana Cloud observability | [`docs/plan/grafana-plan.md`](docs/plan/grafana-plan.md) |
 
 ## This repo is public
 
