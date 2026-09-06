@@ -32,9 +32,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added `pods/log` subresource to the `alloy-discovery` ClusterRole so
   `loki.source.kubernetes` can stream pod logs via the Kubernetes API.
 - Switched AAP metrics scrape from the controller service
-  (`aap-controller-service:80` over HTTP) to the gateway (`aap.aap.svc:443`
-  over HTTPS). On AAP 2.7 the controller returns 401 and the gateway's envoy
-  returns 426 on plain HTTP.
+  (`aap-controller-service:80`) to the gateway (`aap.aap.svc:80`).
+  On AAP 2.7 authentication routes through the gateway; the controller
+  service returns 401 on direct basic-auth requests.
 - Changed Prometheus federation target from `thanos-querier` to
   `prometheus-k8s`. Thanos Query does not implement the `/federate` endpoint.
 

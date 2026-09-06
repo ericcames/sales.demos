@@ -61,10 +61,11 @@
     alloy_thanos_url: "https://prometheus-k8s.openshift-monitoring.svc:9091"
 
     # AAP controller metrics endpoint — must go through the gateway on AAP 2.7.
-    # The controller service returns 401 (auth routes through the gateway) and
-    # the gateway's envoy returns 426 Upgrade Required on HTTP, so HTTPS is required.
+    # The controller service returns 401 (auth routes through the gateway).
+    # The gateway's envoy on port 80 requires HTTP/1.1+ (a raw HTTP/1.0 test
+    # returns 426 Upgrade Required, but a real HTTP client works).
     alloy_aap_metrics_host: "aap.aap.svc"
-    alloy_aap_metrics_port: "443"
+    alloy_aap_metrics_port: "80"
 
     # Log collection namespaces.
     alloy_log_namespaces:
@@ -427,24 +428,19 @@
                   }
 
                   // --- 2. AAP controller metrics via basic auth ------------------------
-                  // On AAP 2.7 the controller service returns 401 (auth routes through
-                  // the gateway) and the gateway's envoy returns 426 on HTTP, so this
-                  // must use HTTPS through the gateway service.
+                  // On AAP 2.7 the controller API requires Bearer auth directly, but
+                  // the gateway accepts basic auth and proxies to the controller under
+                  // /api/controller/. The direct /api/v2/ path returns 404 on the gateway.
                   prometheus.scrape "aap_controller" {
                     targets = [{
                       __address__ = "{{ alloy_aap_metrics_host }}:{{ alloy_aap_metrics_port }}",
                     }]
 
-                    scheme       = "https"
-                    metrics_path = "/api/v2/metrics/"
+                    metrics_path = "/api/controller/v2/metrics/"
 
                     basic_auth {
                       username = env("AAP_USERNAME")
                       password = env("AAP_PASSWORD")
-                    }
-
-                    tls_config {
-                      insecure_skip_verify = true
                     }
 
                     scrape_interval = "60s"
