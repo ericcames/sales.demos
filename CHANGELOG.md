@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added -- Grafana Cloud Phase 1 design (#265)
+- Expanded `docs/plan/grafana-plan.md` with the Phase 1 architecture: Grafana
+  Alloy on OCP, Prometheus federation from built-in monitoring, AAP
+  `/api/v2/metrics/` scrape, API-based log collection for four namespaces.
+- Series budget strategy (~600–900 of 10k), push credential requirements,
+  risk mitigations, and verification steps documented.
+
 ### Changed -- MCP demo docs updated for five servers (#262)
 - Updated `server-inventory.md`, `architecture.md`, `talk-track.md`,
   `run-sheet.md`, `README.md`, and `objections.md` to reflect Grafana Cloud

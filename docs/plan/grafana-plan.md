@@ -120,19 +120,130 @@ Manual, in a browser. Cannot be scripted.
    `list_datasources` or `search_dashboards`) — it should connect and return
    data from the free-tier instance (even if empty on a fresh account)
 
-## Future phases
+## Phase 1 — Feed data in (#265)
 
-**Phase 1 — Feed data in.** Deploy Grafana Alloy on the OpenShift clusters to
-push metrics (Prometheus remote-write) and logs (Loki) to Grafana Cloud. A
-playbook with push credentials from the vault. This is where observability
-becomes useful rather than merely connected.
+Deploy Grafana Alloy on the OpenShift clusters to push metrics (Prometheus
+remote-write) and logs (Loki) to Grafana Cloud. Separate playbook
+(`deploy_alloy.yml`) plus a skill — opt-in, not baked into `setup.yml`.
+Sandbox first, demo once proven.
 
-**Phase 2 — Demo story.** Pre-built dashboards showing VM provisioning times,
-AAP job durations, cluster resource utilization. The agent queries Grafana via
-MCP to answer "how long did the last provision take?" or "is the cluster
-healthy enough for the next demo?" Pairs with Dynatrace (#99): Dynatrace for
-application-level (OneAgent, Davis), Grafana for infrastructure-level.
+**Demo headline:** "We instrument the entire platform with Ansible — OCP cluster
+health, KubeVirt VM metrics, AAP job telemetry — and the AI agent queries it all
+through Grafana Cloud."
 
-**Phase 3 — Dashboard as code.** Grafana dashboards defined in the repo (JSON
-or Terraform's Grafana provider), applied by a playbook. Matches the
-config-as-code thesis running through every use case here.
+### Prometheus federation, not direct scraping
+
+OCP already scrapes kubelet, cAdvisor, kube-state-metrics, node-exporter, and
+KubeVirt metrics via built-in ServiceMonitors. Duplicating all of that scrape
+configuration in Alloy is fragile and pointless. Instead, Alloy federates from
+the Thanos Querier (`thanos-querier.openshift-monitoring.svc:9091/federate`)
+using the SA bearer token and the existing `cluster-monitoring-view` ClusterRole.
+
+The `match[]` parameters on the federation endpoint are the series budget
+control — we select only what we need:
+
+- `kubevirt_vmi_*` — VM metrics (the demo headline)
+- `node_cpu_seconds_total`, `node_memory_*`, `node_filesystem_*`,
+  `node_network_*` — node health
+- `kube_pod_status_phase`, `kube_pod_container_resource_requests`,
+  `kube_node_status_*` — namespace-filtered to `aap`, `sales-demos-*`,
+  `openshift-cnv`
+- `container_cpu_usage_seconds_total`, `container_memory_working_set_bytes` —
+  namespace-filtered
+
+A relabel rule drops noisy CPU modes (irq, softirq, steal, nice, guest) and
+pause containers from cAdvisor. Estimated total: **~600–900 series** out of the
+10k budget — substantial headroom for Phase 2 additions.
+
+### AAP metrics — separate scrape job
+
+AAP's `/api/v2/metrics/` endpoint uses different auth (basic auth, not SA
+bearer) and lives on a different service. Alloy scrapes
+`aap-controller-service.aap.svc:80` with the existing `aap_username` /
+`aap_password` from the vault — no new token to manage. If the controller
+service does not serve metrics directly in AAP 2.7 (possible since the gateway
+mediates all API access), the fallback is the gateway service at
+`aap.aap.svc:80`.
+
+### API-based log collection, not hostPath
+
+`loki.source.kubernetes` streams logs via the Kubernetes API, avoiding hostPath
+volumes and the `hostmount-anyuid` SCC. The DaemonSet runs under the default
+`restricted` SCC. The tradeoff — slightly higher API server load, possible
+missed lines during pod restarts — is irrelevant for a demo environment.
+
+Scoped to four namespaces: `aap`, `sales-demos-{{ aap_env_name }}`,
+`openshift-cnv`, `grafana-alloy`. System namespaces (`openshift-*`) are excluded
+to avoid consuming the 50 GB log budget on control-plane noise.
+
+### Push credentials — five new vault keys
+
+The existing Viewer SA token (`grafana_cloud_sa_token`) is for MCP reads. Alloy
+needs *write* credentials — a Cloud Access Policy token with `metrics:write` and
+`logs:push` scopes, plus the Prometheus and Loki push endpoints and usernames.
+
+Five new **top-level** keys in `playbooks/group_vars/all/secrets.yml` (top-level
+because Grafana Cloud spans both environments):
+
+```yaml
+grafana_cloud_prom_push_url: "https://prometheus-prod-XX.grafana.net/api/prom/push"
+grafana_cloud_prom_username: "<instance-id>"
+grafana_cloud_loki_push_url: "https://logs-prod-XX.grafana.net/loki/api/v1/push"
+grafana_cloud_loki_username: "<instance-id>"
+grafana_cloud_push_api_key: "glc_..."
+```
+
+Created manually in the Grafana Cloud portal: Security → Access Policies →
+Create → scopes `metrics:write`, `logs:push` → generate token.
+
+### DaemonSet sizing
+
+100m/256Mi request, 500m/512Mi limit. On the RHDP single-node cluster (32 vCPU,
+128 GiB, ~9% CPU / 36% memory used), this is negligible.
+
+### Risks
+
+| Risk | Mitigation |
+|------|------------|
+| Thanos Querier federation may 403 with `cluster-monitoring-view` | Preflight curl; fallback to direct target scraping |
+| AAP controller service may not serve `/api/v2/metrics/` without gateway | Preflight curl; fallback to gateway service |
+| RHDP environment expires — Alloy dies | Grafana Cloud retains data; re-run playbook |
+| Docker Hub rate limit on `grafana/alloy` image pull | Mirror to quay.io or PAH container registry |
+| Cluster-scoped RBAC resources survive namespace deletion | `alloy_state=absent` teardown path cleans up everything |
+
+### Verification via Grafana MCP
+
+Once data flows, the existing MCP server (Phase 0) can query it:
+
+1. `list_prometheus_metric_names` with `regex: "node_cpu_seconds_total"` —
+   confirms metrics arriving
+2. `query_prometheus` with `expr: "up"` — confirms scrape targets healthy
+3. `list_loki_label_names` — confirms logs arriving with expected labels
+4. `query_prometheus` with `expr: "count({__name__!=\"\"})"` — confirms under
+   10k series
+
+### Files
+
+| File | Action |
+|------|--------|
+| `playbooks/deploy_alloy.yml` | Create — the playbook |
+| `.claude/skills/sales-demos-alloy/SKILL.md` | Create — the skill |
+| `playbooks/group_vars/all/secrets.yml.example` | Modify — add 5 push credential keys |
+| `utilities/check-secrets-example.py` | Modify — add STAGED entries if needed |
+| `CHANGELOG.md` | Modify |
+
+No new collection dependencies — `kubernetes.core` covers everything.
+
+## Phase 2 — Demo story
+
+Pre-built dashboards showing VM provisioning times, AAP job durations, cluster
+resource utilization. The agent queries Grafana via MCP to answer "how long did
+the last provision take?" or "is the cluster healthy enough for the next demo?"
+Pairs with Dynatrace (#99): Dynatrace for application-level (OneAgent, Davis),
+Grafana for infrastructure-level.
+
+## Phase 3 — Dashboard as code
+
+Grafana dashboards defined in the repo (JSON or Terraform's Grafana provider),
+applied by a playbook. Matches the config-as-code thesis running through every
+use case here.
