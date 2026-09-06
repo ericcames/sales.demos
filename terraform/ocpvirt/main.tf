@@ -190,33 +190,28 @@ resource "kubernetes_manifest" "linux_vm" {
 # time. THAT is what this Secret fixes; the disk clone itself always worked.
 #
 # A Secret, not a ConfigMap: it carries a password. KubeVirt accepts either and
-# reads the key `autounattend.xml`.
+# reads the key `Unattend.xml`.
 #
 # ---------------------------------------------------------------------------
-# THIS IS CORRECT AND CURRENTLY INERT. DO NOT "FIX" IT HERE.
+# TWO BUGS BLOCKED THIS — one producer-side, one here — and both had to be fixed.
 # ---------------------------------------------------------------------------
-# Measured on sandbox 2026-09-05: the Secret is created, KubeVirt builds the
-# 1 MiB ISO, `volumeStatus` reports `sysprep -> sdb`, and the XML is well-formed
-# with both passes. Windows ignores it anyway and stops at the OOBE region
-# screen, because of WHERE Windows looks. Its implicit answer-file search order:
+# Windows has TWO answer-file search orders, not one:
 #
-#   3  %WINDIR%\Panther            <- where Setup cached the BUILD's answer file
-#   4  removable read/write media  Autounattend.xml
-#   5  removable read-only media   Autounattend.xml   <- this CD
+#   1. During a fresh Windows Setup install:  searches for `Autounattend.xml`
+#   2. During mini-setup after sysprep:       searches for `Unattend.xml`
 #
-# The golden image was built from an answer file and sysprepped without deleting
-# the cached copy, so every clone matches at 3 before it ever reaches 5. KubeVirt
-# documents the trap: "there is no answer file detected when the Sysprep Tool is
-# triggered ... it will just use the cached answer file, ignoring the one we
-# provide through the Sysprep API."
+# A sysprepped clone runs path 2, so the CD must contain `Unattend.xml`. This
+# key was `autounattend.xml` — the fresh-install name — and Windows never looked
+# at it. That error was invisible because a second bug masked it:
 #
-# The fix is one `del` in the producer's FirstLogonCommands before its sysprep
-# step, plus a rebuild: ericcames/image.builder.pipeline#59. Once that image is
-# republished this block starts working with no change here.
+# The golden image cached the BUILD's answer file in %WINDIR%\Panther (search
+# position 3), which wins before removable media (position 4). That cached file
+# contained the build password, so even if the filename had been correct the
+# cache would have prevented loading the consumer's answer file. Fixed by
+# deleting the cache before sysprep: ericcames/image.builder.pipeline#69 (PR #71).
 #
-# AND THE FILENAME IS NOT THE BUG. Rows 4 and 5 want `Autounattend.xml` for
-# EVERY configuration pass, not just windowsPE. Renaming this key to
-# `unattend.xml` is the obvious-looking fix, and it is wrong.
+# With the cache gone, the filename mismatch became the remaining failure. The
+# key is now `Unattend.xml` — the name Windows searches for after sysprep.
 #
 # WHY THE PASSWORD COMES FROM THE LINUX VARIABLE. `linux_admin_password` is keyed
 # per environment; the old `windows_admin_password` was a single GLOBAL value,
@@ -235,7 +230,7 @@ resource "kubernetes_secret" "windows_sysprep" {
   }
 
   data = {
-    "autounattend.xml" = <<-EOT
+    "Unattend.xml" = <<-EOT
       <?xml version="1.0" encoding="utf-8"?>
       <unattend xmlns="urn:schemas-microsoft-com:unattend">
         <settings pass="specialize">
