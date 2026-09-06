@@ -38,7 +38,9 @@ why your change had no effect.
    git push -u origin <branch>
    ```
 
-4. **Open a PR.** Eight CI checks are required:
+4. **Open a PR.** Include `Closes #N` in the PR body when it resolves an
+   issue — GitHub auto-closes on merge; without it the issue stays open
+   silently (#274 left #273 open this way). Eight CI checks are required:
    `yamllint`, `ansible-lint`, `secret-guard`, `secrets-example-sync`,
    `generated-files`, `skills-frontmatter`, `docs-artifacts-current`,
    `renderer-matches-role`.
