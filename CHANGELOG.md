@@ -28,6 +28,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   federation selectors and relabel rules that drop noisy CPU modes and
   pause containers.
 
+### Fixed -- Alloy RBAC, AAP metrics endpoint, and federation target (#273)
+- Added `pods/log` subresource to the `alloy-discovery` ClusterRole so
+  `loki.source.kubernetes` can stream pod logs via the Kubernetes API.
+- Switched AAP metrics scrape from the controller service
+  (`aap-controller-service:80` over HTTP) to the gateway (`aap.aap.svc:443`
+  over HTTPS). On AAP 2.7 the controller returns 401 and the gateway's envoy
+  returns 426 on plain HTTP.
+- Changed Prometheus federation target from `thanos-querier` to
+  `prometheus-k8s`. Thanos Query does not implement the `/federate` endpoint.
+
 ### Changed -- Worktrees mandatory for code changes (#267)
 - Strengthened CLAUDE.md worktree rule from conditional ("use when multiple
   sessions run") to unconditional ("always use a worktree for code changes").

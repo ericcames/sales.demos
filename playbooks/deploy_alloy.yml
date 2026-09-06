@@ -56,12 +56,15 @@
     alloy_cpu_limit: "500m"
     alloy_memory_limit: "512Mi"
 
-    # Thanos Querier federation endpoint.
-    alloy_thanos_url: "https://thanos-querier.openshift-monitoring.svc:9091"
+    # Prometheus federation endpoint. Uses prometheus-k8s directly because
+    # Thanos Query does not implement /federate (scrape failed in 7ms with up=0).
+    alloy_thanos_url: "https://prometheus-k8s.openshift-monitoring.svc:9091"
 
-    # AAP controller metrics endpoint — try the controller service first.
-    alloy_aap_metrics_host: "aap-controller-service.aap.svc"
-    alloy_aap_metrics_port: "80"
+    # AAP controller metrics endpoint — must go through the gateway on AAP 2.7.
+    # The controller service returns 401 (auth routes through the gateway) and
+    # the gateway's envoy returns 426 Upgrade Required on HTTP, so HTTPS is required.
+    alloy_aap_metrics_host: "aap.aap.svc"
+    alloy_aap_metrics_port: "443"
 
     # Log collection namespaces.
     alloy_log_namespaces:
@@ -238,7 +241,7 @@
                 name: "{{ alloy_cluster_role }}"
               rules:
                 - apiGroups: [""]
-                  resources: ["nodes", "nodes/metrics", "pods", "services", "endpoints", "namespaces"]
+                  resources: ["nodes", "nodes/metrics", "pods", "pods/log", "services", "endpoints", "namespaces"]
                   verbs: ["get", "list", "watch"]
                 - apiGroups: ["networking.k8s.io"]
                   resources: ["ingresses"]
@@ -424,16 +427,24 @@
                   }
 
                   // --- 2. AAP controller metrics via basic auth ------------------------
+                  // On AAP 2.7 the controller service returns 401 (auth routes through
+                  // the gateway) and the gateway's envoy returns 426 on HTTP, so this
+                  // must use HTTPS through the gateway service.
                   prometheus.scrape "aap_controller" {
                     targets = [{
                       __address__ = "{{ alloy_aap_metrics_host }}:{{ alloy_aap_metrics_port }}",
                     }]
 
+                    scheme       = "https"
                     metrics_path = "/api/v2/metrics/"
 
                     basic_auth {
                       username = env("AAP_USERNAME")
                       password = env("AAP_PASSWORD")
+                    }
+
+                    tls_config {
+                      insecure_skip_verify = true
                     }
 
                     scrape_interval = "60s"

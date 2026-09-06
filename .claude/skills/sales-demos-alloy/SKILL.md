@@ -207,7 +207,7 @@ tell the user the cluster is now pushing metrics and logs to Grafana Cloud.
 | Grafana Cloud push credentials assertion fails | Push keys not set in vault | `ansible-vault edit` and fill in the 5 `grafana_cloud_*` push keys |
 | Alloy pods `CrashLoopBackOff` | Config syntax error or bad credentials | Check logs: `oc logs -n grafana-alloy -l app.kubernetes.io/name=alloy` |
 | Federation returns 403 | SA missing `cluster-monitoring-view` | The playbook creates the CRB — re-run it |
-| AAP metrics scrape fails | Controller service doesn't serve metrics behind gateway | Try `-e alloy_aap_metrics_host=aap.aap.svc` (gateway service) |
+| AAP metrics scrape fails | Gateway auth or TLS issue | Check Alloy logs; verify `aap_username`/`aap_password` in vault |
 | Docker Hub rate limit on `grafana/alloy` pull | Too many pulls from this IP | Wait, or mirror the image to quay.io |
 
 Never paste a live cluster hostname or token into a commit message, issue, or
