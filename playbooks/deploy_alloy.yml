@@ -1,0 +1,591 @@
+---
+# ===========================================================================
+# deploy_alloy.yml — deploy Grafana Alloy on the OpenShift cluster to push
+# metrics and logs to Grafana Cloud. Issue #265.
+#
+#   ansible-playbook playbooks/deploy_alloy.yml -i inventory --limit sandbox \
+#     -e target_env=sandbox \
+#     --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
+#
+# AND THE REVERSAL:
+#
+#   ansible-playbook playbooks/deploy_alloy.yml -i inventory --limit sandbox \
+#     -e target_env=sandbox -e alloy_state=absent \
+#     --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
+#
+# WHAT THIS DOES. Deploys Grafana Alloy as a DaemonSet in the grafana-alloy
+# namespace. Alloy federates metrics from the cluster's built-in Prometheus
+# (via the Thanos Querier), scrapes AAP's /api/v2/metrics/ endpoint, and
+# streams pod logs from four namespaces — then pushes everything to Grafana
+# Cloud's Prometheus and Loki endpoints.
+#
+# PROMETHEUS FEDERATION, NOT DIRECT SCRAPING. OCP already scrapes kubelet,
+# cAdvisor, kube-state-metrics, node-exporter, and KubeVirt metrics via
+# built-in ServiceMonitors. Alloy federates from the Thanos Querier with
+# match[] parameters that control exactly which series forward. One scrape
+# job replaces dozens.
+#
+# API-BASED LOG COLLECTION, NOT hostPath. loki.source.kubernetes streams
+# logs via the Kubernetes API, avoiding hostPath volumes and the
+# hostmount-anyuid SCC. The DaemonSet runs under the default restricted SCC.
+#
+# Creates no AAP token, so there is nothing to clean up in an always: block.
+# The Grafana Cloud push credentials come from the vault.
+# ===========================================================================
+
+- name: Deploy Grafana Alloy to push metrics and logs to Grafana Cloud
+  hosts: aap
+  gather_facts: false
+
+  environment:
+    K8S_AUTH_HOST: "{{ openshift_api_url }}"
+    K8S_AUTH_API_KEY: "{{ openshift_api_token }}"
+    K8S_AUTH_VERIFY_SSL: "{{ openshift_validate_certs | default(false) | bool }}"
+
+  vars:
+    alloy_state: "present"
+    alloy_namespace: "grafana-alloy"
+    alloy_sa_name: "alloy"
+    alloy_image: "docker.io/grafana/alloy:v1.9.1"
+    alloy_cluster_role: "alloy-discovery"
+    alloy_monitoring_crb: "alloy-cluster-monitoring-view"
+
+    # DaemonSet resources — negligible on a 32-vCPU / 128-GiB single node.
+    alloy_cpu_request: "100m"
+    alloy_memory_request: "256Mi"
+    alloy_cpu_limit: "500m"
+    alloy_memory_limit: "512Mi"
+
+    # Thanos Querier federation endpoint.
+    alloy_thanos_url: "https://thanos-querier.openshift-monitoring.svc:9091"
+
+    # AAP controller metrics endpoint — try the controller service first.
+    alloy_aap_metrics_host: "aap-controller-service.aap.svc"
+    alloy_aap_metrics_port: "80"
+
+    # Log collection namespaces.
+    alloy_log_namespaces:
+      - "aap"
+      - "sales-demos-{{ aap_env_name }}"
+      - "openshift-cnv"
+      - "grafana-alloy"
+
+    alloy_wait_retries: 30
+    alloy_wait_delay: 10
+
+  tasks:
+    - name: Assert the environment is unambiguous
+      ansible.builtin.include_tasks: tasks/assert_target_environment.yml
+
+    - name: Assert the required connection variables are set
+      ansible.builtin.assert:
+        that:
+          - openshift_api_url is defined
+          - openshift_api_url | length > 0
+          - openshift_api_token is defined
+          - openshift_api_token | length > 0
+        fail_msg: >-
+          openshift_api_url and openshift_api_token are required.
+        quiet: true
+
+    - name: Assert the requested state is valid
+      ansible.builtin.assert:
+        that:
+          - alloy_state in ['present', 'absent']
+        fail_msg: >-
+          alloy_state must be 'present' or 'absent', not '{{ alloy_state }}'.
+        quiet: true
+
+    - name: Assert Grafana Cloud push credentials are set
+      ansible.builtin.assert:
+        that:
+          - grafana_cloud_prom_push_url is defined
+          - grafana_cloud_prom_push_url | length > 0
+          - "'CHANGEME' not in grafana_cloud_prom_push_url"
+          - grafana_cloud_prom_username is defined
+          - grafana_cloud_prom_username | length > 0
+          - "'CHANGEME' not in grafana_cloud_prom_username"
+          - grafana_cloud_loki_push_url is defined
+          - grafana_cloud_loki_push_url | length > 0
+          - "'CHANGEME' not in grafana_cloud_loki_push_url"
+          - grafana_cloud_loki_username is defined
+          - grafana_cloud_loki_username | length > 0
+          - "'CHANGEME' not in grafana_cloud_loki_username"
+          - grafana_cloud_push_api_key is defined
+          - grafana_cloud_push_api_key | length > 0
+          - "'CHANGEME' not in grafana_cloud_push_api_key"
+        fail_msg: >-
+          The five Grafana Cloud push credentials must be set in the vault.
+          Run: ansible-vault edit playbooks/group_vars/all/secrets.yml
+          --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
+        quiet: true
+      when: alloy_state == 'present'
+
+    - name: Say what is about to happen
+      ansible.builtin.debug:
+        msg: >-
+          {{ (alloy_state == 'present') | ternary('DEPLOYING', 'REMOVING') }}
+          Grafana Alloy on {{ aap_env_name }}
+          (namespace {{ alloy_namespace }}).
+
+    # =======================================================================
+    # TEARDOWN PATH — alloy_state=absent
+    # =======================================================================
+    - name: Remove Alloy resources (teardown)
+      when: alloy_state == 'absent'
+      block:
+        - name: Delete the DaemonSet
+          kubernetes.core.k8s:
+            state: absent
+            api_version: apps/v1
+            kind: DaemonSet
+            name: alloy
+            namespace: "{{ alloy_namespace }}"
+
+        - name: Delete the ConfigMap
+          kubernetes.core.k8s:
+            state: absent
+            api_version: v1
+            kind: ConfigMap
+            name: alloy-config
+            namespace: "{{ alloy_namespace }}"
+
+        - name: Delete the Grafana Cloud credentials Secret
+          kubernetes.core.k8s:
+            state: absent
+            api_version: v1
+            kind: Secret
+            name: alloy-grafana-cloud
+            namespace: "{{ alloy_namespace }}"
+
+        - name: Delete the AAP auth Secret
+          kubernetes.core.k8s:
+            state: absent
+            api_version: v1
+            kind: Secret
+            name: alloy-aap-auth
+            namespace: "{{ alloy_namespace }}"
+
+        - name: Delete the cluster-monitoring-view ClusterRoleBinding
+          kubernetes.core.k8s:
+            state: absent
+            api_version: rbac.authorization.k8s.io/v1
+            kind: ClusterRoleBinding
+            name: "{{ alloy_monitoring_crb }}"
+
+        - name: Delete the ClusterRoleBinding
+          kubernetes.core.k8s:
+            state: absent
+            api_version: rbac.authorization.k8s.io/v1
+            kind: ClusterRoleBinding
+            name: "{{ alloy_cluster_role }}"
+
+        - name: Delete the ClusterRole
+          kubernetes.core.k8s:
+            state: absent
+            api_version: rbac.authorization.k8s.io/v1
+            kind: ClusterRole
+            name: "{{ alloy_cluster_role }}"
+
+        - name: Delete the namespace (takes the ServiceAccount with it)
+          kubernetes.core.k8s:
+            state: absent
+            api_version: v1
+            kind: Namespace
+            name: "{{ alloy_namespace }}"
+
+        - name: Summarize teardown
+          ansible.builtin.debug:
+            msg: >-
+              Alloy removed from {{ aap_env_name }}. The namespace
+              {{ alloy_namespace }} and all cluster-scoped RBAC resources
+              have been deleted.
+
+    # =======================================================================
+    # DEPLOY PATH — alloy_state=present
+    # =======================================================================
+    - name: Deploy Alloy
+      when: alloy_state == 'present'
+      block:
+        # --- Namespace and ServiceAccount -----------------------------------
+        - name: Create the grafana-alloy namespace
+          kubernetes.core.k8s:
+            state: present
+            definition:
+              apiVersion: v1
+              kind: Namespace
+              metadata:
+                name: "{{ alloy_namespace }}"
+
+        - name: Create the Alloy ServiceAccount
+          kubernetes.core.k8s:
+            state: present
+            definition:
+              apiVersion: v1
+              kind: ServiceAccount
+              metadata:
+                name: "{{ alloy_sa_name }}"
+                namespace: "{{ alloy_namespace }}"
+
+        # --- RBAC -----------------------------------------------------------
+        - name: Create the ClusterRole for pod/node/namespace discovery
+          kubernetes.core.k8s:
+            state: present
+            definition:
+              apiVersion: rbac.authorization.k8s.io/v1
+              kind: ClusterRole
+              metadata:
+                name: "{{ alloy_cluster_role }}"
+              rules:
+                - apiGroups: [""]
+                  resources: ["nodes", "nodes/metrics", "pods", "services", "endpoints", "namespaces"]
+                  verbs: ["get", "list", "watch"]
+                - apiGroups: ["networking.k8s.io"]
+                  resources: ["ingresses"]
+                  verbs: ["get", "list", "watch"]
+                - nonResourceURLs: ["/metrics", "/metrics/cadvisor"]
+                  verbs: ["get"]
+
+        - name: Bind the discovery ClusterRole to the Alloy SA
+          kubernetes.core.k8s:
+            state: present
+            definition:
+              apiVersion: rbac.authorization.k8s.io/v1
+              kind: ClusterRoleBinding
+              metadata:
+                name: "{{ alloy_cluster_role }}"
+              roleRef:
+                apiGroup: rbac.authorization.k8s.io
+                kind: ClusterRole
+                name: "{{ alloy_cluster_role }}"
+              subjects:
+                - kind: ServiceAccount
+                  name: "{{ alloy_sa_name }}"
+                  namespace: "{{ alloy_namespace }}"
+
+        - name: Bind cluster-monitoring-view to the Alloy SA
+          kubernetes.core.k8s:
+            state: present
+            definition:
+              apiVersion: rbac.authorization.k8s.io/v1
+              kind: ClusterRoleBinding
+              metadata:
+                name: "{{ alloy_monitoring_crb }}"
+              roleRef:
+                apiGroup: rbac.authorization.k8s.io
+                kind: ClusterRole
+                name: cluster-monitoring-view
+              subjects:
+                - kind: ServiceAccount
+                  name: "{{ alloy_sa_name }}"
+                  namespace: "{{ alloy_namespace }}"
+
+        # --- Secrets --------------------------------------------------------
+        - name: Create the Grafana Cloud push credentials Secret
+          kubernetes.core.k8s:
+            state: present
+            apply: true
+            definition:
+              apiVersion: v1
+              kind: Secret
+              metadata:
+                name: alloy-grafana-cloud
+                namespace: "{{ alloy_namespace }}"
+              type: Opaque
+              stringData:
+                PROM_URL: "{{ grafana_cloud_prom_push_url }}"
+                PROM_USERNAME: "{{ grafana_cloud_prom_username }}"
+                LOKI_URL: "{{ grafana_cloud_loki_push_url }}"
+                LOKI_USERNAME: "{{ grafana_cloud_loki_username }}"
+                API_KEY: "{{ grafana_cloud_push_api_key }}"
+
+        - name: Create the AAP basic-auth Secret
+          kubernetes.core.k8s:
+            state: present
+            apply: true
+            definition:
+              apiVersion: v1
+              kind: Secret
+              metadata:
+                name: alloy-aap-auth
+                namespace: "{{ alloy_namespace }}"
+              type: Opaque
+              stringData:
+                AAP_USERNAME: "{{ aap_username }}"
+                AAP_PASSWORD: "{{ aap_password }}"
+
+        # --- ConfigMap with the Alloy configuration -------------------------
+        - name: Create the Alloy configuration ConfigMap
+          kubernetes.core.k8s:
+            state: present
+            apply: true
+            definition:
+              apiVersion: v1
+              kind: ConfigMap
+              metadata:
+                name: alloy-config
+                namespace: "{{ alloy_namespace }}"
+              data:
+                config.alloy: |
+                  // =====================================================================
+                  // Grafana Alloy configuration — sales.demos #265
+                  //
+                  // Three data paths:
+                  //   1. Prometheus federation from the cluster's Thanos Querier
+                  //   2. AAP controller metrics via basic auth
+                  //   3. Kubernetes API log streaming for four namespaces
+                  // =====================================================================
+
+                  // --- Prometheus remote-write endpoint ---------------------------------
+                  prometheus.remote_write "grafana_cloud" {
+                    endpoint {
+                      url = env("PROM_URL")
+                      basic_auth {
+                        username = env("PROM_USERNAME")
+                        password = env("API_KEY")
+                      }
+                    }
+                  }
+
+                  // --- Loki write endpoint ---------------------------------------------
+                  loki.write "grafana_cloud" {
+                    endpoint {
+                      url = env("LOKI_URL")
+                      basic_auth {
+                        username = env("LOKI_USERNAME")
+                        password = env("API_KEY")
+                      }
+                    }
+                  }
+
+                  // --- 1. Prometheus federation from Thanos Querier ---------------------
+                  // Federates selected series from the cluster's built-in monitoring.
+                  // The match[] list IS the series budget control.
+                  prometheus.scrape "thanos_federate" {
+                    targets = [{
+                      __address__ = "{{ alloy_thanos_url | regex_replace('^https?://', '') }}",
+                    }]
+
+                    scheme  = "https"
+                    metrics_path = "/federate"
+
+                    params = {
+                      "match[]" = [
+                        // KubeVirt VM metrics — the demo headline
+                        "{__name__=~\"kubevirt_vmi_.*\"}",
+                        // Node health
+                        "{__name__=\"node_cpu_seconds_total\"}",
+                        "{__name__=~\"node_memory_.*\"}",
+                        "{__name__=~\"node_filesystem_.*\"}",
+                        "{__name__=~\"node_network_.*\"}",
+                        // Pod and node status — namespace-filtered
+                        "{__name__=\"kube_pod_status_phase\",namespace=~\"aap|sales-demos-.*|openshift-cnv\"}",
+                        "{__name__=\"kube_pod_container_resource_requests\",namespace=~\"aap|sales-demos-.*|openshift-cnv\"}",
+                        "{__name__=~\"kube_node_status_.*\"}",
+                        // Container resource usage — namespace-filtered
+                        "{__name__=\"container_cpu_usage_seconds_total\",namespace=~\"aap|sales-demos-.*|openshift-cnv\"}",
+                        "{__name__=\"container_memory_working_set_bytes\",namespace=~\"aap|sales-demos-.*|openshift-cnv\"}",
+                      ],
+                    }
+
+                    // Bearer token from the SA mount for cluster-monitoring-view auth.
+                    bearer_token_file = "/var/run/secrets/kubernetes.io/serviceaccount/token"
+
+                    tls_config {
+                      insecure_skip_verify = true
+                    }
+
+                    scrape_interval = "60s"
+                    scrape_timeout  = "30s"
+
+                    // Drop noisy CPU modes to stay within the 10k series budget.
+                    forward_to = [prometheus.relabel.budget_filter.receiver]
+                  }
+
+                  prometheus.relabel "budget_filter" {
+                    // Drop irq, softirq, steal, nice, guest CPU modes.
+                    rule {
+                      source_labels = ["__name__", "mode"]
+                      regex         = "node_cpu_seconds_total;(irq|softirq|steal|nice|guest|guest_nice)"
+                      action        = "drop"
+                    }
+                    // Drop pause containers from cAdvisor metrics.
+                    rule {
+                      source_labels = ["container"]
+                      regex         = "POD"
+                      action        = "drop"
+                    }
+                    // Add an environment label for multi-cluster identification.
+                    rule {
+                      target_label  = "cluster"
+                      replacement   = "{{ aap_env_name }}"
+                    }
+                    forward_to = [prometheus.remote_write.grafana_cloud.receiver]
+                  }
+
+                  // --- 2. AAP controller metrics via basic auth ------------------------
+                  prometheus.scrape "aap_controller" {
+                    targets = [{
+                      __address__ = "{{ alloy_aap_metrics_host }}:{{ alloy_aap_metrics_port }}",
+                    }]
+
+                    metrics_path = "/api/v2/metrics/"
+
+                    basic_auth {
+                      username = env("AAP_USERNAME")
+                      password = env("AAP_PASSWORD")
+                    }
+
+                    scrape_interval = "60s"
+                    scrape_timeout  = "15s"
+
+                    forward_to = [prometheus.relabel.aap_label.receiver]
+                  }
+
+                  prometheus.relabel "aap_label" {
+                    rule {
+                      target_label  = "cluster"
+                      replacement   = "{{ aap_env_name }}"
+                    }
+                    forward_to = [prometheus.remote_write.grafana_cloud.receiver]
+                  }
+
+                  // --- 3. Kubernetes API log streaming ---------------------------------
+                  // Streams pod logs via the K8s API — no hostPath, no hostmount-anyuid.
+                  loki.source.kubernetes "pod_logs" {
+                    targets = discovery.relabel.log_filter.output
+                    forward_to = [loki.process.add_labels.receiver]
+                  }
+
+                  discovery.kubernetes "pods" {
+                    role = "pod"
+                  }
+
+                  discovery.relabel "log_filter" {
+                    targets = discovery.kubernetes.pods.targets
+
+                    // Keep only the four target namespaces.
+                    rule {
+                      source_labels = ["__meta_kubernetes_namespace"]
+                      regex         = "aap|sales-demos-.*|openshift-cnv|grafana-alloy"
+                      action        = "keep"
+                    }
+
+                    // Carry useful labels through.
+                    rule {
+                      source_labels = ["__meta_kubernetes_namespace"]
+                      target_label  = "namespace"
+                    }
+                    rule {
+                      source_labels = ["__meta_kubernetes_pod_name"]
+                      target_label  = "pod"
+                    }
+                    rule {
+                      source_labels = ["__meta_kubernetes_pod_container_name"]
+                      target_label  = "container"
+                    }
+                  }
+
+                  loki.process "add_labels" {
+                    // Add the cluster label for multi-env identification.
+                    stage.static_labels {
+                      values = {
+                        cluster = "{{ aap_env_name }}",
+                      }
+                    }
+                    forward_to = [loki.write.grafana_cloud.receiver]
+                  }
+
+        # --- DaemonSet ------------------------------------------------------
+        - name: Deploy the Alloy DaemonSet
+          kubernetes.core.k8s:
+            state: present
+            apply: true
+            definition:
+              apiVersion: apps/v1
+              kind: DaemonSet
+              metadata:
+                name: alloy
+                namespace: "{{ alloy_namespace }}"
+                labels:
+                  app.kubernetes.io/name: alloy
+              spec:
+                selector:
+                  matchLabels:
+                    app.kubernetes.io/name: alloy
+                template:
+                  metadata:
+                    labels:
+                      app.kubernetes.io/name: alloy
+                  spec:
+                    serviceAccountName: "{{ alloy_sa_name }}"
+                    containers:
+                      - name: alloy
+                        image: "{{ alloy_image }}"
+                        args:
+                          - run
+                          - /etc/alloy/config.alloy
+                          - --storage.path=/tmp/alloy
+                          - --server.http.listen-addr=0.0.0.0:12345
+                        ports:
+                          - name: http
+                            containerPort: 12345
+                            protocol: TCP
+                        envFrom:
+                          - secretRef:
+                              name: alloy-grafana-cloud
+                          - secretRef:
+                              name: alloy-aap-auth
+                        resources:
+                          requests:
+                            cpu: "{{ alloy_cpu_request }}"
+                            memory: "{{ alloy_memory_request }}"
+                          limits:
+                            cpu: "{{ alloy_cpu_limit }}"
+                            memory: "{{ alloy_memory_limit }}"
+                        volumeMounts:
+                          - name: config
+                            mountPath: /etc/alloy
+                            readOnly: true
+                        readinessProbe:
+                          httpGet:
+                            path: /-/ready
+                            port: http
+                          initialDelaySeconds: 15
+                          periodSeconds: 10
+                        livenessProbe:
+                          httpGet:
+                            path: /-/healthy
+                            port: http
+                          initialDelaySeconds: 15
+                          periodSeconds: 10
+                    volumes:
+                      - name: config
+                        configMap:
+                          name: alloy-config
+
+        # --- Wait for the DaemonSet to be ready -----------------------------
+        - name: Wait for Alloy pods to be ready
+          kubernetes.core.k8s_info:
+            api_version: apps/v1
+            kind: DaemonSet
+            name: alloy
+            namespace: "{{ alloy_namespace }}"
+          register: alloy_ds
+          retries: "{{ alloy_wait_retries }}"
+          delay: "{{ alloy_wait_delay }}"
+          until:
+            - alloy_ds.resources | default([]) | length > 0
+            - (alloy_ds.resources[0].status.numberReady | default(0)) ==
+              (alloy_ds.resources[0].status.desiredNumberScheduled | default(1))
+
+        - name: Summarize deployment
+          ansible.builtin.debug:
+            msg:
+              - "Grafana Alloy deployed on {{ aap_env_name }}."
+              - "Namespace:  {{ alloy_namespace }}"
+              - "Image:      {{ alloy_image }}"
+              - "Pods ready: {{ alloy_ds.resources[0].status.numberReady }}/{{ alloy_ds.resources[0].status.desiredNumberScheduled }}"
+              - "Metrics:    federation from Thanos Querier + AAP controller scrape"
+              - "Logs:       {{ alloy_log_namespaces | join(', ') }}"
+              - "Reverse with: -e alloy_state=absent"

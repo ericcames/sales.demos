@@ -379,6 +379,7 @@ in this repo, which for repo-specific skills is the correct scope.
 | `pah-link-aap` | `playbooks/link_hub.yml` | Point AAP project syncs at the curated `approved` repository, reversibly | Done ([#69](https://github.com/ericcames/sales.demos/issues/69)) |
 | `sales-demos-portal` | `playbooks/portal.yml` | Deploy the AAP self-service portal (RHDH + AAP plugin) via Helm | Done ([#103](https://github.com/ericcames/sales.demos/issues/103)) |
 | `sales-demos-orchestrator` | `playbooks/install_ao.yml` | Install Automation Orchestrator and its CloudNativePG database | Done ([#141](https://github.com/ericcames/sales.demos/issues/141)) |
+| `sales-demos-alloy` | `playbooks/deploy_alloy.yml` | Deploy Grafana Alloy for metrics and logs to Grafana Cloud | Done ([#265](https://github.com/ericcames/sales.demos/issues/265)) |
 
 See the [roadmap](ROADMAP.md) and the open issues. CI enforces that every skill
 added here appears in this table.

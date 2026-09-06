@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added -- Grafana Cloud Phase 1: deploy Alloy for metrics and logs (#265)
+- `playbooks/deploy_alloy.yml` deploys Grafana Alloy as a DaemonSet in the
+  `grafana-alloy` namespace, pushing metrics and logs to Grafana Cloud.
+  Three data paths: Prometheus federation from the cluster's Thanos Querier
+  (KubeVirt VM metrics, node health, pod/container usage), AAP controller
+  `/api/v2/metrics/` scrape via basic auth, and Kubernetes API log streaming
+  for four namespaces (`aap`, `sales-demos-<env>`, `openshift-cnv`,
+  `grafana-alloy`).
+- `-e alloy_state=absent` reverses the deployment, removing the namespace
+  and all cluster-scoped RBAC resources.
+- `sales-demos-alloy` skill with preflight checks and Grafana MCP
+  verification steps.
+- Five push credential keys added to `secrets.yml.example`:
+  `grafana_cloud_prom_push_url`, `grafana_cloud_prom_username`,
+  `grafana_cloud_loki_push_url`, `grafana_cloud_loki_username`,
+  `grafana_cloud_push_api_key`. Separate from the Viewer SA token used
+  for MCP reads.
+- Series budget: ~600–900 of the 10k free-tier limit via `match[]`
+  federation selectors and relabel rules that drop noisy CPU modes and
+  pause containers.
+
 ### Changed -- Worktrees mandatory for code changes (#267)
 - Strengthened CLAUDE.md worktree rule from conditional ("use when multiple
   sessions run") to unconditional ("always use a worktree for code changes").
