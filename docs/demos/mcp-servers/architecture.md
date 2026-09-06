@@ -26,10 +26,15 @@ flowchart TD
         AD["<b>aap-demo</b><br/>read-only · ~95 tools"]
     end
 
+    subgraph external ["External (stdio → SaaS)"]
+        GR["<b>grafana</b><br/>read-only (Viewer) · 81 tools"]
+    end
+
     CC -->|"kubeconfig<br/>(gitignored)"| OS
     CC -->|"kubeconfig<br/>(gitignored)"| OD
     CC -->|"bearer token<br/>(scope local)"| AS
     CC -->|"bearer token<br/>(scope local)"| AD
+    CC -->|"SA token<br/>(scope local)"| GR
 ```
 
 **Two transports, one reason.** The OpenShift servers run locally because a
@@ -57,9 +62,11 @@ Full tool listings and verification commands are in
 | `openshift-demo` | OpenShift | stdio (local) | read-only | 16 | kubeconfig | `.mcp.json` (committed) |
 | `aap-sandbox` | AAP | streamable HTTP | read-write | ~140 | bearer token | `claude mcp add --scope local` |
 | `aap-demo` | AAP | streamable HTTP | read-only | ~95 | bearer token | `claude mcp add --scope local` |
+| `grafana` | Grafana Cloud | stdio (local) | read-only (Viewer) | 81 | SA token | `claude mcp add --scope local` |
 
-Measured 2026-09-03 against `kubernetes-mcp-server@0.0.66` (OpenShift) and
-AAP 2.7 / controller 4.8.6 (AAP).
+Measured 2026-09-03 (OpenShift, AAP) and 2026-09-06 (Grafana) against
+`kubernetes-mcp-server@0.0.66` (OpenShift), AAP 2.7 / controller 4.8.6 (AAP),
+and `mcp-grafana` via `uvx` (Grafana).
 
 ---
 
@@ -83,6 +90,11 @@ Changing it requires deleting and recreating the CR — the flag is not idempote
 on the operator. `playbooks/mcp_server.yml` handles the detect-and-recreate
 sequence.
 
+On Grafana Cloud, read-only is in the token, not the server. The service account
+has the Viewer role, so all 81 tools are exposed but write calls return `403`.
+The server does not filter tools by role — unlike `--read-only` (which removes
+tools) or `allow_write_operations` (which changes the tool surface).
+
 ---
 
 ## What gets created
@@ -95,6 +107,16 @@ sequence.
 | `.mcp.json` entries | Server definitions, committed — Claude Code reads these at startup |
 
 Nothing is deployed to the cluster. The server runs as a local subprocess.
+
+### Grafana Cloud MCP server
+
+| Resource | Purpose |
+|---|---|
+| `claude mcp add --scope local` registration | Client-side config, not tracked |
+
+Nothing is deployed anywhere. The server runs as a local subprocess via `uvx`,
+connecting to Grafana Cloud over HTTPS. Credentials (URL and SA token) are
+passed as environment variables, read from the vault by `make-grafana-mcp.sh`.
 
 ### AAP MCP servers
 
@@ -130,10 +152,15 @@ diagram. Summary:
   (gitignored) → read by `kubernetes-mcp-server` at startup
 - **AAP:** vault → `make-aap-mcp.sh` → creates OAuth token via gateway API →
   `claude mcp add --scope local` (user config, not tracked)
+- **Grafana Cloud:** vault → `make-grafana-mcp.sh` → `claude mcp add --scope
+  local` with env vars (user config, not tracked) → read by `mcp-grafana` at
+  startup
 
 All credentials originate from `playbooks/group_vars/all/secrets.yml`
 (vault-encrypted). Nothing is committed in plaintext except the hostnames in
-`connection.yml`.
+`connection.yml`. Grafana Cloud credentials (`grafana_cloud_url`,
+`grafana_cloud_sa_token`) are top-level vault keys, not under `env_secrets`,
+because the instance spans both environments.
 
 ---
 
@@ -143,6 +170,7 @@ All credentials originate from `playbooks/group_vars/all/secrets.yml`
 |---|---|---|
 | `make-kubeconfig.sh` per environment | ~5 s | Vault decrypt + file write |
 | `make-aap-mcp.sh` per environment | ~10 s | Token creation + route lookup + client registration |
+| `make-grafana-mcp.sh` | ~5 s | Vault decrypt + client registration (no token creation) |
 | `/sales-demos-mcp` full run (both environments) | ~2 min | Includes verification |
 | `mcp_server.yml` (deploy AAP MCP to cluster) | ~3 min | Part of `/ocpvirt-setup`, not part of `/sales-demos-mcp` |
 | AAP MCP pod readiness after deploy | ~60 s | Route returns 503 until the pod serves |
@@ -158,8 +186,11 @@ All credentials originate from `playbooks/group_vars/all/secrets.yml`
   Console needs a platform version the demo instance does not have, and the
   Ansible write path needs no MCP server at all — see
   [`servicenow.md`](servicenow.md)
-- **Agentic observability** — Dynatrace MCP server.
-  [#99](https://github.com/ericcames/sales.demos/issues/99)
+- **Agentic observability — data pipeline.** The Grafana Cloud MCP server is
+  connected (#260) but no data is flowing in yet — Phase 1 in
+  [`docs/plan/grafana-plan.md`](../../plan/grafana-plan.md) is deploying Grafana
+  Alloy to push metrics and logs. Dynatrace (#99) remains the application-level
+  complement
 
 ---
 
@@ -170,3 +201,4 @@ All credentials originate from `playbooks/group_vars/all/secrets.yml`
 | Bearer tokens (manual — see [`server-inventory.md`](server-inventory.md#aap--bearer-token)) | `.mcp.json` (committed) |
 | Kubeconfigs (re-generated on next run) | `AnsibleMCPServer` CR (in-cluster, survives client-side cleanup) |
 | `claude mcp add` registrations (local only) | Server definitions and access posture |
+| Grafana SA token (revoke in Grafana UI) | Grafana Cloud instance and service account |

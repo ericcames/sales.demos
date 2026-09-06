@@ -57,7 +57,7 @@ live.
 
 ---
 
-## Beat 2 · The four servers (3–6)
+## Beat 2 · The five servers (3–6)
 
 Switch to the status table. Show it on screen or recite from
 [`server-inventory.md`](server-inventory.md):
@@ -68,11 +68,14 @@ Switch to the status table. Show it on screen or recite from
 | `openshift-demo` | OpenShift | stdio | read-only | 16 |
 | `aap-sandbox` | AAP | HTTP | read-write | ~140 |
 | `aap-demo` | AAP | HTTP | read-only | ~95 |
+| `grafana` | Grafana Cloud | stdio | read-only (Viewer) | 81 |
 
-> **"Four servers. Two platforms — OpenShift and Ansible Automation Platform.
-> Two environments — sandbox, where I break things, and demo, where a customer
-> watches. Demo is read-only on both. That's not a setting I toggled — it
-> removes the tools. The server physically cannot accept a delete request."**
+> **"Five servers. Three platforms — OpenShift, Ansible Automation Platform,
+> and Grafana Cloud. Two environments — sandbox, where I break things, and
+> demo, where a customer watches. Demo is read-only on both. Grafana Cloud is
+> read-only everywhere — the service account is Viewer. That's not a setting
+> I toggled — on OpenShift it removes the tools. The server physically cannot
+> accept a delete request."**
 
 Point at 25 vs 16: nine mutating tools removed. The audience does not need the
 list — they need to know the enforcement is structural, not advisory.
@@ -230,7 +233,7 @@ gets no answer to any of them.
 
 ## If you only get ten minutes
 
-Keep Beats 1, 2, 4 and 6 — the live query, the four servers with the access
+Keep Beats 1, 2, 4 and 6 — the live query, the five servers with the access
 posture, the governed write path, and the honest bits. Drop the rest.
 
 That is still a complete argument: reads everything, changes nothing except
@@ -244,7 +247,7 @@ Every claim in this track is checkable in the repo:
 
 | Claim | Source |
 |---|---|
-| Four servers, two platforms, two environments | `.mcp.json`, `SKILL.md` lines 19–26 |
+| Five servers, three platforms, two environments | `.mcp.json`, `SKILL.md`, `docs/plan/grafana-plan.md` |
 | Demo is read-only, sandbox is read-write | `.mcp.json` line 21 (`--read-only`), `inventory/group_vars/demo/mcp.yml` |
 | Nine mutating tools removed by `--read-only` | [`server-inventory.md`](server-inventory.md#the-nine-tools---read-only-removes) |
 | 25 tools on sandbox, 16 on demo | Measured 2026-09-03, [`server-inventory.md`](server-inventory.md) |

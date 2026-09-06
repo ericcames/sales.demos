@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed -- MCP demo docs updated for five servers (#262)
+- Updated `server-inventory.md`, `architecture.md`, `talk-track.md`,
+  `run-sheet.md`, `README.md`, and `objections.md` to reflect Grafana Cloud
+  as the fifth MCP server (81 tools, Viewer SA, stdio via `uvx`).
+- Added Grafana tool categories, credential flow, verification, and
+  troubleshooting to the reference docs.
+- Added "What about observability?" objection/answer.
+- Demo narrative unchanged — still focused on the OpenShift + AAP governance
+  story; Grafana appears in counts and reference tables only.
+
 ### Added -- Grafana Cloud MCP server (#260)
 - Official `grafana/mcp-grafana` server wired up via `--scope local`,
   following the AAP MCP server pattern. One server named `grafana`

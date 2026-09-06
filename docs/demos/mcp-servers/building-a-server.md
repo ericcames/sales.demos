@@ -201,7 +201,7 @@ Two things follow that are easy to get wrong:
 ## Related
 
 - [`servicenow.md`](servicenow.md) — the worked case: why waiting beats adopting
-- [`architecture.md`](architecture.md) — the four servers this repo runs
+- [`architecture.md`](architecture.md) — the five servers this repo runs
 - [`../../plan/platform-addons-plan.md`](../../plan/platform-addons-plan.md) —
   the transport decision and the credential pattern, with reasoning
 - [`../../plan/network-mcp-plan.md`](../../plan/network-mcp-plan.md) — the

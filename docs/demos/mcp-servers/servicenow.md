@@ -6,7 +6,7 @@ The ServiceNow MCP server worth showing a customer is ServiceNow's own, and it
 needs a platform version this repo's demo instance does not have yet. Until
 then, the Ansible half of the story works without any MCP server at all.
 
-ServiceNow is **not** one of the four servers this repo runs — see
+ServiceNow is **not** one of the five servers this repo runs — see
 [`server-inventory.md`](server-inventory.md) for those.
 
 ---
@@ -148,7 +148,7 @@ ServiceNow instance is not one.
 
 - [`building-a-server.md`](building-a-server.md) — what to do when no server
   exists, or none you would ship
-- [`server-inventory.md`](server-inventory.md) — the four servers this repo
+- [`server-inventory.md`](server-inventory.md) — the five servers this repo
   actually runs
 - [`objections.md`](objections.md) — including what to say when someone asks
   about a platform with no MCP server

@@ -6,10 +6,11 @@ audience sees the same view the assistant works from.
 
 ---
 
-## The four servers at a glance
+## The five servers at a glance
 
-Measured 2026-09-03 against `kubernetes-mcp-server@0.0.66` and AAP 2.7
-(controller 4.8.6).
+Measured 2026-09-03 (OpenShift, AAP) and 2026-09-06 (Grafana) against
+`kubernetes-mcp-server@0.0.66`, AAP 2.7 (controller 4.8.6), and
+`mcp-grafana` via `uvx`.
 
 | Server | Platform | Transport | Access | Tools | Auth | Source |
 |---|---|---|---|---|---|---|
@@ -17,17 +18,22 @@ Measured 2026-09-03 against `kubernetes-mcp-server@0.0.66` and AAP 2.7
 | `openshift-demo` | OpenShift | stdio (local) | read-only | 16 | kubeconfig | `.mcp.json` (committed) |
 | `aap-sandbox` | AAP | streamable HTTP | read-write | ~140 | bearer token | `claude mcp add --scope local` |
 | `aap-demo` | AAP | streamable HTTP | read-only | ~95 | bearer token | `claude mcp add --scope local` |
+| `grafana` | Grafana Cloud | stdio (local) | read-only (Viewer) | 81 | SA token | `claude mcp add --scope local` |
 
-**One server per environment, named after it.** The #16 precedent: when two
-environments were not kept distinct, `--limit demo` silently resolved to
-sandbox's hostname and sandbox's token. The environment is in the server's
-*name* so you pick it by picking the tool.
+**One server per environment, named after it** — except Grafana. The #16
+precedent: when two environments were not kept distinct, `--limit demo` silently
+resolved to sandbox's hostname and sandbox's token. The environment is in the
+server's *name* so you pick it by picking the tool. Grafana Cloud is a single
+external instance that spans both environments, so one server named `grafana`
+rather than two.
 
 **`demo` is read-only on both platforms.** That is the environment customers
 watch. The write path runs against `sandbox` — the environment you break for
-velocity.
+velocity. Grafana is read-only by a different mechanism — the service account
+has the Viewer role, so write tools are exposed but the token lacks permission
+to execute them.
 
-**Four is the whole list.** There is no ServiceNow, Dynatrace or network vendor
+**Five is the whole list.** There is no ServiceNow, Dynatrace or network vendor
 server here, and the tables below are complete rather than abridged. For why
 ServiceNow is absent rather than pending, see [`servicenow.md`](servicenow.md);
 for what building one would take, [`building-a-server.md`](building-a-server.md).
@@ -121,6 +127,38 @@ agent, they do not change anything.
 
 ---
 
+## Grafana Cloud MCP server — 81 tools
+
+Measured 2026-09-06. The server is the official `mcp-grafana` from Grafana Labs
+(Apache-2.0), run locally via `uvx`. The service account has the **Viewer**
+role — write tools are exposed but return `403` when called.
+
+| Category | Representative tools | Count |
+|---|---|---|
+| Dashboards | `search_dashboards`, `get_dashboard_by_uid`, `get_dashboard_summary`, `get_dashboard_panel_queries`, `get_panel_image`, `update_dashboard` | 8 |
+| Prometheus | `query_prometheus`, `query_prometheus_histogram`, `list_prometheus_metric_names`, `list_prometheus_label_names` | 6 |
+| Loki | `query_loki_logs`, `query_loki_patterns`, `query_loki_stats`, `list_loki_label_names`, `analyze_loki_labels` | 8 |
+| Alerting | `alerting_manage_rules`, `alerting_manage_routing`, `alerting_manage_silences`, `get_alert_group`, `list_alert_groups`, `update_alert_group` | 6 |
+| Incidents | `create_incident`, `get_incident`, `list_incidents`, `update_incident`, `add_activity_to_incident`, `list_incident_custom_fields` | 6 |
+| Tempo (traces) | `tempo_traceql-search`, `tempo_get-trace`, `tempo_trace-diff`, `tempo_traceql-metrics-range`, `tempo_get-attribute-names` | 9 |
+| Pyroscope (profiling) | `query_pyroscope`, `list_pyroscope_profile_types`, `list_pyroscope_label_names` | 4 |
+| OnCall | `get_current_oncall_users`, `list_oncall_schedules`, `list_oncall_teams`, `list_oncall_users`, `get_oncall_shift` | 5 |
+| Datasources | `list_datasources`, `get_datasource`, `create_datasource`, `update_datasource`, `check_datasources_health` | 5 |
+| Annotations | `create_annotation`, `get_annotations`, `update_annotation`, `get_annotation_tags` | 4 |
+| Sift | `get_sift_analysis`, `get_sift_investigation`, `list_sift_investigations`, `find_error_pattern_logs`, `find_slow_requests` | 5 |
+| Navigation & docs | `generate_deeplink`, `search_docs`, `get_doc`, `search_plugin_information` | 4 |
+| Snapshots | `create_snapshot`, `delete_snapshot`, `get_snapshot`, `list_snapshots` | 4 |
+| Other | `user_info`, `grafana_api_request`, `get_assertions`, `search_folders`, `create_folder`, `get_plugin`, `install_plugin`, `validate_provisioning_file`, `list_provisioning_repositories`, `suggest_loki_alloy_label_config` | 11 |
+
+**Read-only is not enforced at the server.** Unlike OpenShift's `--read-only`
+(which removes tools) or AAP's `aap_mcp_allow_write_operations` (which changes
+the tool surface), the Grafana server exposes all 81 tools regardless of the
+service account's role. Write calls (`update_dashboard`, `create_incident`,
+etc.) simply fail with `403`. The governance is in the token, not the tool
+surface.
+
+---
+
 ## Credential flow
 
 ### OpenShift — kubeconfig
@@ -183,6 +221,35 @@ curl -sk -X DELETE -H "Authorization: Bearer <token>" \
   https://<aap_hostname>/api/gateway/v1/tokens/<id>/
 ```
 
+### Grafana Cloud — service account token
+
+```
+secrets.yml (vault-encrypted)
+    ├── grafana_cloud_url
+    └── grafana_cloud_sa_token
+
+        ↓  utilities/make-grafana-mcp.sh
+
+claude mcp add --scope local
+    -e GRAFANA_URL=...
+    -e GRAFANA_SERVICE_ACCOUNT_TOKEN=...
+    grafana -- uvx mcp-grafana
+
+        ↓  env vars read at server startup
+
+mcp-grafana (stdio, local process via uvx)
+```
+
+**No token creation step.** Unlike the AAP flow, which mints a token via the
+gateway API, the Grafana Cloud service account token is created once in the
+Grafana UI and stored in the vault. `make-grafana-mcp.sh` reads it from the
+vault and passes it as an environment variable — there is nothing to mint and
+nothing to rotate automatically.
+
+**The token does not clean itself up either.** Same exception as AAP. Revoke it
+in the Grafana Cloud UI: Administration > Service Accounts > \<account\> >
+Tokens > Delete.
+
 ---
 
 ## Verification commands
@@ -236,10 +303,30 @@ curl -sk -o /dev/null -w '%{http_code}\n' -X POST "https://$MCP_HOST/mcp" \
 `200` with `"serverInfo":{"name":"aap"}` is the pass. A `503` means the Route
 is admitted but the pod is not serving yet — wait, do not reconfigure.
 
+### Grafana Cloud — prove the server connects
+
+The Grafana MCP server is stdio — it starts and stops with Claude Code. After
+running `make-grafana-mcp.sh`, restart Claude Code and confirm:
+
+```bash
+claude mcp list   # grafana should appear
+```
+
+Then call a read-only tool to verify the SA token works:
+
+```bash
+# Inside Claude Code, ask:
+#   "What datasources are configured in Grafana?"
+# The assistant calls mcp__grafana__list_datasources
+```
+
+A fresh free-tier instance may have no datasources yet — an empty list with no
+error is a pass.
+
 ### Confirm the client sees all servers
 
 ```bash
-claude mcp list
+claude mcp list   # all five servers should appear
 ```
 
 ---
@@ -258,3 +345,7 @@ claude mcp list
 | AAP MCP write tools missing | `aap_mcp_allow_write_operations` is false | Intentional on `demo`. Changing it requires delete-and-recreate — re-run `mcp_server.yml` |
 | `npx: command not found` | Node not installed | See preflight in the `/sales-demos-mcp` skill |
 | `no aap-mcp route` | MCP server not deployed | Run `/ocpvirt-setup` or `playbooks/mcp_server.yml` first |
+| `grafana` not in `claude mcp list` | Server not registered yet | Run `bash utilities/make-grafana-mcp.sh`, then restart Claude Code |
+| Grafana tool returns `401` | SA token revoked or expired | Recreate the token in the Grafana Cloud UI, update the vault, re-run `make-grafana-mcp.sh` |
+| Grafana tool returns `403` | SA has Viewer role, cannot write | Intentional — read-only governance is in the token. If write access is needed, change the SA role in the Grafana UI |
+| `uvx: command not found` | uv not installed | Install uv: `curl -LsSf https://astral.sh/uv/install.sh \| sh` |

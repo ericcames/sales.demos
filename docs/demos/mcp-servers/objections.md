@@ -73,6 +73,29 @@ read + JSON parse every time we need to ask a cluster a question."
 
 ---
 
+## "What about observability?"
+
+**Grafana Cloud is connected. No data flowing yet.**
+
+> **"We have a Grafana Cloud MCP server — 81 tools, covering dashboards,
+> Prometheus queries, Loki logs, alerting, incidents, traces, and more. The
+> service account is Viewer — read-only, same governance thesis as the rest.
+> Right now it's connected but the clusters aren't pushing data yet. Phase 1 is
+> deploying Grafana Alloy to ship metrics and logs. Once that's in, the agent
+> can answer 'is the cluster healthy' or 'how long did the last provision take'
+> the same way it answers 'what VMs are running' today."**
+
+If they ask about Dynatrace: "Dynatrace is the application-level complement —
+OneAgent, Davis AI, the things you'd use for APM. Grafana Cloud is
+infrastructure-level — cluster metrics, logs, job telemetry. Both are tracked,
+neither replaces the other."
+
+Source: [`docs/plan/grafana-plan.md`](../../plan/grafana-plan.md),
+[#260](https://github.com/ericcames/sales.demos/issues/260),
+[#99](https://github.com/ericcames/sales.demos/issues/99).
+
+---
+
 ## "What about MCP and networking devices?"
 
 **Not yet. Options brief is written, decisions are pending.**
