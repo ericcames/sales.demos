@@ -508,4 +508,36 @@ Environment secrets.
   rewrite a branch another session has already pushed — that is theirs to fix;
   say so and let the user decide.
 
-  Consider an isolated worktree for anything long-running.
+  **Use an isolated worktree when multiple sessions make code changes at the
+  same time.** A worktree is a second checkout of the same repo at a different
+  branch, in a sibling directory, sharing one `.git` object store. Each session
+  gets its own branch, index, and working tree — the cross-session failures
+  above become impossible.
+
+  ```bash
+  # Create — sibling directory, descriptive suffix
+  git worktree add ../sales.demos-grafana docs-265-grafana-phase1-plan
+
+  # List all worktrees
+  git worktree list
+
+  # Clean up after merge
+  git worktree remove ../sales.demos-grafana
+  ```
+
+  Claude Code's Agent tool accepts `isolation: "worktree"` and automates this —
+  the worktree auto-cleans if the agent makes no changes; otherwise the path and
+  branch come back in the result.
+
+  **When to use one:** any session that will create a branch, make commits, or
+  push — i.e., anything that touches git state. **When not needed:** read-only
+  sessions that only query MCP servers, run `oc get`, or tail logs.
+
+  **What worktrees do not solve: cluster conflicts.** Two sessions modifying the
+  same OpenShift namespace, AAP objects, or Grafana resources can still collide.
+  Coordinate by giving each session a different scope — different playbooks,
+  different namespaces, or different environments via `--limit`.
+
+  The defensive habits above (re-check branch, explicit `git add`, `--head` on
+  PR create) stay as a safety net — they protect against races within a single
+  worktree and are still correct even with worktrees.

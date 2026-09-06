@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added -- Git worktree guidance for multi-agent work (#267)
+- Expanded CLAUDE.md shared-worktree section with practical worktree
+  instructions: when to use one, how to create and clean up, Claude Code's
+  `isolation: "worktree"` option, and what worktrees don't solve (cluster
+  conflicts).
+
 ### Added -- Grafana Cloud Phase 1 design (#265)
 - Expanded `docs/plan/grafana-plan.md` with the Phase 1 architecture: Grafana
   Alloy on OCP, Prometheus federation from built-in monitoring, AAP
