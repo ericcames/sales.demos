@@ -234,16 +234,52 @@ Once data flows, the existing MCP server (Phase 0) can query it:
 
 No new collection dependencies — `kubernetes.core` covers everything.
 
-## Phase 2 — Demo story
+## Phase 2 + 3 — Dashboard as code (#275)
 
-Pre-built dashboards showing VM provisioning times, AAP job durations, cluster
-resource utilization. The agent queries Grafana via MCP to answer "how long did
-the last provision take?" or "is the cluster healthy enough for the next demo?"
-Pairs with Dynatrace (#99): Dynatrace for application-level (OneAgent, Davis),
-Grafana for infrastructure-level.
+Phases 2 and 3 are combined: dashboards are defined as committed JSON and
+pushed to Grafana Cloud by a playbook, so the demo story and the config-as-code
+thesis ship together.
 
-## Phase 3 — Dashboard as code
+### What shipped
 
-Grafana dashboards defined in the repo (JSON or Terraform's Grafana provider),
-applied by a playbook. Matches the config-as-code thesis running through every
-use case here.
+A single "Cluster Health" dashboard (`playbooks/files/grafana/cluster-health.json`)
+that serves as both a pre-demo readiness check and a customer-facing demo artifact.
+Five sections:
+
+1. **Overview** — stat panels for nodes ready, VMs running, pods healthy, AAP
+   status, Alloy status, series budget.
+2. **Cluster Nodes** — CPU utilization, memory usage, filesystem usage, network
+   throughput.
+3. **KubeVirt VMs** — VM status table, per-VM CPU/memory/network.
+4. **AAP Platform** — capacity gauge, running/pending jobs, managed hosts, job
+   templates, DB connections, license expiry, pod CPU/memory.
+5. **Logs** — Loki log panel with namespace filtering.
+
+A `cluster` template variable makes one dashboard definition work for both
+sandbox and demo environments. A `namespace` multi-select variable filters logs.
+
+### Credential strategy
+
+A second Grafana Cloud service account with **Editor** role
+(`grafana_cloud_editor_sa_token`). The existing Viewer SA stays for MCP reads —
+the governance thesis (MCP reads, Ansible writes) is a demo talking point, so
+the tokens stay separate.
+
+### Files
+
+| File | Action |
+|------|--------|
+| `playbooks/files/grafana/cluster-health.json` | Create — the dashboard JSON |
+| `playbooks/deploy_dashboard.yml` | Create — the playbook |
+| `.claude/skills/sales-demos-dashboard/SKILL.md` | Create — the skill |
+| `playbooks/group_vars/all/secrets.yml.example` | Modify — add Editor SA token key |
+| `utilities/check-secrets-example.py` | Modify — remove `grafana_cloud_url` from STAGED |
+| `CHANGELOG.md` | Modify |
+
+No new collection dependencies — `ansible.builtin.uri` is core Ansible.
+
+### What's next
+
+- More dashboards (VM provisioning timing, AAP job duration histograms)
+- Alerting rules (Phase 4, not yet planned)
+- Dynatrace pairing (#99) for application-level observability

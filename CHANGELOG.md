@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added -- Grafana Cloud Phase 2/3: dashboard as code (#275)
+- `playbooks/files/grafana/cluster-health.json` defines a "Cluster Health"
+  dashboard covering five sections: overview stat panels, cluster nodes
+  (CPU/memory/filesystem/network), KubeVirt VMs (status table, per-VM
+  CPU/memory/network), AAP platform (capacity, jobs, hosts, pod resources),
+  and Loki logs with namespace filtering.
+- `playbooks/deploy_dashboard.yml` pushes the dashboard to Grafana Cloud
+  via the HTTP API. Creates a "Sales Demos" folder, idempotent re-runs.
+- `sales-demos-dashboard` skill with preflight checks and MCP verification.
+- `grafana_cloud_editor_sa_token` added to `secrets.yml.example` — a
+  separate Editor-role service account so MCP reads (Viewer) and Ansible
+  writes (Editor) stay on separate tokens.
+- `cluster` template variable lets one dashboard serve both sandbox and demo.
+
 ### Added -- Grafana Cloud Phase 1: deploy Alloy for metrics and logs (#265)
 - `playbooks/deploy_alloy.yml` deploys Grafana Alloy as a DaemonSet in the
   `grafana-alloy` namespace, pushing metrics and logs to Grafana Cloud.

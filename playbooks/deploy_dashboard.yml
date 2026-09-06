@@ -1,0 +1,85 @@
+---
+# ===========================================================================
+# deploy_dashboard.yml — push Grafana dashboards to Grafana Cloud. Issue #275.
+#
+#   ansible-playbook playbooks/deploy_dashboard.yml \
+#     --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
+#
+# WHAT THIS DOES. Reads dashboard JSON from playbooks/files/grafana/, creates
+# a "Sales Demos" folder in Grafana Cloud, and pushes the dashboard via the
+# Grafana HTTP API. Idempotent — re-runs update in place.
+#
+# RUNS AGAINST LOCALHOST. Grafana Cloud is a single external service that
+# spans both environments, so this playbook does not target any cluster host
+# or require --limit. Vault variables load from group_vars/all/secrets.yml
+# (localhost is in the implicit `all` group).
+#
+# SEPARATE EDITOR SA TOKEN. The existing grafana_cloud_sa_token is Viewer
+# role (for MCP reads). Dashboard push needs Editor role. The governance
+# thesis — MCP reads, Ansible writes — is a demo talking point, so the
+# tokens stay separate.
+# ===========================================================================
+
+- name: Deploy Grafana Cloud dashboards
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  vars:
+    grafana_folder_uid: "sales-demos"
+    grafana_folder_title: "Sales Demos"
+
+  tasks:
+    - name: Assert Grafana Cloud credentials are set
+      ansible.builtin.assert:
+        that:
+          - grafana_cloud_url is defined
+          - grafana_cloud_url | length > 0
+          - "'CHANGEME' not in grafana_cloud_url"
+          - grafana_cloud_editor_sa_token is defined
+          - grafana_cloud_editor_sa_token | length > 0
+          - "'CHANGEME' not in grafana_cloud_editor_sa_token"
+        fail_msg: >-
+          grafana_cloud_url and grafana_cloud_editor_sa_token must be set in
+          the vault. See secrets.yml.example for instructions.
+        quiet: true
+
+    - name: Create the Sales Demos folder
+      ansible.builtin.uri:
+        url: "{{ grafana_cloud_url }}/api/folders"
+        method: POST
+        headers:
+          Authorization: "Bearer {{ grafana_cloud_editor_sa_token }}"
+          Content-Type: "application/json"
+        body_format: json
+        body:
+          uid: "{{ grafana_folder_uid }}"
+          title: "{{ grafana_folder_title }}"
+        status_code: [200, 409]
+
+    - name: Load the dashboard JSON
+      ansible.builtin.set_fact:
+        dashboard_json: "{{ lookup('ansible.builtin.file', playbook_dir ~ '/files/grafana/cluster-health.json') | from_json }}"
+
+    - name: Push the dashboard to Grafana Cloud
+      ansible.builtin.uri:
+        url: "{{ grafana_cloud_url }}/api/dashboards/db"
+        method: POST
+        headers:
+          Authorization: "Bearer {{ grafana_cloud_editor_sa_token }}"
+          Content-Type: "application/json"
+        body_format: json
+        body:
+          dashboard: "{{ dashboard_json | combine({'id': None}) }}"
+          folderUid: "{{ grafana_folder_uid }}"
+          overwrite: true
+          message: "Applied by playbooks/deploy_dashboard.yml"
+        status_code: [200]
+      register: grafana_push
+
+    - name: Report the dashboard URL
+      ansible.builtin.debug:
+        msg:
+          - "Dashboard pushed to Grafana Cloud."
+          - "URL: {{ grafana_cloud_url }}{{ grafana_push.json.url }}"
+          - "Version: {{ grafana_push.json.version }}"
