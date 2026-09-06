@@ -268,6 +268,10 @@ resource "kubernetes_secret" "windows_sysprep" {
             </OOBE>
 
             <UserAccounts>
+              <AdministratorPassword>
+                <Value>${var.windows_admin_password}</Value>
+                <PlainText>true</PlainText>
+              </AdministratorPassword>
               <LocalAccounts>
                 <LocalAccount wcm:action="add"
                               xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State">
@@ -281,6 +285,16 @@ resource "kubernetes_secret" "windows_sysprep" {
                 </LocalAccount>
               </LocalAccounts>
             </UserAccounts>
+
+            <AutoLogon>
+              <Enabled>true</Enabled>
+              <LogonCount>1</LogonCount>
+              <Username>${var.windows_admin_username}</Username>
+              <Password>
+                <Value>${var.windows_admin_password}</Value>
+                <PlainText>true</PlainText>
+              </Password>
+            </AutoLogon>
 
             <FirstLogonCommands>
               <SynchronousCommand wcm:action="add"

@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed -- Windows clone prompts for password change on built-in Administrator (#255)
+- Added `<AdministratorPassword>` to the sysprep answer file to set the
+  built-in Administrator's password and suppress the "must change password at
+  first logon" prompt. The `<LocalAccount>` alone creates `demoadmin` but
+  leaves the built-in account with an expired password.
+- Added `<AutoLogon>` for `demoadmin` with `<LogonCount>1</LogonCount>` so
+  the first login happens automatically and `FirstLogonCommands` (WinRM HTTPS
+  listener setup) execute without requiring a manual VNC login.
+
 ### Fixed -- Windows clone sysprep answer file never applied (#234)
 - Renamed the Secret key from `autounattend.xml` to `Unattend.xml` in
   `terraform/ocpvirt/main.tf`. After sysprep, Windows mini-setup searches for
