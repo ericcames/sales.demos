@@ -311,6 +311,16 @@ resource "kubernetes_secret" "windows_sysprep" {
                      ansible_winrm_server_cert_validation ignore. -->
                 <CommandLine>powershell -ExecutionPolicy Bypass -NoProfile -Command "&amp; { Enable-PSRemoting -Force -SkipNetworkProfileCheck; $c = New-SelfSignedCertificate -DnsName $env:COMPUTERNAME -CertStoreLocation Cert:\LocalMachine\My; New-Item -Path WSMan:\localhost\Listener -Transport HTTPS -Address * -CertificateThumbPrint $c.Thumbprint -Force; Set-Item -Path WSMan:\localhost\Service\Auth\Basic -Value $true; New-NetFirewallRule -DisplayName 'WinRM HTTPS' -Direction Inbound -LocalPort 5986 -Protocol TCP -Action Allow }"</CommandLine>
               </SynchronousCommand>
+              <SynchronousCommand wcm:action="add"
+                                  xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State">
+                <Order>2</Order>
+                <Description>Allow non-built-in Administrators to authenticate over WinRM</Description>
+                <!-- Without this, UAC remote access restrictions cause NTLM
+                     auth to fail with "credentials were rejected" for any
+                     local admin account other than the built-in Administrator
+                     (RID 500). demoadmin is such an account. -->
+                <CommandLine>reg add HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System /v LocalAccountTokenFilterPolicy /t REG_DWORD /d 1 /f</CommandLine>
+              </SynchronousCommand>
             </FirstLogonCommands>
           </component>
         </settings>

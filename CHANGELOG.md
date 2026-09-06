@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed -- AAP cannot WinRM into Windows VMs (#257)
+- Added `LocalAccountTokenFilterPolicy = 1` as a second `FirstLogonCommands`
+  step in the sysprep answer file. Without it, Windows UAC remote access
+  restrictions reject NTLM authentication for non-built-in Administrator
+  accounts like `demoadmin`, even though the password is correct.
+- Added "Sales Demos - Windows Machine" credential to CaC — Machine type,
+  username `demoadmin`, password from `linux_admin_password`.
+
 ### Fixed -- Windows clone prompts for password change on built-in Administrator (#255)
 - Added `<AdministratorPassword>` to the sysprep answer file to set the
   built-in Administrator's password and suppress the "must change password at
