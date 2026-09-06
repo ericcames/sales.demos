@@ -22,6 +22,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   file outright.
 - `quay_windows_image` updated to `20260906-0300`, built with the producer fix.
 
+  **Diagnostic trail — three stacked bugs, each masking the next:**
+  1. Producer cached its answer file in `%WINDIR%\Panther` (precedence 3),
+     preventing Windows from ever reaching the consumer's CD (precedence 5).
+     Fixed by `image.builder.pipeline` PR #71.
+  2. With the cache gone, Windows still stopped at the OOBE region screen
+     (![screenshot](docs/images/win234-oobe-region-screen-wrong-filename.png))
+     because the Secret key was `autounattend.xml` — the fresh-install name.
+     After sysprep, Windows searches for `Unattend.xml`.
+  3. With the key renamed, Windows found the file on `D:\` for the first time
+     and rejected it: *"The answer file is invalid"* for the specialize pass
+     (![screenshot](docs/images/win234-specialize-invalid-computername.png)).
+     The `ComputerName` exceeded the 15-character NetBIOS limit.
+
+  **Lesson: do not kill the virt-launcher pod mid-OOBE.** Deleting the pod to
+  force a Secret refresh corrupted the OOBE state on the root disk
+  (![screenshot](docs/images/win234-corrupted-oobe-from-pod-kill.png)),
+  requiring a full destroy-and-reprovision. Restart the VM via the OpenShift
+  console or wait for the `provision_vm.yml` playbook to converge.
+
 ### Changed -- single copy-paste SSH command in Check VMs output (#218)
 - The Check VMs job output now shows one command an SE can paste directly into
   a terminal: `virtctl ssh --kubeconfig ~/.kube/<env>.kubeconfig -o
