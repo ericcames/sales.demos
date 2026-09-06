@@ -35,6 +35,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
      (![screenshot](docs/images/win234-specialize-invalid-computername.png)).
      The `ComputerName` exceeded the 15-character NetBIOS limit.
 
+  **Proven end-to-end:** clone reaches the Windows lock screen with no manual
+  intervention
+  (![screenshot](docs/images/win234-clone-reaches-desktop.png)).
+
   **Lesson: do not kill the virt-launcher pod mid-OOBE.** Deleting the pod to
   force a Secret refresh corrupted the OOBE state on the root disk
   (![screenshot](docs/images/win234-corrupted-oobe-from-pod-kill.png)),
