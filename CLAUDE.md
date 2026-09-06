@@ -508,30 +508,40 @@ Environment secrets.
   rewrite a branch another session has already pushed — that is theirs to fix;
   say so and let the user decide.
 
-  **Use an isolated worktree when multiple sessions make code changes at the
-  same time.** A worktree is a second checkout of the same repo at a different
-  branch, in a sibling directory, sharing one `.git` object store. Each session
-  gets its own branch, index, and working tree — the cross-session failures
-  above become impossible.
+  **Always use an isolated worktree for code changes.** Do not create branches,
+  edit files, or commit in the main checkout — treat it as read-only. The main
+  checkout stays on `main` and serves as the stable home base for MCP queries,
+  `oc get`, log tailing, and other read-only work.
+
+  A worktree is a second checkout of the same repo in a sibling directory,
+  sharing one `.git` object store. Each session gets its own branch, index, and
+  working tree — the cross-session failures above become impossible, and Git
+  enforces that no two worktrees can be on the same branch.
 
   ```bash
   # Create — sibling directory, descriptive suffix
-  git worktree add ../sales.demos-grafana docs-265-grafana-phase1-plan
+  git worktree add ../sales.demos-<slug> <branch-name>
 
   # List all worktrees
   git worktree list
 
+  # Work in it
+  cd ../sales.demos-<slug>
+
   # Clean up after merge
-  git worktree remove ../sales.demos-grafana
+  git worktree remove ../sales.demos-<slug>
   ```
 
   Claude Code's Agent tool accepts `isolation: "worktree"` and automates this —
   the worktree auto-cleans if the agent makes no changes; otherwise the path and
   branch come back in the result.
 
-  **When to use one:** any session that will create a branch, make commits, or
-  push — i.e., anything that touches git state. **When not needed:** read-only
-  sessions that only query MCP servers, run `oc get`, or tail logs.
+  **This is mandatory, not a suggestion.** The conditional rule ("use a worktree
+  when multiple sessions are running") failed in practice — every session
+  assumes it is alone until another one switches the branch underneath it. The
+  unconditional rule ("always use a worktree for code changes") eliminates the
+  assumption entirely. The main checkout never moves off `main`, so there is
+  nothing to collide with.
 
   **What worktrees do not solve: cluster conflicts.** Two sessions modifying the
   same OpenShift namespace, AAP objects, or Grafana resources can still collide.

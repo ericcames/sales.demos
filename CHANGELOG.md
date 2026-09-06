@@ -7,11 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added -- Git worktree guidance for multi-agent work (#267)
-- Expanded CLAUDE.md shared-worktree section with practical worktree
-  instructions: when to use one, how to create and clean up, Claude Code's
-  `isolation: "worktree"` option, and what worktrees don't solve (cluster
-  conflicts).
+### Changed -- Worktrees mandatory for code changes (#267)
+- Strengthened CLAUDE.md worktree rule from conditional ("use when multiple
+  sessions run") to unconditional ("always use a worktree for code changes").
+  The main checkout stays on `main` as a read-only home base. The conditional
+  rule failed in practice — sessions assumed they were alone until another one
+  switched the branch underneath them.
 
 ### Added -- Grafana Cloud Phase 1 design (#265)
 - Expanded `docs/plan/grafana-plan.md` with the Phase 1 architecture: Grafana
