@@ -588,7 +588,7 @@ export TF_VAR_openshift_api_token=$(
 export TF_VAR_openshift_api_url=https://api.cluster-<id>.dyn.redhatworkshops.io:6443
 export TF_VAR_openshift_insecure=true
 export TF_VAR_namespace=sales-demos-sandbox
-export TF_VAR_vm_size_tier=small-1cpu-2gb   # | medium-1cpu-4gb | large-2cpu-6gb
+export TF_VAR_vm_size_tier=small             # | medium | large
 export TF_VAR_os_type=linux                 # | windows | both
 
 terraform init && terraform apply
@@ -644,7 +644,7 @@ this repo's kubeconfig for the environment — **not** `oc login` (#161):
 
 ```bash
 KUBECONFIG=.kube/sandbox.kubeconfig \
-  virtctl ssh -n sales-demos-sandbox cloud-user@vm/sd-lnx-small-1cpu-2gb
+  virtctl ssh -n sales-demos-sandbox cloud-user@vm/sd-lnx-small
 ```
 
 **Name the kubeconfig; do not rely on whatever `~/.kube/config` points at.**

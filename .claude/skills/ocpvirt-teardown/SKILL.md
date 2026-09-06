@@ -72,7 +72,7 @@ If the VMs were provisioned with a non-default tier, pass the same values that
 built them, or Terraform plans against a different shape:
 
 ```bash
-  -e os_type=both -e vm_size_tier=large-2cpu-6gb
+  -e os_type=both -e vm_size_tier=large
 ```
 
 ## Verify it in the EE before merging a change

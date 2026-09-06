@@ -118,7 +118,7 @@ what makes it land.
 | Question | Variable | Choices | Default |
 |---|---|---|---|
 | Operating system | `os_type` | `linux` · `windows` · `both` | `linux` |
-| VM size tier | `vm_size_tier` | `small-1cpu-2gb` · `medium-1cpu-4gb` · `large-2cpu-6gb` | `small-1cpu-2gb` |
+| VM size tier | `vm_size_tier` | `small` · `medium` · `large` | `small` |
 
 > **"That's it. An OS and a t-shirt size. No IP address, no storage class, no
 > hostname — because none of those are decisions the person asking for the

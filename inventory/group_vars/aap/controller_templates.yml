@@ -85,16 +85,16 @@ controller_templates_all:
             - both
         - question_name: VM size tier
           question_description: >-
-            T-shirt size. Small tiers on purpose — these VMs share a node with
-            AAP and CNV, and terraform/ocpvirt enforces a memory budget.
+            T-shirt size (2v/4G, 2v/8G, 4v/16G). Sized for doubled RHDP
+            hardware; terraform/ocpvirt enforces a memory budget.
           variable: vm_size_tier
           type: multiplechoice
           required: true
-          default: small-1cpu-2gb
+          default: small
           choices:
-            - small-1cpu-2gb
-            - medium-1cpu-4gb
-            - large-2cpu-6gb
+            - small
+            - medium
+            - large
 
   # ---------------------------------------------------------------------
   # Teardown (#6). The ONLY template that runs against the control inventory,
@@ -131,7 +131,7 @@ controller_templates_all:
       # was built. These are the defaults; a run that used another tier should
       # pass its own on launch.
       os_type: linux
-      vm_size_tier: small-1cpu-2gb
+      vm_size_tier: small
     # So a teardown of a non-default tier can be launched without editing the
     # template. The scheduled runs use the extra_vars above.
     ask_variables_on_launch: true

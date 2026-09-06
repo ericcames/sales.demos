@@ -43,11 +43,11 @@ variable "namespace" {
 variable "vm_size_tier" {
   description = "T-shirt size selected by the user in the AAP JT survey. Mapped to an sd1.* cluster instance type in locals.tf."
   type        = string
-  default     = "small-1cpu-2gb"
+  default     = "small"
 
   validation {
-    condition     = contains(["small-1cpu-2gb", "medium-1cpu-4gb", "large-2cpu-6gb"], var.vm_size_tier)
-    error_message = "vm_size_tier must be one of: small-1cpu-2gb, medium-1cpu-4gb, large-2cpu-6gb."
+    condition     = contains(["small", "medium", "large", "small-1cpu-2gb", "medium-1cpu-4gb", "large-2cpu-6gb"], var.vm_size_tier)
+    error_message = "vm_size_tier must be one of: small, medium, large (or legacy: small-1cpu-2gb, medium-1cpu-4gb, large-2cpu-6gb)."
   }
 }
 

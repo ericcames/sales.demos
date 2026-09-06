@@ -22,7 +22,7 @@ debugging a run without the controller in the way.
 
 | Variable | Values | Default |
 |---|---|---|
-| `vm_size_tier` | `small-1cpu-2gb`, `medium-1cpu-4gb`, `large-2cpu-6gb` | `small-1cpu-2gb` |
+| `vm_size_tier` | `small`, `medium`, `large` | `small` |
 | `os_type` | `linux`, `windows`, `both` | `linux` |
 
 These names are shared verbatim with the AAP survey and
@@ -59,7 +59,7 @@ echo "run /ocpvirt-new-env if this environment has been idle or is new"
 
 ```bash
 ansible-playbook playbooks/provision_vm.yml -i inventory --limit sandbox \
-  -e target_env=sandbox -e os_type=linux -e vm_size_tier=small-1cpu-2gb \
+  -e target_env=sandbox -e os_type=linux -e vm_size_tier=small \
   --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
 ```
 

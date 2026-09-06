@@ -1,11 +1,10 @@
 # ---------------------------------------------------------------------------
 # instancetypes.tf — the t-shirt sizing catalog, as code.
 #
-# Red Hat ships a u1.* series with CNV, but it has no 6 GiB size — it goes
-# 2 / 4 / 8 / 16. At u1.large's 8 GiB, os_type=both needs ~16.6 GiB against the
-# ~14.2 GiB free on this node and would never schedule. Defining our own types
-# keeps every combination inside the budget while preserving the mechanism:
-# sizing still comes from a cluster instance type, not a hand-rolled domain spec.
+# Repo-owned sd1.* instance types, sized for the doubled RHDP hardware (#239).
+# The u1.* series shipped with CNV has the same 4/8/16 GiB sizes now, but
+# keeping our own types lets the annotation and label stay consistent and avoids
+# any dependency on the CNV version's catalog.
 #
 # CLUSTER-SCOPED, and deliberately NOT suffixed with name_suffix. Two people
 # running this against the same cluster converge on identical definitions
@@ -17,7 +16,7 @@
 # ---------------------------------------------------------------------------
 
 resource "kubernetes_manifest" "instancetype" {
-  for_each = local.tier_memory_gb
+  for_each = local.canonical_tiers
 
   manifest = {
     apiVersion = "instancetype.kubevirt.io/v1beta1"
@@ -27,7 +26,7 @@ resource "kubernetes_manifest" "instancetype" {
       labels = local.common_labels
       annotations = {
         "sales-demos/tier"                     = each.key
-        "instancetype.kubevirt.io/description" = "sales.demos ${each.key} - ${local.tier_cpu[each.key]} vCPU / ${each.value} GiB"
+        "instancetype.kubevirt.io/description" = "sales.demos ${each.key} - ${local.tier_cpu[each.key]} vCPU / ${local.tier_memory_gb[each.key]} GiB"
       }
     }
     spec = {
@@ -35,7 +34,7 @@ resource "kubernetes_manifest" "instancetype" {
         guest = local.tier_cpu[each.key]
       }
       memory = {
-        guest = "${each.value}Gi"
+        guest = "${local.tier_memory_gb[each.key]}Gi"
       }
     }
   }

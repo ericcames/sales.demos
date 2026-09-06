@@ -82,20 +82,16 @@ Supporting work, not a phase:
 
 Mapped to cluster instance types rather than hand-rolled CPU/memory — but to
 **repo-owned `sd1.*` types**, not Red Hat's shipped `u1.*` series (#2,
-`terraform/ocpvirt/instancetypes.tf`).
+`terraform/ocpvirt/instancetypes.tf`). Updated for doubled RHDP hardware (#239).
 
-| Tier | Instance type | vCPU / RAM | Root disk |
-|---|---|---|---|
-| `small-1cpu-2gb` | `sd1.small` | 1 / 2 GiB | 30 GB |
-| `medium-1cpu-4gb` | `sd1.medium` | 1 / 4 GiB | 30 GB |
-| `large-2cpu-6gb` | `sd1.large` | 2 / 6 GiB | 50 GB |
+| Tier | Instance type | vCPU / RAM | Root disk | Azure equivalent |
+|---|---|---|---|---|
+| `small` | `sd1.small` | 2 / 4 GiB | 30 GB | Standard_B2s |
+| `medium` | `sd1.medium` | 2 / 8 GiB | 30 GB | Standard_B2ms |
+| `large` | `sd1.large` | 4 / 16 GiB | 50 GB | Standard_B4ms |
 
-**Why not `u1.*`.** That series has no 6 GiB size — it goes 2 / 4 / 8 / 16. At
-`u1.large`'s 8 GiB, `os_type=both` needs about 16.6 GiB against the ~14.2 GiB
-this node actually has free once AAP and CNV are running, so it would never
-schedule. The `sd1.*` types keep every tier/OS combination inside that budget
-while preserving the mechanism: sizing still comes from a cluster instance type.
-The `u1.*` types are left untouched.
+Legacy names (`small-1cpu-2gb`, `medium-1cpu-4gb`, `large-2cpu-6gb`) are
+accepted as aliases and resolve to the current specs.
 
 The real ceiling is enforced in code, not by this table:
 `terraform/ocpvirt/locals.tf` fails `plan` when a run exceeds

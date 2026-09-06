@@ -46,7 +46,7 @@
 
     # Must match what provision_vm.yml applied, or destroy plans against a
     # different shape than the one that was built.
-    ocpvirt_size_tier: "{{ vm_size_tier | default('small-1cpu-2gb') }}"
+    ocpvirt_size_tier: "{{ vm_size_tier | default('small') }}"
     ocpvirt_os_type: "{{ os_type | default('linux') }}"
     ocpvirt_name_suffix: "{{ name_suffix | default('') }}"
 

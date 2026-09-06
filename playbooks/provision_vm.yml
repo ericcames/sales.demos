@@ -4,7 +4,7 @@
 # resulting VMs as managed hosts in AAP. Issue #4.
 #
 #   ansible-playbook playbooks/provision_vm.yml -i inventory --limit sandbox \
-#     -e target_env=sandbox -e vm_size_tier=small-1cpu-2gb -e os_type=linux \
+#     -e target_env=sandbox -e vm_size_tier=small -e os_type=linux \
 #     --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
 #
 # Ported from dc1.azure/playbooks/provision_vm.yml, which already asserts
@@ -46,7 +46,7 @@
     ocpvirt_terraform_dir: "{{ playbook_dir }}/../terraform/ocpvirt"
 
     # --- Inputs, with the same defaults the Terraform module declares --------
-    ocpvirt_size_tier: "{{ vm_size_tier | default('small-1cpu-2gb') }}"
+    ocpvirt_size_tier: "{{ vm_size_tier | default('small') }}"
     ocpvirt_os_type: "{{ os_type | default('linux') }}"
     # Empty on purpose. With persistent state a per-run suffix would destroy and
     # re-create the VMs every apply rather than converge — see backend.tf.
@@ -106,15 +106,13 @@
       ansible.builtin.include_tasks: tasks/assert_target_environment.yml
 
     - name: Assert provisioning inputs are present and valid
-      # The tier list is the ocpvirt module's, NOT dc1.azure's. These VMs share a
-      # node with AAP and CNV, so the tiers are deliberately smaller.
       ansible.builtin.assert:
         that:
-          - ocpvirt_size_tier in ['small-1cpu-2gb', 'medium-1cpu-4gb', 'large-2cpu-6gb']
+          - ocpvirt_size_tier in ['small', 'medium', 'large', 'small-1cpu-2gb', 'medium-1cpu-4gb', 'large-2cpu-6gb']
           - ocpvirt_os_type in ['windows', 'linux', 'both']
           - ocpvirt_name_suffix is match('^[a-z0-9]*$')
         fail_msg: >-
-          Need vm_size_tier (small-1cpu-2gb|medium-1cpu-4gb|large-2cpu-6gb) and
+          Need vm_size_tier (small|medium|large) and
           os_type (windows|linux|both). Got vm_size_tier={{ ocpvirt_size_tier }},
           os_type={{ ocpvirt_os_type }}. name_suffix must be lowercase
           alphanumeric.

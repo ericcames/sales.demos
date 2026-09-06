@@ -8,12 +8,13 @@ locals {
   # deliberate: it is native OpenShift Virt functionality and demos better than
   # hand-rolled domain specs.
   #
-  # These are sd1.* (defined in instancetypes.tf), not Red Hat's shipped u1.*,
-  # because large needs 6 GiB and the u1 series has no such size — it goes
-  # 2 / 4 / 8 / 16. At u1.large's 8 GiB, os_type=both would need ~16.6 GiB
-  # against ~14.2 GiB free on this node and would never schedule. Reverting a
-  # tier to u1.* is a one-line change here.
+  # Updated for doubled RHDP hardware (#239). Old names are legacy aliases that
+  # resolve to the new specs — backward compatible with existing AAP surveys and
+  # saved job launches.
   instancetype_map = {
+    "small"           = "sd1.small"
+    "medium"          = "sd1.medium"
+    "large"           = "sd1.large"
     "small-1cpu-2gb"  = "sd1.small"
     "medium-1cpu-4gb" = "sd1.medium"
     "large-2cpu-6gb"  = "sd1.large"
@@ -22,19 +23,28 @@ locals {
   # Guest memory per tier, in GiB. Single source of truth: instancetypes.tf
   # builds the objects from this, and the budget guard measures against it.
   tier_memory_gb = {
-    "small-1cpu-2gb"  = 2
-    "medium-1cpu-4gb" = 4
-    "large-2cpu-6gb"  = 6
+    "small"           = 4
+    "medium"          = 8
+    "large"           = 16
+    "small-1cpu-2gb"  = 4
+    "medium-1cpu-4gb" = 8
+    "large-2cpu-6gb"  = 16
   }
 
   tier_cpu = {
-    "small-1cpu-2gb"  = 1
-    "medium-1cpu-4gb" = 1
-    "large-2cpu-6gb"  = 2
+    "small"           = 2
+    "medium"          = 2
+    "large"           = 4
+    "small-1cpu-2gb"  = 2
+    "medium-1cpu-4gb" = 2
+    "large-2cpu-6gb"  = 4
   }
 
   # Root disk per tier. Windows needs more regardless of tier.
   tier_disk_gb = {
+    "small"           = 30
+    "medium"          = 30
+    "large"           = 50
     "small-1cpu-2gb"  = 30
     "medium-1cpu-4gb" = 30
     "large-2cpu-6gb"  = 50
@@ -61,11 +71,18 @@ locals {
 
   # Windows NetBIOS hostname: max 15 characters.
   tier_windows_hostname = {
+    "small"           = "sd-win-small"
+    "medium"          = "sd-win-medium"
+    "large"           = "sd-win-large"
     "small-1cpu-2gb"  = "sd-win-sm-1c-2g"
     "medium-1cpu-4gb" = "sd-win-md-1c-4g"
     "large-2cpu-6gb"  = "sd-win-lg-2c-6g"
   }
   windows_hostname = local.tier_windows_hostname[var.vm_size_tier]
+
+  # Canonical tier names — used by instancetypes.tf for_each to avoid creating
+  # duplicate cluster objects from the legacy aliases.
+  canonical_tiers = toset(["small", "medium", "large"])
 
   common_labels = {
     "app.kubernetes.io/managed-by" = "terraform"

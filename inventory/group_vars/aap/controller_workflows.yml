@@ -54,16 +54,16 @@ controller_workflows_all:
             - both
         - question_name: VM size tier
           question_description: >-
-            T-shirt size. Small tiers on purpose — these VMs share a node with
-            AAP and CNV, and terraform/ocpvirt enforces a memory budget.
+            T-shirt size (2v/4G, 2v/8G, 4v/16G). Sized for doubled RHDP
+            hardware; terraform/ocpvirt enforces a memory budget.
           variable: vm_size_tier
           type: multiplechoice
           required: true
-          default: small-1cpu-2gb
+          default: small
           choices:
-            - small-1cpu-2gb
-            - medium-1cpu-4gb
-            - large-2cpu-6gb
+            - small
+            - medium
+            - large
 
     related:
       workflow_nodes:
