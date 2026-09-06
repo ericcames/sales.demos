@@ -186,11 +186,12 @@ because the instance spans both environments.
   Console needs a platform version the demo instance does not have, and the
   Ansible write path needs no MCP server at all — see
   [`servicenow.md`](servicenow.md)
-- **Agentic observability — data pipeline.** The Grafana Cloud MCP server is
-  connected (#260) but no data is flowing in yet — Phase 1 in
-  [`docs/plan/grafana-plan.md`](../../plan/grafana-plan.md) is deploying Grafana
-  Alloy to push metrics and logs. Dynatrace (#99) remains the application-level
-  complement
+- **Agentic observability — data pipeline.** Grafana Alloy is deployed on
+  sandbox (#265), pushing Prometheus metrics and logs to Grafana Cloud. The
+  Grafana Cloud MCP server (#260) queries those metrics and logs directly.
+  Full detail in
+  [`docs/plan/grafana-plan.md`](../../plan/grafana-plan.md). Dynatrace (#99)
+  remains the application-level complement
 
 ---
 

@@ -1,9 +1,10 @@
 # Roadmap
 
-Three use cases. Full detail and rationale in
+Four use cases. Full detail and rationale in
 [`docs/plan/ocpvirt-demo-plan.md`](docs/plan/ocpvirt-demo-plan.md),
-[`docs/plan/pah-plan.md`](docs/plan/pah-plan.md) and
-[`docs/plan/network-mcp-plan.md`](docs/plan/network-mcp-plan.md).
+[`docs/plan/pah-plan.md`](docs/plan/pah-plan.md),
+[`docs/plan/network-mcp-plan.md`](docs/plan/network-mcp-plan.md) and
+[`docs/plan/grafana-plan.md`](docs/plan/grafana-plan.md).
 
 Each phase ships two entry points — a Claude Code skill and an AAP job template —
 both driving the same playbook. `pah-sync` is the one documented exception; see
@@ -26,6 +27,16 @@ demo documentation in
 | ServiceNow MCP | — | — | **Not built, deliberately.** The native MCP Server Console needs Zurich Patch 9+ or Australia Patch 2+; the demo instance is Yokohama, measured 2026-09-02. The write path is `servicenow.itsm`, already pinned, and needs no MCP server at all. Community servers are read-write with no way to constrain them and are not recommended. Reasoning and the build-your-own path in [`docs/demos/mcp-servers/servicenow.md`](docs/demos/mcp-servers/servicenow.md). | **Documented, blocked on an instance upgrade** |
 | Cluster probe | `sales-demos-probe-env` | `playbooks/probe_env.yml` | Read-only capacity measurement, safe mid-demo. Found `available_memory_gb` five times too small and recommends a replacement. Both add-on operators confirmed present on OperatorHub. | **Done** ([#100](https://github.com/ericcames/sales.demos/issues/100)) |
 | Automation Orchestrator | `sales-demos-orchestrator` | `playbooks/install_ao.yml` | Runs on every build, default-on and skippable with `install_ao=false`. CloudNativePG supplies the three databases Temporal actually needs — the CRD asks for two and the third, `temporal_visibility`, is undocumented. Measured 1.91 vCPU / 2.47 GiB, which moved `available_memory_gb` 67 → 63. | **Done** ([#108](https://github.com/ericcames/sales.demos/issues/108), [#141](https://github.com/ericcames/sales.demos/issues/141)) |
+
+## Grafana Cloud observability
+
+Push cluster metrics and logs to Grafana Cloud so the AI agent can answer
+infrastructure questions through the Grafana MCP server. Full detail in
+[`docs/plan/grafana-plan.md`](docs/plan/grafana-plan.md).
+
+| | Skill | Playbook | Outcome | Status |
+|---|---|---|---|---|
+| Deploy Alloy | `sales-demos-alloy` | `playbooks/deploy_alloy.yml` | DaemonSet in `grafana-alloy` namespace. Prometheus federation from `prometheus-k8s`, AAP controller scrape via the gateway (`/api/controller/v2/metrics/`), and Kubernetes API log streaming for four namespaces. ~2,098 series of the 10k free-tier budget. Reversible with `-e alloy_state=absent`. | **Done on `sandbox`** ([#265](https://github.com/ericcames/sales.demos/issues/265)) |
 
 ## Use case 3 — Network MCP servers
 

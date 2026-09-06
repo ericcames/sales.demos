@@ -10,9 +10,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added -- Grafana Cloud Phase 1: deploy Alloy for metrics and logs (#265)
 - `playbooks/deploy_alloy.yml` deploys Grafana Alloy as a DaemonSet in the
   `grafana-alloy` namespace, pushing metrics and logs to Grafana Cloud.
-  Three data paths: Prometheus federation from the cluster's Thanos Querier
-  (KubeVirt VM metrics, node health, pod/container usage), AAP controller
-  `/api/v2/metrics/` scrape via basic auth, and Kubernetes API log streaming
+  Three data paths: Prometheus federation from the cluster's Prometheus
+  endpoint (`prometheus-k8s`, KubeVirt VM metrics, node health, pod/container
+  usage), AAP controller `/api/controller/v2/metrics/` scrape via the gateway
+  with basic auth, and Kubernetes API log streaming
   for four namespaces (`aap`, `sales-demos-<env>`, `openshift-cnv`,
   `grafana-alloy`).
 - `-e alloy_state=absent` reverses the deployment, removing the namespace
@@ -24,7 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `grafana_cloud_loki_push_url`, `grafana_cloud_loki_username`,
   `grafana_cloud_push_api_key`. Separate from the Viewer SA token used
   for MCP reads.
-- Series budget: ~600–900 of the 10k free-tier limit via `match[]`
+- Series budget: ~2,098 (measured 2026-09-06) of the 10k free-tier limit via `match[]`
   federation selectors and relabel rules that drop noisy CPU modes and
   pause containers.
 

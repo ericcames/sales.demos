@@ -136,8 +136,10 @@ through Grafana Cloud."
 OCP already scrapes kubelet, cAdvisor, kube-state-metrics, node-exporter, and
 KubeVirt metrics via built-in ServiceMonitors. Duplicating all of that scrape
 configuration in Alloy is fragile and pointless. Instead, Alloy federates from
-the Thanos Querier (`thanos-querier.openshift-monitoring.svc:9091/federate`)
+the Prometheus endpoint (`prometheus-k8s.openshift-monitoring.svc:9091/federate`)
 using the SA bearer token and the existing `cluster-monitoring-view` ClusterRole.
+Thanos Query does not implement `/federate`, so the federation target is the
+underlying Prometheus instance, not the Thanos Querier (verified #273).
 
 The `match[]` parameters on the federation endpoint are the series budget
 control — we select only what we need:
@@ -152,18 +154,18 @@ control — we select only what we need:
   namespace-filtered
 
 A relabel rule drops noisy CPU modes (irq, softirq, steal, nice, guest) and
-pause containers from cAdvisor. Estimated total: **~600–900 series** out of the
-10k budget — substantial headroom for Phase 2 additions.
+pause containers from cAdvisor. Measured total: **~2,098 series** (2026-09-06)
+out of the 10k budget — substantial headroom for Phase 2 additions.
 
 ### AAP metrics — separate scrape job
 
-AAP's `/api/v2/metrics/` endpoint uses different auth (basic auth, not SA
-bearer) and lives on a different service. Alloy scrapes
-`aap-controller-service.aap.svc:80` with the existing `aap_username` /
-`aap_password` from the vault — no new token to manage. If the controller
-service does not serve metrics directly in AAP 2.7 (possible since the gateway
-mediates all API access), the fallback is the gateway service at
-`aap.aap.svc:80`.
+AAP's metrics endpoint uses different auth (basic auth, not SA bearer) and
+lives on a different service. Alloy scrapes the gateway at `aap.aap.svc:80`
+with path `/api/controller/v2/metrics/` using the existing `aap_username` /
+`aap_password` from the vault — no new token to manage. On AAP 2.7 the
+controller service (`aap-controller-service`) returns 401 on direct basic-auth
+requests; authentication routes through the gateway, and the controller path
+prefix is required (verified #273).
 
 ### API-based log collection, not hostPath
 
@@ -205,8 +207,8 @@ Create → scopes `metrics:write`, `logs:push` → generate token.
 
 | Risk | Mitigation |
 |------|------------|
-| Thanos Querier federation may 403 with `cluster-monitoring-view` | Preflight curl; fallback to direct target scraping |
-| AAP controller service may not serve `/api/v2/metrics/` without gateway | Preflight curl; fallback to gateway service |
+| Prometheus federation 403 with `cluster-monitoring-view` | Playbook creates the CRB; verified working (#273). Thanos Query does not implement `/federate` — target is `prometheus-k8s` |
+| AAP controller service 401 on direct basic-auth | Use the gateway at `aap.aap.svc:80` with path `/api/controller/v2/metrics/`; verified working (#273) |
 | RHDP environment expires — Alloy dies | Grafana Cloud retains data; re-run playbook |
 | Docker Hub rate limit on `grafana/alloy` image pull | Mirror to quay.io or PAH container registry |
 | Cluster-scoped RBAC resources survive namespace deletion | `alloy_state=absent` teardown path cleans up everything |

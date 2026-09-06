@@ -17,10 +17,10 @@ This skill contains **no logic**. All the work is in
 Deploys Grafana Alloy as a DaemonSet in the `grafana-alloy` namespace:
 
 1. **Prometheus federation** — federates selected series from the cluster's
-   built-in Thanos Querier: KubeVirt VM metrics, node health, pod/container
-   resource usage (namespace-filtered).
-2. **AAP controller scrape** — scrapes `/api/v2/metrics/` via basic auth for
-   `awx_*` and `django_*` metrics.
+   Prometheus endpoint (`prometheus-k8s`): KubeVirt VM metrics, node health,
+   pod/container resource usage (namespace-filtered).
+2. **AAP controller scrape** — scrapes `/api/controller/v2/metrics/` via the
+   gateway (`aap.aap.svc`) with basic auth for `awx_*` and `django_*` metrics.
 3. **Kubernetes API log streaming** — streams pod logs from four namespaces
    (`aap`, `sales-demos-<env>`, `openshift-cnv`, `grafana-alloy`) without
    hostPath volumes or elevated SCCs.
@@ -28,7 +28,8 @@ Deploys Grafana Alloy as a DaemonSet in the `grafana-alloy` namespace:
 Everything pushes to Grafana Cloud's Prometheus (remote-write) and Loki
 (push) endpoints.
 
-**Budget:** ~600–900 Prometheus series out of the 10k free-tier limit.
+**Budget:** ~2,098 Prometheus series (measured 2026-09-06) out of the 10k
+free-tier limit.
 
 ## Reversal
 
