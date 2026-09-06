@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed -- repoint sandbox to the fixed Windows golden image (#234)
+- `quay_windows_image` updated to `20260906-0300`, built with `image.builder.pipeline` PR #71.
+  The previous two tags (`20260905-1826`, `20260905-2217`) both carried a cached answer file
+  whose delete command exceeded the Windows SMI `CommandLine` limit (~1024 chars), invalidating
+  the entire oobeSystem pass and leaving every clone at the OOBE region screen.
+
 ### Changed -- single copy-paste SSH command in Check VMs output (#218)
 - The Check VMs job output now shows one command an SE can paste directly into
   a terminal: `virtctl ssh --kubeconfig ~/.kube/<env>.kubeconfig -o
