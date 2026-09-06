@@ -380,6 +380,7 @@ in this repo, which for repo-specific skills is the correct scope.
 | `sales-demos-portal` | `playbooks/portal.yml` | Deploy the AAP self-service portal (RHDH + AAP plugin) via Helm | Done ([#103](https://github.com/ericcames/sales.demos/issues/103)) |
 | `sales-demos-orchestrator` | `playbooks/install_ao.yml` | Install Automation Orchestrator and its CloudNativePG database | Done ([#141](https://github.com/ericcames/sales.demos/issues/141)) |
 | `sales-demos-alloy` | `playbooks/deploy_alloy.yml` | Deploy Grafana Alloy for metrics and logs to Grafana Cloud | Done ([#265](https://github.com/ericcames/sales.demos/issues/265)) |
+| `sales-demos-dashboard` | `playbooks/deploy_dashboard.yml` | Push Grafana Cloud dashboards (dashboard-as-code) | Done ([#275](https://github.com/ericcames/sales.demos/issues/275)) |
 
 See the [roadmap](ROADMAP.md) and the open issues. CI enforces that every skill
 added here appears in this table.
