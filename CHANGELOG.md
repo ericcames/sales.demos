@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed -- probe_env double-counted the running demo VMs (#332)
+- Found by running `Cluster Day 0 - Probe Capacity` on sandbox with two demo
+  VMs up: it recommended `available_memory_gb = 42` against a committed 63.
+- **The committed 63 was correct.** Reproducing from the probe's own numbers
+  lands on it exactly: `50.95 free + 20 held by demo VMs - 8 margin = 62.95`.
+- `available_memory_gb` is the budget for **all** demo VMs -- both consumers
+  read it that way -- but the probe recommended free-by-requests minus a
+  margin, and free-by-requests already has those VMs subtracted. So it
+  subtracted them twice.
+- **It was self-compounding.** Probe with VMs up, set the lower number,
+  provision more, probe again, get lower still. Every pass ratcheted it down.
+- The playbook now reads the demo VMs (same `app.kubernetes.io/part-of=sales-demos`
+  selector `provision_vm.yml`'s check uses, so the two agree on what counts) and
+  adds their guest memory back. Memory comes from the VM spec rather than a tier
+  lookup, so a hand-built VM is still counted.
+- The report now prints **both** figures and names which is which: the budget,
+  and the headroom on top of what is running, with an explicit "do not copy it"
+  on the second.
+- **The trap was one we had just baited.** `probe_env.yml` says it is safe to
+  run mid-demo and #330 added a `read-only` label saying the same. The
+  measurement always was safe; the recommendation was not, and nothing said so.
+
 ### Added -- Cluster Day 0 templates and workflow (#330)
 - Three templates -- `1 Install OpenShift Virtualization`, `2 Verify
   Environment`, `Probe Capacity` -- plus a `Cluster Day 0` workflow chaining
