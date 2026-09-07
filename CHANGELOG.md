@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed -- the namespace guard fought Terraform for ownership (#325)
+- The first `Linux Day 1 - 0 Workflow` on demo failed:
+  `Error: namespaces "sales-demos-demo" already exists`.
+- The idempotent guard added in #311 created the VM namespace in Ansible moments
+  before Terraform tried to create it. **Two creators of one object**, which
+  `kubernetes_namespace` cannot resolve because it has no way to adopt.
+- **Invisible on sandbox by luck**: that environment's state already contained
+  the namespace from before the per-OS split, so Terraform never planned to
+  create one. demo's adopted state held no VMs and no namespace, so the conflict
+  surfaced on the first run.
+- Gated on `provision_os_type != 'linux'`. The Linux state owns shared objects;
+  the guard is now what it should always have been -- a fallback for the one
+  case Terraform does not cover, rather than a second creator racing it.
+- **The residual gap is the same one #309 already records.** An environment that
+  provisions Windows first gets its namespace from the guard, and a later Linux
+  run then finds Terraform unable to create what exists. Identical shape to the
+  `sd1.*` catalog wart, and it wants the same fix -- shared scaffolding moved to
+  environment scope -- not another special case.
+
 ### Fixed -- demo never had a RHEL 9 golden image reference (#322)
 - `Golden Image - Link RHEL 9 CIS L1` failed on demo with
   `quay_rhel9_image must name a real published containerdisk`. demo's

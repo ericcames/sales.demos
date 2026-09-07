@@ -73,11 +73,32 @@
       registering into AAP inventory '{{ provision_aap_inventory }}'.
 
 # --- Namespaces must exist before anything else -------------------------
-- name: Ensure the VM namespace exists (idempotent guard)
-  # Terraform owns this namespace, but only in the LINUX state (#311) -- so a
-  # Windows-only environment would otherwise have nowhere to put its VM. Only
-  # metadata.name is sent, which makes this a no-op patch when the object
-  # already exists rather than a competing definition.
+- name: Ensure the VM namespace exists (Windows-only environments)
+  # ONLY WHEN TERRAFORM WILL NOT CREATE IT, and getting that wrong broke demo
+  # (#325). This guard was added unconditionally in #311 so a Windows-only
+  # environment would have somewhere to put its VM. But the Linux state OWNS
+  # the namespace (manage_shared_objects), so on a Linux run this task created
+  # the object a moment before terraform tried to create it too:
+  #
+  #     Error: namespaces "sales-demos-demo" already exists
+  #       with kubernetes_namespace.demo[0]
+  #
+  # It was invisible on sandbox only because that environment's state already
+  # contained the namespace from before the split, so terraform never planned
+  # to create one. demo's adopted state held no VMs and no namespace, and the
+  # conflict surfaced immediately.
+  #
+  # `kubernetes_namespace` cannot adopt an existing object, so two creators can
+  # never coexist. The single-owner model from #309/#311 is right; this task
+  # was me special-casing around it. Gated, it is what it always should have
+  # been: a fallback for the ONE case terraform does not cover.
+  #
+  # THE RESIDUAL GAP IS THE SAME ONE #309 ALREADY RECORDS. An environment that
+  # provisions Windows FIRST gets its namespace here, and a later Linux run
+  # then finds terraform unable to create what already exists. That is the
+  # identical shape as the sd1.* catalog wart, and it wants the same fix --
+  # moving shared scaffolding to environment scope -- not another special case.
+  when: provision_os_type != 'linux'
   kubernetes.core.k8s:
     state: present
     definition:
