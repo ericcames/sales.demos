@@ -186,7 +186,23 @@
       environment:
         TF_VAR_openshift_api_url: "{{ ocpvirt_api_url }}"
         TF_VAR_openshift_api_token: "{{ ocpvirt_api_token }}"
-        TF_VAR_openshift_insecure: "{{ (not (openshift_validate_certs | default(false) | bool)) | ternary('false', 'true') }}"
+        # `| lower`, NOT a ternary, and that is the fix for #342. This expression
+        # exists once per task file, and the two copies disagreed: #238 split
+        # provision and teardown apart and duplicated the then-buggy ternary into
+        # both, then #295 fixed only the copy it was looking at. Teardown kept
+        # `ternary('false', 'true')` and so ran with TLS verification ON against
+        # RHDP's self-signed certs, failing every destroy with `x509: certificate
+        # signed by unknown authority`.
+        #
+        # It hid well: the kubeconfig and backend flags above are correct, so
+        # `init` and the state read both succeed and only the destroy step fails,
+        # which reads like a cluster problem rather than a code defect.
+        #
+        # `| lower` is the same form those two already use, so all three TLS flags
+        # in this file are now one idiom -- and an inverted ternary cannot be
+        # written where there is no ternary. Verified equivalent to the correct
+        # ternary for validate_certs true, false, and undefined.
+        TF_VAR_openshift_insecure: "{{ (not (openshift_validate_certs | default(false) | bool)) | lower }}"
         TF_VAR_demo_ssh_public_key: "{{ demo_ssh_public_key | default('') }}"
         TF_IN_AUTOMATION: "1"
       no_log: true

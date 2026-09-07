@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed -- teardown still carried #295's inverted insecure flag (#342)
+- Every teardown failed on **both** environments -- sandbox jobs 377 and 380,
+  demo job 121 -- with the error #295 already has a name for:
+  `tls: failed to verify certificate: x509: certificate signed by unknown authority`.
+- **#295 fixed one of two copies.** `#238` split provision and teardown into
+  separate task files and duplicated the then-buggy ternary into both. `38ff322`
+  then changed `terraform_ocpvirt.yml` and `CHANGELOG.md` and nothing else --
+  `teardown_ocpvirt.yml` existed at that commit with the identical expression at
+  line 186 and was left alone. `openshift_validate_certs` defaults to `false`, so
+  `not false` is `true`, and teardown's `ternary('false', 'true')` picked
+  `'false'`: TLS verification **on**, against RHDP's self-signed certs.
+- **It hid behind two flags that were right.** The kubeconfig
+  `insecure-skip-tls-verify` and the `-backend-config=insecure=` in the same file
+  both use `| lower` and are correct, so `terraform init` and "Read the Terraform
+  outputs BEFORE destroying" succeed and only "Destroy the VMs" fails. That reads
+  like a cluster or certificate problem, not a code defect.
+- **Fixed by deleting the ternary rather than swapping it.** Both files now use
+  the `| lower` form the correct flags already used, so all six TLS flags across
+  the two are one idiom and an inverted ternary cannot be written where there is
+  no ternary. Verified equivalent to the correct ternary for `validate_certs`
+  true, false, and undefined; the provision change is behaviour-identical.
+- **The same lesson as #334, one file over.** "One copy, because two copies of
+  this expression is how the two consumers got it wrong identically" -- written
+  about the VM-memory sum, and true again here. The remaining duplication is now
+  a shared idiom rather than a shared expression, which is weaker; a single
+  resolved fact read by both would be stronger still.
+- Cost of the miss: both environments had a Linux VM up that could not be torn
+  down, and the nightly sweeps would have failed the same way and left them
+  running -- exactly what `controller_schedules.yml` exists to prevent, and more
+  so since #301 gave each OS its own sweep. Note the guests are unregistered from
+  the CDN and Insights *before* the destroy, so a VM surviving a failed teardown
+  has already released its subscription.
+
 ### Fixed -- the Windows credential carried the Linux password (#338)
 - `Sales Demos - Windows Machine` was fed
   `env_secrets[<env>].linux_admin_password`. #305 split Windows onto its own
