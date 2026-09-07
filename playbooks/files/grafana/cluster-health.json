@@ -65,8 +65,13 @@
       "targets": [
         {
           "expr": "sum(kube_node_status_condition{cluster=\"$cluster\", condition=\"Ready\", status=\"true\"})",
-          "legendFormat": "",
+          "legendFormat": "Ready",
           "refId": "A"
+        },
+        {
+          "expr": "count(kube_node_status_condition{cluster=\"$cluster\", condition=\"Ready\"})",
+          "legendFormat": "Total",
+          "refId": "B"
         }
       ],
       "fieldConfig": {
@@ -92,7 +97,7 @@
         "colorMode": "value",
         "graphMode": "none",
         "justifyMode": "auto",
-        "textMode": "value"
+        "textMode": "value_and_name"
       }
     },
     {
@@ -941,7 +946,7 @@
       },
       "targets": [
         {
-          "expr": "awx_license_expiry{cluster=\"$cluster\"}",
+          "expr": "(time() + awx_license_expiry{cluster=\"$cluster\"}) * 1000",
           "legendFormat": "",
           "refId": "A"
         }

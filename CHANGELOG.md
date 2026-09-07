@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed -- Grafana Cloud dashboard panel refinements (#275)
+- License Expiry panel: `awx_license_expiry` is a TTL (seconds remaining),
+  not an epoch timestamp. Wrapped with `(time() + metric) * 1000` so the
+  `dateTimeFromNow` unit renders correctly (e.g. "in 3 months").
+- Nodes Ready panel: added a second query for total node count and switched
+  to `textMode: "value_and_name"` so the panel shows "3 Ready, 3 Total"
+  instead of just "3".
+
 ### Changed -- Grafana Cloud dashboard query improvements (#275)
 - Simplified `cluster` variable matching from regex to exact match across all
   panels — the variable is single-value, so `cluster="$cluster"` is clearer
