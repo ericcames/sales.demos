@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Documented -- the portal job template cannot run from AAP (#324)
+- `AAP Ecosystem - Install Self-Service Portal`, added in #300, fails ~10s after
+  launch. Two independent blockers: the SCM checkout has no
+  `.kube/<env>.kubeconfig` (gitignored, laptop-generated), and the EE has no
+  `helm` binary -- `kubernetes.core.helm` wraps the CLI.
+- Kept and labelled rather than removed, so the limitation is visible in the AAP
+  UI instead of being a silent ten-second failure.
+- **Why #300 got it wrong:** the template was justified on `hosts: aap` plus
+  credentials, matching Install Automation Orchestrator. But AO and Install MCP
+  Server use `kubernetes.core.k8s`, which reaches the API through `K8S_AUTH_*`;
+  `portal.yml` shells out to a binary. **What a playbook executes is part of
+  whether it can run from AAP, not just what it targets** -- and
+  `/sales-demos-verify-ee` exists to catch precisely that.
+
 ### Fixed -- the namespace guard fought Terraform for ownership (#325)
 - The first `Linux Day 1 - 0 Workflow` on demo failed:
   `Error: namespaces "sales-demos-demo" already exists`.

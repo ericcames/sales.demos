@@ -357,16 +357,36 @@ controller_templates_all:
       target_env: "{{ aap_env_name }}"
 
   # ---------------------------------------------------------------------
-  # The self-service portal (#103), which had a playbook and a skill but no
-  # job template until #300. Same shape as Install Automation Orchestrator
-  # above and the same SCM-ordering caveat applies to neither -- portal.yml
-  # has been on main since #103, so this creates cleanly on the first run.
+  # The self-service portal (#103).
   #
-  # `hosts: aap`, so it takes `limit: {{ aap_env_name }}` and no Machine
-  # credential, exactly like the AO template.
+  # THIS TEMPLATE DOES NOT WORK FROM AAP YET, AND THAT IS LEFT VISIBLE RATHER
+  # THAN HIDDEN (#324). Launching it fails in about ten seconds. Two
+  # independent reasons, and fixing either alone only moves the failure:
+  #
+  #   1. NO KUBECONFIG. portal.yml points Helm at .kube/<env>.kubeconfig,
+  #      gitignored and generated on a laptop by utilities/make-kubeconfig.sh.
+  #      AAP's SCM checkout has no .kube/ directory at all.
+  #   2. NO HELM BINARY. kubernetes.core.helm wraps the helm CLI -- the
+  #      playbook's own header says so -- and execution-environment.yml
+  #      installs terraform and nothing else.
+  #
+  # WHY #300 GOT THIS WRONG, recorded so the check is not skipped again. The
+  # template was added on the strength of `hosts: aap` plus the right
+  # credentials, matching Install Automation Orchestrator. But AO and Install
+  # MCP Server use kubernetes.core.k8s, which talks to the API directly through
+  # K8S_AUTH_*; portal.yml SHELLS OUT to a binary.
+  #
+  # WHAT A PLAYBOOK EXECUTES IS PART OF WHETHER IT CAN RUN FROM AAP, not just
+  # what it targets. utilities/run-in-ee.sh and /sales-demos-verify-ee exist to
+  # catch exactly this, and neither was run against this template.
+  #
+  # Deploy the portal with /sales-demos-portal from a laptop, which is how it
+  # has always been done. The real fix -- helm in the EE, plus synthesising the
+  # kubeconfig from openshift_api_url/token the way tasks/terraform_ocpvirt.yml
+  # already does -- is tracked in #324.
   # ---------------------------------------------------------------------
   - name: "AAP Ecosystem - Install Self-Service Portal"
-    description: "Deploy the AAP self-service portal (RHDH with the AAP plugin), create its OAuth application, and sync the org list."
+    description: "LAPTOP-ONLY TODAY (#324) — launching this from AAP fails: the EE has no helm binary and the SCM checkout has no kubeconfig. Use the sales-demos-portal skill instead. Deploys RHDH with the AAP plugin, its OAuth application, and the org list."
     labels:
       - aap-ecosystem
       - install
