@@ -41,6 +41,7 @@
         "refresh": 2,
         "sort": 1,
         "includeAll": true,
+        "allValue": ".*",
         "multi": true,
         "current": {},
         "label": "Namespace"

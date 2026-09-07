@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed -- Namespace "All" breaks 7 dashboard panels (#289)
+- Added `allValue: ".*"` to the namespace template variable on the Cluster
+  Health dashboard. Without it, selecting "All" substituted the literal string
+  `All` into `${namespace:regex}`, matching no namespace.
+
 ### Changed -- Provider abstraction layer (#238)
 - Refactored `playbooks/provision_vm.yml` and `playbooks/teardown.yml` into a
   provider dispatch pattern: `include_tasks: tasks/terraform_{{ hypervisor }}.yml`
