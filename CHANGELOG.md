@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed -- Build Demo VM workflow nodes not updated after JT rename (#240)
+- Added `destroy_current_nodes: true` to the Build Demo VM workflow so
+  `config.yml` replaces existing nodes instead of only adding. Without this,
+  renaming the JTs in #292 left the old node references in place — the
+  `infra.aap_configuration` module only adds nodes, it does not diff.
+
 ### Changed -- Linux-scope playbook and job template names (#240)
 - Renamed five playbooks and their matching job templates so names are
   explicitly Linux-scoped, ahead of Windows day 2 operations arriving:

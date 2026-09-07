@@ -31,6 +31,10 @@ controller_workflows_all:
       Provision a demo VM, register it to the Red Hat CDN, configure the web
       server, and verify it — one button, in the only order that works.
     organization: "IT Service Automation"
+    # Force the module to tear down the existing nodes and recreate them from
+    # the definition below. Without this, renaming the JTs in #240 left the
+    # old node references in place — the module only adds, it does not diff.
+    destroy_current_nodes: true
     # The inventory the nodes run against. Each job template also carries its
     # own, and the node-level template wins; this is the workflow's default.
     inventory: "Sales Demo VMs"
