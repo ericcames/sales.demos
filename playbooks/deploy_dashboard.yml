@@ -55,7 +55,7 @@
         body:
           uid: "{{ grafana_folder_uid }}"
           title: "{{ grafana_folder_title }}"
-        status_code: [200, 409]
+        status_code: [200, 409, 412]
 
     - name: Load the dashboard JSON
       ansible.builtin.set_fact:
