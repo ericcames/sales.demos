@@ -168,10 +168,19 @@ variable "windows_admin_password" {
   # here, on the clone, by the sysprep unattend in main.tf — which is why the
   # quay repository being private is a convenience and not a security control.
   #
-  # playbooks/provision_vm.yml passes this environment's linux_admin_password:
-  # one password to remember per environment, and windows_admin_password was a
-  # single GLOBAL value that could not be reconciled with a per-environment one
-  # while it lived in the image (#201).
+  # playbooks/provision_vm.yml passes this environment's own
+  # windows_admin_password, separate from the Linux one since #305.
+  #
+  # It was shared with linux_admin_password between #201 and #305, and the
+  # reason is easy to get backwards: #201's defect was SCOPE. The old
+  # windows_admin_password was a single GLOBAL value because it lived baked in
+  # the image both environments pull, which cannot be reconciled with a
+  # per-environment credential. #201 moved the real password onto the clone --
+  # and once it left the image, nothing forced it to equal the Linux one.
+  # Per-environment is compatible with #201; a global key would still not be.
+  #
+  # It also has to be LONGER than the Linux one: CIS L1 for Windows Server 2022
+  # requires 14 characters, and provision_vm.yml asserts that before applying.
   description = "Password for the local Windows administrator created by the sysprep unattend. Set per environment; not the throwaway password baked into the golden image."
   type        = string
   default     = ""

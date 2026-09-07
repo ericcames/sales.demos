@@ -55,6 +55,15 @@ openshift_validate_certs: false
 aap_password: "{{ env_secrets[aap_env_name].aap_password }}"
 openshift_api_token: "{{ env_secrets[aap_env_name].openshift_api_token }}"
 linux_admin_password: "{{ env_secrets[aap_env_name].linux_admin_password | default('') }}"
+# SEPARATE FROM THE LINUX ONE, and that does not undo #201 (#305). #201's defect
+# was SCOPE: windows_admin_password was a single GLOBAL value because it lived
+# baked in the golden image both environments pull. #201 moved the real password
+# onto the CLONE via the sysprep unattend, and once it left the image nothing
+# forced it to equal the Linux one -- sharing was a convenience, not a
+# constraint. Keyed per environment here, it stays compatible; a global one
+# would not. It is also the only one long enough: CIS L1 for Windows Server 2022
+# requires 14 characters and linux_admin_password is 8.
+windows_admin_password: "{{ env_secrets[aap_env_name].windows_admin_password | default('') }}"
 
 # --- Demo VM defaults (not secret) -----------------------------------------
 windows_admin_username: "demoadmin"

@@ -213,11 +213,17 @@ resource "kubernetes_manifest" "linux_vm" {
 # With the cache gone, the filename mismatch became the remaining failure. The
 # key is now `Unattend.xml` — the name Windows searches for after sysprep.
 #
-# WHY THE PASSWORD COMES FROM THE LINUX VARIABLE. `linux_admin_password` is keyed
-# per environment; the old `windows_admin_password` was a single GLOBAL value,
-# because it lived in an image both environments pull. Those scopes cannot be
-# reconciled while the credential is in the image, so it moved to the clone —
-# one password to remember per environment, and the Linux one wins.
+# THE PASSWORD IS THIS ENVIRONMENT'S OWN `windows_admin_password` (#305), no
+# longer the Linux one. #201 had merged them because the old key was a single
+# GLOBAL value baked into an image both environments pull, irreconcilable with a
+# per-environment credential. Moving the real password onto the clone — which is
+# what this resource does — is what removed that constraint, so splitting them
+# again per environment does not reintroduce it.
+#
+# CIS L1 for Windows Server 2022 requires 14 characters. Sysprep silently fails
+# to create the account below if the password is rejected, and the guest boots to
+# a desktop where WinRM never answers, so provision_vm.yml asserts the length
+# rather than letting that happen.
 # ---------------------------------------------------------------------------
 
 resource "kubernetes_secret" "windows_sysprep" {

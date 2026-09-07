@@ -95,6 +95,32 @@
           alphanumeric.
         quiet: true
 
+    # -------------------------------------------------------------------
+    # WHY THIS IS ITS OWN ASSERT (#305). Without it the failure is silent and
+    # expensive: sysprep cannot create the local administrator account, so the
+    # guest boots all the way to a desktop and WinRM simply never answers.
+    # That reads as a network or credential problem and sends you looking in
+    # entirely the wrong place. CIS L1 for Windows Server 2022 sets a
+    # 14-character minimum, and the CIS-hardened image has been the one we
+    # clone since #270.
+    #
+    # Linux runs are unaffected -- this only fires when Windows is requested.
+    # -------------------------------------------------------------------
+    - name: Assert the Windows administrator password meets CIS L1 policy
+      when: provision_os_type == 'windows'
+      ansible.builtin.assert:
+        that:
+          - windows_admin_password | default('') | length >= 14
+        fail_msg: >-
+          os_type=windows needs windows_admin_password to be at least 14
+          characters (CIS L1 for Windows Server 2022); got
+          {{ windows_admin_password | default('') | length }}. It is a
+          per-environment key under env_secrets in the vault, separate from
+          linux_admin_password since #305. From AAP it arrives through the
+          "Sales Demos - Env Secrets" credential, so a rotated vault value
+          does nothing until config.yml is re-run for this environment.
+        quiet: true
+
     - name: Assert the AAP connection is resolved
       ansible.builtin.assert:
         that:

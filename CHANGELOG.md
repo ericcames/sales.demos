@@ -7,6 +7,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed -- the Windows password was too short for the CIS image (#305)
+- Both environments' `linux_admin_password` is **8 characters**, and it was
+  serving as the Windows administrator password too. CIS L1 for Windows Server
+  2022 sets a **14-character minimum**, and the CIS-hardened image has been the
+  one we clone since #270.
+- `secrets.yml.example` predicted this exactly -- *"will be REJECTED once the
+  CIS-hardened Windows image lands. Lengthen both environments before then, not
+  after."* The image landed; the values were never lengthened.
+- The failure mode is why this is a bug and not a chore: sysprep cannot create
+  the local administrator account, so the guest boots to a desktop and WinRM
+  never answers. That reads as a network or credential fault and sends you
+  looking in the wrong place.
+- `provision_vm.yml` now asserts the length when `os_type=windows`, so it fails
+  with a message that names the cause instead of producing an unreachable VM.
+
+### Changed -- Windows password is its own per-environment key (#305)
+- New `windows_admin_password` under `env_secrets`, wired through
+  `connection.yml`, the `Sales Demos - Env Secrets` credential type and its
+  credential, so both the laptop and AAP paths carry it.
+- `playbooks/tasks/terraform_ocpvirt.yml` stops feeding
+  `TF_VAR_windows_admin_password` from `linux_admin_password`. **No fallback to
+  the Linux value** -- a silent fallback would reproduce the 8-character failure
+  above.
+- **This does not undo #201.** #201's defect was *scope*: the old
+  `windows_admin_password` was a single GLOBAL value because it was baked into
+  the golden image both environments pull. #201 moved the real password onto the
+  clone, and once it left the image nothing forced it to equal the Linux one --
+  sharing was convenience, not constraint. A per-environment key is compatible;
+  a global one still would not be, and the comments say so in all four places
+  that used to argue the other way.
+- Removed a stale top-level `windows_admin_password` left in the vault by #201.
+  It was read by nothing, 11 characters long, and would have been a second
+  source of truth for a key that now exists per environment.
+- `linux_admin_password` is deliberately left at 8 characters. Lengthening it
+  means reprovisioning the Linux VM, which is a separate decision; it only
+  guards Cockpit login on the RHEL guest.
+
 ### Fixed -- the workflow sorted last in its own family (#303)
 - Renamed `Linux Day 1 Workflow` to `Linux Day 1 - 0 Workflow`. #300 expected
   the first name to head its family; measured against the live API it sorted

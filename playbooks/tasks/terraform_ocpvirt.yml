@@ -170,7 +170,7 @@
         TF_VAR_openshift_insecure: "{{ (not (openshift_validate_certs | default(false) | bool)) | ternary('true', 'false') }}"
         TF_VAR_demo_ssh_public_key: "{{ demo_ssh_public_key | default('') }}"
         TF_VAR_linux_admin_password: "{{ linux_admin_password | default('') }}"
-        TF_VAR_windows_admin_password: "{{ linux_admin_password | default('') }}"
+        TF_VAR_windows_admin_password: "{{ windows_admin_password | default('') }}"
         TF_IN_AUTOMATION: "1"
       no_log: true
       changed_when: "'0 added, 0 changed, 0 destroyed' not in (tf_apply_result.stdout | default(''))"
