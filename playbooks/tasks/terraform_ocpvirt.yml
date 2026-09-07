@@ -167,7 +167,7 @@
       environment:
         TF_VAR_openshift_api_url: "{{ ocpvirt_api_url }}"
         TF_VAR_openshift_api_token: "{{ ocpvirt_api_token }}"
-        TF_VAR_openshift_insecure: "{{ (not (openshift_validate_certs | default(false) | bool)) | ternary('false', 'true') }}"
+        TF_VAR_openshift_insecure: "{{ (not (openshift_validate_certs | default(false) | bool)) | ternary('true', 'false') }}"
         TF_VAR_demo_ssh_public_key: "{{ demo_ssh_public_key | default('') }}"
         TF_VAR_linux_admin_password: "{{ linux_admin_password | default('') }}"
         TF_VAR_windows_admin_password: "{{ linux_admin_password | default('') }}"

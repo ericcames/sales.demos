@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed -- Terraform provider insecure flag inverted (#295)
+- Swapped the ternary values for `TF_VAR_openshift_insecure` so
+  `openshift_validate_certs: false` correctly sets `insecure=true` on the
+  Terraform kubernetes provider. Without this, provisioning fails on RHDP's
+  self-signed certificates with `x509: certificate signed by unknown authority`.
+
 ### Changed -- Consume CIS L1 hardened Windows golden image (#270)
 - Repointed `quay_windows_image` in both sandbox and demo `connection.yml`
   from the unhardened `win2k22-golden` repo to the new CIS L1 hardened
