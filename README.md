@@ -147,13 +147,23 @@ If your vault password lives somewhere other than the default path, export
 `SALES_DEMOS_VAULT_PASS`; both `utilities/make-kubeconfig.sh` and the AAP Vault
 credential in `inventory/group_vars/aap/main.yml` read that same variable.
 
+## Documentation
+
+Talk tracks, run sheets, and architecture guides live in a companion repo and
+are published as a browsable site:
+
+**[ericcames.github.io/sales.demos-docs](https://ericcames.github.io/sales.demos-docs)**
+
+Marketing content (key messages, Gemini notebook prompts, Red Hat product links)
+lives in Google Drive — linked from each use case's page on the docs site.
+
 ## Use cases
 
 | Use case | Audience | Plan | Talk track |
 |---|---|---|---|
-| **OpenShift Virtualization** | Linux / platform sysadmins | [`docs/plan/ocpvirt-demo-plan.md`](docs/plan/ocpvirt-demo-plan.md) | [`docs/demos/openshift-virtualization/`](docs/demos/openshift-virtualization/) |
-| **Private Automation Hub — ClickOps vs. config-as-code** | Sysadmins and automation leads | [`docs/plan/pah-plan.md`](docs/plan/pah-plan.md) | [`docs/demos/private-automation-hub/`](docs/demos/private-automation-hub/) |
-| **MCP Servers — Agentic Automation** | Platform engineers and automation leads | [`docs/plan/platform-addons-plan.md`](docs/plan/platform-addons-plan.md) | [`docs/demos/mcp-servers/`](docs/demos/mcp-servers/) |
+| **OpenShift Virtualization** | Linux / platform sysadmins | [`docs/plan/ocpvirt-demo-plan.md`](docs/plan/ocpvirt-demo-plan.md) | [docs site](https://ericcames.github.io/sales.demos-docs/demos/openshift-virtualization/) |
+| **Private Automation Hub — ClickOps vs. config-as-code** | Sysadmins and automation leads | [`docs/plan/pah-plan.md`](docs/plan/pah-plan.md) | [docs site](https://ericcames.github.io/sales.demos-docs/demos/private-automation-hub/) |
+| **MCP Servers — Agentic Automation** | Platform engineers and automation leads | [`docs/plan/platform-addons-plan.md`](docs/plan/platform-addons-plan.md) | [docs site](https://ericcames.github.io/sales.demos-docs/demos/mcp-servers/) |
 
 ## The demo: OpenShift Virtualization on the RHDP "Ansible Product Demo"
 
@@ -165,9 +175,9 @@ The full research findings, design decisions, and phase-by-phase plan are in
 [`docs/plan/ocpvirt-demo-plan.md`](docs/plan/ocpvirt-demo-plan.md). Read that
 first — it records *why* things are the way they are, not just what to do.
 
-**Presenting it rather than building it?**
-[`docs/demos/openshift-virtualization/`](docs/demos/openshift-virtualization/)
-is the talk track: a 30-minute run sheet, the narrative behind each beat, the
+**Presenting it rather than building it?** The
+[docs site](https://ericcames.github.io/sales.demos-docs/demos/openshift-virtualization/)
+has the talk track: a 30-minute run sheet, the narrative behind each beat, the
 questions this audience asks, and the answers. It needs no live environment —
 the demo page and login banners are rendered from the same templates the guests
 serve by `utilities/render-demo-assets.py`, and committed.

@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added -- Companion documentation repo (#285)
+- Created [sales.demos-docs](https://github.com/ericcames/sales.demos-docs)
+  with GitHub Pages (MkDocs Material) for talk tracks, run sheets, architecture
+  guides, and design plans.
+- Docs site live at
+  [ericcames.github.io/sales.demos-docs](https://ericcames.github.io/sales.demos-docs).
+- Updated README to link to the docs site for talk tracks.
+- Marketing content (#252) will live in Google Drive, not in either GitHub repo.
+
 ### Fixed -- Grafana Cloud dashboard panel refinements (#275)
 - License Expiry panel: `awx_license_expiry` is a TTL (seconds remaining),
   not an epoch timestamp. Wrapped with `(time() + metric) * 1000` so the
