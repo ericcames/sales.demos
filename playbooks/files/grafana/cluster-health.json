@@ -64,7 +64,7 @@
       },
       "targets": [
         {
-          "expr": "sum(kube_node_status_condition{cluster=~\"${cluster:regex}\", condition=\"Ready\", status=\"true\"})",
+          "expr": "sum(kube_node_status_condition{cluster=\"$cluster\", condition=\"Ready\", status=\"true\"})",
           "legendFormat": "",
           "refId": "A"
         }
@@ -105,7 +105,7 @@
       },
       "targets": [
         {
-          "expr": "count(kubevirt_vmi_info{cluster=~\"${cluster:regex}\", phase=\"running\"}) or vector(0)",
+          "expr": "count(kubevirt_vmi_info{cluster=\"$cluster\", namespace=~\"${namespace:regex}\", phase=\"running\"}) or vector(0)",
           "legendFormat": "",
           "refId": "A"
         }
@@ -145,7 +145,7 @@
       },
       "targets": [
         {
-          "expr": "sum(kube_pod_status_phase{cluster=~\"${cluster:regex}\", phase=\"Running\"} == 1)",
+          "expr": "sum(kube_pod_status_phase{cluster=\"$cluster\", namespace=~\"${namespace:regex}\", phase=\"Running\"} == 1)",
           "legendFormat": "",
           "refId": "A"
         }
@@ -186,7 +186,7 @@
       },
       "targets": [
         {
-          "expr": "max(up{cluster=~\"${cluster:regex}\", job=\"prometheus.scrape.aap_controller\"})",
+          "expr": "min(up{cluster=\"$cluster\", job=\"prometheus.scrape.aap_controller\"})",
           "legendFormat": "",
           "refId": "A"
         }
@@ -230,7 +230,7 @@
       },
       "targets": [
         {
-          "expr": "max(up{cluster=~\"${cluster:regex}\", job=\"prometheus.scrape.thanos_federate\"})",
+          "expr": "min(up{cluster=\"$cluster\", job=\"prometheus.scrape.thanos_federate\"})",
           "legendFormat": "",
           "refId": "A"
         }
@@ -274,7 +274,7 @@
       },
       "targets": [
         {
-          "expr": "count({__name__!=\"\"})",
+          "expr": "count({cluster=\"$cluster\", __name__!=\"\"})",
           "legendFormat": "",
           "refId": "A",
           "instant": true
@@ -324,7 +324,7 @@
       },
       "targets": [
         {
-          "expr": "100 - (avg by (instance) (rate(node_cpu_seconds_total{cluster=~\"${cluster:regex}\", mode=\"idle\"}[5m])) * 100)",
+          "expr": "100 - (avg by (instance) (rate(node_cpu_seconds_total{cluster=\"$cluster\", mode=\"idle\"}[$__rate_interval])) * 100)",
           "legendFormat": "{{ instance }}",
           "refId": "A"
         }
@@ -373,7 +373,7 @@
       },
       "targets": [
         {
-          "expr": "(1 - node_memory_MemAvailable_bytes{cluster=~\"${cluster:regex}\"} / node_memory_MemTotal_bytes{cluster=~\"${cluster:regex}\"}) * 100",
+          "expr": "(1 - node_memory_MemAvailable_bytes{cluster=\"$cluster\"} / node_memory_MemTotal_bytes{cluster=\"$cluster\"}) * 100",
           "legendFormat": "{{ instance }}",
           "refId": "A"
         }
@@ -415,7 +415,7 @@
       },
       "targets": [
         {
-          "expr": "(1 - node_filesystem_avail_bytes{cluster=~\"${cluster:regex}\", mountpoint=\"/var\", fstype=\"xfs\"} / node_filesystem_size_bytes{cluster=~\"${cluster:regex}\", mountpoint=\"/var\", fstype=\"xfs\"}) * 100",
+          "expr": "(1 - node_filesystem_avail_bytes{cluster=\"$cluster\", mountpoint=\"/var\", fstype=\"xfs\"} / node_filesystem_size_bytes{cluster=\"$cluster\", mountpoint=\"/var\", fstype=\"xfs\"}) * 100",
           "legendFormat": "{{ instance }}",
           "refId": "A"
         }
@@ -457,12 +457,12 @@
       },
       "targets": [
         {
-          "expr": "sum by (instance) (rate(node_network_receive_bytes_total{cluster=~\"${cluster:regex}\", device=~\"enp.*|ens.*|eth.*\"}[5m]))",
+          "expr": "sum by (instance) (rate(node_network_receive_bytes_total{cluster=\"$cluster\", device=~\"enp.*|ens.*|eth.*\"}[$__rate_interval]))",
           "legendFormat": "{{ instance }} receive",
           "refId": "A"
         },
         {
-          "expr": "-sum by (instance) (rate(node_network_transmit_bytes_total{cluster=~\"${cluster:regex}\", device=~\"enp.*|ens.*|eth.*\"}[5m]))",
+          "expr": "-sum by (instance) (rate(node_network_transmit_bytes_total{cluster=\"$cluster\", device=~\"enp.*|ens.*|eth.*\"}[$__rate_interval]))",
           "legendFormat": "{{ instance }} transmit",
           "refId": "B"
         }
@@ -505,7 +505,7 @@
       },
       "targets": [
         {
-          "expr": "kubevirt_vmi_info{cluster=~\"${cluster:regex}\"}",
+          "expr": "kubevirt_vmi_info{cluster=\"$cluster\", namespace=~\"${namespace:regex}\"}",
           "legendFormat": "",
           "refId": "A",
           "instant": true,
@@ -575,7 +575,7 @@
       },
       "targets": [
         {
-          "expr": "rate(kubevirt_vmi_cpu_usage_seconds_total{cluster=~\"${cluster:regex}\"}[5m])",
+          "expr": "rate(kubevirt_vmi_cpu_usage_seconds_total{cluster=\"$cluster\", namespace=~\"${namespace:regex}\"}[$__rate_interval])",
           "legendFormat": "{{ name }}",
           "refId": "A"
         }
@@ -612,7 +612,7 @@
       },
       "targets": [
         {
-          "expr": "kubevirt_vmi_memory_used_bytes{cluster=~\"${cluster:regex}\"}",
+          "expr": "kubevirt_vmi_memory_used_bytes{cluster=\"$cluster\", namespace=~\"${namespace:regex}\"}",
           "legendFormat": "{{ name }}",
           "refId": "A"
         }
@@ -648,12 +648,12 @@
       },
       "targets": [
         {
-          "expr": "rate(kubevirt_vmi_network_receive_bytes_total{cluster=~\"${cluster:regex}\"}[5m])",
+          "expr": "rate(kubevirt_vmi_network_receive_bytes_total{cluster=\"$cluster\", namespace=~\"${namespace:regex}\"}[$__rate_interval])",
           "legendFormat": "{{ name }} rx",
           "refId": "A"
         },
         {
-          "expr": "-rate(kubevirt_vmi_network_transmit_bytes_total{cluster=~\"${cluster:regex}\"}[5m])",
+          "expr": "-rate(kubevirt_vmi_network_transmit_bytes_total{cluster=\"$cluster\", namespace=~\"${namespace:regex}\"}[$__rate_interval])",
           "legendFormat": "{{ name }} tx",
           "refId": "B"
         }
@@ -695,7 +695,7 @@
       },
       "targets": [
         {
-          "expr": "awx_instance_consumed_capacity{cluster=~\"${cluster:regex}\"} / awx_instance_capacity{cluster=~\"${cluster:regex}\"} * 100",
+          "expr": "awx_instance_consumed_capacity{cluster=\"$cluster\"} / awx_instance_capacity{cluster=\"$cluster\"} * 100",
           "legendFormat": "",
           "refId": "A"
         }
@@ -737,7 +737,7 @@
       },
       "targets": [
         {
-          "expr": "awx_running_jobs_total{cluster=~\"${cluster:regex}\"}",
+          "expr": "awx_running_jobs_total{cluster=\"$cluster\"}",
           "legendFormat": "",
           "refId": "A"
         }
@@ -777,7 +777,7 @@
       },
       "targets": [
         {
-          "expr": "awx_pending_jobs_total{cluster=~\"${cluster:regex}\"}",
+          "expr": "awx_pending_jobs_total{cluster=\"$cluster\"}",
           "legendFormat": "",
           "refId": "A"
         }
@@ -819,7 +819,7 @@
       },
       "targets": [
         {
-          "expr": "awx_hosts_total{cluster=~\"${cluster:regex}\"}",
+          "expr": "awx_hosts_total{cluster=\"$cluster\"}",
           "legendFormat": "",
           "refId": "A"
         }
@@ -859,7 +859,7 @@
       },
       "targets": [
         {
-          "expr": "awx_job_templates_total{cluster=~\"${cluster:regex}\"}",
+          "expr": "awx_job_templates_total{cluster=\"$cluster\"}",
           "legendFormat": "",
           "refId": "A"
         }
@@ -899,7 +899,7 @@
       },
       "targets": [
         {
-          "expr": "awx_database_connections_total{cluster=~\"${cluster:regex}\"}",
+          "expr": "awx_database_connections_total{cluster=\"$cluster\"}",
           "legendFormat": "",
           "refId": "A"
         }
@@ -941,7 +941,7 @@
       },
       "targets": [
         {
-          "expr": "awx_license_expiry{cluster=~\"${cluster:regex}\"}",
+          "expr": "awx_license_expiry{cluster=\"$cluster\"}",
           "legendFormat": "",
           "refId": "A"
         }
@@ -981,7 +981,7 @@
       },
       "targets": [
         {
-          "expr": "topk(10, sum by (pod) (rate(container_cpu_usage_seconds_total{cluster=~\"${cluster:regex}\", namespace=\"aap\", container!=\"\"}[5m])))",
+          "expr": "topk(10, sum by (pod) (rate(container_cpu_usage_seconds_total{cluster=\"$cluster\", namespace=\"aap\", container!=\"\"}[$__rate_interval])))",
           "legendFormat": "{{ pod }}",
           "refId": "A"
         }
@@ -1017,7 +1017,7 @@
       },
       "targets": [
         {
-          "expr": "topk(10, sum by (pod) (container_memory_working_set_bytes{cluster=~\"${cluster:regex}\", namespace=\"aap\", container!=\"\"}))",
+          "expr": "topk(10, sum by (pod) (container_memory_working_set_bytes{cluster=\"$cluster\", namespace=\"aap\", container!=\"\"}))",
           "legendFormat": "{{ pod }}",
           "refId": "A"
         }
@@ -1058,7 +1058,7 @@
       },
       "targets": [
         {
-          "expr": "{cluster=~\"${cluster:regex}\", namespace=~\"${namespace:regex}\"}",
+          "expr": "{cluster=\"$cluster\", namespace=~\"${namespace:regex}\"}",
           "refId": "A"
         }
       ],

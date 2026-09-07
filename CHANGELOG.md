@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed -- Grafana Cloud dashboard query improvements (#275)
+- Simplified `cluster` variable matching from regex to exact match across all
+  panels — the variable is single-value, so `cluster="$cluster"` is clearer
+  and cheaper than `cluster=~"${cluster:regex}"`.
+- Scoped the Series Budget panel to the selected cluster instead of counting
+  all series globally.
+- Wired the `namespace` multi-select variable into VM and pod panels (VMs
+  Running, Pods Running, VM Status, VM CPU/Memory/Network I/O) so the
+  namespace dropdown filters them.
+- Changed health-check panels (AAP Controller, Alloy Federation) from
+  `max(up{...})` to `min(up{...})` so a DOWN target is never masked by
+  healthy ones.
+- Replaced hardcoded `[5m]` with `$__rate_interval` in all `rate()` calls
+  for automatic window sizing.
+
 ### Added -- Grafana Cloud Phase 2/3: dashboard as code (#275)
 - `playbooks/files/grafana/cluster-health.json` defines a "Cluster Health"
   dashboard covering five sections: overview stat panels, cluster nodes
