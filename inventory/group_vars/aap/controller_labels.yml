@@ -11,7 +11,7 @@
 #
 # THREE AXES, and each value has to earn its place:
 #
-#   domain      aap-ecosystem, linux        (windows when #241 lands)
+#   domain      aap-ecosystem, linux, windows
 #   phase       install, day-1              (day-2 when #241 lands)
 #   hypervisor  ocpvirt
 #
@@ -39,6 +39,8 @@ controller_labels_all:
   - name: aap-ecosystem
     organization: "IT Service Automation"
   - name: linux
+    organization: "IT Service Automation"
+  - name: windows
     organization: "IT Service Automation"
 
   # --- phase ----------------------------------------------------------

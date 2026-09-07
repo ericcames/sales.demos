@@ -70,6 +70,9 @@
       no_log: true
       changed_when: false
 
+    # STATE IS PER OS (#301), so a teardown destroys only the OS it was asked
+    # for. Tearing down Windows leaves a running Linux VM alone, which is the
+    # whole point -- the shared state used to make that impossible.
     - name: Initialize Terraform against the kubernetes backend
       ansible.builtin.command:
         argv:
@@ -78,7 +81,7 @@
           - -input=false
           - -no-color
           - -reconfigure
-          - "-backend-config=secret_suffix={{ aap_env_name }}"
+          - "-backend-config=secret_suffix={{ aap_env_name }}-{{ provision_os_type }}"
           - "-backend-config=namespace={{ ocpvirt_state_namespace }}"
           - "-backend-config=config_path={{ ocpvirt_kubeconfig.path }}"
           - "-backend-config=insecure={{ (not (openshift_validate_certs | default(false) | bool)) | lower }}"

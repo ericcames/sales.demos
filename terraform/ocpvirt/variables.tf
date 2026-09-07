@@ -62,8 +62,8 @@ variable "os_type" {
   default     = "linux"
 
   validation {
-    condition     = contains(["windows", "linux", "both"], var.os_type)
-    error_message = "os_type must be one of: windows, linux, both."
+    condition     = contains(["windows", "linux"], var.os_type)
+    error_message = "os_type must be one of: windows, linux. `both` was removed in #301 -- state is keyed per OS, so one apply builds one OS. Run it twice to get both."
   }
 }
 

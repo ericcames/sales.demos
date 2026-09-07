@@ -101,3 +101,22 @@ openshift_apps_domain: "apps.cluster-6d5xj.dyn.redhatworkshops.io"
 
 # Namespace the demo VMs are created in.
 ocpvirt_namespace: "sales-demos-demo"
+
+# --- Cluster memory budget -------------------------------------------------
+# Guest memory this cluster will admit, in GiB. Measured by
+# playbooks/probe_env.yml -- re-run /sales-demos-probe-env rather than
+# hand-adjusting (#118, #141).
+#
+# IT LIVES HERE NOW, NOT ONLY IN TERRAFORM (#301). It used to exist solely as a
+# default on terraform/ocpvirt's `available_memory_gb` variable, which Ansible
+# never passed -- so the number in variables.tf was the only one that ever
+# applied, identically to both clusters, and could not differ per environment
+# even though it is a per-cluster measurement. provision_vm.yml now needs it too
+# for the cluster-wide check that Terraform cannot do, and two copies of a
+# measured number is exactly the drift this repo avoids. Defined here, passed to
+# Terraform on apply; the Terraform default remains only for hand-runs.
+#
+# Overstating it is the dangerous direction: the guards fail closed, so a figure
+# that is too small merely refuses tiers the cluster could run, while one that is
+# too large admits a plan that will not schedule.
+available_memory_gb: 63

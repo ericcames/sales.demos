@@ -383,6 +383,94 @@ controller_templates_all:
     extra_vars:
       target_env: "{{ aap_env_name }}"
 
+  # ---------------------------------------------------------------------
+  # WINDOWS DAY 1 (#301). Provision and Teardown only — deliberately.
+  #
+  # There is no Configure or Check here because there is no Windows content to
+  # run yet: this repo has no configure_windows_vm.yml, and ansible.windows is
+  # not in collections/requirements.yml or the EE, so a Windows check template
+  # would need a collection bump and an EE rebuild. That is #241's work. What
+  # these two templates deliver is the thing that was actually blocked —
+  # building a Windows VM without destroying the Linux one.
+  #
+  # THESE COULD NOT EXIST BEFORE THE STATE SPLIT. With one state per
+  # environment, launching a Windows provision set create_linux=false and
+  # planned the running Linux VM for destruction, so shipping this button
+  # earlier would have handed an SE a way to delete the demo mid-demo. #300
+  # removed the dropdown that did it; #301 removed the possibility.
+  # ---------------------------------------------------------------------
+  - name: "Windows Day 1 - 1 Provision"
+    description: "Build a Windows demo VM from the CIS L1 hardened golden image. Independent of the Linux VM — separate Terraform state."
+    labels:
+      - windows
+      - day-1
+      - ocpvirt
+    job_type: run
+    organization: "IT Service Automation"
+    inventory: "Sales Demo VMs"
+    project: "Sales Demos"
+    playbook: playbooks/provision_vm.yml
+    execution_environment: "Sales Demos - OCP Virt EE"
+    credentials:
+      - "Sales Demos - Vault"
+      - "Sales Demos - Env Secrets"
+    limit: "{{ aap_env_name }}"
+    extra_vars:
+      target_env: "{{ aap_env_name }}"
+      provision_inventory: "Sales Demo VMs"
+      # Pinned, not surveyed — the same reasoning as the Linux template.
+      os_type: windows
+    survey_enabled: true
+    survey_spec:
+      name: ""
+      description: "Pick a hypervisor and VM size tier"
+      spec:
+        - question_name: Hypervisor
+          question_description: >-
+            Which infrastructure provider to provision on. OCP Virt is the
+            default and only provider today.
+          variable: hypervisor
+          type: multiplechoice
+          required: true
+          default: ocpvirt
+          choices:
+            - ocpvirt
+        - question_name: VM size tier
+          question_description: >-
+            T-shirt size. Windows gets a 60 GiB root disk regardless of tier —
+            see windows_min_disk_gb in terraform/ocpvirt/locals.tf.
+          variable: vm_size_tier
+          type: multiplechoice
+          required: true
+          default: small
+          choices:
+            - small
+            - medium
+            - large
+
+  - name: "Windows Day 1 - Teardown"
+    description: "Destroy the Windows demo VM only. The Linux VM has its own state and is untouched."
+    labels:
+      - windows
+      - day-1
+      - ocpvirt
+    job_type: run
+    organization: "IT Service Automation"
+    inventory: "Sales Demo VMs - Control"
+    project: "Sales Demos"
+    playbook: playbooks/teardown.yml
+    execution_environment: "Sales Demos - OCP Virt EE"
+    credentials:
+      - "Sales Demos - Vault"
+      - "Sales Demos - Env Secrets"
+    limit: "{{ aap_env_name }}"
+    extra_vars:
+      target_env: "{{ aap_env_name }}"
+      provision_inventory: "Sales Demo VMs"
+      os_type: windows
+      vm_size_tier: small
+    ask_variables_on_launch: true
+
   # -------------------------------------------------------------------
   # Retired names. Two rounds of renaming live here.
   #

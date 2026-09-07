@@ -36,6 +36,7 @@
     # Must match what provision_vm.yml applied, or destroy plans against a
     # different shape than the one that was built.
     provision_size_tier: "{{ vm_size_tier | default('small') }}"
+    # One OS per run, matching provision — state is keyed per OS since #301.
     provision_os_type: "{{ os_type | default('linux') }}"
     provision_name_suffix: "{{ name_suffix | default('') }}"
 

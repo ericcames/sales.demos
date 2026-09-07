@@ -34,10 +34,11 @@
 # trusting it: after the run, the renamed template should carry these
 # schedules and no others.
 #
-# THE SCHEDULE IS NAMED FOR THE FAMILY IT BELONGS TO (#300). It tears down
-# the Linux VMs specifically -- the teardown template pins os_type: linux --
-# so when Windows gets its own provisioning chain (#301) it needs its own
-# sweep here, or a Windows VM left running overnight is never reclaimed.
+# ONE SWEEP PER OS, AND THAT IS NOT OPTIONAL (#301). Terraform state is keyed
+# per OS now, so `Linux Day 1 - Teardown` destroys ONLY the Linux VM -- it can no
+# longer see the Windows one. A Windows VM would therefore burn quota all night
+# with nothing to reclaim it, which is exactly what the note here predicted when
+# the split was still hypothetical. Adding an OS means adding its sweep.
 #
 # The teardown job template is idempotent: with no VMs in state, terraform
 # destroy is a no-op, so a schedule firing against an already-clean environment
@@ -58,5 +59,17 @@ controller_schedules_sandbox:
   - name: "Linux Day 1 - Nightly teardown (10 PM safety net)"
     unified_job_template: "Linux Day 1 - Teardown"
     description: "Second sweep at 10 PM America/Phoenix — catches VMs created after the 6 PM run."
+    rrule: "DTSTART;TZID=America/Phoenix:20260810T220000 RRULE:FREQ=DAILY;INTERVAL=1"
+    enabled: true
+
+  - name: "Windows Day 1 - Nightly teardown (6 PM)"
+    unified_job_template: "Windows Day 1 - Teardown"
+    description: "Destroy sandbox Windows demo VMs every day at 6 PM America/Phoenix."
+    rrule: "DTSTART;TZID=America/Phoenix:20260810T180000 RRULE:FREQ=DAILY;INTERVAL=1"
+    enabled: true
+
+  - name: "Windows Day 1 - Nightly teardown (10 PM safety net)"
+    unified_job_template: "Windows Day 1 - Teardown"
+    description: "Second Windows sweep at 10 PM America/Phoenix — matches the Linux safety net."
     rrule: "DTSTART;TZID=America/Phoenix:20260810T220000 RRULE:FREQ=DAILY;INTERVAL=1"
     enabled: true

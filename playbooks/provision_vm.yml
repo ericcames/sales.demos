@@ -85,11 +85,13 @@
         that:
           - provision_hypervisor in ['ocpvirt']
           - provision_size_tier in ['small', 'medium', 'large', 'small-1cpu-2gb', 'medium-1cpu-4gb', 'large-2cpu-6gb']
-          - provision_os_type in ['windows', 'linux', 'both']
+          - provision_os_type in ['windows', 'linux']
           - provision_name_suffix is match('^[a-z0-9]*$')
         fail_msg: >-
           Need hypervisor (ocpvirt), vm_size_tier (small|medium|large) and
-          os_type (windows|linux|both). Got hypervisor={{ provision_hypervisor }},
+          os_type (windows|linux). `both` was removed in #301 — state is keyed
+          per OS, so one run builds one OS; run it twice for both.
+          Got hypervisor={{ provision_hypervisor }},
           vm_size_tier={{ provision_size_tier }},
           os_type={{ provision_os_type }}. name_suffix must be lowercase
           alphanumeric.
@@ -131,6 +133,71 @@
           No AAP connection for host registration. Locally this comes from
           group_vars/<env>/connection.yml plus the vault; from AAP, attach a Red
           Hat Ansible Automation Platform credential (it injects CONTROLLER_*).
+        quiet: true
+
+    # -------------------------------------------------------------------
+    # CLUSTER-WIDE MEMORY CHECK (#301). Terraform's own budget guard in
+    # locals.tf can only see the state it is applying, and state is now keyed
+    # per OS — so when Linux and Windows each have their own state, NEITHER can
+    # see the other's VM and both pass their private check while together
+    # overcommitting the node.
+    #
+    # The cluster is the only thing that sees both, so ask it. This counts the
+    # guest memory KubeVirt VMs in the target namespace are asking for, adds
+    # what this run wants, and compares against the same available_memory_gb
+    # the Terraform guard uses.
+    #
+    # A VM this run is about to CONVERGE rather than create is excluded by
+    # name, or re-running provision against an existing VM would count it twice
+    # and refuse to converge its own VM.
+    #
+    # Read-only, one API call. Not a substitute for probe_env.yml, which
+    # measures the whole cluster including non-VM workloads and recommends the
+    # available_memory_gb this compares against.
+    # -------------------------------------------------------------------
+    - name: Ask the cluster what the existing demo VMs already request
+      kubernetes.core.k8s_info:
+        api_version: kubevirt.io/v1
+        kind: VirtualMachine
+        namespace: "{{ ocpvirt_namespace_resolved }}"
+      environment:
+        K8S_AUTH_HOST: "{{ ocpvirt_api_url }}"
+        K8S_AUTH_API_KEY: "{{ ocpvirt_api_token }}"
+        K8S_AUTH_VERIFY_SSL: "{{ openshift_validate_certs | default(false) | bool }}"
+      register: ocpvirt_existing_vms
+      when: provision_hypervisor == 'ocpvirt'
+
+    - name: Assert the cluster has room for this VM alongside the other OS
+      when: provision_hypervisor == 'ocpvirt'
+      vars:
+        # Guest memory already requested, in GiB, skipping the VM this run owns.
+        _this_vm: "sd-{{ 'win' if provision_os_type == 'windows' else 'lnx' }}-{{ provision_size_tier }}{{ ('-' ~ provision_name_suffix) if provision_name_suffix else '' }}"
+        _tier_gb: "{{ {'small': 4, 'medium': 8, 'large': 16,
+                       'small-1cpu-2gb': 4, 'medium-1cpu-4gb': 8, 'large-2cpu-6gb': 16}[provision_size_tier] }}"
+        _existing_gb: >-
+          {%- set ns = namespace(total=0) -%}
+          {%- for vm in (ocpvirt_existing_vms.resources | default([])) -%}
+            {%- if vm.metadata.name != _this_vm -%}
+              {%- set q = (((vm.spec.template.spec.domain | default({})).get('memory', {})).get('guest', '')
+                            or ((((vm.spec.template.spec.domain | default({})).get('resources', {})).get('requests', {})).get('memory', '0'))) | string -%}
+              {%- set num = q | regex_replace('[^0-9.]', '') | default('0', true) | float -%}
+              {%- set unit = q | regex_replace('[0-9.]', '') -%}
+              {%- set gib = num if unit in ['Gi', 'G'] else (num / 1024 if unit in ['Mi', 'M'] else num / 1073741824) -%}
+              {%- set ns.total = ns.total + gib -%}
+            {%- endif -%}
+          {%- endfor -%}
+          {{ ns.total | round(2) }}
+      ansible.builtin.assert:
+        that:
+          - (_existing_gb | float) + (_tier_gb | float) <= (available_memory_gb | float)
+        fail_msg: >-
+          Not enough room on {{ aap_env_name }}. Demo VMs already request
+          {{ _existing_gb }} GiB and os_type={{ provision_os_type }} at tier
+          {{ provision_size_tier }} wants {{ _tier_gb }} GiB more, against
+          available_memory_gb={{ available_memory_gb }}. Terraform cannot catch
+          this since #301 — each OS has its own state and neither sees the
+          other. Tear down the other OS, pick a smaller tier, or re-run
+          /sales-demos-probe-env if this cluster genuinely has more headroom.
         quiet: true
 
     # --- Provider dispatch -------------------------------------------------

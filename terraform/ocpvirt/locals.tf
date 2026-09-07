@@ -1,7 +1,14 @@
 locals {
   # OS selection — drives count on per-VM resource blocks.
-  create_windows = contains(["windows", "both"], var.os_type)
-  create_linux   = contains(["linux", "both"], var.os_type)
+  #
+  # EXACT MATCH, AND `both` IS GONE (#301). State is now keyed per OS as well as
+  # per environment (secret_suffix=<env>-<os> in tasks/terraform_ocpvirt.yml), so
+  # each state holds exactly one VM and an apply for one OS can no longer plan
+  # the other one's VM for destruction. `both` cannot survive that: it would open
+  # a THIRD state holding two VMs whose names collide with the two single-OS
+  # states, and whichever ran last would fight the others forever.
+  create_windows = var.os_type == "windows"
+  create_linux   = var.os_type == "linux"
 
   # T-shirt tier -> repo-owned cluster instance type. Keys match the AAP survey
   # choices exactly. Mapping to instance types rather than raw CPU/memory is
@@ -55,9 +62,15 @@ locals {
   linux_disk_gb  = local.tier_disk_gb[var.vm_size_tier]
   windows_disk_g = max(local.tier_disk_gb[var.vm_size_tier], local.windows_min_disk_gb)
 
-  # Budget check. Counts every VM this run would create, plus per-VM KubeVirt
-  # overhead, against the cluster's headroom.
-  vm_count = (local.create_windows ? 1 : 0) + (local.create_linux ? 1 : 0)
+  # Budget check. ALWAYS ONE VM NOW, because state is per OS (#301).
+  #
+  # THIS GUARD CAN ONLY SEE ITS OWN VM, and that is the honest limit of putting
+  # it here: the other OS lives in a different state file, so Terraform has no
+  # way to know it exists. playbooks/provision_vm.yml therefore asks the CLUSTER
+  # what is already requested before calling terraform, which is the only source
+  # that sees both. Keep this one anyway — it catches "this tier cannot possibly
+  # fit" without a round trip, and it still runs when someone applies by hand.
+  vm_count = 1
   requested_memory_gb = local.vm_count * (
     local.tier_memory_gb[var.vm_size_tier] + (var.vm_memory_overhead_mb / 1024)
   )
@@ -123,7 +136,7 @@ resource "terraform_data" "memory_budget" {
     precondition {
       condition = local.requested_memory_gb <= var.available_memory_gb
       error_message = format(
-        "os_type=%s at tier %s needs ~%.1f GiB (%d VM(s) x %d GiB guest + %d MiB overhead each) but available_memory_gb is %d. Pick a smaller tier, a single OS, or raise available_memory_gb if this cluster has more headroom.",
+        "os_type=%s at tier %s needs ~%.1f GiB (%d VM x %d GiB guest + %d MiB overhead) but available_memory_gb is %d. This checks THIS OS only — state is per OS since #301, so the other OS is invisible here and provision_vm.yml does the cluster-wide check. Pick a smaller tier, or raise available_memory_gb if this cluster has more headroom.",
         var.os_type,
         var.vm_size_tier,
         local.requested_memory_gb,

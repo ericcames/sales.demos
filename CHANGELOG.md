@@ -7,6 +7,66 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed -- provisioning one OS destroyed the other (#301)
+- Terraform state is now keyed `secret_suffix=<env>-<os>` instead of `<env>`.
+  `terraform/ocpvirt/locals.tf` derives `create_linux`/`create_windows` from
+  `os_type` and those drive `count`, so with a single shared state an apply
+  with `os_type=windows` set `create_linux=false`, dropped count to 0, and
+  planned the **running Linux VM for destruction**. Building one OS meant
+  losing the other.
+- #300 removed the survey dropdown that let an SE trigger this from the UI.
+  This removes the possibility.
+- Teardown is keyed the same way, so destroying Windows leaves Linux running.
+
+### Added -- Windows Day 1 templates (#301)
+- `Windows Day 1 - 1 Provision` and `Windows Day 1 - Teardown`, with
+  `os_type: windows` pinned and a new `windows` label.
+- **Provision and Teardown only.** There is no Windows Configure or Check
+  because there is no Windows content yet -- `ansible.windows` is in neither
+  `collections/requirements.yml` nor the EE, so those need a collection bump
+  and an EE rebuild. That is #241.
+- **Windows nightly teardown schedules in both environments.** Not optional:
+  the Linux sweep can no longer see the Windows VM, so without its own sweep a
+  Windows guest would burn RHDP quota all night.
+
+### Changed -- `os_type=both` removed (#301)
+- With state keyed per OS, `both` would open a THIRD state holding two VMs
+  whose names collide with the two single-OS states, and whichever ran last
+  would fight the others. One apply builds one OS; run it twice for both.
+- Removed from the Terraform validation and the `provision_vm.yml` assert.
+  Nothing in AAP passed it after #300 pinned `os_type` per template family.
+
+### Added -- cluster-wide memory check before provisioning (#301)
+- Terraform's budget guard can only see the state it is applying, and neither
+  OS's state can now see the other -- so both could pass their private check
+  while together overcommitting the node.
+- `provision_vm.yml` asks the cluster what the existing demo VMs request,
+  adds this run's tier, and compares against `available_memory_gb`. One
+  read-only API call. The VM this run is converging is excluded by name, or a
+  re-run would count its own VM twice and refuse to converge it.
+- The Terraform precondition stays as a cheap per-OS sanity check, with its
+  error message rewritten to say what it can and cannot see.
+
+### Changed -- `available_memory_gb` is defined in Ansible now (#301)
+- It existed only as a default on the Terraform variable, which Ansible never
+  passed -- so the number in `variables.tf` was the only one that ever applied,
+  identically to both clusters, and could not differ per environment despite
+  being a per-cluster measurement.
+- Now set in each environment's `connection.yml` and passed on apply, so the
+  Terraform guard and the new cluster-wide check measure against the same
+  number. The Terraform default remains for hand-runs.
+- Caught by `secrets-example-sync`, which correctly flagged the new assert as
+  reading a variable nothing defined.
+
+### Added -- one-time state migration (#301)
+- `terraform_ocpvirt.yml` adopts the legacy `tfstate-default-<env>` secret as
+  `tfstate-default-<env>-linux` when the new key does not exist yet, so the
+  running Linux VM is adopted rather than orphaned. Without it the new Linux
+  state starts empty and Terraform tries to create a VM that already exists.
+- Guarded three ways (Linux only, legacy present, new absent), so it runs at
+  most once per environment. **Delete the block once both environments have
+  run it.**
+
 ### Fixed -- the Windows password was too short for the CIS image (#305)
 - Both environments' `linux_admin_password` is **8 characters**, and it was
   serving as the Windows administrator password too. CIS L1 for Windows Server

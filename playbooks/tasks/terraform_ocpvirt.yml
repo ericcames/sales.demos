@@ -124,6 +124,68 @@
       no_log: true
       changed_when: false
 
+    # -------------------------------------------------------------------
+    # STATE IS KEYED PER OS AS WELL AS PER ENVIRONMENT (#301).
+    #
+    # It used to be secret_suffix=<env>, one state holding both guests. Because
+    # create_linux/create_windows drive `count`, an apply with os_type=windows
+    # set create_linux=false, dropped count to 0, and planned the RUNNING LINUX
+    # VM for destruction — you could not build one OS without losing the other.
+    # Splitting the state is what makes them independent; the #300 rename only
+    # took the dangerous dropdown out of the UI.
+    # -------------------------------------------------------------------
+    - name: Key the Terraform state by environment and OS
+      ansible.builtin.set_fact:
+        ocpvirt_state_suffix: "{{ aap_env_name }}-{{ provision_os_type }}"
+
+    # -------------------------------------------------------------------
+    # ONE-TIME MIGRATION. Delete this block once both environments have run it
+    # once — it is dead weight after that, and #301 says so in its closing note.
+    #
+    # The legacy state (secret_suffix=<env>) holds whatever was last applied.
+    # Every environment here has only ever been applied with os_type=linux, so
+    # it is the Linux state and copying it under the new key adopts the running
+    # VM instead of orphaning it. Without this the new Linux state starts EMPTY
+    # and terraform tries to create a VM that already exists.
+    #
+    # Guarded three ways: only for Linux, only when the legacy secret exists,
+    # and only when the new one does not. It therefore runs at most once per
+    # environment and is a no-op on every run after.
+    # -------------------------------------------------------------------
+    - name: Look for legacy and per-OS Terraform state
+      when: provision_os_type == 'linux'
+      kubernetes.core.k8s_info:
+        api_version: v1
+        kind: Secret
+        namespace: "{{ ocpvirt_state_namespace }}"
+        name: "{{ item }}"
+      loop:
+        - "tfstate-default-{{ aap_env_name }}"
+        - "tfstate-default-{{ ocpvirt_state_suffix }}"
+      register: ocpvirt_state_lookup
+
+    - name: Adopt the legacy state as this environment's Linux state
+      when:
+        - provision_os_type == 'linux'
+        - ocpvirt_state_lookup.results[0].resources | default([]) | length > 0
+        - ocpvirt_state_lookup.results[1].resources | default([]) | length == 0
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: v1
+          kind: Secret
+          metadata:
+            name: "tfstate-default-{{ ocpvirt_state_suffix }}"
+            namespace: "{{ ocpvirt_state_namespace }}"
+            annotations: "{{ ocpvirt_state_lookup.results[0].resources[0].metadata.annotations | default({}) }}"
+            labels:
+              app.kubernetes.io/managed-by: terraform
+              tfstate: "true"
+              tfstateSecretSuffix: "{{ ocpvirt_state_suffix }}"
+              tfstateWorkspace: default
+          type: Opaque
+          data: "{{ ocpvirt_state_lookup.results[0].resources[0].data }}"
+
     - name: Initialize Terraform against the kubernetes backend
       ansible.builtin.command:
         argv:
@@ -132,7 +194,7 @@
           - -input=false
           - -no-color
           - -reconfigure
-          - "-backend-config=secret_suffix={{ aap_env_name }}"
+          - "-backend-config=secret_suffix={{ ocpvirt_state_suffix }}"
           - "-backend-config=namespace={{ ocpvirt_state_namespace }}"
           - "-backend-config=config_path={{ ocpvirt_kubeconfig.path }}"
           - "-backend-config=insecure={{ (not (openshift_validate_certs | default(false) | bool)) | lower }}"
@@ -163,6 +225,9 @@
           - "-var=linux_admin_username={{ linux_admin_username | default('cloud-user') }}"
           - "-var=windows_admin_username={{ windows_admin_username | default('demoadmin') }}"
           - "-var=openshift_apps_domain={{ openshift_apps_domain | default('') }}"
+          # Passed explicitly so the Terraform guard and the cluster-wide check
+          # in provision_vm.yml measure against the SAME number (#301).
+          - "-var=available_memory_gb={{ available_memory_gb }}"
         chdir: "{{ ocpvirt_terraform_dir }}"
       environment:
         TF_VAR_openshift_api_url: "{{ ocpvirt_api_url }}"
