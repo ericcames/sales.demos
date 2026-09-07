@@ -31,7 +31,9 @@ hub_ee_repositories_all:
       sales.demos EE — Terraform 1.15.8 · cloud.terraform · kubernetes.core ·
       redhat.openshift_virtualization · infra.aap_configuration. Mirrored from
       quay.io/zigfreed/sales-demos-ee.
-    registry: Red Hat Quay.io
+    # The registry this repo CREATES, in hub_ee_registries.yml -- not the stock
+    # `Red Hat Quay.io`, which #320 found is not present on every environment.
+    registry: quay_io
     # A fork that builds and pushes its OWN execution environment mirrors from
     # its own namespace (#132). Pulls from the default are public and work for
     # anyone, so this only matters once you push your own image -- but leaving

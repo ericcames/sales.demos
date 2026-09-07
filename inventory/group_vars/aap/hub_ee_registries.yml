@@ -2,28 +2,47 @@
 # ============================================================================
 # group_vars/aap/hub_ee_registries.yml — where PAH fetches the EE from (#35)
 # ============================================================================
-# This file USED TO define a `hub_ee_registries_all` variable that created a
-# `quay_io` registry object. It no longer does (#186): the stock `Red Hat
-# Quay.io` registry, provisioned by the installer on every RHDP environment,
-# already points at `https://quay.io`, so creating a second entry for the same
-# endpoint was duplication. `hub_ee_repositories.yml` now references the stock
-# registry by name.
+# THIS FILE CREATES THE REGISTRY AGAIN, REVERSING #186 (#320).
 #
-# STOCK REGISTRIES. PAH ships with two registries created during environment
-# provisioning:
+# #186 deleted `hub_ee_registries_all` and pointed hub_ee_repositories.yml at
+# the stock `Red Hat Quay.io` object instead, on the premise that it is
+# "provisioned by the installer on every RHDP environment". **That premise is
+# false, and it failed on demo:**
 #
-#   Red Hat Ecosystem Catalog   https://registry.redhat.io
-#   Red Hat Quay.io             https://quay.io
+#   sandbox   Red Hat Ecosystem Catalog   https://registry.redhat.io
+#   sandbox   Red Hat Quay.io             https://quay.io
+#   demo      quay_io                     https://quay.io   <- pre-#186 leftover
 #
-# Both show "Never synced" in the UI — that is expected. Registry-level sync
-# would mean indexing the entire registry. The actual mirroring happens at the
-# repository level, in hub_ee_repositories.yml (with `sync: true`).
+# demo has neither stock registry. The EE mirror therefore referenced an object
+# that did not exist, `sales_demos_ee` stayed empty, and every job template
+# would have failed to pull {{ aap_hostname }}/sales_demos_ee at run time.
 #
-# WHY THE STOCK NAME WORKS. The API restricts user-created registry names to
-# alphanumerics and underscores, which is why the old entry was `quay_io`. The
-# stock `Red Hat Quay.io` contains spaces and a dot — the installer is exempt
-# from its own validation. We do not need to create the object, only reference
-# it, and a reference is a plain string.
+# #186 WAS NOT WRONG ABOUT THE FACTS, it was wrong about the trade. It called
+# the second entry "duplication" — which is cosmetic — while the cost of not
+# having it is an environment that cannot pull its execution environment at
+# all. A repo that depends on an object it does not create is guessing about
+# someone else's installer. Create the thing you reference.
+#
+# THE NAME IS `quay_io` BECAUSE THE API SAYS SO. User-created registry names
+# are restricted to alphanumerics and underscores, which is exactly why the
+# pre-#186 object had that name. The stock `Red Hat Quay.io` contains spaces
+# and a dot because the installer is exempt from its own validation — so
+# matching the stock name is not even possible for us. demo already has
+# `quay_io`, so this is idempotent there; sandbox gains it alongside the stock
+# pair, and that extra row is the price of determinism.
+#
+# NO `index` OR `sync` KEYS HERE, DELIBERATELY. Both hub_ee_registry_index and
+# hub_ee_registry_sync are dispatched off this same variable and gated
+# `when: item.index | default(false)` / `item.sync | default(false)`, so
+# omitting the keys keeps them no-ops. Registry-level sync would mean indexing
+# the whole of quay.io. The actual mirroring happens at the REPOSITORY level in
+# hub_ee_repositories.yml, which carries `sync: true` and both gates it needs.
+#
+# Stock registries show "Never synced" in the UI, and so will this one. Expected.
+#
+# NO CREDENTIALS. The EE repository is public, which is why anonymous pulls
+# already work; adding a username would be a second copy of a credential for no
+# gain.
 #
 # WHY PAH AT ALL, when quay.io already works (#31). The demo stops depending
 # on quay being reachable and on a public repository staying public, and the
@@ -46,3 +65,7 @@
 #     trusted. `insecureRegistries` and `additionalTrustedCA` are both empty on
 #     this cluster and must stay that way.
 # ============================================================================
+
+hub_ee_registries_all:
+  - name: quay_io
+    url: https://quay.io

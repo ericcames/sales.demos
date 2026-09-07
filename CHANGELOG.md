@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed -- the EE mirror referenced a registry the repo does not create (#320)
+- `config.yml --limit demo` failed mirroring `sales_demos_ee` into Private
+  Automation Hub. `hub_ee_repositories.yml` referenced `Red Hat Quay.io`, which
+  **does not exist on demo** -- it has only the pre-#186 `quay_io` object.
+- **This reverses #186.** That change deleted `hub_ee_registries_all` on the
+  premise that the stock registry is "provisioned by the installer on every RHDP
+  environment". The premise is false, and the failure is not cosmetic: the mirror
+  stays empty and every job template later fails to pull its execution
+  environment.
+- #186 was not wrong about the facts, it was wrong about the trade -- it called
+  the second entry "duplication", which is cosmetic, against an environment that
+  cannot run any job at all. A repo that depends on an object it does not create
+  is guessing about someone else's installer.
+- Named `quay_io` because the API restricts user-created registry names to
+  alphanumerics and underscores; the stock name contains spaces and a dot
+  because the installer is exempt from its own validation, so matching it is not
+  even possible. Idempotent on demo, which already has it.
+- **No `index` or `sync` keys**, deliberately: `hub_ee_registry_index` and
+  `hub_ee_registry_sync` dispatch off the same variable and are gated
+  `when: item.index|sync | default(false)`. Registry-level sync would index the
+  whole of quay.io. Mirroring stays at repository level.
+
 ### Added -- job templates for observability and golden-image linking (#318)
 - Two new families extending the #300 taxonomy: **`AAP Observability - `**
   (`1 Deploy Alloy`, `2 Deploy Dashboards`) and **`Golden Image - `**
