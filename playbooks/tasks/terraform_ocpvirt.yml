@@ -146,6 +146,24 @@
       no_log: true
       changed_when: false
 
+    # ===================================================================
+    # EVERY kubernetes.core TASK IN THIS FILE CARRIES ITS OWN `environment:`.
+    #
+    # There is no play-level or block-level one to inherit, and the failure is
+    # not obvious -- "Could not create API client: Invalid kube-config file. No
+    # configuration found." reads like a broken kubeconfig rather than a missing
+    # four lines. It has now bitten twice (#313, #315), both times on a task
+    # added next to one that had it.
+    #
+    # If you add a task here that talks to the cluster, copy the environment
+    # block. To check the whole file at once:
+    #
+    #   grep -B20 'kubernetes.core' playbooks/tasks/terraform_ocpvirt.yml \
+    #     | grep -c K8S_AUTH_HOST
+    #
+    # should equal the number of kubernetes.core tasks.
+    # ===================================================================
+
     # -------------------------------------------------------------------
     # STATE IS KEYED PER OS AS WELL AS PER ENVIRONMENT (#301).
     #
@@ -185,6 +203,10 @@
         - "tfstate-default-{{ aap_env_name }}"
         - "tfstate-default-{{ ocpvirt_state_suffix }}"
       register: ocpvirt_state_lookup
+      environment:
+        K8S_AUTH_HOST: "{{ ocpvirt_api_url }}"
+        K8S_AUTH_API_KEY: "{{ ocpvirt_api_token }}"
+        K8S_AUTH_VERIFY_SSL: "{{ openshift_validate_certs | default(false) | bool }}"
 
     - name: Adopt the legacy state as this environment's Linux state
       when:
@@ -207,6 +229,10 @@
               tfstateWorkspace: default
           type: Opaque
           data: "{{ ocpvirt_state_lookup.results[0].resources[0].data }}"
+      environment:
+        K8S_AUTH_HOST: "{{ ocpvirt_api_url }}"
+        K8S_AUTH_API_KEY: "{{ ocpvirt_api_token }}"
+        K8S_AUTH_VERIFY_SSL: "{{ openshift_validate_certs | default(false) | bool }}"
 
     - name: Initialize Terraform against the kubernetes backend
       ansible.builtin.command:

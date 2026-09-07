@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed -- the state-migration tasks had no cluster auth either (#315)
+- Second occurrence of #313, in tasks added by the same PR. The first Linux
+  provision after #301 -- the run that triggers the one-time migration -- failed
+  with `Invalid kube-config file. No configuration found.`
+- #313 fixed the VM-namespace guard and stopped there. The two migration tasks
+  have the same defect but sit inside the Terraform block, so a different run
+  exposed them. Windows was unaffected: the migration is guarded
+  `when: provision_os_type == 'linux'`.
+- **Audited rather than spot-fixed this time.** All five `kubernetes.core` tasks
+  in `terraform_ocpvirt.yml` are now checked; two were missing auth, both fixed,
+  audit reports zero.
+- Added a header note and a one-line check, because `environment:` here is
+  per-task with nothing to inherit, and the error reads like a broken kubeconfig
+  rather than four missing lines -- which is why it was missed twice.
+
 ### Fixed -- the new VM-namespace guard had no cluster auth (#313)
 - The task added in #311 failed with `Invalid kube-config file. No
   configuration found.` It sits outside the Terraform block, which is where the
