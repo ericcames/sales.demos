@@ -52,10 +52,12 @@
 
 - name: Map each instancetype to its guest memory
   ansible.builtin.set_fact:
+    # dict() takes ONE argument -- dict(keys, values) is a TypeError, which is
+    # what CI caught. Zip into pairs first.
     _demo_it_memory: >-
       {{ dict(
-           (_demo_instancetypes.resources | default([])) | map(attribute='metadata.name') | list,
-           (_demo_instancetypes.resources | default([])) | map(attribute='spec.memory.guest') | list
+           ((_demo_instancetypes.resources | default([])) | map(attribute='metadata.name') | list)
+           | zip((_demo_instancetypes.resources | default([])) | map(attribute='spec.memory.guest') | list)
          ) }}
 
 - name: Total the guest memory the demo VMs hold
