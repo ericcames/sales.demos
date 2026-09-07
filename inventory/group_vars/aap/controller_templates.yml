@@ -384,6 +384,42 @@ controller_templates_all:
       target_env: "{{ aap_env_name }}"
 
   # ---------------------------------------------------------------------
+  # The AAP MCP server (#102), which setup.yml installs as stage 4 but which
+  # had no way to be re-run on its own until #308.
+  #
+  # WHY RE-RUNNING IT STANDALONE MATTERS. aap_mcp_allow_write_operations is the
+  # write posture for an AI agent against AAP, and Red Hat's documentation is
+  # explicit that changing it requires deleting and recreating the
+  # AnsibleMCPServer CR rather than patching it. mcp_server.yml already does
+  # exactly that — it reads the live object and deletes it when the flag
+  # differs. Without this template the only way to reach that logic was to
+  # re-run the whole of setup.yml, which also reinstalls CNV and reapplies the
+  # entire AAP configuration.
+  #
+  # THIS DEPLOYS THE SERVER, NOT THE CLIENT. Wiring a laptop to it is
+  # `claude mcp add --scope local` via the sales-demos-mcp skill, which writes
+  # to the operator's own config and is deliberately laptop-only (#102). Do not
+  # expect this template to change anything on your machine.
+  # ---------------------------------------------------------------------
+  - name: "AAP Ecosystem - Install MCP Server"
+    description: "Deploy the AAP MCP server into this environment. Deploys the SERVER only — wiring a laptop to it is the sales-demos-mcp skill."
+    labels:
+      - aap-ecosystem
+      - install
+    job_type: run
+    organization: "IT Service Automation"
+    inventory: "Sales Demo VMs"
+    project: "Sales Demos"
+    playbook: playbooks/mcp_server.yml
+    execution_environment: "Sales Demos - OCP Virt EE"
+    credentials:
+      - "Sales Demos - Vault"
+      - "Sales Demos - Env Secrets"
+    limit: "{{ aap_env_name }}"
+    extra_vars:
+      target_env: "{{ aap_env_name }}"
+
+  # ---------------------------------------------------------------------
   # WINDOWS DAY 1 (#301). Provision and Teardown only — deliberately.
   #
   # There is no Configure or Check here because there is no Windows content to

@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added -- job template for the AAP MCP server (#308)
+- `AAP Ecosystem - Install MCP Server`, running `playbooks/mcp_server.yml`.
+  `setup.yml` installs it as stage 4, but there was no way to re-run it alone.
+- **Why standalone matters:** `aap_mcp_allow_write_operations` is the write
+  posture for an AI agent against AAP, and Red Hat's docs are explicit that
+  changing it requires deleting and recreating the `AnsibleMCPServer` CR rather
+  than patching. `mcp_server.yml` already handles that -- it reads the live
+  object and deletes it when the flag differs -- but the only way to reach that
+  logic was re-running the whole of `setup.yml`, which also reinstalls CNV and
+  reapplies the entire AAP configuration.
+- **Deploys the SERVER, not the client.** Wiring a laptop to it is
+  `claude mcp add --scope local` via the `sales-demos-mcp` skill, which writes
+  to the operator's own config and is deliberately laptop-only (#102). The
+  description says so, or someone launches this expecting their machine to
+  change.
+- Qualifies on the same criteria as the other two in the family: `hosts: aap`,
+  auth from `openshift_api_url`/`openshift_api_token` via the Env Secrets
+  credential, `aap_mcp_allow_write_operations` from committed `group_vars`,
+  `kubernetes.core` already in the EE, and no laptop-only dependency.
+
 ### Fixed -- the state-migration tasks had no cluster auth either (#315)
 - Second occurrence of #313, in tasks added by the same PR. The first Linux
   provision after #301 -- the run that triggers the one-time migration -- failed
