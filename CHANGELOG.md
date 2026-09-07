@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed -- Update skills for CIS L1 Windows golden image (#296)
+- Updated `ocpvirt-provision`, `ocpvirt-windows-image`, and `ocpvirt-demo`
+  skills to reflect that the CIS L1 hardened Windows image is published and
+  working. Removed stale "never boots" / "not published yet" language.
+
 ### Fixed -- Terraform provider insecure flag inverted (#295)
 - Swapped the ternary values for `TF_VAR_openshift_insecure` so
   `openshift_validate_certs: false` correctly sets `insecure=true` on the

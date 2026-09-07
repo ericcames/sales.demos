@@ -119,6 +119,8 @@ the Route, the Service, firewalld inside the guest and httpd all have to line up
 
 ## Windows
 
-Not yet. CNV ships `win2k22` as an empty DataSource, so a Windows VM is created
-and never boots. `ocpvirt-windows-image` points the cluster at a published golden
-image (#3, done); publishing one is ericcames/image.builder.pipeline#24 and has not happened.
+The CIS L1 hardened Windows golden image is published and linked. A Windows VM
+clones from the `win2k22` DataSource, syspreps from the attached `Unattend.xml`,
+and is reachable via WinRM (#234, #255, #257). There is no Windows configure path
+yet — `windemo` is registered in AAP but referenced by zero playbooks or job
+templates.

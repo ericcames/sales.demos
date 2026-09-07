@@ -1,31 +1,30 @@
 ---
 name: ocpvirt-windows-image
-description: "Point this environment's OpenShift Virtualization at the published Windows golden containerdisk, so os_type=windows actually boots instead of hanging on an empty boot source. Adds a DataImportCron to the HyperConverged CR and a pull secret for the private quay repository, then asks the cluster whether the DataSource really came up. Fully reversible. Runs playbooks/link_windows_image.yml. TRIGGER when: the user asks to enable or fix Windows VMs, says a Windows VM will not boot or sits forever in Provisioning, asks why win2k22 is not Ready, wants the Windows boot source populated, asks about issue #3, or wants to undo that link. SKIP: if the user wants to BUILD or publish the golden image itself — that is ericcames/image.builder.pipeline#24, a separate producer — or wants to provision demo VMs generally, which is ocpvirt-provision."
+description: "Point this environment's OpenShift Virtualization at the published CIS L1 hardened Windows golden containerdisk. Required on a new environment before os_type=windows will boot — CNV ships win2k22 as an empty placeholder. Adds a DataImportCron to the HyperConverged CR and a pull secret for the private quay repository, then asks the cluster whether the DataSource really came up. Fully reversible. Runs playbooks/link_windows_image.yml. TRIGGER when: the user asks to enable or fix Windows VMs, says a Windows VM will not boot or sits forever in Provisioning, asks why win2k22 is not Ready, wants the Windows boot source populated, asks about issue #3, or wants to undo that link. SKIP: if the user wants to BUILD or publish the golden image itself — that is ericcames/image.builder.pipeline, a separate producer — or wants to provision demo VMs generally, which is ocpvirt-provision."
 ---
 
 # ocpvirt-windows-image
 
-Answers one question: **why does `os_type=windows` create a VM that never boots?**
+Links an environment to the published CIS L1 hardened Windows golden image.
 
-Because CNV ships `win2k22` as an empty placeholder. Red Hat cannot redistribute
-Windows media, so every `win*` DataSource on a fresh cluster reports
-`Ready=False`, `"PVC not found"`. Terraform clones that DataSource, so the VM is
-created and then waits forever on a DataVolume that never imports.
+CNV ships `win2k22` as an empty placeholder — Red Hat cannot redistribute Windows
+media, so every `win*` DataSource on a fresh cluster reports `Ready=False`,
+`"PVC not found"`. Without this skill, Terraform clones that empty DataSource and
+the VM waits forever on a DataVolume that never imports.
 
 This skill fills it, the same way CNV fills `rhel9`.
 
 ## This is the consumer half. It does not build anything.
 
-| | Owns | Issue |
-|---|---|---|
-| **This skill** | Pointing a cluster at a published image | #3 |
-| The producer | Building and publishing the containerdisk | ericcames/image.builder.pipeline#24 |
+| | Owns |
+|---|---|
+| **This skill** | Pointing a cluster at the published image |
+| The producer (`ericcames/image.builder.pipeline`) | Building and publishing the containerdisk |
 
 The contract between them is one string: `quay_windows_image` in
-`inventory/group_vars/<env>/connection.yml`. **Until ericcames/image.builder.pipeline#24 publishes a real image
-that value is a `quay.io/<user>/windows2k22-golden:<date>` placeholder and the
-playbook refuses to run** — deliberately, because a DataImportCron pointed at a
-nonexistent repository fails in an importer pod, not at link time.
+`inventory/group_vars/<env>/connection.yml`. Both environments currently point at
+`quay.io/zigfreed/win2k22-cis-l1-golden` (private, CIS L1 hardened). The
+playbook asserts the image reference is non-empty and rejects placeholder values.
 
 ## Why a DataImportCron and not a PVC
 
@@ -65,7 +64,7 @@ grep -h '^aap_env_name\|^openshift_api_url' \
 test -r ~/secrets/.vault_pass_sales_demos \
   && echo "✅ vault password present" || echo "❌ ~/secrets/.vault_pass_sales_demos missing"
 
-# 3. Is there an image to point at yet? A '<user>' here means ericcames/image.builder.pipeline#24 has not landed.
+# 3. Confirm the image reference is set (should point at win2k22-cis-l1-golden)
 grep -h '^quay_windows_image' inventory/group_vars/*/connection.yml
 
 # 4. Is the environment up? (RHDP environments expire)
@@ -117,7 +116,7 @@ read-only mounts and nothing else. Full detail: `/sales-demos-verify-ee`.
 
 | Symptom | Cause | What to turn |
 |---|---|---|
-| Fails at the `quay_windows_image` assert | No image published yet, value still `<user>`/`<date>` | ericcames/image.builder.pipeline#24. Nothing to do here. |
+| Fails at the `quay_windows_image` assert | Image reference empty or placeholder | Set `quay_windows_image` in `connection.yml` to the current CIS L1 tag. |
 | DataSource never reaches Ready | The importer cannot pull | Check the importer pod in `openshift-virtualization-os-images`; a private-repo auth failure surfaces there, not in the DataSource. |
 | Ready, but the backing volume never becomes usable | Snapshot still materializing | Wait. Cloning from a snapshot that is not `readyToUse` is the slow-build case `ocpvirt-new-env` exists to catch. |
 | VM still will not boot after a green run | Something other than the boot source | `ocpvirt-provision`, then the VM's own events. |
@@ -139,5 +138,5 @@ oc get dataimportcron -n openshift-virtualization-os-images
 
 1. `ocpvirt-setup` — installs OpenShift Virtualization.
 2. `ocpvirt-new-env` — confirms the Linux boot source imported and times a build.
-3. **This skill** — fills the Windows boot source, once ericcames/image.builder.pipeline#24 has published one.
+3. **This skill** — fills the Windows boot source from the published CIS L1 image.
 4. `ocpvirt-provision` — build the demo VMs, now including `os_type=windows`.
