@@ -228,6 +228,9 @@
           # Passed explicitly so the Terraform guard and the cluster-wide check
           # in provision_vm.yml measure against the SAME number (#301).
           - "-var=available_memory_gb={{ available_memory_gb }}"
+          # The sd1.* catalog is shared by both guests and exactly one state
+          # may own it (#309). Linux does; Windows references it by name.
+          - "-var=manage_instancetypes={{ (provision_os_type == 'linux') | lower }}"
         chdir: "{{ ocpvirt_terraform_dir }}"
       environment:
         TF_VAR_openshift_api_url: "{{ ocpvirt_api_url }}"

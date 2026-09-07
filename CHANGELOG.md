@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed -- both OS states fought over the shared instance type catalog (#309)
+- The first real Windows provision after #301 failed with
+  `Cannot create resource that already exists: resource "/sd1.small"`.
+- `instancetypes.tf` creates the `sd1.*` `VirtualMachineClusterInstancetype`
+  objects, which are **cluster-scoped and shared by both guests**. #301 keyed
+  state per OS -- right for the VMs, wrong for a shared catalog: both states
+  tried to create the same three cluster objects. `kubernetes_manifest` cannot
+  adopt an existing object, so this is ownership, not a force flag.
+- New `manage_instancetypes` variable, default true; `provision_vm.yml` passes
+  false for Windows. The Linux state owns the catalog, Windows references it.
+- **Verified in the failure:** the Linux VM was untouched by the failed Windows
+  run. Before #301 a Windows provision would have destroyed it outright.
+- The file's header already flagged this shape for concurrent runs; #301 turned
+  that external hazard into an internal one. The proper fix -- moving the
+  catalog to environment scope -- is tracked in #309, along with the question it
+  actually turns on: where the tier -> cpu/memory map should live.
+
 ### Fixed -- provisioning one OS destroyed the other (#301)
 - Terraform state is now keyed `secret_suffix=<env>-<os>` instead of `<env>`.
   `terraform/ocpvirt/locals.tf` derives `create_linux`/`create_windows` from

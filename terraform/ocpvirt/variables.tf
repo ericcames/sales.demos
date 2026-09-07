@@ -109,6 +109,16 @@ variable "available_memory_gb" {
   default     = 63
 }
 
+variable "manage_instancetypes" {
+  # See instancetypes.tf. The sd1.* catalog is shared by both guests, but state
+  # is keyed per OS since #301 — so exactly one state may own it, or the second
+  # apply fails with "Cannot create resource that already exists".
+  # playbooks/provision_vm.yml passes false for Windows.
+  description = "Whether this state manages the shared sd1.* instance type catalog. Only the Linux state should."
+  type        = bool
+  default     = true
+}
+
 variable "vm_memory_overhead_mb" {
   description = "Per-VM KubeVirt overhead in MiB, on top of guest memory — virtio, video, page tables. Roughly 250-350 in practice."
   type        = number
