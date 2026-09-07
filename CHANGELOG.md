@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed -- Update skills for CIS L1 Windows golden image (#296)
+- Updated `ocpvirt-provision`, `ocpvirt-windows-image`, and `ocpvirt-demo`
+  skills to reflect that the CIS L1 hardened Windows image is published and
+  working. Removed stale "never boots" / "not published yet" language.
+
 ### Changed -- Consume CIS L1 hardened Windows golden image (#270)
 - Repointed `quay_windows_image` in both sandbox and demo `connection.yml`
   from the unhardened `win2k22-golden` repo to the new CIS L1 hardened

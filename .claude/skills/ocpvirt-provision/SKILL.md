@@ -28,13 +28,12 @@ debugging a run without the controller in the way.
 These names are shared verbatim with the AAP survey and
 `terraform/ocpvirt/variables.tf`. Changing one means changing all three.
 
-**`os_type=windows` or `both` will create a VM that never boots** until this
-environment is linked to a published Windows golden image — CNV ships `win2k22`
-as an empty DataSource placeholder. Run `ocpvirt-windows-image` first; building
-the image itself is ericcames/image.builder.pipeline#24. The playbook preflights that DataSource and **warns
-rather than refuses**, because the Terraform side is wired, `os_type=both` still
-gets a working Linux guest, and linking a minute later fixes it without
-re-provisioning.
+**`os_type=windows` or `both` requires that the environment is linked to the
+published CIS L1 hardened Windows golden image.** CNV ships `win2k22` as an empty
+DataSource placeholder; on a new environment, run `ocpvirt-windows-image` first
+to fill it. The playbook preflights that DataSource and **warns rather than
+refuses**, because `os_type=both` still gets a working Linux guest and linking a
+minute later fixes the Windows half without re-provisioning.
 
 ## Preflight Check
 
