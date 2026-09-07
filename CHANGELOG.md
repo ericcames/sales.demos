@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed -- the one-time Terraform state migration (#301)
+- Both environments have now run it, which was #301's stated condition for
+  deleting it: sandbox and demo on 2026-09-07.
+- **Verified adoption, not recreation.** sandbox's Linux VM kept UID
+  `265f3eea-e062-4947-83c0-b4d79d8809f7` and its original creation timestamp
+  across the migration -- a destroy/recreate would have looked identical in a VM
+  listing, which is why the UID was captured beforehand.
+- A new environment needs nothing here: it has no legacy state to adopt, and
+  Terraform creates `<env>-<os>` on first apply.
+- The comment left in its place records how to adopt a legacy secret by hand,
+  since the code that did it is gone.
+
 ### Documented -- the portal job template cannot run from AAP (#324)
 - `AAP Ecosystem - Install Self-Service Portal`, added in #300, fails ~10s after
   launch. Two independent blockers: the SCM checkout has no
