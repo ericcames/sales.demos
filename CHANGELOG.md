@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed -- the Windows credential carried the Linux password (#338)
+- `Sales Demos - Windows Machine` was fed
+  `env_secrets[<env>].linux_admin_password`. #305 split Windows onto its own
+  per-environment key and every other consumer moved with it -- Terraform sets
+  the guest password from `windows_admin_password` through the sysprep unattend,
+  and the Env Secrets credential already shipped it -- but this one line did not.
+- **The lengths prove it was wrong, not merely untidy.** `linux_admin_password`
+  is deliberately 8 characters; `provision_vm.yml` asserts Windows needs 14 or
+  more because CIS L1 for Windows Server 2022 rejects anything shorter. The
+  credential held a password six characters below the guest's own minimum, so it
+  cannot have been the password sysprep set.
+- **Nothing caught it because it is attached to zero job templates.** There is no
+  Windows content to run yet -- that is #340. The failure it would have produced
+  is a WinRM authentication error, which reads like a listener or firewall
+  problem rather than a wrong password, so fixing it before anything consumes it
+  removes a debugging session that would have looked like an infrastructure bug.
+- No `| default('')`, matching the Linux Machine credential and unlike Env
+  Secrets: a missing password should fail `config.yml` loudly rather than create
+  a credential that authenticates as nobody.
+- `utilities/check-secrets-example.py`'s note still explained the key's absence
+  by saying it was "fed from `linux_admin_password` rather than from a key of its
+  own" -- true when #201 wrote it, false since #305. Corrected rather than left
+  asserting the thing that stopped being true.
+
 ### Fixed -- the probe reported "across 0 VM(s)" while counting 20 GiB (#336)
 - `Demo VMs now: 20.0 GiB across 0 VM(s)` — the memory was right, the count was
   not. #334 replaced the inline VM read with the shared task file but left the

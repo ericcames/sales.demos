@@ -50,12 +50,14 @@ EXAMPLE = Path("playbooks/group_vars/all/secrets.yml.example")
 # so they are kept rather than deleted (the repo is additive-only), but they are
 # named here so that *adding* an orphan is a deliberate act and not an accident.
 # Delete an entry from this list the moment the code starts consuming the key.
-# Emptied by #201. windows_admin_password was the only entry: it was declared,
-# read by nothing, and staged for the Windows password variable that did not
-# exist yet. That variable now exists (terraform/ocpvirt/variables.tf), but it is
-# fed from linux_admin_password rather than from a key of its own, so the staged
-# key was deleted from the example rather than wired up. Keep this dict — an
-# empty STAGED still documents that adding an orphan must be deliberate.
+# Emptied by #201, whose stated reason is no longer true (#338). It said
+# windows_admin_password was "fed from linux_admin_password rather than from a
+# key of its own", so the staged key was deleted instead of wired up. #305
+# reversed that: the key exists in the example, in both connection.yml files and
+# in the Env Secrets credential, and terraform/ocpvirt consumes it. It is a live
+# key, not a staged one, so it does not belong in this dict either way -- but
+# the note explaining its absence should not go on asserting the thing that
+# stopped being true.
 STAGED: dict[str, str] = {
     "grafana_cloud_sa_token": (
         "Consumed by utilities/make-grafana-mcp.sh (#260), which reads the vault "
