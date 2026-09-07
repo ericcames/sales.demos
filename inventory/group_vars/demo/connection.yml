@@ -69,7 +69,7 @@ linux_admin_password: "{{ env_secrets[aap_env_name].linux_admin_password | defau
 # --- Demo VM defaults (not secret) -----------------------------------------
 windows_admin_username: "demoadmin"
 linux_admin_username: "cloud-user"
-quay_windows_image: "quay.io/zigfreed/win2k22-golden:20260905-1826"
+quay_windows_image: "quay.io/zigfreed/win2k22-cis-l1-golden:20260907-0516"
 
 # SSH public key injected into demo VMs by cloud-init at first boot. Not a
 # credential — a public key is safe in plaintext. When set, password-based SSH

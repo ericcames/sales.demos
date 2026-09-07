@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed -- Consume CIS L1 hardened Windows golden image (#270)
+- Repointed `quay_windows_image` in both sandbox and demo `connection.yml`
+  from the unhardened `win2k22-golden` repo to the new CIS L1 hardened
+  `win2k22-cis-l1-golden:20260907-0516` built by `image.builder.pipeline`.
+- Updated architecture.md and ocpvirt-demo-plan.md to reflect that Windows
+  login, sysprep, and WinRM all work end-to-end (#234, #255, #257), and that
+  the image is now CIS L1 hardened.
+
 ### Fixed -- Build Demo VM workflow nodes not updated after JT rename (#240)
 - Added `destroy_current_nodes: true` to the Build Demo VM workflow so
   `config.yml` replaces existing nodes instead of only adding. Without this,

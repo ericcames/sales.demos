@@ -114,7 +114,7 @@ provider driving `kubernetes_manifest`. No community KubeVirt provider.
 | `kubernetes_namespace.demo` | The VM namespace, `sales-demos-<env>` |
 | `VirtualMachineClusterInstancetype` ×3 | The `sd1.small` / `.medium` / `.large` types |
 | `kubernetes_manifest.linux_vm` | RHEL 9 guest, cloned from the `rhel9` DataSource |
-| `kubernetes_manifest.windows_vm` | Windows Server 2022, cloned from `win2k22`; boots, but stops at OOBE — see below |
+| `kubernetes_manifest.windows_vm` | Windows Server 2022 (CIS L1 hardened), cloned from `win2k22` |
 | `kubernetes_service.linux` | **Headless.** Stable in-cluster DNS for the AAP inventory |
 | `kubernetes_service.linux_web` | ClusterIP on :80, existing solely to back the Route |
 | `kubernetes_manifest.linux_web_route` | The public URL, edge TLS |
@@ -248,39 +248,29 @@ The sub-minute clone is the number worth quoting. It is the CSI smart-clone path
 on Ceph RBD — a snapshot, not a copy — so a 60 GiB Windows disk costs about what
 a 30 GiB Linux one does.
 
-### Why you still cannot log in
+### How the Windows clone works
 
-The published image is **generalized** — the build runs
-`sysprep /generalize /oobe /shutdown` — so a clone boots into the OOBE specialize
-pass and the built-in Administrator holds a random password the build discarded.
-`terraform/ocpvirt` answers that with a `sysprep` volume: a Secret holding an
-`autounattend.xml`, attached as a read-only CD-ROM, which sets the ComputerName,
-creates the local administrator, skips OOBE, and re-mints the WinRM listener
-(#201).
+The published image is **CIS L1 hardened and generalized** — the build in
+`image.builder.pipeline` applies the `ansible-lockdown/Windows-2022-CIS` role,
+then runs `sysprep /generalize /oobe /shutdown`. A clone boots into the OOBE
+specialize pass and the built-in Administrator holds a random password the build
+discarded. `terraform/ocpvirt` answers that with a `sysprep` volume: a Secret
+holding an `Unattend.xml`, attached as a read-only CD-ROM, which sets the
+ComputerName, creates the local administrator (`demoadmin`), skips OOBE, and
+re-mints the WinRM listener (#201, #234, #255).
 
-**It is attached correctly and Windows ignores it**, because of where Windows
-looks. Microsoft's implicit answer-file search order:
+Three stacked bugs blocked this path until 2026-09-06:
 
-| Order | Location | Filename |
-|---|---|---|
-| 3 | `%WINDIR%\Panther` — where Setup caches the file it installed from | `Unattend.xml` |
-| 4 | Removable read/write media, root | `Autounattend.xml` |
-| 5 | **Removable read-only media** — our sysprep CD | `Autounattend.xml` |
+1. **Cached answer file** — the producer left a build-time answer file in
+   `%WINDIR%\Panther`, which Windows found before the sysprep CD
+   (`image.builder.pipeline#69`).
+2. **Secret key naming** — the Secret key was `autounattend.xml` but the
+   specialize pass needs `Unattend.xml` (#234).
+3. **15-char NetBIOS limit** — the ComputerName exceeded 15 characters and
+   sysprep silently failed (#234).
 
-The image was built from an answer file, Windows cached it to `%WINDIR%\Panther`,
-and the build sysprepped without deleting it. So every clone finds the build's
-file at 3 before it reaches ours at 5. KubeVirt documents this exact trap: *"there
-is no answer file detected when the Sysprep Tool is triggered ... it will just use
-the cached answer file, ignoring the one we provide through the Sysprep API."*
-
-The fix is one `del` in the build's `FirstLogonCommands` plus a rebuild, and it
-belongs to the producer — `ericcames/image.builder.pipeline#59`. Nothing in this
-repo needs to change.
-
-**The filename is not the bug.** Rows 4 and 5 specify `Autounattend.xml` for
-*every* configuration pass, not just `windowsPE`. Assuming `unattend.xml` is
-needed for `oobeSystem` is a natural guess, and wrong; it is written down here so
-the next person does not spend a provisioning cycle proving it.
+All three are fixed and verified end-to-end: clone reaches the desktop,
+`win_ping` succeeds from AAP (#257).
 
 The provision playbook still **preflights the DataSource and warns rather than
 refusing**, so `os_type=both` is never blocked by the Windows half.

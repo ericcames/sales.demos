@@ -503,7 +503,7 @@ all found by executing the playbook and none by lint:
 
 | Observation | Value |
 |---|---|
-| Image | `quay.io/zigfreed/win2k22-golden:20260905-1826` (private, 8.65 GiB) |
+| Image | `quay.io/zigfreed/win2k22-cis-l1-golden:20260907-0516` (private, 8.67 GiB, CIS L1 hardened) |
 | Import time | ~5 min (much faster than the estimated 80 min) |
 | DataSource | `win2k22` — `Ready=True`, `spec.source.pvc.name: win2k22-initial-import` |
 | Backing PVC | `win2k22-initial-import` — `Bound`, 60Gi |
@@ -516,10 +516,9 @@ all found by executing the playbook and none by lint:
 repository went public before the secret mattered, so the pull secret was dropped
 in a later change. The fix in #222 corrected both playbooks.
 
-#### Phase 3 Windows: measured — the clone is fast, the login is blocked
+#### Phase 3 Windows: measured — clone, sysprep, and WinRM all working
 
-Executed against sandbox on 2026-09-05, the first time `os_type=windows` had ever
-been applied. Two separate results, and they point in opposite directions.
+Executed against sandbox, verified end-to-end on 2026-09-06 (#234, #255, #257).
 
 **The clone path works, and it is the number worth quoting.**
 
@@ -529,62 +528,36 @@ been applied. Two separate results, and they point in opposite directions.
 | VMI `Running`, `Ready=True` | ~40 s later |
 | Guest agent | connected, reporting Windows Server 2022 Standard Evaluation |
 | AAP registration | into `windemo`, `ansible_user: demoadmin` |
+| `win_ping` from AAP | **Success** — WinRM over NTLM verified (#257) |
 
 Sub-minute for 60 GiB is the Ceph RBD CSI smart-clone path — a snapshot, not a
 copy — so a Windows disk costs roughly what a 30 GiB Linux one does. This is
 worth saying out loud to a customer; it is the part of Windows-on-CNV that
 usually surprises people.
 
-**The guest cannot be logged into, and #201 did not fix it.**
+**Three stacked bugs blocked the login until 2026-09-06:**
 
-The published image is generalized, so a clone runs the OOBE specialize pass with
-an Administrator password the build generated and threw away. #201 answered that
-the way this plan always said it would — *"cloud-init for Linux, sysprep/unattend
-for Windows"* — with a Secret holding an `autounattend.xml`, attached as a
-read-only CD-ROM.
+1. **Cached answer file** — the producer left a build-time answer file in
+   `%WINDIR%\Panther`, which Windows found before our sysprep CD
+   (`image.builder.pipeline#69`).
+2. **Secret key naming** — the Secret key was `autounattend.xml` but the
+   specialize pass needs `Unattend.xml` (#234).
+3. **15-char NetBIOS limit** — the ComputerName exceeded 15 characters and
+   sysprep silently failed (#234).
 
-Verified attached and correct: Secret created and labelled, KubeVirt built the
-1 MiB ISO, `volumeStatus` shows `sysprep -> sdb`, `bootOrder: 1` keeps the boot on
-the hard disk, and the XML is well-formed with both a `specialize` and an
-`oobeSystem` pass. **The guest still stops at the OOBE region screen.**
+All fixed, plus `LocalAccountTokenFilterPolicy` for WinRM NTLM with non-built-in
+admin accounts (#255).
 
-The cause is precedence, and it is in the producer. Microsoft's implicit
-answer-file search order:
+**The image is now CIS L1 hardened** (2026-09-07). The build in
+`image.builder.pipeline` applies the `ansible-lockdown/Windows-2022-CIS` role
+with four controls disabled — two UAC Admin Approval Mode controls (2.3.17.1/2)
+that break NTLM mid-session, and two GPO security refresh controls (18.9.19.4/5)
+that kill WinRM. The resulting image is published to
+`quay.io/zigfreed/win2k22-cis-l1-golden` (private, evaluation media licensing).
 
-| Order | Location | Filename |
-|---|---|---|
-| 3 | `%WINDIR%\Panther` — where Setup caches the file it installed from | `Unattend.xml` |
-| 4 | Removable read/write media, root | `Autounattend.xml` |
-| 5 | **Removable read-only media** — the KubeVirt sysprep CD | `Autounattend.xml` |
-
-`image.builder.pipeline` builds from an answer file, Windows caches it to
-`%WINDIR%\Panther`, and the build then runs `sysprep /generalize /oobe /shutdown`
-without deleting the cached copy. Every clone therefore finds the build's own file
-at 3 before it reaches ours at 5. KubeVirt warns about precisely this: *"there is
-no answer file detected when the Sysprep Tool is triggered ... it will just use
-the cached answer file, ignoring the one we provide through the Sysprep API."*
-
-Fix is one `del` in the build's `FirstLogonCommands` before the sysprep step, plus
-a rebuild (~21 min unattended) — `ericcames/image.builder.pipeline#59`. **Nothing
-in this repo changes.** The consumer half is correct and stays as merged.
-
-**Two traps, written down because both cost real time:**
-
-- **The filename is not the bug.** Rows 4 and 5 specify `Autounattend.xml` for
-  *every* configuration pass, not just `windowsPE`. "`oobeSystem` needs
-  `unattend.xml`" is the natural guess and it is wrong; the docs settled it faster
-  than a 10-minute provisioning cycle would have.
-- **Correct plumbing proved nothing.** Secret, ISO, CD-ROM, `volumeStatus` and
-  well-formed XML were all individually verifiable and all correct while the
-  feature did precisely nothing. The check that mattered was the *consequence* —
-  did OOBE actually get skipped — not the wiring.
-
-**A related gap this exposed, not yet addressed:** there is no Windows configure
-path at all. `windemo` is referenced by zero playbooks and zero job templates,
-`register_linux_vm.yml` / `configure_linux_vm.yml` / `check_linux_vm.yml` / `linux_compliance_scan.yml`
-all target `linuxweb`, and no Windows machine credential exists. A Windows guest
-is provisioned and then never touched again, so even a working login would reach
-nothing.
+**A gap not yet addressed:** there is no Windows configure path. `windemo` is
+referenced by zero playbooks and zero job templates; a Windows guest is
+provisioned and then never touched again.
 
 #### Durable storage: private quay.io containerdisk
 
