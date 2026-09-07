@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed -- demo never had a RHEL 9 golden image reference (#322)
+- `Golden Image - Link RHEL 9 CIS L1` failed on demo with
+  `quay_rhel9_image must name a real published containerdisk`. demo's
+  `connection.yml` declared `quay_windows_image` but not `quay_rhel9_image`.
+- The playbook was right and the assert did its job; the environment was simply
+  never told which image to link.
+- Diffed the two `connection.yml` files rather than fixing the one key the error
+  named: this was the **only** difference, so there is no second one waiting.
+
 ### Fixed -- the EE mirror referenced a registry the repo does not create (#320)
 - `config.yml --limit demo` failed mirroring `sales_demos_ee` into Private
   Automation Hub. `hub_ee_repositories.yml` referenced `Red Hat Quay.io`, which

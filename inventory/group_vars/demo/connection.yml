@@ -79,6 +79,11 @@ windows_admin_password: "{{ env_secrets[aap_env_name].windows_admin_password | d
 windows_admin_username: "demoadmin"
 linux_admin_username: "cloud-user"
 quay_windows_image: "quay.io/zigfreed/win2k22-cis-l1-golden:20260907-0516"
+# BOTH IMAGE REFERENCES MUST EXIST IN BOTH ENVIRONMENTS (#322). demo carried
+# only the Windows one, so "Golden Image - Link RHEL 9 CIS L1" failed its own
+# assert -- the playbook is fine, the environment was simply never told which
+# image to link. Repoint, never overwrite: tags are immutable.
+quay_rhel9_image: "quay.io/zigfreed/rhel9-cis-l1-golden:20260905-0411"
 
 # SSH public key injected into demo VMs by cloud-init at first boot. Not a
 # credential — a public key is safe in plaintext. When set, password-based SSH
