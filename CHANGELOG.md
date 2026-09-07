@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed -- Provider abstraction layer (#238)
+- Refactored `playbooks/provision_vm.yml` and `playbooks/teardown.yml` into a
+  provider dispatch pattern: `include_tasks: tasks/terraform_{{ hypervisor }}.yml`
+  and `include_tasks: tasks/teardown_{{ hypervisor }}.yml`.
+- Extracted OCP Virt-specific logic into `playbooks/tasks/terraform_ocpvirt.yml`
+  and `playbooks/tasks/teardown_ocpvirt.yml`.
+- Extracted shared AAP host registration into `playbooks/tasks/register_hosts.yml`
+  and shared workflow artifact publishing into
+  `playbooks/tasks/provision_artifacts.yml`.
+- Added `hypervisor` survey variable to the Provision VM job template (default
+  `ocpvirt`). Renamed play-level vars from `ocpvirt_*` to `provision_*` for
+  the shared ones (AAP connection, inventory, groups, request timeout).
+- No behavior change when `hypervisor=ocpvirt` (the default).
+
 ### Added -- Companion documentation repo (#285)
 - Created [sales.demos-docs](https://github.com/ericcames/sales.demos-docs)
   with GitHub Pages (MkDocs Material) for talk tracks, run sheets, architecture

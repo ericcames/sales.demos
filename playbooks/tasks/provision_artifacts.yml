@@ -1,0 +1,49 @@
+---
+# ===========================================================================
+# provision_artifacts.yml — shared workflow artifact publishing.
+# Extracted from provision_vm.yml as part of the provider abstraction (#238).
+#
+# CALLER: provision_vm.yml, after the provider and registration task files
+# have run. Reads facts set by the provider: win_inventory, linux_inventory,
+# web_url, cockpit_url, ssh_command. Reads play-level vars:
+# provision_aap_inventory, provision_os_type, aap_env_name,
+# ocpvirt_namespace_resolved (OCP Virt only — will need generalizing for
+# other providers).
+# ===========================================================================
+
+- name: Pick the primary VM for the workflow artifacts
+  ansible.builtin.set_fact:
+    _primary: "{{ win_inventory if (win_inventory is mapping) else linux_inventory }}"
+
+- name: Publish provisioning details to the rest of the workflow
+  ansible.builtin.set_stats:
+    data:
+      os_type: "{{ provision_os_type }}"
+      vm_fqdn: "{{ _primary.host }}"
+      vm_name: "{{ _primary.vm_name }}"
+      vm_size_chosen: "{{ _primary.vm_size_chosen }}"
+      my_server: "{{ _primary.host }}"
+      my_instance_id: "{{ _primary.vm_name }}"
+      my_instance_type: "{{ _primary.vm_size_chosen }}"
+
+- name: Publish the Linux-specific artifacts
+  ansible.builtin.set_stats:
+    data:
+      linux_fqdn: "{{ linux_inventory.host }}"
+      linux_vm_name: "{{ linux_inventory.vm_name }}"
+      linux_admin_username: "{{ linux_inventory.ansible_user }}"
+      web_url: "{{ web_url }}"
+      cockpit_url: "{{ cockpit_url }}"
+      ssh_command: "{{ ssh_command }}"
+  when: linux_inventory is mapping
+
+- name: Summarize
+  ansible.builtin.debug:
+    msg:
+      - "Provisioned {{ provision_os_type }} / {{ provision_size_tier }} on {{ aap_env_name }}."
+      - "Registered in AAP inventory '{{ provision_aap_inventory }}'."
+      - "Linux: {{ linux_inventory.host | default('(none)') }}"
+      - "Windows: {{ win_inventory.host | default('(none)') }}"
+      - "SSH: {{ ssh_command | default('(none)', true) }}"
+      - "Web: {{ web_url | default('(none)', true) }} (503 until Phase 4 installs httpd)"
+      - "Cockpit: {{ cockpit_url | default('(none)', true) }}"

@@ -1,0 +1,139 @@
+---
+# ===========================================================================
+# register_hosts.yml — shared AAP inventory/group/host registration.
+# Extracted from provision_vm.yml as part of the provider abstraction (#238).
+#
+# CALLER: provision_vm.yml, after the provider task file has set:
+#   linux_inventory — dict with host, ansible_host, ansible_user, vm_name,
+#                     vm_size_tier, vm_size_chosen (or false/None)
+#   win_inventory   — same shape (or false/None)
+#   web_url, cockpit_url, ssh_command — provider-specific access URLs
+#
+# Reads play-level vars: provision_aap_url, provision_aap_user,
+# provision_aap_pass, provision_aap_inventory, provision_windows_group,
+# provision_linux_group, provision_request_timeout, aap_validate_certs,
+# aap_organization_name, aap_env_name, quay_rhel9_image.
+#
+# ansible.controller, not ansible.platform, and that is not an oversight:
+# ansible.platform ships NO host or group module (#116).
+# ===========================================================================
+
+- name: Ensure the AAP inventory exists (idempotent guard)
+  ansible.controller.inventory:
+    controller_host: "{{ provision_aap_url }}"
+    controller_username: "{{ provision_aap_user }}"
+    controller_password: "{{ provision_aap_pass }}"
+    validate_certs: "{{ aap_validate_certs | default(false) }}"
+    request_timeout: "{{ provision_request_timeout }}"
+    name: "{{ provision_aap_inventory }}"
+    organization: "{{ aap_organization_name | default('IT Service Automation') }}"
+    description: "Demo VMs provisioned by playbooks/provision_vm.yml"
+    state: present
+
+# --- Both groups always exist ------------------------------------
+# Created unconditionally so a workflow node with limit: windemo or
+# linuxweb always resolves. An empty group is a no-op; a missing group
+# fails the job.
+- name: Ensure the Windows group exists, with WinRM connection vars
+  ansible.controller.group:
+    controller_host: "{{ provision_aap_url }}"
+    controller_username: "{{ provision_aap_user }}"
+    controller_password: "{{ provision_aap_pass }}"
+    validate_certs: "{{ aap_validate_certs | default(false) }}"
+    request_timeout: "{{ provision_request_timeout }}"
+    name: "{{ provision_windows_group }}"
+    inventory: "{{ provision_aap_inventory }}"
+    state: present
+    variables:
+      ansible_connection: winrm
+      ansible_port: 5986
+      ansible_winrm_transport: ntlm
+      ansible_winrm_server_cert_validation: ignore
+
+- name: Ensure the Linux group exists, with SSH connection vars
+  ansible.controller.group:
+    controller_host: "{{ provision_aap_url }}"
+    controller_username: "{{ provision_aap_user }}"
+    controller_password: "{{ provision_aap_pass }}"
+    validate_certs: "{{ aap_validate_certs | default(false) }}"
+    request_timeout: "{{ provision_request_timeout }}"
+    name: "{{ provision_linux_group }}"
+    inventory: "{{ provision_aap_inventory }}"
+    state: present
+    variables:
+      ansible_connection: ssh
+      ansible_port: 22
+
+# --- Windows -------------------------------------------------------
+- name: Register the Windows VM
+  when: win_inventory is mapping
+  block:
+    - name: Add the Windows VM as a host
+      ansible.controller.host:
+        controller_host: "{{ provision_aap_url }}"
+        controller_username: "{{ provision_aap_user }}"
+        controller_password: "{{ provision_aap_pass }}"
+        validate_certs: "{{ aap_validate_certs | default(false) }}"
+        request_timeout: "{{ provision_request_timeout }}"
+        name: "{{ win_inventory.host }}"
+        inventory: "{{ provision_aap_inventory }}"
+        enabled: true
+        state: present
+        variables:
+          ansible_host: "{{ win_inventory.ansible_host }}"
+          ansible_user: "{{ win_inventory.ansible_user }}"
+          vm_name: "{{ win_inventory.vm_name }}"
+          vm_size_tier: "{{ win_inventory.vm_size_tier }}"
+          vm_size_chosen: "{{ win_inventory.vm_size_chosen }}"
+
+    - name: Associate the Windows host with its group
+      ansible.controller.group:
+        controller_host: "{{ provision_aap_url }}"
+        controller_username: "{{ provision_aap_user }}"
+        controller_password: "{{ provision_aap_pass }}"
+        validate_certs: "{{ aap_validate_certs | default(false) }}"
+        request_timeout: "{{ provision_request_timeout }}"
+        name: "{{ provision_windows_group }}"
+        inventory: "{{ provision_aap_inventory }}"
+        hosts: ["{{ win_inventory.host }}"]
+        state: present
+
+# --- Linux ---------------------------------------------------------
+- name: Register the Linux VM
+  when: linux_inventory is mapping
+  block:
+    - name: Add the Linux VM as a host
+      ansible.controller.host:
+        controller_host: "{{ provision_aap_url }}"
+        controller_username: "{{ provision_aap_user }}"
+        controller_password: "{{ provision_aap_pass }}"
+        validate_certs: "{{ aap_validate_certs | default(false) }}"
+        request_timeout: "{{ provision_request_timeout }}"
+        name: "{{ linux_inventory.host }}"
+        inventory: "{{ provision_aap_inventory }}"
+        enabled: true
+        state: present
+        variables:
+          ansible_host: "{{ linux_inventory.ansible_host }}"
+          ansible_user: "{{ linux_inventory.ansible_user }}"
+          vm_name: "{{ linux_inventory.vm_name }}"
+          vm_size_tier: "{{ linux_inventory.vm_size_tier }}"
+          vm_size_chosen: "{{ linux_inventory.vm_size_chosen }}"
+          web_url: "{{ web_url }}"
+          cockpit_url: "{{ cockpit_url }}"
+          ssh_command: "{{ ssh_command }}"
+          golden_image_source: "{{ quay_rhel9_image | default('') }}"
+          golden_image_cis_level: "L1"
+          env_name: "{{ aap_env_name }}"
+
+    - name: Associate the Linux host with its group
+      ansible.controller.group:
+        controller_host: "{{ provision_aap_url }}"
+        controller_username: "{{ provision_aap_user }}"
+        controller_password: "{{ provision_aap_pass }}"
+        validate_certs: "{{ aap_validate_certs | default(false) }}"
+        request_timeout: "{{ provision_request_timeout }}"
+        name: "{{ provision_linux_group }}"
+        inventory: "{{ provision_aap_inventory }}"
+        hosts: ["{{ linux_inventory.host }}"]
+        state: present

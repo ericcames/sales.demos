@@ -8,10 +8,11 @@
 # both of which carry the same note. Naming it the obvious way means the
 # objects are silently never created, with no error.
 #
-# SURVEY VARIABLE NAMES ARE THE CONTRACT. `vm_size_tier` and `os_type` here must
-# match playbooks/provision_vm.yml's extra_vars and the ocpvirt-provision skill
-# prompts exactly. The tier strings must also match the validation block in
-# terraform/ocpvirt/variables.tf. Changing one means changing all of them.
+# SURVEY VARIABLE NAMES ARE THE CONTRACT. `hypervisor`, `vm_size_tier` and
+# `os_type` here must match playbooks/provision_vm.yml's extra_vars and the
+# ocpvirt-provision skill prompts exactly. The tier strings must also match
+# the validation block in terraform/ocpvirt/variables.tf. Changing one means
+# changing all of them.
 #
 # BOTH TEMPLATES RUN AGAINST "Sales Demo VMs", which holds the synced control
 # hosts and the demo VMs together — see controller_inventories.yml. They differ
@@ -28,7 +29,7 @@ controller_templates_all:
   # built in #31 — nothing had run on it before this.
   # ---------------------------------------------------------------------
   - name: "Sales Demos - Provision VM"
-    description: "Run terraform/ocpvirt and register the new VMs in the Sales Demo VMs inventory."
+    description: "Run Terraform for the selected hypervisor and register the new VMs in the Sales Demo VMs inventory."
     job_type: run
     organization: "IT Service Automation"
     inventory: "Sales Demo VMs"
@@ -69,8 +70,19 @@ controller_templates_all:
     survey_enabled: true
     survey_spec:
       name: ""
-      description: "Pick an OS and a VM size tier"
+      description: "Pick a hypervisor, OS, and VM size tier"
       spec:
+        - question_name: Hypervisor
+          question_description: >-
+            Which infrastructure provider to provision on. OCP Virt is the
+            default and only provider today; others will be added in later
+            phases of #237.
+          variable: hypervisor
+          type: multiplechoice
+          required: true
+          default: ocpvirt
+          choices:
+            - ocpvirt
         - question_name: Operating system
           question_description: >-
             Which guests to provision. Windows needs the golden image from Phase

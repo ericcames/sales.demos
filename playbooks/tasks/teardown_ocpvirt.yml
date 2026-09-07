@@ -1,0 +1,247 @@
+---
+# ===========================================================================
+# teardown_ocpvirt.yml — OCP Virt provider for the teardown dispatch.
+# Extracted from teardown.yml as part of the provider abstraction (#238).
+#
+# CALLER: teardown.yml, via include_tasks: tasks/teardown_{{ hypervisor }}.yml
+#
+# The ordering within this file is load-bearing:
+#   1. Read terraform state (get hostnames)
+#   2. Unregister guests from Insights and CDN (needs VMs running)
+#   3. terraform destroy (kills VMs)
+#   4. Clean up SSH host keys
+#   5. Deregister hosts from AAP inventory
+#
+# Reads play-level vars: ocpvirt_*, provision_*, aap_env_name, and the
+# group_vars connection values.
+# ===========================================================================
+
+- name: Assert the OpenShift connection is resolved
+  ansible.builtin.assert:
+    that:
+      - ocpvirt_api_url | length > 0
+      - ocpvirt_api_token | length > 0
+    fail_msg: >-
+      No OpenShift connection. Locally this comes from
+      group_vars/<env>/connection.yml plus the vault-encrypted
+      playbooks/group_vars/all/secrets.yml, with --vault-id passed. That
+      file is gitignored (#130), so a fresh clone has only the .example.
+      From AAP it arrives as an extra_var from the "Sales Demos - Env
+      Secrets" credential (#129).
+    quiet: true
+
+- name: Report what is about to be destroyed
+  ansible.builtin.debug:
+    msg:
+      - "Destroying {{ provision_os_type }} / {{ provision_size_tier }} in namespace {{ ocpvirt_namespace_resolved }} on {{ aap_env_name }}."
+      - "PRESERVED: OpenShift Virtualization, the boot-source DataSources (including the Windows golden image), and the {{ ocpvirt_state_namespace }} state namespace."
+
+- name: Destroy the VMs and deregister them
+  block:
+    - name: Create a temporary kubeconfig for the Terraform backend
+      ansible.builtin.tempfile:
+        state: file
+        suffix: .kubeconfig
+      register: ocpvirt_kubeconfig
+      changed_when: false
+
+    - name: Write the kubeconfig
+      ansible.builtin.copy:
+        dest: "{{ ocpvirt_kubeconfig.path }}"
+        mode: "0600"
+        content: |
+          apiVersion: v1
+          kind: Config
+          clusters:
+            - name: demo
+              cluster:
+                server: {{ ocpvirt_api_url }}
+                insecure-skip-tls-verify: {{ (not (openshift_validate_certs | default(false) | bool)) | lower }}
+          users:
+            - name: demo
+              user:
+                token: {{ ocpvirt_api_token }}
+          contexts:
+            - name: demo
+              context:
+                cluster: demo
+                user: demo
+          current-context: demo
+      no_log: true
+      changed_when: false
+
+    - name: Initialize Terraform against the kubernetes backend
+      ansible.builtin.command:
+        argv:
+          - terraform
+          - init
+          - -input=false
+          - -no-color
+          - -reconfigure
+          - "-backend-config=secret_suffix={{ aap_env_name }}"
+          - "-backend-config=namespace={{ ocpvirt_state_namespace }}"
+          - "-backend-config=config_path={{ ocpvirt_kubeconfig.path }}"
+          - "-backend-config=insecure={{ (not (openshift_validate_certs | default(false) | bool)) | lower }}"
+        chdir: "{{ ocpvirt_terraform_dir }}"
+      changed_when: false
+      register: tf_init_result
+      failed_when: false
+
+    - name: Fail with the Terraform init error
+      when: tf_init_result.rc != 0
+      ansible.builtin.fail:
+        msg: >-
+          terraform init exited {{ tf_init_result.rc }}:
+          {{ tf_init_result.stderr | default(tf_init_result.stdout) | default('no output') }}
+
+    - name: Read the Terraform outputs BEFORE destroying
+      ansible.builtin.command:
+        argv: [terraform, output, -json]
+        chdir: "{{ ocpvirt_terraform_dir }}"
+      changed_when: false
+      failed_when: false
+      register: tf_output
+
+    - name: Remember which hosts to deregister
+      ansible.builtin.set_fact:
+        teardown_hosts: >-
+          {{ [
+               (tf_output.stdout | default('{}') | from_json).linux_inventory.value | default(None, true),
+               (tf_output.stdout | default('{}') | from_json).windows_inventory.value | default(None, true)
+             ] | select('mapping') | map(attribute='host') | list }}
+
+    - name: Build the virtctl SSH host-key names to clean up
+      ansible.builtin.set_fact:
+        teardown_ssh_keys: >-
+          {{ [
+               (tf_output.stdout | default('{}') | from_json).linux_inventory.value | default(None, true),
+               (tf_output.stdout | default('{}') | from_json).windows_inventory.value | default(None, true)
+             ] | select('mapping') | map(attribute='vm_name')
+               | map('regex_replace', '^(.*)$', 'vm.\1.' ~ ocpvirt_namespace_resolved)
+               | list }}
+
+    - name: Report what was found in state
+      ansible.builtin.debug:
+        msg: >-
+          {{ teardown_hosts | length }} host(s) in state:
+          {{ teardown_hosts | join(', ') if teardown_hosts else '(none — nothing to destroy)' }}
+
+    - name: Add the Linux guest to the in-memory inventory
+      ansible.builtin.add_host:
+        name: "{{ (tf_output.stdout | default('{}') | from_json).linux_inventory.value.host }}"
+        groups: teardown_guests
+        ansible_host: "{{ (tf_output.stdout | default('{}') | from_json).linux_inventory.value.ansible_host }}"
+        ansible_user: "{{ (tf_output.stdout | default('{}') | from_json).linux_inventory.value.ansible_user }}"
+        ansible_connection: ssh
+        ansible_port: 22
+      changed_when: false
+      when: (tf_output.stdout | default('{}') | from_json).linux_inventory.value | default(None, true) is mapping
+
+    # --- Give the entitlement back BEFORE destroying -------------------
+    - name: Disconnect the guest from Insights
+      ansible.builtin.command: insights-client --unregister
+      delegate_to: "{{ item }}"
+      become: true
+      loop: "{{ groups['teardown_guests'] | default([]) }}"
+      register: teardown_insights
+      changed_when: teardown_insights.rc == 0
+      failed_when: false
+
+    - name: Unregister the guest from the Red Hat CDN
+      ansible.builtin.command: subscription-manager unregister
+      delegate_to: "{{ item }}"
+      become: true
+      loop: "{{ groups['teardown_guests'] | default([]) }}"
+      register: teardown_unregister
+      changed_when: teardown_unregister.rc == 0
+      failed_when: false
+
+    - name: Report what was released
+      ansible.builtin.debug:
+        msg: >-
+          {{ 'Released the subscription and removed the Insights host.'
+             if (teardown_unregister.results | default([]) | selectattr('rc', 'equalto', 0) | list | length) > 0
+             else 'WARNING: could not unregister the guest — the subscription and Insights host will linger. Remove them at console.redhat.com.' }}
+      when: groups['teardown_guests'] | default([]) | length > 0
+
+    - name: Destroy the VMs
+      ansible.builtin.command:
+        argv:
+          - terraform
+          - destroy
+          - -input=false
+          - -auto-approve
+          - -no-color
+          - "-var=vm_size_tier={{ provision_size_tier }}"
+          - "-var=os_type={{ provision_os_type }}"
+          - "-var=namespace={{ ocpvirt_namespace_resolved }}"
+          - "-var=name_suffix={{ provision_name_suffix }}"
+          - "-var=linux_admin_username={{ linux_admin_username | default('cloud-user') }}"
+          - "-var=windows_admin_username={{ windows_admin_username | default('demoadmin') }}"
+          - "-var=openshift_apps_domain={{ openshift_apps_domain | default('') }}"
+        chdir: "{{ ocpvirt_terraform_dir }}"
+      environment:
+        TF_VAR_openshift_api_url: "{{ ocpvirt_api_url }}"
+        TF_VAR_openshift_api_token: "{{ ocpvirt_api_token }}"
+        TF_VAR_openshift_insecure: "{{ (not (openshift_validate_certs | default(false) | bool)) | ternary('false', 'true') }}"
+        TF_VAR_demo_ssh_public_key: "{{ demo_ssh_public_key | default('') }}"
+        TF_IN_AUTOMATION: "1"
+      no_log: true
+      changed_when: "'0 destroyed' not in (tf_destroy_result.stdout | default(''))"
+      register: tf_destroy_result
+      ignore_errors: true
+
+    - name: Show the Terraform error
+      when: tf_destroy_result is failed
+      ansible.builtin.debug:
+        msg: "{{ tf_destroy_result.stderr_lines | default([tf_destroy_result.stderr | default('no stderr')]) }}"
+
+    - name: Check whether a stale state lock caused it
+      ansible.builtin.include_tasks: tasks/terraform_lock_check.yml
+      vars:
+        tf_lock_result: "{{ tf_destroy_result }}"
+        tf_lock_operation: destroy
+      when: tf_destroy_result is failed
+
+    - name: Fail if the destroy failed
+      when: tf_destroy_result is failed
+      ansible.builtin.fail:
+        msg: "terraform destroy exited {{ tf_destroy_result.rc | default('?') }}"
+
+    - name: Remove stale SSH host keys from the operator's known_hosts
+      ansible.builtin.command:
+        argv: [ssh-keygen, -R, "{{ item }}"]
+      loop: "{{ teardown_ssh_keys }}"
+      loop_control:
+        label: "{{ item }}"
+      changed_when: true
+      failed_when: false
+
+    - name: Deregister the VMs from the AAP inventory
+      ansible.controller.host:
+        controller_host: "{{ provision_aap_url }}"
+        controller_username: "{{ provision_aap_user }}"
+        controller_password: "{{ provision_aap_pass }}"
+        validate_certs: "{{ aap_validate_certs | default(false) }}"
+        request_timeout: "{{ provision_request_timeout }}"
+        name: "{{ item }}"
+        inventory: "{{ provision_aap_inventory }}"
+        state: absent
+      loop: "{{ teardown_hosts }}"
+      loop_control:
+        label: "{{ item }}"
+
+    - name: Summarize
+      ansible.builtin.debug:
+        msg:
+          - "Destroyed the demo VMs in {{ ocpvirt_namespace_resolved }} on {{ aap_env_name }}."
+          - "Deregistered {{ teardown_hosts | length }} host(s) from '{{ provision_aap_inventory }}'."
+          - "Left intact: OpenShift Virtualization, the boot-source DataSources, and {{ ocpvirt_state_namespace }}."
+
+  always:
+    - name: Remove the temporary kubeconfig
+      ansible.builtin.file:
+        path: "{{ ocpvirt_kubeconfig.path }}"
+        state: absent
+      when: ocpvirt_kubeconfig.path is defined
+      changed_when: false

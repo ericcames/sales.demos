@@ -1,0 +1,222 @@
+---
+# ===========================================================================
+# terraform_ocpvirt.yml — OCP Virt provider for the provision dispatch.
+# Extracted from provision_vm.yml as part of the provider abstraction (#238).
+#
+# CALLER: provision_vm.yml, via include_tasks: tasks/terraform_{{ hypervisor }}.yml
+#
+# CONTRACT: must set these facts before returning:
+#   tf              — full parsed Terraform output JSON
+#   linux_inventory — tf.linux_inventory.value | default(false, true)
+#   win_inventory   — tf.windows_inventory.value | default(false, true)
+#   web_url         — OCP Virt Route URL (or '')
+#   cockpit_url     — OCP Virt Route URL (or '')
+#   ssh_command     — virtctl ssh command (or '')
+#
+# Reads play-level vars: ocpvirt_*, provision_size_tier, provision_os_type,
+# provision_name_suffix, aap_env_name, and the group_vars connection values.
+# ===========================================================================
+
+- name: Assert the OpenShift connection is resolved
+  ansible.builtin.assert:
+    that:
+      - ocpvirt_api_url | length > 0
+      - ocpvirt_api_token | length > 0
+      - ocpvirt_namespace_resolved | length > 0
+    fail_msg: >-
+      No OpenShift connection. Locally this comes from
+      group_vars/<env>/connection.yml plus the vault-encrypted
+      playbooks/group_vars/all/secrets.yml, with --vault-id passed so
+      openshift_api_token resolves. That file is gitignored (#130), so a
+      fresh clone has only secrets.yml.example -- build yours from it, or
+      run /sales-demos-first-time. From AAP this arrives as an extra_var
+      from the "Sales Demos - Env Secrets" credential (#129); check it is
+      attached to this job template.
+    quiet: true
+
+# --- Windows boot source, checked rather than assumed --------------------
+- name: Look up the Windows boot-source DataSource
+  kubernetes.core.k8s_info:
+    api_version: cdi.kubevirt.io/v1beta1
+    kind: DataSource
+    name: "{{ ocpvirt_windows_datasource }}"
+    namespace: "{{ ocpvirt_datasource_namespace }}"
+  environment:
+    K8S_AUTH_HOST: "{{ ocpvirt_api_url }}"
+    K8S_AUTH_API_KEY: "{{ ocpvirt_api_token }}"
+    K8S_AUTH_VERIFY_SSL: "{{ openshift_validate_certs | default(false) | bool }}"
+  register: ocpvirt_win_ds
+  when: provision_os_type in ['windows', 'both']
+
+- name: Warn if the Windows boot source is not populated
+  ansible.builtin.debug:
+    msg: >-
+      os_type={{ provision_os_type }} includes Windows, but DataSource
+      '{{ ocpvirt_windows_datasource }}' in {{ ocpvirt_datasource_namespace }}
+      is not Ready — CNV ships it as an empty placeholder. The VM will be
+      created and will NOT boot; it waits forever on a DataVolume that never
+      imports. Link this environment to a published golden image first:
+      playbooks/link_windows_image.yml, or the ocpvirt-windows-image skill.
+  when:
+    - provision_os_type in ['windows', 'both']
+    - >-
+      (ocpvirt_win_ds.resources | default([]) | length == 0)
+      or (ocpvirt_win_ds.resources[0].status.conditions | default([])
+          | selectattr('type', 'equalto', 'Ready')
+          | selectattr('status', 'equalto', 'True') | list | length == 0)
+
+- name: Report the target
+  ansible.builtin.debug:
+    msg: >-
+      Provisioning {{ provision_os_type }} / {{ provision_size_tier }} into
+      namespace {{ ocpvirt_namespace_resolved }} on {{ aap_env_name }},
+      registering into AAP inventory '{{ provision_aap_inventory }}'.
+
+# --- Namespaces must exist before anything else -------------------------
+- name: Ensure the Terraform state namespace exists (idempotent guard)
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: "{{ ocpvirt_state_namespace }}"
+        labels:
+          app.kubernetes.io/managed-by: sales.demos
+          sales.demos/purpose: terraform-state
+  environment:
+    K8S_AUTH_HOST: "{{ ocpvirt_api_url }}"
+    K8S_AUTH_API_KEY: "{{ ocpvirt_api_token }}"
+    K8S_AUTH_VERIFY_SSL: "{{ openshift_validate_certs | default(false) | bool }}"
+
+# --- Terraform ---------------------------------------------------------
+- name: Provision the VMs via Terraform
+  block:
+    - name: Create a temporary kubeconfig for the Terraform backend
+      ansible.builtin.tempfile:
+        state: file
+        suffix: .kubeconfig
+      register: ocpvirt_kubeconfig
+      changed_when: false
+
+    - name: Write the kubeconfig
+      ansible.builtin.copy:
+        dest: "{{ ocpvirt_kubeconfig.path }}"
+        mode: "0600"
+        content: |
+          apiVersion: v1
+          kind: Config
+          clusters:
+            - name: demo
+              cluster:
+                server: {{ ocpvirt_api_url }}
+                insecure-skip-tls-verify: {{ (not (openshift_validate_certs | default(false) | bool)) | lower }}
+          users:
+            - name: demo
+              user:
+                token: {{ ocpvirt_api_token }}
+          contexts:
+            - name: demo
+              context:
+                cluster: demo
+                user: demo
+          current-context: demo
+      no_log: true
+      changed_when: false
+
+    - name: Initialize Terraform against the kubernetes backend
+      ansible.builtin.command:
+        argv:
+          - terraform
+          - init
+          - -input=false
+          - -no-color
+          - -reconfigure
+          - "-backend-config=secret_suffix={{ aap_env_name }}"
+          - "-backend-config=namespace={{ ocpvirt_state_namespace }}"
+          - "-backend-config=config_path={{ ocpvirt_kubeconfig.path }}"
+          - "-backend-config=insecure={{ (not (openshift_validate_certs | default(false) | bool)) | lower }}"
+        chdir: "{{ ocpvirt_terraform_dir }}"
+      changed_when: false
+      register: tf_init_result
+      failed_when: false
+
+    - name: Fail with the Terraform init error
+      when: tf_init_result.rc != 0
+      ansible.builtin.fail:
+        msg: >-
+          terraform init exited {{ tf_init_result.rc }}:
+          {{ tf_init_result.stderr | default(tf_init_result.stdout) | default('no output') }}
+
+    - name: Apply Terraform (create or converge the VMs)
+      ansible.builtin.command:
+        argv:
+          - terraform
+          - apply
+          - -input=false
+          - -auto-approve
+          - -no-color
+          - "-var=vm_size_tier={{ provision_size_tier }}"
+          - "-var=os_type={{ provision_os_type }}"
+          - "-var=namespace={{ ocpvirt_namespace_resolved }}"
+          - "-var=name_suffix={{ provision_name_suffix }}"
+          - "-var=linux_admin_username={{ linux_admin_username | default('cloud-user') }}"
+          - "-var=windows_admin_username={{ windows_admin_username | default('demoadmin') }}"
+          - "-var=openshift_apps_domain={{ openshift_apps_domain | default('') }}"
+        chdir: "{{ ocpvirt_terraform_dir }}"
+      environment:
+        TF_VAR_openshift_api_url: "{{ ocpvirt_api_url }}"
+        TF_VAR_openshift_api_token: "{{ ocpvirt_api_token }}"
+        TF_VAR_openshift_insecure: "{{ (not (openshift_validate_certs | default(false) | bool)) | ternary('false', 'true') }}"
+        TF_VAR_demo_ssh_public_key: "{{ demo_ssh_public_key | default('') }}"
+        TF_VAR_linux_admin_password: "{{ linux_admin_password | default('') }}"
+        TF_VAR_windows_admin_password: "{{ linux_admin_password | default('') }}"
+        TF_IN_AUTOMATION: "1"
+      no_log: true
+      changed_when: "'0 added, 0 changed, 0 destroyed' not in (tf_apply_result.stdout | default(''))"
+      register: tf_apply_result
+      ignore_errors: true
+
+    - name: Show the Terraform error
+      when: tf_apply_result is failed
+      ansible.builtin.debug:
+        msg: "{{ tf_apply_result.stderr_lines | default([tf_apply_result.stderr | default('no stderr')]) }}"
+
+    - name: Check whether a stale state lock caused it
+      ansible.builtin.include_tasks: tasks/terraform_lock_check.yml
+      vars:
+        tf_lock_result: "{{ tf_apply_result }}"
+        tf_lock_operation: apply
+      when: tf_apply_result is failed
+
+    - name: Fail if Terraform apply failed
+      when: tf_apply_result is failed
+      ansible.builtin.fail:
+        msg: "terraform apply exited {{ tf_apply_result.rc | default('?') }}"
+
+    - name: Read the Terraform outputs
+      ansible.builtin.command:
+        argv: [terraform, output, -json]
+        chdir: "{{ ocpvirt_terraform_dir }}"
+      changed_when: false
+      register: tf_output
+
+    - name: Parse the per-OS inventory outputs
+      ansible.builtin.set_fact:
+        tf: "{{ tf_output.stdout | from_json }}"
+
+    - name: Split the outputs into their per-OS parts
+      ansible.builtin.set_fact:
+        win_inventory: "{{ tf.windows_inventory.value | default(false, true) }}"
+        linux_inventory: "{{ tf.linux_inventory.value | default(false, true) }}"
+        web_url: "{{ tf.web_url.value | default('', true) }}"
+        cockpit_url: "{{ tf.cockpit_url.value | default('', true) }}"
+        ssh_command: "{{ tf.ssh_command.value | default('', true) }}"
+
+  always:
+    - name: Remove the temporary kubeconfig
+      ansible.builtin.file:
+        path: "{{ ocpvirt_kubeconfig.path }}"
+        state: absent
+      when: ocpvirt_kubeconfig.path is defined
+      changed_when: false
