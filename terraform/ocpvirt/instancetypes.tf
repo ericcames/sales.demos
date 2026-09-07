@@ -35,7 +35,7 @@
 # ---------------------------------------------------------------------------
 
 resource "kubernetes_manifest" "instancetype" {
-  for_each = var.manage_instancetypes ? local.canonical_tiers : toset([])
+  for_each = var.manage_shared_objects ? local.canonical_tiers : toset([])
 
   manifest = {
     apiVersion = "instancetype.kubevirt.io/v1beta1"

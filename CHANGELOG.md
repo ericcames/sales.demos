@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed -- the VM namespace was the second shared object (#311)
+- The retried Windows provision got past the instance types and failed on
+  `namespaces "sales-demos-sandbox" already exists`.
+- `manage_instancetypes` from #309 was too narrow, and the narrowness *was* the
+  bug: it fixed the catalog and the next run failed on the namespace instead.
+  Renamed to `manage_shared_objects`, which is the actual concept -- shared
+  environment scaffolding -- and the namespace is guarded by it too.
+- **Enumerated rather than discovered one failure at a time.** Every resource in
+  `terraform/ocpvirt/` is either scoped to one OS by `count` on
+  `create_linux`/`create_windows`, or shared. The shared set is exactly two: the
+  VM namespace and the `sd1.*` catalog. `terraform_data.memory_budget` is shared
+  but creates no cluster object. So this is the last one.
+- All nine references to `kubernetes_namespace.demo` are `depends_on` with no
+  attribute access, so adding `count` needed no `[0]` indexing.
+- `provision_vm.yml` now also ensures the VM namespace idempotently, sending
+  only `metadata.name` so it is a no-op patch when Terraform owns the object.
+  A Windows-only environment gets its namespace either way.
+
 ### Fixed -- both OS states fought over the shared instance type catalog (#309)
 - The first real Windows provision after #301 failed with
   `Cannot create resource that already exists: resource "/sd1.small"`.

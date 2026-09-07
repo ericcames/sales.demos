@@ -73,6 +73,19 @@
       registering into AAP inventory '{{ provision_aap_inventory }}'.
 
 # --- Namespaces must exist before anything else -------------------------
+- name: Ensure the VM namespace exists (idempotent guard)
+  # Terraform owns this namespace, but only in the LINUX state (#311) -- so a
+  # Windows-only environment would otherwise have nowhere to put its VM. Only
+  # metadata.name is sent, which makes this a no-op patch when the object
+  # already exists rather than a competing definition.
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: "{{ ocpvirt_namespace_resolved }}"
+
 - name: Ensure the Terraform state namespace exists (idempotent guard)
   kubernetes.core.k8s:
     state: present
@@ -228,9 +241,10 @@
           # Passed explicitly so the Terraform guard and the cluster-wide check
           # in provision_vm.yml measure against the SAME number (#301).
           - "-var=available_memory_gb={{ available_memory_gb }}"
-          # The sd1.* catalog is shared by both guests and exactly one state
-          # may own it (#309). Linux does; Windows references it by name.
-          - "-var=manage_instancetypes={{ (provision_os_type == 'linux') | lower }}"
+          # The VM namespace and the sd1.* catalog are shared by both guests,
+          # and exactly one state may own them (#309, #311). Linux does;
+          # Windows references them.
+          - "-var=manage_shared_objects={{ (provision_os_type == 'linux') | lower }}"
         chdir: "{{ ocpvirt_terraform_dir }}"
       environment:
         TF_VAR_openshift_api_url: "{{ ocpvirt_api_url }}"

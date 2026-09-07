@@ -17,6 +17,15 @@
 # ---------------------------------------------------------------------------
 
 resource "kubernetes_namespace" "demo" {
+  # SHARED BETWEEN BOTH GUESTS, so only one state may own it (#311). State is
+  # keyed per OS since #301, and a Windows apply against a namespace the Linux
+  # state already created fails with `namespaces "..." already exists`.
+  #
+  # playbooks/provision_vm.yml also ensures this namespace idempotently, naming
+  # it and nothing else, so a Windows-only environment still gets one and this
+  # resource sees no drift from it.
+  count = var.manage_shared_objects ? 1 : 0
+
   metadata {
     name   = var.namespace
     labels = local.common_labels
