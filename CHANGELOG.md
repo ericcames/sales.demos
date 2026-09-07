@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed -- the probe reported "across 0 VM(s)" while counting 20 GiB (#336)
+- `Demo VMs now: 20.0 GiB across 0 VM(s)` — the memory was right, the count was
+  not. #334 replaced the inline VM read with the shared task file but left the
+  report line referencing the register it deleted, so `probe_demo_vms` was
+  undefined and `| default([]) | length` quietly returned 0.
+- Uses `demo_vm_counted` from the shared file, and now names the VMs it counted
+  rather than only totalling them.
+- **Cosmetic, but exactly the shape of the bug it was reporting on**: a figure
+  that silently reads zero because the thing behind it is not there.
+
 ### Fixed -- both memory checks totalled zero because the memory is not in the VM (#334)
 - The #332 fix ran and returned `Demo VMs now: 0.0 GiB across 2 VM(s)`. It found
   the VMs and counted nothing.

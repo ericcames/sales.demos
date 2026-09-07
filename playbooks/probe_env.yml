@@ -328,7 +328,7 @@
           - "Free by LIVE USE: {{ probe_free_by_live_gb }} GiB   ({{ 'metrics.k8s.io unavailable' if (probe_metrics.resources | default([]) | length == 0) else 'informational only' }})"
           - "Unscheduled:      {{ probe_unscheduled | length }} pod(s) Pending with no node — reserving nothing, excluded above"
           - ""
-          - "Demo VMs now:     {{ probe_demo_vm_gb }} GiB across {{ probe_demo_vms.resources | default([]) | length }} VM(s) — already subtracted above, added back below"
+          - "Demo VMs now:     {{ probe_demo_vm_gb }} GiB across {{ demo_vm_counted | default([]) | length }} VM(s){{ ' (' ~ (demo_vm_counted | join(', ')) ~ ')' if demo_vm_counted | default([]) else '' }} — already subtracted above, added back below"
           - ""
           - "RECOMMENDED  available_memory_gb = {{ probe_recommended_memory_gb }}"
           - "             ({{ probe_free_by_requests_gb }} free + {{ probe_demo_vm_gb }} held by demo VMs, less a {{ probe_safety_margin_gb }} GiB safety margin)"
