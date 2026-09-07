@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed -- the portal job template can now actually run from AAP (#324)
+- `AAP Ecosystem - Install Self-Service Portal` failed ten seconds after every
+  launch for **two independent reasons**, and fixing either alone only moved the
+  failure to the other.
+- **EE v1.2.0 adds the helm 3.21.4 binary.** `kubernetes.core.helm` wraps the
+  helm CLI rather than talking to the API, and the EE carried terraform and
+  nothing else.
+- **Pinned to 3.x, not latest, deliberately.** Helm's latest is 4.2.4, but
+  `kubernetes.core.helm` declares `requirements: helm >= 3.0.0` and its newest
+  options gate on 3.16/3.17 -- it is written against the 3.x CLI and 4.x is a
+  breaking major.
+- **The archive is not shaped like terraform's**: terraform ships a flat zip,
+  helm a tar.gz nesting the binary under `linux-amd64/`, so extraction needs
+  `--strip-components=1`. Verified by listing the tarball, not inferred.
+- **`portal.yml` now synthesises its kubeconfig** from `openshift_api_url` /
+  `openshift_api_token`, which it already asserted were present. It previously
+  read `.kube/<env>.kubeconfig` -- gitignored, so AAP's checkout never had one.
+  Always synthesised, with no fallback: one code path, rather than an AAP path
+  exercised only in production. Wrapped in `block`/`always` because the file
+  holds a bearer token, so it is removed even when Helm fails.
+- `utilities/build-ee.sh` verifies helm as UID 1000 beside terraform -- a binary
+  that works as root and not as the job user would pass the Containerfile's own
+  check and fail in front of a customer.
+- `v1.1.0` stays mirrored as the rollback; reverting is one line in
+  `controller_execution_environments.yml`.
+- **Build verification:** terraform still v1.15.8, helm v3.21.4 as UID 1000, all
+  nine collection pins matched with no drift, no credential in the image.
+
 ### Removed -- the one-time Terraform state migration (#301)
 - Both environments have now run it, which was #301's stated condition for
   deleting it: sandbox and demo on 2026-09-07.

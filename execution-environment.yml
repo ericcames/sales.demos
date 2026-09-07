@@ -129,6 +129,33 @@ additional_build_steps:
       && chmod 0755 /usr/local/bin/terraform
       && rm -f /tmp/terraform.zip
 
+    # Helm CLI (#324). kubernetes.core.helm wraps the helm BINARY -- it does not
+    # talk to the API itself -- so playbooks/portal.yml could never run from AAP
+    # without this, whatever credentials it was given. That is the half of #324
+    # that documentation could not fix.
+    #
+    # PINNED TO 3.x, NOT LATEST, AND THAT IS DELIBERATE. Helm's latest release
+    # is 4.2.4, but kubernetes.core.helm declares `requirements: helm >= 3.0.0`
+    # and its newest options gate on helm 3.16 / 3.17. The module is written
+    # against the 3.x CLI and 4.x is a breaking major, so "newest" would be the
+    # wrong choice here. 3.21.4 is the newest 3.x.
+    #
+    # NOT SHAPED LIKE THE TERRAFORM DOWNLOAD ABOVE. Terraform ships a flat zip;
+    # helm ships a tar.gz that nests the binary under linux-amd64/, hence
+    # --strip-components=1 and the named member. Verified by listing the
+    # tarball, not assumed from the terraform block.
+    #
+    # To bump: change the version and the checksum together, from
+    #   https://get.helm.sh/helm-<version>-linux-amd64.tar.gz.sha256sum
+    - >-
+      RUN curl -fsSL -o /tmp/helm.tar.gz
+      "https://get.helm.sh/helm-v3.21.4-linux-amd64.tar.gz"
+      && echo "61f88ab166748cb19604d7884cb100ae9ccb13804ddeb98e08af167eacbb6a14  /tmp/helm.tar.gz"
+      | sha256sum -c -
+      && tar -xzf /tmp/helm.tar.gz -C /usr/local/bin --strip-components=1 linux-amd64/helm
+      && chmod 0755 /usr/local/bin/helm
+      && rm -f /tmp/helm.tar.gz
+
     # RESTORE /usr/bin/python3 TO 3.12, WHICH THE BINDEP STEP HIJACKS (#122).
     #
     # assemble installs the system packages the collections' bindep files ask
@@ -158,3 +185,4 @@ additional_build_steps:
     # append_final step — so it does not prove the runtime user can execute it.
     # utilities/build-ee.sh re-runs it unprivileged after the build for that.
     - RUN /usr/local/bin/terraform version
+    - RUN /usr/local/bin/helm version

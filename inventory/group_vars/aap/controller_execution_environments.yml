@@ -27,7 +27,7 @@ controller_execution_environments_all:
   - name: "Sales Demos - OCP Virt EE"
     description: |-
       {%- raw -%}
-      sales.demos EE v1.1.0 (base ee-supported-rhel9, AAP 2.7) — Terraform 1.15.8 · cloud.terraform · kubernetes.core · redhat.openshift_virtualization · infra.aap_configuration
+      sales.demos EE v1.2.0 (base ee-supported-rhel9, AAP 2.7) — Terraform 1.15.8 · Helm 3.21.4 · cloud.terraform · kubernetes.core · redhat.openshift_virtualization · infra.aap_configuration
       {%- endraw -%}
     organization: "IT Service Automation"
     # PULLED FROM THIS ENVIRONMENT'S OWN PRIVATE AUTOMATION HUB (#35), not from
@@ -55,17 +55,22 @@ controller_execution_environments_all:
     #   sha256:be41f1ffdfef21fdcd45bc134dd564cf91525c5ebd235f2ecfc03d88b632ff2b
     #   skopeo inspect --no-creds docker://quay.io/zigfreed/sales-demos-ee:v1.1.0
     #
-    # v1.1.0 SINCE #122: the 2.7-base rebuild. v1.0.0 (digest
-    # sha256:a6ee9e4b110bc12d47b222af93127f8fae9f8e3d02599dd8f1b35e3204d3559b)
-    # is still mirrored into both hubs by hub_ee_repositories.yml, so rolling
-    # back is changing this one line — no re-mirror, no quay round trip.
+    # v1.2.0 SINCE #324: adds the helm 3.21.4 binary, without which
+    # kubernetes.core.helm -- and therefore playbooks/portal.yml -- could not
+    # run from AAP at all. v1.1.0 was the 2.7-base rebuild (#122), v1.0.0 before
+    # it (digest
+    # sha256:a6ee9e4b110bc12d47b222af93127f8fae9f8e3d02599dd8f1b35e3204d3559b);
+    # both stay mirrored by hub_ee_repositories.yml, so rolling back is changing
+    # this one line — no re-mirror, no quay round trip.
     #
-    # IT WAS PROVEN BEFORE IT WAS FLIPPED, which is what #122's additive rule
-    # asks for. `AAP Ecosystem - Install Automation Orchestrator` ran green on
-    # v1.1.0 in BOTH environments (sandbox job 108, demo job 51), each
-    # ok=30 changed=0 — idempotent, and kubernetes.core end to end, which is
-    # what the python-interpreter defect fixed in #122 would have broken.
-    image: "{{ aap_hostname }}/sales_demos_ee:v1.1.0"
+    # PROVE IT BEFORE FLIPPING IT, which is what #122's additive rule asks for
+    # and what v1.1.0 did (`Install Automation Orchestrator` green in both
+    # environments, sandbox job 108 and demo job 51, each ok=30 changed=0).
+    # v1.2.0 changes the image EVERY template runs on, not just the portal's, so
+    # its gate is both: the portal template completing, AND `Linux Day 1 - 0
+    # Workflow` still green end to end on the new image. A helm binary should
+    # not disturb terraform or kubernetes.core, but "should not" is not evidence.
+    image: "{{ aap_hostname }}/sales_demos_ee:v1.2.0"
     # PAH requires authentication for container pulls even when the repository
     # is not private, so this is required regardless of visibility.
     credential: "Sales Demos - PAH Registry"

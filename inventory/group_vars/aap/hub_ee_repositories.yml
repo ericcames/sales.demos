@@ -47,12 +47,15 @@ hub_ee_repositories_all:
     # create a second, moving copy of an image the whole design treats as
     # immutable (see utilities/build-ee.sh — never re-push a tag).
     include_tags:
-      # BOTH, and that is the additive rule (#122). v1.1.0 is the 2.7-base
-      # rebuild; v1.0.0 stays mirrored until v1.1.0 has run a real job template
-      # in both environments, so a rollback is a one-line change to
-      # controller_execution_environments.yml rather than a re-mirror.
+      # ALL THREE, and that is the additive rule (#122). v1.2.0 adds the helm
+      # binary (#324); v1.1.0 stays mirrored as the rollback, so reverting is a
+      # one-line change to controller_execution_environments.yml rather than a
+      # re-mirror. v1.0.0's stated retirement condition is now met -- v1.1.0 has
+      # run real job templates in both environments -- but dropping it is a
+      # separate concern and is deliberately not bundled with a version bump.
       - v1.0.0
       - v1.1.0
+      - v1.2.0
     sync: true   # ROLE GATE
     wait: true
 
