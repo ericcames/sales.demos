@@ -419,6 +419,119 @@ controller_templates_all:
     extra_vars:
       target_env: "{{ aap_env_name }}"
 
+  # =====================================================================
+  # AAP OBSERVABILITY (#318). Instrument the platform, then visualise it.
+  #
+  # NUMBERED BECAUSE IT IS A CHAIN. Dashboards pushed at a cluster with no
+  # Alloy render twelve empty panels — the data has to be flowing first. The
+  # two are not wired into a workflow because the dashboard half is not
+  # per-environment (see below), so a workflow would imply a per-env sequence
+  # that does not exist.
+  # =====================================================================
+  - name: "AAP Observability - 1 Deploy Alloy"
+    description: "Deploy Grafana Alloy into this cluster: federate metrics from the built-in Prometheus and stream pod logs to Grafana Cloud."
+    labels:
+      - observability
+      - install
+      - ocpvirt
+    job_type: run
+    organization: "IT Service Automation"
+    inventory: "Sales Demo VMs"
+    project: "Sales Demos"
+    playbook: playbooks/deploy_alloy.yml
+    execution_environment: "Sales Demos - OCP Virt EE"
+    credentials:
+      - "Sales Demos - Vault"
+      - "Sales Demos - Env Secrets"
+    limit: "{{ aap_env_name }}"
+    extra_vars:
+      target_env: "{{ aap_env_name }}"
+
+  # ---------------------------------------------------------------------
+  # THE ONLY TEMPLATE HERE THAT IS NOT PER-ENVIRONMENT, and that has to be
+  # said out loud or it will be assumed otherwise.
+  #
+  # deploy_dashboard.yml is `hosts: localhost` and takes no --limit: Grafana
+  # Cloud is ONE external service spanning both environments. So this template
+  # exists in both controllers and pushes to the SAME Grafana folder. That is
+  # idempotent and harmless — re-runs update in place — but it means running it
+  # from demo also updates what sandbox sees, and vice versa.
+  #
+  # `inventory` is set only because AAP requires one. The play targets implicit
+  # localhost and never touches those hosts, which is also why there is no
+  # `limit` and no target_env: there is no environment to assert against.
+  # ---------------------------------------------------------------------
+  - name: "AAP Observability - 2 Deploy Dashboards"
+    description: "Push the Cluster Health dashboard to Grafana Cloud as code. NOT per-environment — one Grafana Cloud spans both, so this updates the same folder whichever controller runs it."
+    labels:
+      - observability
+      - install
+    job_type: run
+    organization: "IT Service Automation"
+    inventory: "Sales Demo VMs"
+    project: "Sales Demos"
+    playbook: playbooks/deploy_dashboard.yml
+    execution_environment: "Sales Demos - OCP Virt EE"
+    credentials:
+      - "Sales Demos - Vault"
+      - "Sales Demos - Env Secrets"
+
+  # =====================================================================
+  # GOLDEN IMAGE (#318). Point CNV at the CIS-hardened images that
+  # image.builder.pipeline publishes.
+  #
+  # "GOLDEN IMAGE", NOT "IMAGE BUILD". These CONSUME a published
+  # containerdisk; nothing here builds one. Building lives in the producer
+  # repo, and naming this family for a verb it does not perform would send
+  # someone to the wrong repository.
+  #
+  # NOT NUMBERED, unlike the Observability pair: the two links are entirely
+  # independent and either can run alone. Same rule as Repair and Teardown.
+  #
+  # THEY ARE NOT SYMMETRIC IN WHAT THEY NEED. The RHEL 9 repository is public,
+  # so that link needs no quay credentials at all and would have run from AAP
+  # before #318. Windows is private — a Windows image cannot be redistributed
+  # publicly — so it needs quay_username / quay_password, and those are the
+  # reason the credential type had to be rebuilt.
+  # =====================================================================
+  - name: "Golden Image - Link RHEL 9 CIS L1"
+    description: "Point CNV at the published RHEL 9 CIS L1 golden image, populating the rhel9-cis-l1 boot source. Public repository — no pull secret needed."
+    labels:
+      - golden-image
+      - linux
+      - ocpvirt
+    job_type: run
+    organization: "IT Service Automation"
+    inventory: "Sales Demo VMs"
+    project: "Sales Demos"
+    playbook: playbooks/link_rhel9_image.yml
+    execution_environment: "Sales Demos - OCP Virt EE"
+    credentials:
+      - "Sales Demos - Vault"
+      - "Sales Demos - Env Secrets"
+    limit: "{{ aap_env_name }}"
+    extra_vars:
+      target_env: "{{ aap_env_name }}"
+
+  - name: "Golden Image - Link Windows 2022 CIS L1"
+    description: "Point CNV at the published Windows Server 2022 CIS L1 golden image, taking over the empty win2k22 placeholder. Creates a pull secret for the private quay repository."
+    labels:
+      - golden-image
+      - windows
+      - ocpvirt
+    job_type: run
+    organization: "IT Service Automation"
+    inventory: "Sales Demo VMs"
+    project: "Sales Demos"
+    playbook: playbooks/link_windows_image.yml
+    execution_environment: "Sales Demos - OCP Virt EE"
+    credentials:
+      - "Sales Demos - Vault"
+      - "Sales Demos - Env Secrets"
+    limit: "{{ aap_env_name }}"
+    extra_vars:
+      target_env: "{{ aap_env_name }}"
+
   # ---------------------------------------------------------------------
   # WINDOWS DAY 1 (#301). Provision and Teardown only — deliberately.
   #

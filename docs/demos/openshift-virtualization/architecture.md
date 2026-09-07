@@ -153,9 +153,12 @@ All of it is configuration-as-code under `inventory/group_vars/`, applied by
 | Credentials | `Sales Demos - Vault` · `Sales Demos - Linux Machine` · `Sales Demos - PAH Registry` |
 | Inventory | `Sales Demo VMs` · `Sales Demo VMs - Control` |
 | Job templates | `Linux Day 1 - 1 Provision` · `2 Register` · `3 Configure` · `4 Compliance Scan` · `5 Check` · `Repair` · `Teardown` |
-| | `AAP Ecosystem - Install Automation Orchestrator` · `Install Self-Service Portal` |
+| | `AAP Ecosystem - Install Automation Orchestrator` · `Install MCP Server` · `Install Self-Service Portal` |
+| | `AAP Observability - 1 Deploy Alloy` · `2 Deploy Dashboards` |
+| | `Golden Image - Link RHEL 9 CIS L1` · `Link Windows 2022 CIS L1` |
+| | `Windows Day 1 - 1 Provision` · `Teardown` |
 | Workflow | `Linux Day 1 - 0 Workflow` |
-| Labels | `linux` · `day-1` · `ocpvirt` · `aap-ecosystem` · `install` |
+| Labels | `linux` · `windows` · `day-1` · `ocpvirt` · `aap-ecosystem` · `observability` · `golden-image` · `install` |
 | Schedules | `Linux Day 1 - Nightly teardown (6 PM)` (+ a 10 PM safety net in sandbox) |
 
 **Names order, labels group.** The name gives an object one position in the

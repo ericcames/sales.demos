@@ -8,6 +8,16 @@ description: "Push Grafana Cloud dashboards (dashboard-as-code). Runs playbooks/
 Push Grafana Cloud dashboards defined as committed JSON. Issue
 [#275](https://github.com/ericcames/sales.demos/issues/275).
 
+## There is an AAP path now too (#318)
+
+`AAP Observability - 2 Deploy Dashboards` runs the same playbook from AAP, so
+this no longer has to come off a laptop. Use whichever suits; the skill is still
+the quicker loop while iterating on dashboard JSON.
+
+**It is not per-environment, and that surprises people.** One Grafana Cloud
+serves both environments, so the template exists in both controllers and pushes
+to the *same* folder — running it from demo also updates what sandbox sees.
+
 This skill contains **no logic**. All the work is in
 [`playbooks/deploy_dashboard.yml`](../../../playbooks/deploy_dashboard.yml). See
 `CLAUDE.md` → *Skills and playbooks*.

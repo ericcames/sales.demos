@@ -11,7 +11,7 @@
 #
 # THREE AXES, and each value has to earn its place:
 #
-#   domain      aap-ecosystem, linux, windows
+#   domain      aap-ecosystem, linux, windows, observability, golden-image
 #   phase       install, day-1              (day-2 when #241 lands)
 #   hypervisor  ocpvirt
 #
@@ -41,6 +41,10 @@ controller_labels_all:
   - name: linux
     organization: "IT Service Automation"
   - name: windows
+    organization: "IT Service Automation"
+  - name: observability
+    organization: "IT Service Automation"
+  - name: golden-image
     organization: "IT Service Automation"
 
   # --- phase ----------------------------------------------------------

@@ -5,6 +5,13 @@ description: "Deploy Grafana Alloy on an OpenShift cluster to push metrics and l
 
 # sales-demos-alloy
 
+## There is an AAP path now too (#318)
+
+`AAP Observability - 1 Deploy Alloy` runs the same playbook from AAP, per
+environment. Deploy Alloy *before* pushing dashboards — a dashboard on a cluster
+with no Alloy renders twelve empty panels, which is why the templates are
+numbered.
+
 Deploy Grafana Alloy on an OpenShift cluster to push metrics and logs to
 Grafana Cloud. Issue [#265](https://github.com/ericcames/sales.demos/issues/265).
 

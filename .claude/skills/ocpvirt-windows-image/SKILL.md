@@ -5,6 +5,13 @@ description: "Point this environment's OpenShift Virtualization at the published
 
 # ocpvirt-windows-image
 
+## There is an AAP path now too (#318)
+
+`Golden Image - Link Windows 2022 CIS L1` runs the same playbook from AAP. It
+needs `quay_username` / `quay_password`, which now reach a job through the
+"Sales Demos - Env Secrets" credential — the Windows containerdisk lives in a
+PRIVATE repository, unlike RHEL 9's.
+
 Links an environment to the published CIS L1 hardened Windows golden image.
 
 CNV ships `win2k22` as an empty placeholder — Red Hat cannot redistribute Windows

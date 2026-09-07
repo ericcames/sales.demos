@@ -7,6 +7,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added -- job templates for observability and golden-image linking (#318)
+- Two new families extending the #300 taxonomy: **`AAP Observability - `**
+  (`1 Deploy Alloy`, `2 Deploy Dashboards`) and **`Golden Image - `**
+  (`Link RHEL 9 CIS L1`, `Link Windows 2022 CIS L1`). Four playbooks that
+  already worked from a laptop had no AAP path at all.
+- **Observability is numbered because it is a chain** -- dashboards pushed at a
+  cluster with no Alloy render twelve empty panels. **Golden Image is not**: the
+  two links are independent, same rule as `Repair` and `Teardown`.
+- **"Golden Image", not "Image Build".** These CONSUME what
+  `image.builder.pipeline` publishes; nothing here builds an image. Naming the
+  family for a verb it does not perform would send someone to the wrong repo.
+- New labels `observability` and `golden-image`. Dashboards deliberately carry
+  no `ocpvirt` label -- it writes to Grafana Cloud and touches no cluster, the
+  same line #309 draws for the SSH-only Linux steps.
+
+### Changed -- nine new fields on the Env Secrets credential type (#318)
+- `grafana_cloud_url`, `grafana_cloud_editor_sa_token`,
+  `grafana_cloud_prom_push_url`, `grafana_cloud_prom_username`,
+  `grafana_cloud_loki_push_url`, `grafana_cloud_loki_username`,
+  `grafana_cloud_push_api_key`, `quay_username`, `quay_password`.
+- **These are NOT keyed per environment**, unlike every credential before them.
+  One Grafana Cloud and one quay account serve both environments, so they are
+  top-level in the vault and both controllers receive identical values.
+- **URLs and usernames are deliberately not `secret`.** A write-only field
+  renders as "ENCRYPTED" in the AAP UI, which makes a mistyped push endpoint
+  undiagnosable without re-reading the vault. Only the two tokens and the quay
+  password are write-only.
+- **None of the nine is `required`.** They serve four templates out of fifteen,
+  and an environment that never deploys Alloy should not be blocked from
+  creating the credential every Day 1 template depends on.
+- **`grafana_cloud_sa_token` is deliberately excluded.** It appears in
+  `deploy_dashboard.yml` only inside a comment explaining why the Editor token
+  is separate -- nothing reads it. Adding it would have put a live credential
+  into AAP for no reason. It stays in `check-secrets-example.py`'s `STAGED` list.
+- **`link_rhel9_image.yml` needed no new credentials** -- that quay repository
+  is public, so only the Windows link drove the rebuild.
+- Applying this requires deleting the credential and then the credential type:
+  AAP returns `403 Modifications to inputs are not allowed for credential types
+  that are in use`. Documented in the credential type's own header since #305.
+
 ### Added -- job template for the AAP MCP server (#308)
 - `AAP Ecosystem - Install MCP Server`, running `playbooks/mcp_server.yml`.
   `setup.yml` installs it as stage 4, but there was no way to re-run it alone.
