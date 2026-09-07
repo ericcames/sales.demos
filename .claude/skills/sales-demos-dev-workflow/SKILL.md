@@ -1,6 +1,6 @@
 ---
 name: sales-demos-dev-workflow
-description: "The end-to-end development and testing cycle for this repo — branch, PR, merge, then config.yml to push AAP config, then launch the Build Demo VM workflow to prove the change works from AAP. TRIGGER when: the user asks how to test a change, wants to push code to AAP, asks about the dev process, says 'how do we work in this repo', or is about to launch individual job templates after a merge instead of the workflow. SKIP: if the user wants first-time machine setup — that is sales-demos-first-time — or EE verification specifically, which is sales-demos-verify-ee."
+description: "The end-to-end development and testing cycle for this repo — branch, PR, merge, then config.yml to push AAP config, then launch the Linux Day 1 Workflow to prove the change works from AAP. TRIGGER when: the user asks how to test a change, wants to push code to AAP, asks about the dev process, says 'how do we work in this repo', or is about to launch individual job templates after a merge instead of the workflow. SKIP: if the user wants first-time machine setup — that is sales-demos-first-time — or EE verification specifically, which is sales-demos-verify-ee."
 ---
 
 # sales-demos-dev-workflow
@@ -9,7 +9,7 @@ Every code change in this repo follows the same three-step cycle. None of the
 steps can be skipped, and the order matters.
 
 ```
-  merge to main ──► config.yml --limit <env> ──► Build Demo VM workflow
+  merge to main ──► config.yml --limit <env> ──► Linux Day 1 Workflow
        │                    │                            │
   code lands          AAP config updated           full pipeline runs
                       project synced               from AAP, in the EE
@@ -91,9 +91,9 @@ inventory resolved to the environment you meant.
 is the only evidence if something fails — especially credential type errors,
 which are hidden by `no_log: true`.
 
-## Step 3 — Launch the Build Demo VM workflow
+## Step 3 — Launch the Linux Day 1 Workflow
 
-**Sales Demos - Build Demo VM** is the four-node workflow that proves everything
+**Linux Day 1 Workflow** is the five-node workflow that proves everything
 works end-to-end:
 
 ```
@@ -106,7 +106,7 @@ Launch it from AAP — the UI, or via MCP:
 mcp__aap-sandbox__workflow_job_templates_launch_create
 ```
 
-All four nodes are idempotent. A second run converges rather than rebuilding.
+All five nodes are idempotent. A second run converges rather than rebuilding.
 
 ### Verify
 

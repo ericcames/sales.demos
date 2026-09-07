@@ -140,7 +140,7 @@ knowing on its own — it is why AAP job output never looks like your terminal.
 | `probe_env`, `prepare_env`, `install_cnv`, `mcp_server`, `install_ao` | nothing extra — auth is `K8S_AUTH_*` from vars |
 | `portal` | nothing extra — its kubeconfig is repo-relative (`.kube/<env>.kubeconfig`) and the repo is mounted at its own host path |
 | `provision_vm`, `teardown` | nothing extra, and **this is where it earns most** — the EE pins terraform 1.15.8 and your laptop probably does not |
-| `register_linux_vm`, `configure_linux_vm`, `check_linux_vm`, `run_linux_demo` | nothing extra — navigator mounts `~/.ssh` itself |
+| `register_linux_vm`, `configure_linux_vm`, `check_linux_vm`, `repair_linux_vm` | nothing extra — navigator mounts `~/.ssh` itself |
 | `config`, `validate`, `setup`, `sync_hub`, `curate_hub` | `--with-hub-token` |
 
 The wrapper **refuses** rather than warns on that last row. Without the mount the

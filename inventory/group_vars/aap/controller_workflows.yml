@@ -22,14 +22,26 @@
 #
 # THE SURVEY LIVES HERE as well as on the provision template. A workflow survey
 # feeds its answers to every node, so one prompt drives the whole chain; the
-# nodes that ignore os_type simply ignore it.
+# nodes that ignore vm_size_tier simply ignore it.
+#
+# IT ASKS ONE QUESTION, AND IT USED TO ASK TWO (#300). `os_type` was a dropdown
+# both here and on the provision template. Answering `windows` set
+# create_linux=false in terraform/ocpvirt, which drops `count` to 0 on every
+# Linux resource -- and since state is keyed per ENVIRONMENT rather than per OS,
+# terraform then planned the RUNNING LINUX VM for destruction. Two places to
+# make that mistake, one of them a survey shown to an SE mid-demo.
+#
+# This is the Linux workflow; it builds Linux, and os_type is pinned on the
+# provision template instead. Windows gets its own chain once #301 splits the
+# state per OS, which is what actually makes the two independent.
 # ============================================================================
 
 controller_workflows_all:
-  - name: "Sales Demos - Build Demo VM"
+  - name: "Linux Day 1 Workflow"
     description: >-
-      Provision a demo VM, register it to the Red Hat CDN, configure the web
-      server, and verify it — one button, in the only order that works.
+      Build a Linux demo VM end to end: provision, register it to the Red Hat
+      CDN, configure the web server, scan it for CIS compliance, and verify it
+      — one button, in the only order that works.
     organization: "IT Service Automation"
     # Force the module to tear down the existing nodes and recreate them from
     # the definition below. Without this, renaming the JTs in #240 left the
@@ -41,21 +53,8 @@ controller_workflows_all:
     survey_enabled: true
     survey_spec:
       name: ""
-      description: "Pick an OS and a VM size tier"
+      description: "Pick a VM size tier"
       spec:
-        - question_name: Operating system
-          question_description: >-
-            Which guests to provision. Windows needs the golden image from Phase
-            2 (#3) and will not boot until that lands, so the configure steps
-            only act on Linux.
-          variable: os_type
-          type: multiplechoice
-          required: true
-          default: linux
-          choices:
-            - linux
-            - windows
-            - both
         - question_name: VM size tier
           question_description: >-
             T-shirt size (2v/4G, 2v/8G, 4v/16G). Sized for doubled RHDP
@@ -76,7 +75,7 @@ controller_workflows_all:
         #    handles that, see below.
         - identifier: provision
           unified_job_template:
-            name: "Sales Demos - Provision VM"
+            name: "Linux Day 1 - 1 Provision"
             type: job_template
             organization:
               name: "IT Service Automation"
@@ -95,7 +94,7 @@ controller_workflows_all:
         #    also protects the one-shot and by-hand paths.
         - identifier: register
           unified_job_template:
-            name: "Sales Demos - Register Linux VMs"
+            name: "Linux Day 1 - 2 Register"
             type: job_template
             organization:
               name: "IT Service Automation"
@@ -108,7 +107,7 @@ controller_workflows_all:
         #    why it is chained rather than run in parallel with register.
         - identifier: configure
           unified_job_template:
-            name: "Sales Demos - Configure Linux VMs"
+            name: "Linux Day 1 - 3 Configure"
             type: job_template
             organization:
               name: "IT Service Automation"
@@ -122,7 +121,7 @@ controller_workflows_all:
         #    configure — httpd, cockpit, and firewall changes are the delta.
         - identifier: compliance
           unified_job_template:
-            name: "Sales Demos - Linux Compliance Scan"
+            name: "Linux Day 1 - 4 Compliance Scan"
             type: job_template
             organization:
               name: "IT Service Automation"
@@ -135,7 +134,20 @@ controller_workflows_all:
         #    merely ran. Caches facts into AAP, where they show on the host.
         - identifier: check
           unified_job_template:
-            name: "Sales Demos - Check Linux VMs"
+            name: "Linux Day 1 - 5 Check"
             type: job_template
             organization:
               name: "IT Service Automation"
+
+  # -------------------------------------------------------------------
+  # Retired name — #300 moved every template and workflow into a family
+  # prefix. The module does not rename in place: it creates the new name
+  # and leaves the old one behind, so without this the two would sit side
+  # by side in the AAP UI and the stale one would still be launchable.
+  #
+  # Deleting a workflow deletes its nodes with it. The nodes of the NEW
+  # workflow are rebuilt from the definition above by destroy_current_nodes.
+  # -------------------------------------------------------------------
+  - name: "Sales Demos - Build Demo VM"
+    organization: "IT Service Automation"
+    state: absent

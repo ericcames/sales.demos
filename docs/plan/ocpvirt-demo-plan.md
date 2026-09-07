@@ -188,7 +188,7 @@ your other demos.
 | `ocpvirt-setup` | `playbooks/setup.yml` | Phase 0 — bootstrap AAP *and* install CNV, self-contained |
 | `ocpvirt-provision` | `playbooks/provision_vm.yml` | Phase 1/3 — run Terraform, register hosts in AAP |
 | `ocpvirt-windows-image` | `playbooks/link_windows_image.yml` | Phase 2 — point CNV at the published golden image |
-| `ocpvirt-demo` | `playbooks/run_linux_demo.yml` | Phase 4 — launch the layered daily demo |
+| `ocpvirt-demo` | `playbooks/repair_linux_vm.yml` | Phase 4 — re-run the daily demo content on existing VMs |
 | `ocpvirt-teardown` | `playbooks/teardown.yml` | `terraform destroy`, leave CNV and golden image intact |
 
 Follow the existing `aap-skills` SKILL.md shape: frontmatter `name` + `description` with

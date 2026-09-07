@@ -1,0 +1,52 @@
+---
+# ===========================================================================
+# repair_linux_vm.yml — put an existing Linux demo VM back into demo shape.
+# Issues #5, #300.
+#
+# Launch it from the `Linux Day 1 - Repair` job template, or via the
+# `ocpvirt-demo` skill, which launches that template.
+#
+# THIS IS A WRAPPER, NOT AN IMPLEMENTATION. It imports the same playbooks the
+# workflow runs as separate nodes, in the same order, so there is exactly one
+# copy of the logic:
+#
+#   1. register_linux_vm.yml   Wait for SSH, then attach to the Red Hat CDN. The
+#                              CNV rhel9 image has NO repositories, so nothing
+#                              below can install anything until this succeeds.
+#   2. configure_linux_vm.yml  httpd, firewalld, Cockpit, chrony, the demo page
+#                              and its logos, security patching, and facts.json.
+#   3. linux_compliance_scan.yml  OpenSCAP CIS Level 1 scan, republished at
+#                              <web_url>/compliance/.
+#
+# WHY THE COMPLIANCE SCAN IS HERE (#300). It was not, and that was a bug rather
+# than a scoping decision: a repair rewrote the demo page and left YESTERDAY'S
+# compliance report sitting next to it, still being served, now describing a
+# machine that no longer exists in that state. The workflow ran the scan as
+# node 4 and this path skipped it, so the two entry points disagreed about what
+# "configured" means. They no longer do.
+#
+# WHEN TO USE WHICH. `Linux Day 1 Workflow` is the build path: it provisions,
+# registers, configures, scans and verifies, one button, on a cluster with no
+# VM on it. This playbook is for a VM that ALREADY EXISTS — a page tweak, a
+# re-run after a failed step, or the recovery half of a break/fix story —
+# without going anywhere near terraform.
+#
+# THIS RUNS FROM AAP, NOT FROM A LAPTOP. It targets `linuxweb`, a group that
+# exists only in AAP's inventory; provision_vm.yml registers the VMs there at
+# run time, and this repo's file inventory has no VM hosts. A laptop cannot
+# resolve `*.svc.cluster.local` in any case. AAP runs on the same cluster and
+# reaches the guests over the pod network on port 22.
+#
+# THE PAYOFF IS `web_url`. terraform/ocpvirt wires a Service and a Route to port
+# 80 (#29), and until something serves there the Route correctly returns 503.
+# After this runs it serves the demo page.
+# ===========================================================================
+
+- name: Repair (1/3) — register the Linux demo VMs
+  ansible.builtin.import_playbook: register_linux_vm.yml
+
+- name: Repair (2/3) — configure the Linux demo web server
+  ansible.builtin.import_playbook: configure_linux_vm.yml
+
+- name: Repair (3/3) — rescan for CIS compliance and republish the report
+  ansible.builtin.import_playbook: linux_compliance_scan.yml

@@ -402,7 +402,7 @@ Provision VM` builds a real VM green; and the unlink restores the pre-#69 state.
 10. Change the community remote's rate limit in the UI, re-run, confirm it
     converges back. This is the demo's core claim — rehearse it before
     presenting it.
-11. `Sales Demos - Provision VM` still green. This touches no Galaxy credential,
+11. `Linux Day 1 - 1 Provision` still green. This touches no Galaxy credential,
     so it should be, but confirm.
 12. `demo` last, only after `sandbox` is clean end to end.
 

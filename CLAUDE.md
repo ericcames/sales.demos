@@ -52,7 +52,7 @@ credential. With nothing to decrypt, they get their credentials from the
 template — the two changes belong together.
 
 It was `group_vars/aap/` until #5, which is scoped to hosts in the `aap` group.
-That was invisible until a playbook targeted something else: `run_linux_demo.yml` runs
+That was invisible until a playbook targeted something else: `repair_linux_vm.yml` runs
 against `linuxweb`, so the guests never received the registration credentials and
 failed an assert that looked like a missing Vault credential. `all` is the only
 scope that covers every play without a second secrets file.

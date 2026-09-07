@@ -61,7 +61,7 @@ controller_execution_environments_all:
     # back is changing this one line — no re-mirror, no quay round trip.
     #
     # IT WAS PROVEN BEFORE IT WAS FLIPPED, which is what #122's additive rule
-    # asks for. `Sales Demos - Install Automation Orchestrator` ran green on
+    # asks for. `AAP Ecosystem - Install Automation Orchestrator` ran green on
     # v1.1.0 in BOTH environments (sandbox job 108, demo job 51), each
     # ok=30 changed=0 — idempotent, and kubernetes.core end to end, which is
     # what the python-interpreter defect fixed in #122 would have broken.

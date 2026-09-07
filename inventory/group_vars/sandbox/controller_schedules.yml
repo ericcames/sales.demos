@@ -27,6 +27,18 @@
 # hour twice a year. TZID makes AAP render and fire them as local Phoenix time
 # regardless of the server's timezone.
 #
+# THERE IS NO `state: absent` BLOCK FOR THE OLD SCHEDULE NAMES, and that is
+# deliberate. Deleting a job template in AAP cascades to its schedules, and
+# controller_templates.yml retires "Sales Demos - Teardown VMs" in the same
+# config.yml run -- so the old schedules go with it. Verify that rather than
+# trusting it: after the run, the renamed template should carry these
+# schedules and no others.
+#
+# THE SCHEDULE IS NAMED FOR THE FAMILY IT BELONGS TO (#300). It tears down
+# the Linux VMs specifically -- the teardown template pins os_type: linux --
+# so when Windows gets its own provisioning chain (#301) it needs its own
+# sweep here, or a Windows VM left running overnight is never reclaimed.
+#
 # The teardown job template is idempotent: with no VMs in state, terraform
 # destroy is a no-op, so a schedule firing against an already-clean environment
 # costs nothing and reports success.
@@ -37,14 +49,14 @@
 # TWO SWEEPS. sandbox is the environment being actively built against and work
 # sessions run late: 6 PM is the real one, 10 PM catches VMs created after it.
 controller_schedules_sandbox:
-  - name: "Sales Demos - Nightly teardown (6 PM)"
-    unified_job_template: "Sales Demos - Teardown VMs"
+  - name: "Linux Day 1 - Nightly teardown (6 PM)"
+    unified_job_template: "Linux Day 1 - Teardown"
     description: "Destroy sandbox demo VMs every day at 6 PM America/Phoenix."
     rrule: "DTSTART;TZID=America/Phoenix:20260810T180000 RRULE:FREQ=DAILY;INTERVAL=1"
     enabled: true
 
-  - name: "Sales Demos - Nightly teardown (10 PM safety net)"
-    unified_job_template: "Sales Demos - Teardown VMs"
+  - name: "Linux Day 1 - Nightly teardown (10 PM safety net)"
+    unified_job_template: "Linux Day 1 - Teardown"
     description: "Second sweep at 10 PM America/Phoenix — catches VMs created after the 6 PM run."
     rrule: "DTSTART;TZID=America/Phoenix:20260810T220000 RRULE:FREQ=DAILY;INTERVAL=1"
     enabled: true

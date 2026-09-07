@@ -10,7 +10,7 @@ demo content has hosts to run against.
 
 This skill contains **no logic**. All the work is in
 [`playbooks/provision_vm.yml`](../../../playbooks/provision_vm.yml), which is the
-same playbook the `Sales Demos - Provision VM` job template runs, with survey
+same playbook the `Linux Day 1 - 1 Provision` job template runs, with survey
 answers mapped to the same variable names. See `CLAUDE.md` →
 *Skills and playbooks*.
 
@@ -102,7 +102,7 @@ oc get vm,vmi -n sales-demos-sandbox
 `WaitForFirstConsumer`, so the disk clones only when the VM first schedules.
 Expect the VM to reach `Running` roughly 45s after apply on a warm environment.
 
-Then confirm AAP can actually reach it — that is what `Sales Demos - Check Linux VMs`
+Then confirm AAP can actually reach it — that is what `Linux Day 1 - 5 Check`
 is for, and it is the difference between "a VM exists" and "the demo will work".
 
 ## Notes worth having before you debug

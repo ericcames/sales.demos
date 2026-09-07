@@ -2,9 +2,9 @@
 # ===========================================================================
 # register_linux_vm.yml — attach the demo guests to the Red Hat CDN.
 #
-# Split out of run_linux_demo.yml so the workflow can run it as its own node
-# (`Sales Demos - Register Linux VMs`), gated on provisioning having succeeded.
-# run_linux_demo.yml still imports this and configure_linux_vm.yml, so the
+# Split out of repair_linux_vm.yml so the workflow can run it as its own node
+# (`Linux Day 1 - 2 Register`), gated on provisioning having succeeded.
+# repair_linux_vm.yml still imports this and configure_linux_vm.yml, so the
 # one-shot path is unchanged.
 #
 # WHY IT WAITS FIRST. provision_vm.yml returns as soon as terraform apply

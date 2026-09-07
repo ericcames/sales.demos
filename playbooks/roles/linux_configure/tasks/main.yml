@@ -30,7 +30,7 @@
 #
 # REQUIRES A REGISTERED GUEST. Every dnf task here fails on an unregistered
 # CNV rhel9 image, which has no repositories at all — run roles/linux_register
-# first, as playbooks/run_linux_demo.yml does.
+# first, as playbooks/repair_linux_vm.yml does.
 # ===========================================================================
 
 - name: Install the demo packages

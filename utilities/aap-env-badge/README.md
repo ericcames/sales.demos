@@ -35,8 +35,8 @@ anywhere. No writes, no third parties, no storage.
 ## How it knows which environment it is
 
 It asks AAP. `inventory/group_vars/aap/controller_templates.yml` sets
-`target_env: "{{ aap_env_name }}"` on the `Sales Demos - Provision VM` and
-`Sales Demos - Teardown VMs` templates, so every AAP already states its own name
+`target_env: "{{ aap_env_name }}"` on the `Linux Day 1 - 1 Provision` and
+`Linux Day 1 - Teardown` templates, so every AAP already states its own name
 in a field this repo controls. The extension does one same-origin request to
 `/api/controller/v2/job_templates/` and scans for a template carrying a
 `target_env` — by field, not by template name, so a rename cannot break it.

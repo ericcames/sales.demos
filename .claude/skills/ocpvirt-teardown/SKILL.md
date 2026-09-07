@@ -110,7 +110,7 @@ recap only says the tasks ran.
 
 ## From AAP
 
-The `Sales Demos - Teardown VMs` job template does the same thing, and runs
+The `Linux Day 1 - Teardown` job template does the same thing, and runs
 **nightly on a schedule** — 6 PM and 10 PM in sandbox, 6 PM only in demo, all
 `America/Phoenix` (no daylight saving, so they never drift).
 

@@ -7,6 +7,66 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed -- Rename AAP templates to a family taxonomy (#300)
+- Every job template and the workflow now carry a family prefix, so the AAP
+  templates list tells a Sales SE what they are looking at. Two families:
+  `AAP Ecosystem - ` for platform add-ons that belong to no demo story, and
+  `<OS> Day <n> - ` for one story's chain.
+- `Sales Demos - Build Demo VM` is now `Linux Day 1 Workflow`. Its five job
+  templates became `Linux Day 1 - 1 Provision`, `2 Register`, `3 Configure`,
+  `4 Compliance Scan` and `5 Check`. Steps carry their position because AAP
+  sorts the list alphabetically, which would otherwise scramble the chain into
+  dictionary order.
+- `Sales Demos - Run Linux Demo` is now `Linux Day 1 - Repair`, and
+  `playbooks/run_linux_demo.yml` is now `playbooks/repair_linux_vm.yml`. The
+  old name did not say what it does: it re-runs demo content on a VM that
+  already exists, rather than building one.
+- `Sales Demos - Teardown VMs` is now `Linux Day 1 - Teardown`, and both
+  nightly-teardown schedules were renamed to match. The old schedules are not
+  retired explicitly -- deleting a job template cascades to its schedules, and
+  the old template is retired in the same `config.yml` run.
+- `Sales Demos - Install Automation Orchestrator` is now
+  `AAP Ecosystem - Install Automation Orchestrator`.
+- **`Sales Demos` deliberately survives on shared platform objects** -- the
+  project, the execution environment, the inventory and every credential --
+  because Windows Day 1 will use exactly the same ones, so the repo's name is
+  their correct scope.
+- All nine old names carry `state: absent` entries so `config.yml` removes them
+  from both environments. The module creates the new name and leaves the old
+  one behind; without this the two would sit side by side in the UI and the
+  stale one would still be launchable.
+
+### Added -- Job template for the self-service portal (#300)
+- `AAP Ecosystem - Install Self-Service Portal`, running `playbooks/portal.yml`.
+  The portal had a playbook and a skill since #103 but no job template.
+
+### Fixed -- os_type dropdown could destroy the running Linux VM (#300)
+- Removed the "Operating system" survey question from the provision template
+  and the workflow, pinning `os_type: linux` as a fixed `extra_vars` entry
+  instead. `terraform/ocpvirt/locals.tf` derives `create_linux` from `os_type`
+  and that drives `count` on every Linux resource, while state is keyed
+  `secret_suffix=<env>` -- one state per environment, holding both OSes. So
+  answering `windows` set `create_linux=false`, dropped count to 0, and planned
+  the running Linux VM for destruction.
+- This removes the footgun from the UI. It does **not** make the two OSes
+  independent -- that needs state split per OS, tracked in #301, which is also
+  where the `Windows Day 1 - *` templates land.
+
+### Fixed -- a repair left the compliance report stale (#300)
+- `playbooks/repair_linux_vm.yml` now imports `linux_compliance_scan.yml` as
+  well as register and configure. It previously ran only the first two, so a
+  repair rewrote the demo page and left yesterday's OpenSCAP report still being
+  served at `<web_url>/compliance/`, describing a machine that no longer
+  existed in that state. The two entry points now agree on what "configured"
+  means.
+
+### Fixed -- workflow documented as four nodes (#300)
+- `architecture.md` and the `sales-demos-dev-workflow` skill both described a
+  four-node workflow; the compliance node from #202 made it five.
+- `docs/images/aap-workflow-running.png` is stale for the same reason and now
+  also shows the old workflow name. The run-sheet and talk-track say so inline
+  until it is retaken.
+
 ### Changed -- Update skills for CIS L1 Windows golden image (#296)
 - Updated `ocpvirt-provision`, `ocpvirt-windows-image`, and `ocpvirt-demo`
   skills to reflect that the CIS L1 hardened Windows image is published and

@@ -11,7 +11,7 @@ research, the constraints, the decisions and the ones that were reversed — rea
 
 ## The one-button workflow
 
-`Sales Demos - Build Demo VM`. Four job templates chained on success, one survey
+`Linux Day 1 Workflow`. Four job templates chained on success, one survey
 that feeds all of them.
 
 ```mermaid
@@ -152,8 +152,8 @@ All of it is configuration-as-code under `inventory/group_vars/`, applied by
 | Execution environment | `Sales Demos - OCP Virt EE` |
 | Credentials | `Sales Demos - Vault` · `Sales Demos - Linux Machine` · `Sales Demos - PAH Registry` |
 | Inventory | `Sales Demo VMs` · `Sales Demo VMs - Control` |
-| Job templates | `Sales Demos - Provision VM` · `Register Linux VMs` · `Configure Linux VMs` · `Check Linux VMs` · `Run Linux Demo` · `Linux Compliance Scan` · `Teardown VMs` |
-| Workflow | `Sales Demos - Build Demo VM` |
+| Job templates | `Linux Day 1 - 1 Provision` · `2 Register` · `3 Configure` · `4 Compliance Scan` · `5 Check` · `Repair` · `Teardown` |
+| Workflow | `Linux Day 1 Workflow` |
 | Schedules | `Sales Demos - Nightly teardown (6 PM)` (+ a 10 PM safety net in sandbox) |
 
 **Two inventories, one of them empty.** `Sales Demo VMs` holds the demo VMs;

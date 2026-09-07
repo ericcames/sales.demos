@@ -59,7 +59,7 @@ OUT_PNG = REPO / "docs" / "images" / "demo-page.png"
 VIEWPORT = (1000, 940)
 
 # ---------------------------------------------------------------------------
-# Fixture. Mirrors what `Sales Demos - Configure Linux VMs` has in scope on a
+# Fixture. Mirrors what `Linux Day 1 - 3 Configure` has in scope on a
 # small-1cpu-2gb Linux guest: role defaults, the guest's own gathered facts,
 # and the host variables provision_vm.yml registered into AAP (#49).
 #
