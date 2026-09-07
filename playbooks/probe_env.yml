@@ -132,29 +132,6 @@
       register: probe_portal
       failed_when: false
 
-    - name: Read the demo VMs this repo owns
-      # THE RECOMMENDATION DOUBLE-COUNTED THESE (#332). available_memory_gb is
-      # the TOTAL guest-memory budget for demo VMs -- both consumers read it
-      # that way: terraform's precondition asserts one VM fits inside it, and
-      # provision_vm.yml's check adds the existing VMs to the requested one and
-      # compares against it. But "free by requests" already has the running
-      # demo VMs subtracted, so recommending free-minus-margin while VMs are up
-      # subtracts them a second time.
-      #
-      # It was self-compounding: probe with VMs up, set the lower number,
-      # provision more, probe again, get lower still. Every pass ratcheted the
-      # budget down.
-      #
-      # Same label selector provision_vm.yml's cluster check uses, so the two
-      # agree on what counts as a demo VM.
-      kubernetes.core.k8s_info:
-        api_version: kubevirt.io/v1
-        kind: VirtualMachine
-        label_selectors:
-          - "app.kubernetes.io/part-of=sales-demos"
-      register: probe_demo_vms
-      failed_when: false
-
     - name: Read what OperatorHub offers for the add-ons
       # PackageManifests are a virtual API — cluster-wide, served from the
       # marketplace. Filtered to the add-ons under consideration because the
@@ -285,22 +262,15 @@
         probe_alloc_cpu: "{{ (probe_alloc_cpu_milli | int / 1000) | round(2) }}"
         probe_req_cpu: "{{ (probe_req_cpu_milli | int / 1000) | round(2) }}"
 
-    - name: Total the guest memory the demo VMs are holding
-      # Read from the VM spec rather than a tier lookup, so a hand-built VM or a
-      # tier this repo does not define is still counted.
+    - name: Total the guest memory the demo VMs hold
+      # Shared with provision_vm.yml (#334). Both used to carry their own copy
+      # of this expression and both read a field these VMs do not have, so both
+      # silently totalled zero.
+      ansible.builtin.include_tasks: tasks/sum_demo_vm_memory.yml
+
+    - name: Name the total for the report
       ansible.builtin.set_fact:
-        probe_demo_vm_gb: >-
-          {%- set ns = namespace(total=0.0) -%}
-          {%- for vm in (probe_demo_vms.resources | default([])) -%}
-            {%- set dom = vm.spec.template.spec.domain | default({}) -%}
-            {%- set q = ((dom.memory | default({})).get('guest', '')
-                          or ((dom.resources | default({})).get('requests', {})).get('memory', '0')) | string -%}
-            {%- set num = q | regex_replace('[^0-9.]', '') | default('0', true) | float -%}
-            {%- set unit = q | regex_replace('[0-9.]', '') -%}
-            {%- set gib = num if unit in ['Gi', 'G'] else (num / 1024 if unit in ['Mi', 'M'] else num / 1073741824) -%}
-            {%- set ns.total = ns.total + gib -%}
-          {%- endfor -%}
-          {{ ns.total | round(2) }}
+        probe_demo_vm_gb: "{{ demo_vm_total_gb }}"
 
     - name: Recommend available_memory_gb
       # THE DEMO VMs ARE ADDED BACK (#332). available_memory_gb is the budget

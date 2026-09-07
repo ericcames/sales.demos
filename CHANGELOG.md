@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed -- both memory checks totalled zero because the memory is not in the VM (#334)
+- The #332 fix ran and returned `Demo VMs now: 0.0 GiB across 2 VM(s)`. It found
+  the VMs and counted nothing.
+- **These VMs are instancetype-based.** `terraform/ocpvirt` sets
+  `spec.instancetype: {name: sd1.<tier>}` and the guest memory lives in the
+  `VirtualMachineClusterInstancetype`. `domain.memory` is genuinely absent and
+  `domain.resources` is `{}`, so the obvious read and its obvious fallback both
+  find nothing. Measured: `sd-lnx-large` -> `sd1.large` -> `16Gi`.
+- **#332's reasoning was the bug.** It argued reading the VM spec was more
+  robust than a tier lookup "so a hand-built VM is still counted" -- when the
+  spec was the one place the number was not.
+- **The worse half: `provision_vm.yml`'s guard has never worked.** It carried
+  the identical expression, so `_existing_gb` has been **0 since #301** and the
+  assert has evaluated `0 + tier <= budget` -- passing by construction, not
+  because the cluster had room. That check exists precisely because per-OS
+  Terraform states cannot see each other; it was not doing the job it was added
+  for. Nothing broke only because the real totals would have fit anyway.
+- New `playbooks/tasks/sum_demo_vm_memory.yml`, included by **both** callers:
+  resolves each VM's instancetype to its guest memory, honouring inline memory
+  first so a hand-built VM still counts. One copy, because two copies of this
+  expression is how the two consumers got it wrong identically.
+- `provision_vm.yml` now **prints the budget check on success**, naming the VMs
+  counted. A guard that never shows its working cannot be caught being wrong.
+
 ### Fixed -- probe_env double-counted the running demo VMs (#332)
 - Found by running `Cluster Day 0 - Probe Capacity` on sandbox with two demo
   VMs up: it recommended `available_memory_gb = 42` against a committed 63.

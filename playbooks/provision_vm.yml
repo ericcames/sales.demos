@@ -156,49 +156,54 @@
     # available_memory_gb this compares against.
     # -------------------------------------------------------------------
     - name: Ask the cluster what the existing demo VMs already request
-      kubernetes.core.k8s_info:
-        api_version: kubevirt.io/v1
-        kind: VirtualMachine
-        namespace: "{{ ocpvirt_namespace_resolved }}"
-      environment:
-        K8S_AUTH_HOST: "{{ ocpvirt_api_url }}"
-        K8S_AUTH_API_KEY: "{{ ocpvirt_api_token }}"
-        K8S_AUTH_VERIFY_SSL: "{{ openshift_validate_certs | default(false) | bool }}"
-      register: ocpvirt_existing_vms
+      # Shared with probe_env.yml (#334). This used to inline the same
+      # expression and read spec.template.spec.domain.memory.guest, which these
+      # instancetype-based VMs do not have -- so it totalled ZERO and the assert
+      # below has been evaluating `0 + tier <= budget` ever since #301 added it.
+      # It passed for that reason alone, not because the cluster had room.
+      ansible.builtin.include_tasks: tasks/sum_demo_vm_memory.yml
+      vars:
+        demo_vm_namespace: "{{ ocpvirt_namespace_resolved }}"
+        # Excluded by name: this run may be CONVERGING its own VM, and counting
+        # it as well as the tier it is about to request would refuse a re-run.
+        demo_vm_exclude: "sd-{{ 'win' if provision_os_type == 'windows' else 'lnx' }}-{{ provision_size_tier }}{{ ('-' ~ provision_name_suffix) if provision_name_suffix else '' }}"
       when: provision_hypervisor == 'ocpvirt'
 
     - name: Assert the cluster has room for this VM alongside the other OS
       when: provision_hypervisor == 'ocpvirt'
       vars:
-        # Guest memory already requested, in GiB, skipping the VM this run owns.
-        _this_vm: "sd-{{ 'win' if provision_os_type == 'windows' else 'lnx' }}-{{ provision_size_tier }}{{ ('-' ~ provision_name_suffix) if provision_name_suffix else '' }}"
         _tier_gb: "{{ {'small': 4, 'medium': 8, 'large': 16,
                        'small-1cpu-2gb': 4, 'medium-1cpu-4gb': 8, 'large-2cpu-6gb': 16}[provision_size_tier] }}"
-        _existing_gb: >-
-          {%- set ns = namespace(total=0) -%}
-          {%- for vm in (ocpvirt_existing_vms.resources | default([])) -%}
-            {%- if vm.metadata.name != _this_vm -%}
-              {%- set q = (((vm.spec.template.spec.domain | default({})).get('memory', {})).get('guest', '')
-                            or ((((vm.spec.template.spec.domain | default({})).get('resources', {})).get('requests', {})).get('memory', '0'))) | string -%}
-              {%- set num = q | regex_replace('[^0-9.]', '') | default('0', true) | float -%}
-              {%- set unit = q | regex_replace('[0-9.]', '') -%}
-              {%- set gib = num if unit in ['Gi', 'G'] else (num / 1024 if unit in ['Mi', 'M'] else num / 1073741824) -%}
-              {%- set ns.total = ns.total + gib -%}
-            {%- endif -%}
-          {%- endfor -%}
-          {{ ns.total | round(2) }}
       ansible.builtin.assert:
         that:
-          - (_existing_gb | float) + (_tier_gb | float) <= (available_memory_gb | float)
+          - (demo_vm_total_gb | float) + (_tier_gb | float) <= (available_memory_gb | float)
         fail_msg: >-
           Not enough room on {{ aap_env_name }}. Demo VMs already request
-          {{ _existing_gb }} GiB and os_type={{ provision_os_type }} at tier
-          {{ provision_size_tier }} wants {{ _tier_gb }} GiB more, against
+          {{ demo_vm_total_gb }} GiB ({{ demo_vm_counted | join(', ') }}) and
+          os_type={{ provision_os_type }} at tier {{ provision_size_tier }}
+          wants {{ _tier_gb }} GiB more, against
           available_memory_gb={{ available_memory_gb }}. Terraform cannot catch
           this since #301 — each OS has its own state and neither sees the
           other. Tear down the other OS, pick a smaller tier, or re-run
           /sales-demos-probe-env if this cluster genuinely has more headroom.
         quiet: true
+
+    - name: Say what the budget check found
+      # PRINTED ON SUCCESS, ON PURPOSE (#334). The previous version of this
+      # check silently totalled zero and passed for that reason rather than
+      # because the cluster had room. A guard that never shows its working
+      # cannot be caught being wrong.
+      when: provision_hypervisor == 'ocpvirt'
+      ansible.builtin.debug:
+        msg: >-
+          Memory budget OK — {{ demo_vm_total_gb }} GiB already held by
+          {{ demo_vm_counted | length }} demo VM(s)
+          {{ '(' ~ (demo_vm_counted | join(', ')) ~ ')' if demo_vm_counted else '' }}
+          + {{ _tier_gb }} GiB for this one, against
+          available_memory_gb={{ available_memory_gb }}.
+      vars:
+        _tier_gb: "{{ {'small': 4, 'medium': 8, 'large': 16,
+                       'small-1cpu-2gb': 4, 'medium-1cpu-4gb': 8, 'large-2cpu-6gb': 16}[provision_size_tier] }}"
 
     # --- Provider dispatch -------------------------------------------------
     - name: "Run provider: {{ provision_hypervisor }}"

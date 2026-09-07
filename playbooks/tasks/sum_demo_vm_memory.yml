@@ -1,0 +1,83 @@
+---
+# ===========================================================================
+# tasks/sum_demo_vm_memory.yml — how much guest memory the demo VMs hold. #334
+#
+#   demo_vm_namespace  optional; omit or leave empty to search cluster-wide
+#   demo_vm_exclude    optional; a VM name to leave out, for a caller that is
+#                      about to converge its own VM and must not count it twice
+#
+#   sets: demo_vm_total_gb, demo_vm_counted
+#
+# WHY THIS IS A SHARED FILE AND NOT AN EXPRESSION IN TWO PLACES. Both callers
+# need the same number and got it wrong the same way (#334): probe_env.yml read
+# `spec.template.spec.domain.memory.guest`, provision_vm.yml read the identical
+# path, and BOTH silently totalled zero.
+#
+# THE MEMORY IS NOT IN THE VM. These VMs are instancetype-based —
+# terraform/ocpvirt sets `spec.instancetype: {name: sd1.<tier>}` and the guest
+# memory lives in the VirtualMachineClusterInstancetype that instancetypes.tf
+# creates. `domain.memory` is genuinely absent, and `domain.resources` is `{}`,
+# so the obvious read returns nothing and the obvious fallback finds nothing
+# either. Measured, not guessed:
+#
+#     sd-lnx-large   spec.instancetype = {name: sd1.large}   domain.memory = None
+#     sd1.large      memory.guest = 16Gi
+#
+# THE COST OF GETTING THIS WRONG WAS INVISIBLE, which is why it survived. A
+# total of zero makes every budget assert pass, so provision_vm.yml's
+# cluster-wide check — the one #301 added precisely because neither per-OS
+# Terraform state can see the other — was asserting `0 + tier <= budget` and
+# passing for that reason alone.
+#
+# INLINE MEMORY IS STILL HONOURED FIRST, so a VM built by hand without an
+# instancetype is counted rather than skipped.
+# ===========================================================================
+
+- name: Read the demo VMs
+  kubernetes.core.k8s_info:
+    api_version: kubevirt.io/v1
+    kind: VirtualMachine
+    namespace: "{{ demo_vm_namespace | default('', true) | ternary(demo_vm_namespace, omit) }}"
+    label_selectors:
+      - "app.kubernetes.io/part-of=sales-demos"
+  register: _demo_vms
+  failed_when: false
+
+- name: Read the cluster instancetypes the VMs point at
+  kubernetes.core.k8s_info:
+    api_version: instancetype.kubevirt.io/v1beta1
+    kind: VirtualMachineClusterInstancetype
+  register: _demo_instancetypes
+  failed_when: false
+
+- name: Map each instancetype to its guest memory
+  ansible.builtin.set_fact:
+    _demo_it_memory: >-
+      {{ dict(
+           (_demo_instancetypes.resources | default([])) | map(attribute='metadata.name') | list,
+           (_demo_instancetypes.resources | default([])) | map(attribute='spec.memory.guest') | list
+         ) }}
+
+- name: Total the guest memory the demo VMs hold
+  ansible.builtin.set_fact:
+    demo_vm_counted: >-
+      {{ (_demo_vms.resources | default([]))
+         | rejectattr('metadata.name', 'equalto', demo_vm_exclude | default('', true))
+         | map(attribute='metadata.name') | list }}
+    demo_vm_total_gb: >-
+      {%- set ns = namespace(total=0.0) -%}
+      {%- for vm in (_demo_vms.resources | default([])) -%}
+        {%- if vm.metadata.name != (demo_vm_exclude | default('', true)) -%}
+          {%- set dom = vm.spec.template.spec.domain | default({}) -%}
+          {#- inline memory first, so a hand-built VM still counts -#}
+          {%- set inline = (dom.memory | default({})).get('guest', '')
+                            or ((dom.resources | default({})).get('requests', {})).get('memory', '') -%}
+          {%- set itname = (vm.spec.instancetype | default({})).get('name', '') -%}
+          {%- set q = (inline or _demo_it_memory.get(itname, '0')) | string -%}
+          {%- set num = q | regex_replace('[^0-9.]', '') | default('0', true) | float -%}
+          {%- set unit = q | regex_replace('[0-9.]', '') -%}
+          {%- set gib = num if unit in ['Gi', 'G'] else (num / 1024 if unit in ['Mi', 'M'] else num / 1073741824) -%}
+          {%- set ns.total = ns.total + gib -%}
+        {%- endif -%}
+      {%- endfor -%}
+      {{ ns.total | round(2) }}
