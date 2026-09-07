@@ -1,6 +1,6 @@
 ---
 name: ocpvirt-demo
-description: "Phase 4 — run the daily-demo content on the provisioned VMs: register them to the Red Hat CDN, install and configure the web server, and turn the demo URL from a 503 into a real page. Launches the Sales Demos - Run Demo job template in AAP. TRIGGER when: the user asks to run or set up the demo, configure the VMs, install the web server, or says the demo URL returns 503 or does not load. SKIP: if no VMs exist yet — that is ocpvirt-provision — or if the environment itself has never been set up, which is ocpvirt-setup."
+description: "Phase 4 — run the daily-demo content on the provisioned VMs: register them to the Red Hat CDN, install and configure the web server, and turn the demo URL from a 503 into a real page. Launches the Sales Demos - Run Linux Demo job template in AAP. TRIGGER when: the user asks to run or set up the demo, configure the VMs, install the web server, or says the demo URL returns 503 or does not load. SKIP: if no VMs exist yet — that is ocpvirt-provision — or if the environment itself has never been set up, which is ocpvirt-setup."
 ---
 
 # ocpvirt-demo
@@ -13,7 +13,7 @@ because nothing is serving on port 80. This is the other half of that story.
 
 ## This launches an AAP job template rather than running Ansible locally
 
-That is deliberate, not a shortcut. `playbooks/run_demo.yml` targets `linuxweb`,
+That is deliberate, not a shortcut. `playbooks/run_linux_demo.yml` targets `linuxweb`,
 a group that exists **only in AAP's inventory** — `provision_vm.yml` registers
 the VMs there at run time, and this repo's file inventory has no VM hosts at
 all. A laptop cannot resolve `*.svc.cluster.local` in any case. AAP runs on the
@@ -57,12 +57,12 @@ ansible-vault view playbooks/group_vars/all/secrets.yml \
   || echo "❌ no rhsm_activation_key — registration will fail, and so will everything after it"
 
 # 3. The job template exists
-echo "expect: Sales Demos - Run Demo, inventory 'Sales Demo VMs', limit linuxweb"
+echo "expect: Sales Demos - Run Linux Demo, inventory 'Sales Demo VMs', limit linuxweb"
 ```
 
 ## Run
 
-Launch **`Sales Demos - Run Demo`** in AAP. It needs two credentials, and both
+Launch **`Sales Demos - Run Linux Demo`** in AAP. It needs two credentials, and both
 matter:
 
 | Credential | Why |

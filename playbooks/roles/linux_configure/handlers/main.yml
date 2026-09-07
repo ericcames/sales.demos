@@ -1,6 +1,6 @@
 ---
 # RELOAD, NEVER RESTART. AAP reaches every one of these guests over this sshd —
-# check_vm.yml, register_vm.yml and this role all arrive on port 22 — and the
+# check_linux_vm.yml, register_linux_vm.yml and this role all arrive on port 22 — and the
 # connection running this very play is one of them. `reload` re-reads the
 # config in the listener without disturbing established sessions.
 #

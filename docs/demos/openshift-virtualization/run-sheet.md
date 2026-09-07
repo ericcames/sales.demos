@@ -126,7 +126,7 @@ than the rest of the demo combined.
 **Then `aap-workflow-running.png`.** Four nodes, chained on success:
 
 ```
-Provision VM  →  Register VMs  →  Configure VMs  →  Check VMs
+Provision VM  →  Register Linux VMs  →  Configure Linux VMs  →  Check Linux VMs
 ```
 
 Walk them in order. **Three beats matter here; everything else is detail.**
@@ -196,9 +196,9 @@ pinning it to a host. It has nowhere to go on a single node. Full wording in
 | Node | Duration |
 |---|---|
 | Provision VM | 36 s |
-| Register VMs | 4 m 25 s |
-| Configure VMs | 3 m 49 s |
-| Check VMs | 5 s |
+| Register Linux VMs | 4 m 25 s |
+| Configure Linux VMs | 3 m 49 s |
+| Check Linux VMs | 5 s |
 | **Whole workflow** | **9 m 9 s** |
 
 > **"Nine minutes nine. Building the machine is thirty-six seconds of it —

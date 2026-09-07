@@ -87,11 +87,11 @@ controller_workflows_all:
         #    roughly another minute to accept connections — observed twice as
         #    "Connection refused" on a job run immediately after provisioning.
         #    In a workflow the nodes run back to back with no human pause, so
-        #    the gate lives in register_vm.yml itself rather than here, where it
+        #    the gate lives in register_linux_vm.yml itself rather than here, where it
         #    also protects the one-shot and by-hand paths.
         - identifier: register
           unified_job_template:
-            name: "Sales Demos - Register VMs"
+            name: "Sales Demos - Register Linux VMs"
             type: job_template
             organization:
               name: "IT Service Automation"
@@ -104,7 +104,7 @@ controller_workflows_all:
         #    why it is chained rather than run in parallel with register.
         - identifier: configure
           unified_job_template:
-            name: "Sales Demos - Configure VMs"
+            name: "Sales Demos - Configure Linux VMs"
             type: job_template
             organization:
               name: "IT Service Automation"
@@ -118,7 +118,7 @@ controller_workflows_all:
         #    configure — httpd, cockpit, and firewall changes are the delta.
         - identifier: compliance
           unified_job_template:
-            name: "Sales Demos - Compliance Scan"
+            name: "Sales Demos - Linux Compliance Scan"
             type: job_template
             organization:
               name: "IT Service Automation"
@@ -131,7 +131,7 @@ controller_workflows_all:
         #    merely ran. Caches facts into AAP, where they show on the host.
         - identifier: check
           unified_job_template:
-            name: "Sales Demos - Check VMs"
+            name: "Sales Demos - Check Linux VMs"
             type: job_template
             organization:
               name: "IT Service Automation"

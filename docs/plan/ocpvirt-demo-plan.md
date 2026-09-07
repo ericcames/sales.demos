@@ -188,7 +188,7 @@ your other demos.
 | `ocpvirt-setup` | `playbooks/setup.yml` | Phase 0 — bootstrap AAP *and* install CNV, self-contained |
 | `ocpvirt-provision` | `playbooks/provision_vm.yml` | Phase 1/3 — run Terraform, register hosts in AAP |
 | `ocpvirt-windows-image` | `playbooks/link_windows_image.yml` | Phase 2 — point CNV at the published golden image |
-| `ocpvirt-demo` | `playbooks/run_demo.yml` | Phase 4 — launch the layered daily demo |
+| `ocpvirt-demo` | `playbooks/run_linux_demo.yml` | Phase 4 — launch the layered daily demo |
 | `ocpvirt-teardown` | `playbooks/teardown.yml` | `terraform destroy`, leave CNV and golden image intact |
 
 Follow the existing `aap-skills` SKILL.md shape: frontmatter `name` + `description` with
@@ -581,7 +581,7 @@ in this repo changes.** The consumer half is correct and stays as merged.
 
 **A related gap this exposed, not yet addressed:** there is no Windows configure
 path at all. `windemo` is referenced by zero playbooks and zero job templates,
-`register_vm.yml` / `configure_vm.yml` / `check_vm.yml` / `compliance_scan.yml`
+`register_linux_vm.yml` / `configure_linux_vm.yml` / `check_linux_vm.yml` / `linux_compliance_scan.yml`
 all target `linuxweb`, and no Windows machine credential exists. A Windows guest
 is provisioned and then never touched again, so even a working login would reach
 nothing.

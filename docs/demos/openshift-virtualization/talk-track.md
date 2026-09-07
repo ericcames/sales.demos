@@ -261,9 +261,9 @@ You have them, from an actual run, so use them rather than rounding:
 | Node | Duration |
 |---|---|
 | Provision VM | 36 s |
-| Register VMs | 4 m 25 s |
-| Configure VMs | 3 m 49 s |
-| Check VMs | 5 s |
+| Register Linux VMs | 4 m 25 s |
+| Configure Linux VMs | 3 m 49 s |
+| Check Linux VMs | 5 s |
 | **Whole workflow** | **9 m 9 s** |
 
 > **"Nine minutes and nine seconds, and look where it goes. Building the machine
@@ -545,7 +545,7 @@ Every claim in this track is checkable in the repo. If you get pushed on one:
 |---|---|
 | The survey is two questions, no environment dropdown | `inventory/group_vars/aap/controller_workflows.yml`, `controller_templates.yml` |
 | Register must precede configure; the image has no repos | `controller_workflows.yml:10-14`, `playbooks/roles/linux_register/tasks/main.yml` |
-| 10 s / 45 s / +1 min | `README.md`, `playbooks/register_vm.yml` |
+| 10 s / 45 s / +1 min | `README.md`, `playbooks/register_linux_vm.yml` |
 | 36 s / 4 m 25 s / 3 m 49 s / 5 s, 9 m 9 s total | `docs/images/aap-job-timings.png` — one measured run |
 | Memory budget fails at plan time | `terraform/ocpvirt/locals.tf` |
 | Nightly teardown, preserving CNV and boot sources | `inventory/group_vars/<env>/controller_schedules.yml`, `playbooks/teardown.yml` |

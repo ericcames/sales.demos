@@ -1,11 +1,11 @@
 ---
 # ===========================================================================
-# register_vm.yml — attach the demo guests to the Red Hat CDN.
+# register_linux_vm.yml — attach the demo guests to the Red Hat CDN.
 #
-# Split out of run_demo.yml so the workflow can run it as its own node
-# (`Sales Demos - Register VMs`), gated on provisioning having succeeded.
-# run_demo.yml still imports this and configure_vm.yml, so the one-shot path is
-# unchanged.
+# Split out of run_linux_demo.yml so the workflow can run it as its own node
+# (`Sales Demos - Register Linux VMs`), gated on provisioning having succeeded.
+# run_linux_demo.yml still imports this and configure_linux_vm.yml, so the
+# one-shot path is unchanged.
 #
 # WHY IT WAITS FIRST. provision_vm.yml returns as soon as terraform apply
 # completes and the hosts are registered in AAP — which is BEFORE the guest's

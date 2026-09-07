@@ -382,7 +382,7 @@ in this repo, which for repo-specific skills is the correct scope.
 | `ocpvirt-new-env` | `playbooks/prepare_env.yml` | Verify a fresh environment is warm, and time a real VM build | Done ([#30](https://github.com/ericcames/sales.demos/issues/30)) |
 | `ocpvirt-provision` | `playbooks/provision_vm.yml` | Run Terraform, register the new VMs in AAP | Done ([#4](https://github.com/ericcames/sales.demos/issues/4)) |
 | `ocpvirt-windows-image` | `playbooks/link_windows_image.yml` | Point CNV at the published Windows golden image so `os_type=windows` boots | Done ([#3](https://github.com/ericcames/sales.demos/issues/3)); the image itself is [image.builder.pipeline#24](https://github.com/ericcames/image.builder.pipeline/issues/24) |
-| `ocpvirt-demo` | `playbooks/run_demo.yml` | Register the VMs and configure the web server | Done ([#5](https://github.com/ericcames/sales.demos/issues/5)) |
+| `ocpvirt-demo` | `playbooks/run_linux_demo.yml` | Register the Linux VMs and configure the web server | Done ([#5](https://github.com/ericcames/sales.demos/issues/5)) |
 | `ocpvirt-teardown` | `playbooks/teardown.yml` | Destroy VMs; keep CNV and the golden image | Done ([#6](https://github.com/ericcames/sales.demos/issues/6)) |
 | `sales-demos-probe-env` | `playbooks/probe_env.yml` | Measure what the cluster actually has and recommend `available_memory_gb` | Done ([#100](https://github.com/ericcames/sales.demos/issues/100)) |
 | `pah-sync` | `playbooks/sync_hub.yml`, `playbooks/curate_hub.yml` | Populate Private Automation Hub, and reconcile the curated `approved` repository | Done ([#68](https://github.com/ericcames/sales.demos/issues/68), [#70](https://github.com/ericcames/sales.demos/issues/70)) |
@@ -456,7 +456,7 @@ like everything else.
 | Job template | Runs | Against |
 |---|---|---|
 | `Sales Demos - Provision VM` | `playbooks/provision_vm.yml` | `Sales Demo VMs`, `limit: sandbox` |
-| `Sales Demos - Check VMs` | `playbooks/check_vm.yml` | `Sales Demo VMs`, `limit: linuxweb` |
+| `Sales Demos - Check Linux VMs` | `playbooks/check_linux_vm.yml` | `Sales Demo VMs`, `limit: linuxweb` |
 
 **One working inventory, not two.** `Sales Demo VMs` holds both populations:
 `sandbox-local` / `demo-local`, synced from this repo's own `inventory/hosts.yml`

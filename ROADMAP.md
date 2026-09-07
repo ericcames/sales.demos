@@ -76,7 +76,7 @@ cost of a second copy of a rotating credential.
 | 1 | — | `terraform/ocpvirt/` | Terraform module: Windows + Linux VMs, t-shirt sized, state on the kubernetes backend. | **Done** ([#2](https://github.com/ericcames/sales.demos/issues/2)) |
 | 2 | `ocpvirt-windows-image` | `playbooks/link_windows_image.yml` | Point CNV at a published Windows containerdisk via a `DataImportCron`, so `os_type=windows` boots. Split producer/consumer: building the CIS-hardened image is [image.builder.pipeline#24](https://github.com/ericcames/image.builder.pipeline/issues/24). | **Done** ([#3](https://github.com/ericcames/sales.demos/issues/3)) |
 | 3 | `ocpvirt-provision` | `playbooks/provision_vm.yml` | Terraform run from AAP; new VMs registered as managed hosts. | **Done** ([#4](https://github.com/ericcames/sales.demos/issues/4)) |
-| 4 | `ocpvirt-demo` | `playbooks/run_demo.yml` | Existing daily-demo content layered on the provisioned VMs. | Not started ([#5](https://github.com/ericcames/sales.demos/issues/5)) |
+| 4 | `ocpvirt-demo` | `playbooks/run_linux_demo.yml` | Existing daily-demo content layered on the provisioned VMs. | Not started ([#5](https://github.com/ericcames/sales.demos/issues/5)) |
 | — | `ocpvirt-teardown` | `playbooks/teardown.yml` | `terraform destroy`; CNV, the boot-source DataSources and the state namespace survive. Scheduled nightly. | **Done** ([#6](https://github.com/ericcames/sales.demos/issues/6)) |
 
 Supporting work, not a phase:

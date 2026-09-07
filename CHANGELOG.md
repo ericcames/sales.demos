@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed -- Linux-scope playbook and job template names (#240)
+- Renamed five playbooks and their matching job templates so names are
+  explicitly Linux-scoped, ahead of Windows day 2 operations arriving:
+  `register_vm.yml` → `register_linux_vm.yml`,
+  `configure_vm.yml` → `configure_linux_vm.yml`,
+  `check_vm.yml` → `check_linux_vm.yml`,
+  `compliance_scan.yml` → `linux_compliance_scan.yml`,
+  `run_demo.yml` → `run_linux_demo.yml`.
+- Added `state: absent` entries for the five retired JT names so `config.yml`
+  removes them declaratively.
+- Updated the "Build Demo VM" workflow to reference the new JT names.
+
 ### Fixed -- Namespace "All" breaks 7 dashboard panels (#289)
 - Added `allValue: ".*"` to the namespace template variable on the Cluster
   Health dashboard. Without it, selecting "All" substituted the literal string

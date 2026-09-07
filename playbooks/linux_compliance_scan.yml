@@ -1,9 +1,9 @@
 ---
 # ===========================================================================
-# compliance_scan.yml — run an OpenSCAP CIS L1 scan on the demo VMs. #202.
+# linux_compliance_scan.yml — run an OpenSCAP CIS L1 scan on the demo VMs. #202.
 #
 # FROM AAP (the normal path, as part of the Build Demo VM workflow):
-#   The "Sales Demos - Compliance Scan" job template runs this against the
+#   The "Sales Demos - Linux Compliance Scan" job template runs this against the
 #   linuxweb group.
 #
 # FROM A LAPTOP (against a VM already registered in AAP's inventory):

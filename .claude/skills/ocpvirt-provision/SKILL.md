@@ -103,7 +103,7 @@ oc get vm,vmi -n sales-demos-sandbox
 `WaitForFirstConsumer`, so the disk clones only when the VM first schedules.
 Expect the VM to reach `Running` roughly 45s after apply on a warm environment.
 
-Then confirm AAP can actually reach it — that is what `Sales Demos - Check VMs`
+Then confirm AAP can actually reach it — that is what `Sales Demos - Check Linux VMs`
 is for, and it is the difference between "a VM exists" and "the demo will work".
 
 ## Notes worth having before you debug

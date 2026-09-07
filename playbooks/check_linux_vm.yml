@@ -1,8 +1,8 @@
 ---
 # ===========================================================================
-# check_vm.yml — prove AAP can actually reach the demo VMs. Issue #4.
+# check_linux_vm.yml — prove AAP can actually reach the demo VMs. Issue #4.
 #
-#   ansible-playbook playbooks/check_vm.yml -i inventory --limit linuxweb
+#   ansible-playbook playbooks/check_linux_vm.yml -i inventory --limit linuxweb
 #
 # Deliberately small. Its whole job is to answer one question — can a job
 # template log in to a provisioned VM and run a task — with a real connection

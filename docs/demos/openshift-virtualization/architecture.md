@@ -19,9 +19,9 @@ flowchart TD
     S["<b>Survey</b><br/>os_type · vm_size_tier"] --> P
 
     P["<b>Provision VM</b><br/>playbooks/provision_vm.yml<br/><i>terraform apply → register host in AAP</i>"]
-    R["<b>Register VMs</b><br/>playbooks/register_vm.yml<br/><i>wait for ssh → attach to the Red Hat CDN</i>"]
-    C["<b>Configure VMs</b><br/>playbooks/configure_vm.yml<br/><i>httpd · firewalld · Cockpit · page · patches</i>"]
-    K["<b>Check VMs</b><br/>playbooks/check_vm.yml<br/><i>log in, gather facts, cache them in AAP</i>"]
+    R["<b>Register Linux VMs</b><br/>playbooks/register_linux_vm.yml<br/><i>wait for ssh → attach to the Red Hat CDN</i>"]
+    C["<b>Configure Linux VMs</b><br/>playbooks/configure_linux_vm.yml<br/><i>httpd · firewalld · Cockpit · page · patches</i>"]
+    K["<b>Check Linux VMs</b><br/>playbooks/check_linux_vm.yml<br/><i>log in, gather facts, cache them in AAP</i>"]
 
     P -->|success| R
     R -->|success| C
@@ -52,7 +52,7 @@ front of a customer (`controller_workflows.yml:10-14`).
 **Why the wait lives in the playbook, not the workflow.** `provision` returns as
 soon as `terraform apply` finishes; the guest takes roughly another minute to
 accept ssh. In a workflow the nodes run back to back with no human pause, so
-`register_vm.yml` opens with `wait_for_connection` — which also protects the
+`register_linux_vm.yml` opens with `wait_for_connection` — which also protects the
 run-it-by-hand path.
 
 ---
@@ -152,7 +152,7 @@ All of it is configuration-as-code under `inventory/group_vars/`, applied by
 | Execution environment | `Sales Demos - OCP Virt EE` |
 | Credentials | `Sales Demos - Vault` · `Sales Demos - Linux Machine` · `Sales Demos - PAH Registry` |
 | Inventory | `Sales Demo VMs` · `Sales Demo VMs - Control` |
-| Job templates | `Sales Demos - Provision VM` · `Register VMs` · `Configure VMs` · `Check VMs` · `Run Demo` · `Teardown VMs` |
+| Job templates | `Sales Demos - Provision VM` · `Register Linux VMs` · `Configure Linux VMs` · `Check Linux VMs` · `Run Linux Demo` · `Linux Compliance Scan` · `Teardown VMs` |
 | Workflow | `Sales Demos - Build Demo VM` |
 | Schedules | `Sales Demos - Nightly teardown (6 PM)` (+ a 10 PM safety net in sandbox) |
 
@@ -190,9 +190,9 @@ Measured, not estimated — this is workflow job 225, start to finish:
 |---|---|---|
 | Source control update + inventory sync | 6 s + 9 s (parallel) | — |
 | **Provision VM** | 36 s | 7% |
-| **Register VMs** | 4 m 25 s | 48% |
-| **Configure VMs** | 3 m 49 s | 42% |
-| **Check VMs** | 5 s | 1% |
+| **Register Linux VMs** | 4 m 25 s | 48% |
+| **Configure Linux VMs** | 3 m 49 s | 42% |
+| **Check Linux VMs** | 5 s | 1% |
 | **Whole workflow** | **9 m 9 s** | |
 
 **Ninety percent of the run is register plus configure** — attaching to the CDN
@@ -200,7 +200,7 @@ and then pulling packages and patches over it. The machine itself exists in
 under 40 seconds. That is the honest shape of the demo, and it is why "the VM
 built in 45 seconds" and "the demo takes nine minutes" are both true.
 
-Use `Check VMs` at 5 seconds when someone asks whether the verification step is
+Use `Check Linux VMs` at 5 seconds when someone asks whether the verification step is
 real: it logs in, gathers facts and caches them, and that is all it needs to do.
 
 ### Everything else

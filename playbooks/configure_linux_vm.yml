@@ -1,18 +1,18 @@
 ---
 # ===========================================================================
-# configure_vm.yml — install and configure the demo web server.
+# configure_linux_vm.yml — install and configure the demo web server.
 #
-# Split out of run_demo.yml so the workflow can run it as its own node
-# (`Sales Demos - Configure VMs`), gated on registration having succeeded.
-# run_demo.yml still imports register_vm.yml and this, so the one-shot path is
-# unchanged.
+# Split out of run_linux_demo.yml so the workflow can run it as its own node
+# (`Sales Demos - Configure Linux VMs`), gated on registration having succeeded.
+# run_linux_demo.yml still imports register_linux_vm.yml and this, so the
+# one-shot path is unchanged.
 #
 # REQUIRES A REGISTERED GUEST. Every dnf task in the role fails on an
 # unregistered CNV rhel9 image, which has no repositories at all. That is why
 # the workflow chains this behind registration rather than running the two in
 # parallel — they look independent and are not.
 #
-# No wait_for_connection here: by the time this runs, register_vm.yml has
+# No wait_for_connection here: by the time this runs, register_linux_vm.yml has
 # already proved the guest is reachable.
 # ===========================================================================
 

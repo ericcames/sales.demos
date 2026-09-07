@@ -1,24 +1,24 @@
 ---
 # ===========================================================================
-# run_demo.yml — Phase 4 in one shot. Issue #5.
+# run_linux_demo.yml — Phase 4 in one shot. Issue #5.
 #
-# Launch it from the `Sales Demos - Run Demo` job template, or via the
+# Launch it from the `Sales Demos - Run Linux Demo` job template, or via the
 # `ocpvirt-demo` skill, which launches that template.
 #
 # THIS IS A WRAPPER, NOT AN IMPLEMENTATION. It imports the two playbooks the
 # workflow runs as separate nodes, in the same order, so there is exactly one
 # copy of the logic:
 #
-#   1. register_vm.yml    Wait for SSH, then attach to the Red Hat CDN. The CNV
-#                         rhel9 image has NO repositories, so nothing below can
-#                         install anything until this succeeds.
-#   2. configure_vm.yml   httpd, firewalld, Cockpit, chrony, the demo page and
-#                         its logos, security patching, and facts.json.
+#   1. register_linux_vm.yml  Wait for SSH, then attach to the Red Hat CDN. The
+#                             CNV rhel9 image has NO repositories, so nothing
+#                             below can install anything until this succeeds.
+#   2. configure_linux_vm.yml httpd, firewalld, Cockpit, chrony, the demo page
+#                             and its logos, security patching, and facts.json.
 #
 # WHEN TO USE WHICH. The `Sales Demos - Build Demo VM` WORKFLOW is the demo
 # path: it provisions, registers, configures and verifies, one button. This
-# playbook is for re-configuring VMs that already exist — a page tweak, a
-# re-run after a failed step — without rebuilding them.
+# playbook is for re-configuring Linux VMs that already exist — a page tweak,
+# a re-run after a failed step — without rebuilding them.
 #
 # THIS RUNS FROM AAP, NOT FROM A LAPTOP. It targets `linuxweb`, a group that
 # exists only in AAP's inventory; provision_vm.yml registers the VMs there at
@@ -31,8 +31,8 @@
 # After this runs it serves the demo page.
 # ===========================================================================
 
-- name: Phase 4 (1/2) — register the demo VMs
-  ansible.builtin.import_playbook: register_vm.yml
+- name: Phase 4 (1/2) — register the Linux demo VMs
+  ansible.builtin.import_playbook: register_linux_vm.yml
 
-- name: Phase 4 (2/2) — configure the demo web server
-  ansible.builtin.import_playbook: configure_vm.yml
+- name: Phase 4 (2/2) — configure the Linux demo web server
+  ansible.builtin.import_playbook: configure_linux_vm.yml
