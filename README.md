@@ -155,7 +155,7 @@ are published as a browsable site:
 **[ericcames.github.io/sales.demos-docs](https://ericcames.github.io/sales.demos-docs)**
 
 Marketing content (key messages, Gemini notebook prompts, Red Hat product links)
-lives in Google Drive — linked from each use case's page on the docs site.
+lives in [Google Drive](https://drive.google.com/drive/folders/1Me_blEFV-xHUyZeL48F0GjCyWl3_KSxG).
 
 ## Use cases
 
