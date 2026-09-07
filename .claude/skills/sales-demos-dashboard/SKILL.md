@@ -75,7 +75,7 @@ This is separate from the Viewer SA token used by the MCP server.
 mkdir -p ~/ansible-logs
 export ANSIBLE_LOG_PATH=~/ansible-logs/deploy-dashboard-$(date +%F-%H%M).log
 
-ansible-playbook playbooks/deploy_dashboard.yml \
+ansible-playbook playbooks/deploy_dashboard.yml -i inventory \
   --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
 ```
 
@@ -83,7 +83,13 @@ ansible-playbook playbooks/deploy_dashboard.yml \
 `~/ansible-logs/`. Tell the user the path.
 
 **No `--limit` needed.** This playbook targets localhost because Grafana Cloud
-is a single external service.
+is a single external service. Do NOT pass `--limit sandbox` or `--limit demo`
+— localhost is not in those groups and the play will skip with "no hosts
+matched".
+
+**`-i inventory` is required** even though the play targets localhost, because
+Ansible needs the inventory path to resolve `group_vars/all/` for vault
+variable loading.
 
 This takes under 30 seconds.
 
@@ -91,13 +97,35 @@ This takes under 30 seconds.
 
 Use the Grafana MCP server to confirm the dashboard was pushed:
 
-1. **Dashboard exists:** `search_dashboards` with query `cluster health` —
+1. **Queries match:** `get_dashboard_panel_queries` with uid
+   `sales-demos-cluster-health` — returns every panel's query expression. This
+   is the fastest way to confirm a specific panel change landed.
+2. **Dashboard exists:** `search_dashboards` with query `cluster health` —
    should return "Sales Demos - Cluster Health" in the "Sales Demos" folder.
-2. **Dashboard renders:** `get_dashboard_by_uid` with uid
-   `sales-demos-cluster-health` — should return the full dashboard model.
+3. **Full model:** `get_dashboard_by_uid` with uid
+   `sales-demos-cluster-health` — returns the complete dashboard. Use
+   `get_dashboard_property` with a JSONPath to check a specific field without
+   pulling the whole model (e.g., `$.panels[*].options.textMode`).
 
 Then open the dashboard URL printed by the playbook and confirm panels render
 with live data.
+
+## v1/v2 schema note
+
+The playbook pushes via the legacy v1 API (`POST /api/dashboards/db`). This
+Grafana Cloud stack stores dashboards in `v0alpha1` format
+(`status.conversion.storedVersion`) and converts to v2 on read. The v1 write
+path has been reliable for all fields so far, but if a future panel option
+appears wrong in the live dashboard despite the v1 API returning the correct
+value, check the v2 apiserver directly:
+
+```
+GET /apis/dashboard.grafana.app/v2/namespaces/stacks-1820169/dashboards/sales-demos-cluster-health
+```
+
+Compare `resourceVersion` and `generation` between the v2 response and what
+the Grafana UI is rendering — a mismatch indicates read replica lag or a
+stale client session, not a write failure.
 
 ## When it finishes
 
@@ -112,7 +140,9 @@ data.
 | Assertion fails on `grafana_cloud_editor_sa_token` | Token not in vault | Create the Editor SA in Grafana Cloud UI, add to vault |
 | `401 Unauthorized` | Token expired or revoked | Regenerate in Grafana Cloud > Service Accounts |
 | `403 Forbidden` | Token has Viewer role, not Editor | Create a new SA with Editor role |
+| `412 Precondition Failed` on folder creation | Folder already exists and was modified | Already handled by the playbook (accepts 200, 409, 412) |
 | `Attempting to decrypt but no vault secrets found` | `--vault-id` missing | Add `--vault-id sales.demos@~/secrets/.vault_pass_sales_demos` |
+| `no hosts matched` / skipping | `--limit` was passed | Remove `--limit` — this play targets localhost |
 
 Never paste a Grafana Cloud URL or token into a commit message, issue, or PR.
 This repo is public — see `CLAUDE.md`.
