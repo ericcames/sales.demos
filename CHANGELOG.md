@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed -- the new VM-namespace guard had no cluster auth (#313)
+- The task added in #311 failed with `Invalid kube-config file. No
+  configuration found.` It sits outside the Terraform block, which is where the
+  `environment:` lives, so it inherited nothing. The state-namespace guard
+  beside it has always carried its own `environment:`; the new one now does too,
+  with a comment saying why, since this is a per-task rather than per-play
+  pattern in this file.
+
 ### Fixed -- the VM namespace was the second shared object (#311)
 - The retried Windows provision got past the instance types and failed on
   `namespaces "sales-demos-sandbox" already exists`.

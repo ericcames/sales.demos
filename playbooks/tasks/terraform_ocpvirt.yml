@@ -85,6 +85,15 @@
       kind: Namespace
       metadata:
         name: "{{ ocpvirt_namespace_resolved }}"
+  # THE ENVIRONMENT IS PER-TASK HERE, NOT PER-PLAY, and forgetting it is how
+  # this task failed the first time (#313): "Invalid kube-config file. No
+  # configuration found." These two guards sit OUTSIDE the Terraform block, so
+  # they inherit nothing -- each carries its own auth, and the state-namespace
+  # task below has always done the same. Copy both lines when adding a third.
+  environment:
+    K8S_AUTH_HOST: "{{ ocpvirt_api_url }}"
+    K8S_AUTH_API_KEY: "{{ ocpvirt_api_token }}"
+    K8S_AUTH_VERIFY_SSL: "{{ openshift_validate_certs | default(false) | bool }}"
 
 - name: Ensure the Terraform state namespace exists (idempotent guard)
   kubernetes.core.k8s:
