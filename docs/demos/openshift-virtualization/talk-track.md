@@ -160,7 +160,7 @@ narrate every task** — you are teaching three ideas, not reading a playbook.
 
 > **Screenshot is stale** — captured before the compliance node (#202) and the
 > #300 rename, so the image shows four nodes titled
-> `Sales Demos - Build Demo VM`. Retake it from a run of `Linux Day 1 Workflow`.
+> `Sales Demos - Build Demo VM`. Retake it from a run of `Linux Day 1 - 0 Workflow`.
 
 ### 4a · The Route returns 503, and that is correct
 

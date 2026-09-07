@@ -25,7 +25,7 @@
 # node 4 and this path skipped it, so the two entry points disagreed about what
 # "configured" means. They no longer do.
 #
-# WHEN TO USE WHICH. `Linux Day 1 Workflow` is the build path: it provisions,
+# WHEN TO USE WHICH. `Linux Day 1 - 0 Workflow` is the build path: it provisions,
 # registers, configures, scans and verifies, one button, on a cluster with no
 # VM on it. This playbook is for a VM that ALREADY EXISTS — a page tweak, a
 # re-run after a failed step, or the recovery half of a break/fix story —

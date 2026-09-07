@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed -- the workflow sorted last in its own family (#303)
+- Renamed `Linux Day 1 Workflow` to `Linux Day 1 - 0 Workflow`. #300 expected
+  the first name to head its family; measured against the live API it sorted
+  *below* `Linux Day 1 - Teardown`.
+- **A dash alone would not have fixed it.** `/unified_job_templates/?order_by=name`
+  shows `Windows Day 2 Audit` sorting before `Windows Day 2 - Check SMB Server`,
+  so Postgres ignores the punctuation at the primary collation level and
+  `Linux Day 1 - Workflow` normalises to exactly what the old name did. The same
+  data shows digits sorting ahead of letters, which is what makes the numbered
+  steps work and rules out any word-based name here.
+- Also corrected the schedule name in `architecture.md`, which #300 missed --
+  it still read `Sales Demos - Nightly teardown (6 PM)`.
+
+### Added -- labels on every template (#303)
+- New `inventory/group_vars/aap/controller_labels.yml`. This AAP had no labels
+  at all: `/api/controller/v2/labels/` returned `count: 0`.
+- Three axes -- domain (`aap-ecosystem`, `linux`), phase (`install`, `day-1`)
+  and hypervisor (`ocpvirt`) -- so the Templates page gets a filter, and,
+  because AAP copies a template's labels onto the jobs it launches, so does
+  the Jobs page.
+- **`ocpvirt` is only on the hypervisor-bound templates.** Provision and
+  Teardown run Terraform, and the workflow inherits it by chaining Provision.
+  Register, Configure, Compliance Scan, Check and Repair reach the guest over
+  SSH and do not care what built it -- the same line #237's provider
+  abstraction draws. Labelling the whole family would make the filter useless
+  on the day it finally matters.
+- Ordering needed no work: `infra.aap_configuration`'s dispatcher runs
+  `controller_labels` well before the job template and workflow roles.
+
 ### Changed -- Rename AAP templates to a family taxonomy (#300)
 - Every job template and the workflow now carry a family prefix, so the AAP
   templates list tells a Sales SE what they are looking at. Two families:

@@ -11,7 +11,7 @@ research, the constraints, the decisions and the ones that were reversed — rea
 
 ## The one-button workflow
 
-`Linux Day 1 Workflow`. Four job templates chained on success, one survey
+`Linux Day 1 - 0 Workflow`. Four job templates chained on success, one survey
 that feeds all of them.
 
 ```mermaid
@@ -153,8 +153,17 @@ All of it is configuration-as-code under `inventory/group_vars/`, applied by
 | Credentials | `Sales Demos - Vault` · `Sales Demos - Linux Machine` · `Sales Demos - PAH Registry` |
 | Inventory | `Sales Demo VMs` · `Sales Demo VMs - Control` |
 | Job templates | `Linux Day 1 - 1 Provision` · `2 Register` · `3 Configure` · `4 Compliance Scan` · `5 Check` · `Repair` · `Teardown` |
-| Workflow | `Linux Day 1 Workflow` |
-| Schedules | `Sales Demos - Nightly teardown (6 PM)` (+ a 10 PM safety net in sandbox) |
+| | `AAP Ecosystem - Install Automation Orchestrator` · `Install Self-Service Portal` |
+| Workflow | `Linux Day 1 - 0 Workflow` |
+| Labels | `linux` · `day-1` · `ocpvirt` · `aap-ecosystem` · `install` |
+| Schedules | `Linux Day 1 - Nightly teardown (6 PM)` (+ a 10 PM safety net in sandbox) |
+
+**Names order, labels group.** The name gives an object one position in the
+alphabetical Templates list, which is why the chain steps are numbered — an SE
+following along mid-demo needs to know what runs next. Labels are the other
+axis: they filter the Templates *and* Jobs pages, and `ocpvirt` sits only on
+the templates that actually run Terraform, so filtering by it returns what
+breaks when the hypervisor changes rather than the whole family.
 
 **Two inventories, one of them empty.** `Sales Demo VMs` holds the demo VMs;
 `Sales Demo VMs - Control` stays empty and exists only for teardown, because AAP

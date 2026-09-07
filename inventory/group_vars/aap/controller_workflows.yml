@@ -36,13 +36,35 @@
 # state per OS, which is what actually makes the two independent.
 # ============================================================================
 
+# THE `0` IS LOAD-BEARING, AND `Linux Day 1 Workflow` DID NOT WORK (#303).
+# #300 named it that expecting it to head its family. Measured against the live
+# API -- /unified_job_templates/?order_by=name, which is what the Templates
+# page renders -- it sorted LAST, below Teardown.
+#
+# A dash does not fix it. The same query shows `Windows Day 2 Audit` sorting
+# before `Windows Day 2 - Check SMB Server`, so Postgres ignores the
+# punctuation at the primary collation level and `Linux Day 1 - Workflow`
+# normalises to exactly what the old name did. What the same data does show is
+# digits sorting ahead of letters (`5 Check` before `Repair`) -- which is what
+# makes the numbered steps work, and which rules out any word-based name here
+# because `- Build` would land after all five steps.
+#
+# So: step 0 is the thing that runs steps 1-5. Measure, do not assume, if this
+# is ever renamed again.
 controller_workflows_all:
-  - name: "Linux Day 1 Workflow"
+  - name: "Linux Day 1 - 0 Workflow"
     description: >-
       Build a Linux demo VM end to end: provision, register it to the Red Hat
       CDN, configure the web server, scan it for CIS compliance, and verify it
       — one button, in the only order that works.
     organization: "IT Service Automation"
+    # ocpvirt because this chains Provision, which runs terraform. The nodes
+    # that only reach the guest over SSH do not carry it -- see the header of
+    # controller_labels.yml for why that line is drawn where it is (#303).
+    labels:
+      - linux
+      - day-1
+      - ocpvirt
     # Force the module to tear down the existing nodes and recreate them from
     # the definition below. Without this, renaming the JTs in #240 left the
     # old node references in place — the module only adds, it does not diff.
@@ -149,5 +171,10 @@ controller_workflows_all:
   # workflow are rebuilt from the definition above by destroy_current_nodes.
   # -------------------------------------------------------------------
   - name: "Sales Demos - Build Demo VM"
+    organization: "IT Service Automation"
+    state: absent
+
+  # Retired by #303 — `Linux Day 1 Workflow` sorted last in its own family.
+  - name: "Linux Day 1 Workflow"
     organization: "IT Service Automation"
     state: absent

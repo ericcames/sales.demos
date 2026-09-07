@@ -1,6 +1,6 @@
 ---
 name: ocpvirt-demo
-description: "Re-run the demo content on Linux VMs that ALREADY EXIST: register them to the Red Hat CDN, install and configure the web server, rescan for CIS compliance, and turn the demo URL from a 503 into a real page. Launches the Linux Day 1 - Repair job template in AAP. TRIGGER when: the user asks to re-run, repair or reconfigure the demo content, says the demo URL returns 503 or does not load, wants a page tweak applied, or is recovering from a failed step on a VM that is still up. SKIP: if no VMs exist yet — a build from nothing is the Linux Day 1 Workflow, reached through ocpvirt-provision — or if the environment itself has never been set up, which is ocpvirt-setup."
+description: "Re-run the demo content on Linux VMs that ALREADY EXIST: register them to the Red Hat CDN, install and configure the web server, rescan for CIS compliance, and turn the demo URL from a 503 into a real page. Launches the Linux Day 1 - Repair job template in AAP. TRIGGER when: the user asks to re-run, repair or reconfigure the demo content, says the demo URL returns 503 or does not load, wants a page tweak applied, or is recovering from a failed step on a VM that is still up. SKIP: if no VMs exist yet — a build from nothing is the Linux Day 1 - 0 Workflow, reached through ocpvirt-provision — or if the environment itself has never been set up, which is ocpvirt-setup."
 ---
 
 # ocpvirt-demo
@@ -13,7 +13,7 @@ because nothing is serving on port 80. This is the other half of that story.
 
 ## This is the repair path, not the build path
 
-`Linux Day 1 Workflow` is what you launch to build a demo VM from nothing: it
+`Linux Day 1 - 0 Workflow` is what you launch to build a demo VM from nothing: it
 provisions, registers, configures, scans and verifies in the only order that
 works, one button. Use that for a fresh environment.
 

@@ -53,6 +53,10 @@ controller_templates_all:
   # ---------------------------------------------------------------------
   - name: "Linux Day 1 - 1 Provision"
     description: "Run Terraform for the selected hypervisor and register the new VMs in the Sales Demo VMs inventory."
+    labels:
+      - linux
+      - day-1
+      - ocpvirt
     job_type: run
     organization: "IT Service Automation"
     inventory: "Sales Demo VMs"
@@ -141,6 +145,10 @@ controller_templates_all:
   # ---------------------------------------------------------------------
   - name: "Linux Day 1 - Teardown"
     description: "Destroy the demo VMs and deregister them. Leaves CNV, the boot-source DataSources, and the Terraform state namespace intact."
+    labels:
+      - linux
+      - day-1
+      - ocpvirt
     job_type: run
     organization: "IT Service Automation"
     inventory: "Sales Demo VMs - Control"
@@ -173,7 +181,7 @@ controller_templates_all:
     ask_variables_on_launch: true
 
   # ---------------------------------------------------------------------
-  # Phase 4, split into two templates so Linux Day 1 Workflow can gate
+  # Phase 4, split into two templates so Linux Day 1 - 0 Workflow can gate
   # them separately (#47). `Linux Day 1 - Repair` below still does
   # both in one shot for re-configuring Linux VMs that already exist.
   #
@@ -183,6 +191,9 @@ controller_templates_all:
   # ---------------------------------------------------------------------
   - name: "Linux Day 1 - 2 Register"
     description: "Wait for SSH, then attach the Linux demo VMs to the Red Hat CDN. Nothing can install packages until this succeeds."
+    labels:
+      - linux
+      - day-1
     job_type: run
     organization: "IT Service Automation"
     inventory: "Sales Demo VMs"
@@ -198,6 +209,9 @@ controller_templates_all:
 
   - name: "Linux Day 1 - 3 Configure"
     description: "Install and configure the Linux demo web server. Requires a registered guest."
+    labels:
+      - linux
+      - day-1
     job_type: run
     organization: "IT Service Automation"
     inventory: "Sales Demo VMs"
@@ -223,6 +237,9 @@ controller_templates_all:
   # ---------------------------------------------------------------------
   - name: "Linux Day 1 - Repair"
     description: "Register the Linux demo VMs and configure the web server. Turns the web_url Route from 503 into the demo page."
+    labels:
+      - linux
+      - day-1
     job_type: run
     organization: "IT Service Automation"
     inventory: "Sales Demo VMs"
@@ -246,6 +263,9 @@ controller_templates_all:
   # ---------------------------------------------------------------------
   - name: "Linux Day 1 - 5 Check"
     description: "Smoke test: log in to the provisioned Linux VMs over in-cluster DNS and gather facts."
+    labels:
+      - linux
+      - day-1
     job_type: run
     organization: "IT Service Automation"
     inventory: "Sales Demo VMs"
@@ -282,6 +302,9 @@ controller_templates_all:
   # ---------------------------------------------------------------------
   - name: "Linux Day 1 - 4 Compliance Scan"
     description: "Run an OpenSCAP CIS Level 1 scan and publish the report at <web_url>/compliance/."
+    labels:
+      - linux
+      - day-1
     job_type: run
     organization: "IT Service Automation"
     inventory: "Sales Demo VMs"
@@ -317,6 +340,9 @@ controller_templates_all:
   # misconfiguration — do not "fix" it by removing the template.
   - name: "AAP Ecosystem - Install Automation Orchestrator"
     description: "Install Automation Orchestrator and its CloudNativePG database, then verify the Route serves a page."
+    labels:
+      - aap-ecosystem
+      - install
     job_type: run
     organization: "IT Service Automation"
     inventory: "Sales Demo VMs"
@@ -341,6 +367,9 @@ controller_templates_all:
   # ---------------------------------------------------------------------
   - name: "AAP Ecosystem - Install Self-Service Portal"
     description: "Deploy the AAP self-service portal (RHDH with the AAP plugin), create its OAuth application, and sync the org list."
+    labels:
+      - aap-ecosystem
+      - install
     job_type: run
     organization: "IT Service Automation"
     inventory: "Sales Demo VMs"

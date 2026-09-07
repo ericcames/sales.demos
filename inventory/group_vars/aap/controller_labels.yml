@@ -1,0 +1,52 @@
+---
+# ============================================================================
+# group_vars/aap/controller_labels.yml — template labels (#303)
+# ============================================================================
+# WHY LABELS WHEN THE NAMES ALREADY SORT. A name gives an object exactly one
+# position in exactly one ordering. A label lets it belong to several groupings
+# at once, gives the Templates page a filter dropdown, and — because AAP copies
+# a template's labels onto the jobs it launches — makes the Jobs list
+# filterable the same way. The two axes answer different questions: the name
+# answers "what runs next", the label answers "show me everything Linux".
+#
+# THREE AXES, and each value has to earn its place:
+#
+#   domain      aap-ecosystem, linux        (windows when #241 lands)
+#   phase       install, day-1              (day-2 when #241 lands)
+#   hypervisor  ocpvirt
+#
+# THE HYPERVISOR LABEL IS NOT ON EVERYTHING IN THE FAMILY, deliberately. Only
+# Provision and Teardown are hypervisor-bound — they run terraform — and the
+# workflow inherits it by chaining Provision. Register, Configure, Compliance
+# Scan, Check and Repair reach the guest over SSH and do not care what built
+# it. That is the exact line #237's provider abstraction draws, so a filter on
+# `ocpvirt` returns the things that break when the hypervisor changes rather
+# than everything with "Linux Day 1" in the name. Labelling the whole family
+# would make the filter useless on the day it finally matters.
+#
+# ORDERING IS ALREADY HANDLED. infra.aap_configuration's dispatcher runs
+# controller_labels (position 172 in roles/dispatch/defaults/main.yml) well
+# before controller_job_templates (263) and controller_workflow_job_templates
+# (268), so a label exists before any template references it. Do not reorder.
+#
+# THE VARIABLE IS controller_labels, and `_all` is the wildcard suffix
+# dispatch_include_wildcard_vars merges — same convention as
+# controller_templates_all and controller_workflows_all.
+# ============================================================================
+
+controller_labels_all:
+  # --- domain ---------------------------------------------------------
+  - name: aap-ecosystem
+    organization: "IT Service Automation"
+  - name: linux
+    organization: "IT Service Automation"
+
+  # --- phase ----------------------------------------------------------
+  - name: install
+    organization: "IT Service Automation"
+  - name: day-1
+    organization: "IT Service Automation"
+
+  # --- hypervisor -----------------------------------------------------
+  - name: ocpvirt
+    organization: "IT Service Automation"

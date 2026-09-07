@@ -132,7 +132,7 @@ than the rest of the demo combined.
 > **Screenshot is stale** — it was captured before the compliance node (#202)
 > and before the #300 rename, so it shows four nodes under the old
 > `Sales Demos - Build Demo VM` title. Retake it from a real run of
-> `Linux Day 1 Workflow`. The chain above is what the workflow actually does.
+> `Linux Day 1 - 0 Workflow`. The chain above is what the workflow actually does.
 
 Walk them in order. **Three beats matter here; everything else is detail.**
 
@@ -318,7 +318,7 @@ If you have a warm environment, three beats change:
 
 | Beat | Live version |
 |---|---|
-| 0–3 cold open | Launch **`Linux Day 1 Workflow`** *first*, then do the cold open on the screenshot while it runs. It needs ~9 minutes and you are about to spend 13 talking |
+| 0–3 cold open | Launch **`Linux Day 1 - 0 Workflow`** *first*, then do the cold open on the screenshot while it runs. It needs ~9 minutes and you are about to spend 13 talking |
 | 8–16 | Cut to the running job's output instead of the graph. Narrate the node that is actually executing |
 | 16–22 | `curl -sI` the real URL, then open it. The 503 → 200 transition live is worth more than any slide |
 
