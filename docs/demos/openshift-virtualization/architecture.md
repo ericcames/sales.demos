@@ -155,11 +155,31 @@ All of it is configuration-as-code under `inventory/group_vars/`, applied by
 | Job templates | `Linux Day 1 - 1 Provision` · `2 Register` · `3 Configure` · `4 Compliance Scan` · `5 Check` · `Repair` · `Teardown` |
 | | `AAP Ecosystem - Install Automation Orchestrator` · `Install MCP Server` · `Install Self-Service Portal` |
 | | `AAP Observability - 1 Deploy Alloy` · `2 Deploy Dashboards` |
+| | `Cluster Day 0 - 1 Install OpenShift Virtualization` · `2 Verify Environment` · `Probe Capacity` |
 | | `Golden Image - Link RHEL 9 CIS L1` · `Link Windows 2022 CIS L1` |
 | | `Windows Day 1 - 1 Provision` · `Teardown` |
-| Workflow | `Linux Day 1 - 0 Workflow` |
-| Labels | `linux` · `windows` · `day-1` · `ocpvirt` · `aap-ecosystem` · `observability` · `golden-image` · `install` |
+| Workflows | `Cluster Day 0` · `Linux Day 1 - 0 Workflow` |
+| Labels | `linux` · `windows` · `cluster` · `aap-ecosystem` · `observability` · `golden-image` · `day-0` · `day-1` · `install` · `ocpvirt` · `read-only` |
 | Schedules | `Linux Day 1 - Nightly teardown (6 PM)` (+ a 10 PM safety net in sandbox) |
+
+**Almost everything runs from AAP now, and the exceptions are deliberate.**
+Standing up an environment is one laptop command — `config.yml` — and then
+buttons. Three things stay off the platform on purpose:
+
+| Stays on the laptop | Why |
+|---|---|
+| `utilities/build-ee.sh` | Needs podman and the Red Hat offline token, which #22 and #68 keep to a single copy. Building a container image is not an AAP job. |
+| `playbooks/config.yml` | It *creates* the job templates. The thing that creates the automation is not itself automated by what it created. |
+| `sync_hub.yml` / `curate_hub.yml` | Same offline-token reason (#68). |
+
+Named here so nobody hunts for a job template that cannot exist. `setup.yml`
+also remains as the single-command laptop path — the AAP route is additive.
+
+**Domains chips are label filters, and per-user.** The `Network` / `Backup` /
+`Security` chips above the Templates list filter on labels — measured:
+`?labels__name=linux` returns 9. There is no Domains object in any API and
+nothing in `settings/`, so `config.yml` cannot set them; each person configures
+their own via the wrench icon. The labels below are what they filter on.
 
 **Names order, labels group.** The name gives an object one position in the
 alphabetical Templates list, which is why the chain steps are numbered — an SE

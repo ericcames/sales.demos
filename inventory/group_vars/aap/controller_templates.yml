@@ -431,6 +431,87 @@ controller_templates_all:
       target_env: "{{ aap_env_name }}"
 
   # =====================================================================
+  # CLUSTER DAY 0 (#330). Prepare the CLUSTER to host demos, before any VM
+  # exists. The subject of Day 1 is the VM; the subject of Day 0 is the cluster.
+  #
+  # THIS IS THE "MINIMUM LAPTOP" HALF. Standing up an environment used to be a
+  # terminal job end to end. It is now one laptop command -- config.yml, which
+  # creates these very templates and therefore cannot be one of them -- and
+  # then buttons. Work in a terminal is invisible to a customer; work in AAP is
+  # the demo.
+  #
+  # WHAT DELIBERATELY STAYS ON THE LAPTOP, so nobody hunts for a template that
+  # cannot exist: the EE build (podman plus the Red Hat offline token that #22
+  # and #68 keep to a single copy), config.yml itself, and sync_hub /
+  # curate_hub for the same token reason.
+  #
+  # ALL THREE ARE `hosts: aap` WITH NO SHELL-OUTS -- kubernetes.core and
+  # ansible.builtin only. That check is not ceremony: #324 shipped a template
+  # for a playbook that shells out to helm, which the EE did not carry, and it
+  # failed on every launch for a week. What a playbook EXECUTES decides whether
+  # it can run from AAP, not what it targets.
+  # =====================================================================
+  - name: "Cluster Day 0 - 1 Install OpenShift Virtualization"
+    description: "Install OpenShift Virtualization on this cluster and wait for the operator to be ready. Idempotent — converges on a cluster that already has it."
+    labels:
+      - cluster
+      - day-0
+      - ocpvirt
+    job_type: run
+    organization: "IT Service Automation"
+    inventory: "Sales Demo VMs"
+    project: "Sales Demos"
+    playbook: playbooks/install_cnv.yml
+    execution_environment: "Sales Demos - OCP Virt EE"
+    credentials:
+      - "Sales Demos - Vault"
+      - "Sales Demos - Env Secrets"
+    limit: "{{ aap_env_name }}"
+    extra_vars:
+      target_env: "{{ aap_env_name }}"
+
+  - name: "Cluster Day 0 - 2 Verify Environment"
+    description: "Prove the environment is genuinely demo-ready: boot sources imported, storage on the fast clone path, ingress admitting Routes. Builds one real VM, times it, destroys it."
+    labels:
+      - cluster
+      - day-0
+      - ocpvirt
+    job_type: run
+    organization: "IT Service Automation"
+    inventory: "Sales Demo VMs"
+    project: "Sales Demos"
+    playbook: playbooks/prepare_env.yml
+    execution_environment: "Sales Demos - OCP Virt EE"
+    credentials:
+      - "Sales Demos - Vault"
+      - "Sales Demos - Env Secrets"
+    limit: "{{ aap_env_name }}"
+    extra_vars:
+      target_env: "{{ aap_env_name }}"
+
+  # UNNUMBERED, because it is not part of the chain -- same rule as Repair and
+  # Teardown. It is read-only and runs at any time, including mid-demo, which
+  # is what the `read-only` label exists to say.
+  - name: "Cluster Day 0 - Probe Capacity"
+    description: "Measure what this cluster actually has — allocatable, already requested, genuinely free — and recommend available_memory_gb. Strictly read-only, safe to run during a live demo."
+    labels:
+      - cluster
+      - ocpvirt
+      - read-only
+    job_type: run
+    organization: "IT Service Automation"
+    inventory: "Sales Demo VMs"
+    project: "Sales Demos"
+    playbook: playbooks/probe_env.yml
+    execution_environment: "Sales Demos - OCP Virt EE"
+    credentials:
+      - "Sales Demos - Vault"
+      - "Sales Demos - Env Secrets"
+    limit: "{{ aap_env_name }}"
+    extra_vars:
+      target_env: "{{ aap_env_name }}"
+
+  # =====================================================================
   # AAP OBSERVABILITY (#318). Instrument the platform, then visualise it.
   #
   # NUMBERED BECAUSE IT IS A CHAIN. Dashboards pushed at a cluster with no

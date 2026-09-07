@@ -11,8 +11,10 @@
 #
 # THREE AXES, and each value has to earn its place:
 #
-#   domain      aap-ecosystem, linux, windows, observability, golden-image
-#   phase       install, day-1              (day-2 when #241 lands)
+#   domain      aap-ecosystem, linux, windows, observability, golden-image,
+#               cluster
+#   phase       install, day-0, day-1       (day-2 when #241 lands)
+#   safety      read-only
 #   hypervisor  ocpvirt
 #
 # THE HYPERVISOR LABEL IS NOT ON EVERYTHING IN THE FAMILY, deliberately. Only
@@ -46,13 +48,27 @@ controller_labels_all:
     organization: "IT Service Automation"
   - name: golden-image
     organization: "IT Service Automation"
+  - name: cluster
+    organization: "IT Service Automation"
 
   # --- phase ----------------------------------------------------------
   - name: install
+    organization: "IT Service Automation"
+  - name: day-0
     organization: "IT Service Automation"
   - name: day-1
     organization: "IT Service Automation"
 
   # --- hypervisor -----------------------------------------------------
   - name: ocpvirt
+    organization: "IT Service Automation"
+
+  # --- safety ---------------------------------------------------------
+  # A FOURTH AXIS, AND IT EARNS ITS PLACE (#330). probe_env.yml is explicitly
+  # safe to run in the middle of a live demo, and none of the axes above can
+  # say so -- domain says what a template acts on, phase says when in the
+  # lifecycle, hypervisor says where. "Can I run this right now without
+  # breaking what is on screen?" is a different question, and it is the one an
+  # SE actually asks mid-demo.
+  - name: read-only
     organization: "IT Service Automation"

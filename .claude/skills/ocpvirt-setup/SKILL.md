@@ -5,6 +5,19 @@ description: "Phase 0 of the sales.demos OpenShift Virtualization demo — take 
 
 # ocpvirt-setup
 
+## Most of this runs from AAP now (#330)
+
+`Cluster Day 0` is a workflow: install OpenShift Virtualization, link the RHEL 9
+CIS L1 golden image, then verify the environment really works. Use it once
+`config.yml` has run for the environment.
+
+**`config.yml` is still the one laptop command**, and it has to be: it creates
+the job templates, so it cannot be one of them. Run it first, then everything
+else is buttons — which is also the point, since work in a terminal is invisible
+to a customer and work in AAP is the demo.
+
+`setup.yml` stays as the single-command laptop path. This is additive.
+
 Phase 0. Takes a bare RHDP "Ansible Product Demo" environment to demo-ready in
 **one command**.
 

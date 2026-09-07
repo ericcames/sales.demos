@@ -5,6 +5,12 @@ description: "Verify a fresh RHDP environment is genuinely demo-ready before any
 
 # ocpvirt-new-env
 
+## There is an AAP path now too (#330)
+
+`Cluster Day 0 - 2 Verify Environment` runs this same playbook from AAP, and is
+the last node of the `Cluster Day 0` workflow. The skill remains the quicker
+loop when iterating locally.
+
 Answers one question: **would a live VM build in front of a customer be fast?**
 
 Run this after `ocpvirt-setup` on a new environment, and before promising anyone

@@ -5,6 +5,13 @@ description: "Measure what a cluster actually has — allocatable, what is alrea
 
 # sales-demos-probe-env
 
+## There is an AAP path now too (#330)
+
+`Cluster Day 0 - Probe Capacity` runs this same playbook from AAP. It carries a
+`read-only` label — the one thing the other label axes could not express — so it
+is filterable as safe to run during a live demo, which is exactly when someone
+needs to ask whether another VM will fit.
+
 Answers one question: **what does this cluster actually have, and what will fit
 on it?**
 

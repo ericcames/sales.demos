@@ -52,6 +52,108 @@
 # So: step 0 is the thing that runs steps 1-5. Measure, do not assume, if this
 # is ever renamed again.
 controller_workflows_all:
+  # =====================================================================
+  # CLUSTER DAY 0 (#330) — one button from a bare cluster to demo-ready.
+  #
+  # NAMED BARE, WITH NO SUFFIX, AND THAT ASYMMETRY IS DELIBERATE. `Linux Day 1
+  # - 0 Workflow` needed the `0` because "Workflow" sorts after "Teardown";
+  # here the workflow name is a PREFIX of every template in its family, and a
+  # shorter string that prefixes the others sorts first for free. Do not
+  # "fix" this into consistency with the Linux one -- that would push it to the
+  # bottom of its own family, which is exactly what #303 had to undo.
+  #
+  # IT CROSSES FAMILIES, ON PURPOSE. The middle node is a `Golden Image`
+  # template, not a `Cluster Day 0` one. That is a real dependency rather than
+  # untidiness: `2 Verify Environment` builds an actual VM from a boot source,
+  # so running it before the RHEL 9 image is linked reports a false failure on
+  # a cluster that is fine. This is the first workflow here to span two
+  # prefixes; if a third family ever joins, keep the reason in the comment.
+  #
+  # WINDOWS IS DELIBERATELY NOT A NODE. That import is the slow one, and an
+  # environment that only ever shows the Linux demo should not pay for it.
+  # Run `Golden Image - Link Windows 2022 CIS L1` separately when it is wanted.
+  # =====================================================================
+  - name: "Cluster Day 0"
+    description: >-
+      Take a bare cluster to demo-ready: install OpenShift Virtualization, link
+      the RHEL 9 CIS L1 golden image, then prove the environment really works by
+      building a VM and timing it.
+    organization: "IT Service Automation"
+    labels:
+      - cluster
+      - day-0
+      - ocpvirt
+    inventory: "Sales Demo VMs"
+    # Same reason as the Linux workflow: the module only ADDS nodes, it does not
+    # diff them, so a renamed template leaves a stale reference behind (#240).
+    destroy_current_nodes: true
+    survey_enabled: true
+    survey_spec:
+      name: ""
+      description: "How to install OpenShift Virtualization"
+      # TWO QUESTIONS, AND THE SHORTNESS IS THE POINT. Nearly every Day 0 input
+      # is auto-detected -- cnv_storage_class defaults to "" and discovers the
+      # class, the timeouts are already tuned. A survey padded with defaults
+      # nobody changes makes the automation look arbitrary rather than
+      # considered, which is the opposite of why it is shown to a customer.
+      # These two are real decisions.
+      spec:
+        - question_name: OpenShift Virtualization update channel
+          question_description: >-
+            Which operator channel to subscribe to. `stable` is what every demo
+            environment should use; the choice is surfaced so the version is
+            visibly a decision rather than an accident.
+          variable: cnv_channel
+          type: multiplechoice
+          required: true
+          default: stable
+          choices:
+            - stable
+            - candidate
+        - question_name: Wait for the boot source to finish importing
+          question_description: >-
+            Blocks until the RHEL 9 DataSource reports Ready. Leave this on —
+            it is most of why the run takes ten minutes or more, and turning it
+            off means the next step can start against an image that has not
+            landed.
+          variable: cnv_wait_for_datasource
+          type: multiplechoice
+          required: true
+          default: "true"
+          choices:
+            - "true"
+            - "false"
+
+    related:
+      workflow_nodes:
+        - identifier: install_cnv
+          unified_job_template:
+            name: "Cluster Day 0 - 1 Install OpenShift Virtualization"
+            type: job_template
+            organization:
+              name: "IT Service Automation"
+          related:
+            success_nodes:
+              - identifier: link_rhel9
+
+        # The cross-family node. See the header.
+        - identifier: link_rhel9
+          unified_job_template:
+            name: "Golden Image - Link RHEL 9 CIS L1"
+            type: job_template
+            organization:
+              name: "IT Service Automation"
+          related:
+            success_nodes:
+              - identifier: verify
+
+        - identifier: verify
+          unified_job_template:
+            name: "Cluster Day 0 - 2 Verify Environment"
+            type: job_template
+            organization:
+              name: "IT Service Automation"
+
   - name: "Linux Day 1 - 0 Workflow"
     description: >-
       Build a Linux demo VM end to end: provision, register it to the Red Hat

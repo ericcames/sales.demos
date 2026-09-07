@@ -7,6 +7,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added -- Cluster Day 0 templates and workflow (#330)
+- Three templates -- `1 Install OpenShift Virtualization`, `2 Verify
+  Environment`, `Probe Capacity` -- plus a `Cluster Day 0` workflow chaining
+  install, RHEL 9 image link, and verify.
+- **The subject of Day 1 is the VM; the subject of Day 0 is the cluster.** The
+  prefix extends the existing scheme rather than inventing one.
+- **The workflow is named bare, and that asymmetry is deliberate.**
+  `Linux Day 1 - 0 Workflow` needed its `0` because "Workflow" sorts after
+  "Teardown"; here the name is a prefix of its family and sorts first for free.
+  "Fixing" it into consistency would push it to the bottom -- what #303 undid.
+- **It crosses families on purpose**: the middle node is a `Golden Image`
+  template, because verify builds a real VM from a boot source and would report
+  a false failure before the image is linked. Windows linking is excluded --
+  it is the slow import and a Linux-only environment should not pay for it.
+- **The survey is two questions, deliberately.** Nearly every Day 0 input is
+  auto-detected (`cnv_storage_class: ""` discovers the class), and a survey
+  padded with defaults nobody changes makes automation look arbitrary rather
+  than considered.
+- New labels `cluster`, `day-0`, and `read-only`. **`read-only` is a fourth
+  axis and earns it:** `probe_env.yml` is safe to run mid-demo, and domain,
+  phase and hypervisor cannot say so. "Can I run this right now without
+  breaking what is on screen?" is the question an SE actually asks.
+- All three are `hosts: aap` with **zero shell-outs**, verified by grep -- the
+  check #324 skipped when it shipped a template for a playbook that needed a
+  helm binary the EE did not carry.
+
+### Documented -- what stays on the laptop, and why (#330)
+- `architecture.md` now names the three exceptions rather than leaving someone
+  to hunt for templates that cannot exist: the EE build (podman plus the Red Hat
+  offline token #22/#68 keep to a single copy), `config.yml` (it creates the
+  templates), and `sync_hub`/`curate_hub` (same token).
+- **The Domains chips are label filters held in per-user browser state.**
+  Measured: no `/domains/` endpoint on the controller, gateway or `/api/v2/`,
+  nothing in `settings/`, but `?labels__name=linux` returns 9. So `config.yml`
+  cannot set them and each person configures their own via the wrench icon --
+  worth knowing before searching for a config-as-code knob that does not exist.
+
 ### Fixed -- the portal job template can now actually run from AAP (#324)
 - `AAP Ecosystem - Install Self-Service Portal` failed ten seconds after every
   launch for **two independent reasons**, and fixing either alone only moved the
