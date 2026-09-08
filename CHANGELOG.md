@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed -- a CIS-hardened guest could never configure its own WinRM (#377)
+- **`FirstLogonCommands` needs a logon, and a CIS L1 image is built to prevent
+  one.** Measured on the guest's own disk: `legalnoticecaption` is set to the DoD
+  consent banner and the policy key `Policies\System\disablecad` is `0`, so
+  CTRL+ALT+DEL is required. Either alone blocks `AutoAdminLogon`, so the clone
+  boots to a banner and waits for a click that never comes.
+- **The consequence was a guest unmanageable for life.** Neither first-logon
+  command ran: `LocalAccountTokenFilterPolicy` was absent, and the machine store
+  held exactly one certificate -- still the build-time thumbprint the HTTPS
+  listener points at. Port 5986 answered and reset without presenting a
+  certificate, and every Day 1 node past Provision failed.
+- **The WinRM setup now runs from the `specialize` pass**, which executes as
+  SYSTEM with no logon. It stages `SetupComplete.cmd`, Windows' documented hook
+  that runs at the end of Setup -- still as SYSTEM, still before any logon
+  prompt, with the ComputerName already final. The script drops the stale HTTPS
+  listener, mints a certificate for the new machine name, rebinds, opens 5986
+  through the CIS-enabled firewall, and sets `LocalAccountTokenFilterPolicy`.
+- **`FirstLogonCommands` is kept and annotated, not deleted.** It still works on
+  unhardened media, so removing it would drop a working path before the
+  replacement is proven.
+- **A precedence trap worth remembering:** `Winlogon\DisableCAD` is `1`, set by
+  the build, while the policy key `Policies\System\disablecad` is `0`. Policy
+  wins. Reading only the first says CTRL+ALT+DEL is not required.
+- An earlier theory blamed CIS 18.5.1 (`AutoAdminLogon = 0`). **That is wrong** --
+  the unattend's `oobeSystem` pass overrides it, and the guest really does have
+  `AutoAdminLogon = 1`, `DefaultUserName = demoadmin`. Recorded so it is not
+  re-derived.
+
 ### Added
 - **`playbooks/install_compliance.yml` (#376).** Installs the Compliance
   Operator on any environment. Follows the `install_cnv.yml` pattern: own

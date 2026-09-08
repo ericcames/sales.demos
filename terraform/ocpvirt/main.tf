@@ -246,6 +246,121 @@ resource "kubernetes_secret" "windows_sysprep" {
                      publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
             <fDenyTSConnections>false</fDenyTSConnections>
           </component>
+
+          <!-- ================================================================
+               #377: STAGE THE WinRM SETUP SO IT DOES NOT NEED A HUMAN.
+
+               FirstLogonCommands below runs only after somebody logs in, and a
+               CIS L1 image is built to stop that happening unattended. Measured
+               on the guest's own disk, from the hardened image:
+
+                 legalnoticecaption = 'DoD Notice and Consent Banner'
+                 disablecad         = '0'      (CTRL+ALT+DEL required)
+
+               Either alone blocks AutoAdminLogon, so the clone boots to a
+               consent banner and waits for a click that never comes. The
+               evidence that neither FirstLogonCommand ran:
+               LocalAccountTokenFilterPolicy absent, and exactly ONE certificate
+               in the machine store - still the build-time thumbprint the HTTPS
+               listener points at. Port 5986 answers and resets without ever
+               presenting a certificate, and the guest is unmanageable for life.
+
+               NOTE THE PRECEDENCE TRAP: Winlogon\DisableCAD is 1, set by the
+               build. The POLICY key Policies\System\disablecad is 0, and policy
+               wins. Reading only the first says CTRL+ALT+DEL is not required.
+
+               (An earlier theory blamed CIS 18.5.1 AutoAdminLogon=0. That is
+               wrong - the unattend's oobeSystem pass overrides it and the guest
+               really does have AutoAdminLogon=1, DefaultUserName=demoadmin.
+               Recorded so nobody re-derives it.)
+
+               specialize runs as SYSTEM with no logon, so it stages
+               SetupComplete.cmd - Windows' documented hook that runs at the end
+               of Setup, still as SYSTEM, still before any logon prompt, with the
+               ComputerName already final.
+
+               Each line is echoed separately and deliberately contains no
+               & | < > characters, so nothing needs escaping through BOTH the XML
+               and cmd. Keep it that way.
+               ================================================================ -->
+          <component name="Microsoft-Windows-Deployment"
+                     processorArchitecture="amd64"
+                     publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
+            <RunSynchronous>
+              <RunSynchronousCommand wcm:action="add"
+                                     xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State">
+                <Order>1</Order>
+                <Description>Create the Setup scripts directory</Description>
+                <Path>cmd /c md C:\Windows\Setup\Scripts</Path>
+              </RunSynchronousCommand>
+              <RunSynchronousCommand wcm:action="add"
+                                     xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State">
+                <Order>2</Order>
+                <Description>winrm-https.ps1: keep going past non-fatal errors</Description>
+                <Path>cmd /c echo $ErrorActionPreference='Continue'&gt;&gt;C:\Windows\Setup\Scripts\winrm-https.ps1</Path>
+              </RunSynchronousCommand>
+              <RunSynchronousCommand wcm:action="add"
+                                     xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State">
+                <Order>3</Order>
+                <Description>winrm-https.ps1: log what happened, since nobody is watching</Description>
+                <Path>cmd /c echo Start-Transcript -Path 'C:\Windows\Setup\Scripts\winrm-https.log' -Force&gt;&gt;C:\Windows\Setup\Scripts\winrm-https.ps1</Path>
+              </RunSynchronousCommand>
+              <RunSynchronousCommand wcm:action="add"
+                                     xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State">
+                <Order>4</Order>
+                <Description>winrm-https.ps1: let non-built-in admins authenticate over WinRM</Description>
+                <Path>cmd /c echo reg add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" /v LocalAccountTokenFilterPolicy /t REG_DWORD /d 1 /f&gt;&gt;C:\Windows\Setup\Scripts\winrm-https.ps1</Path>
+              </RunSynchronousCommand>
+              <RunSynchronousCommand wcm:action="add"
+                                     xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State">
+                <Order>5</Order>
+                <Description>winrm-https.ps1: enable PS remoting</Description>
+                <Path>cmd /c echo Enable-PSRemoting -Force -SkipNetworkProfileCheck&gt;&gt;C:\Windows\Setup\Scripts\winrm-https.ps1</Path>
+              </RunSynchronousCommand>
+              <RunSynchronousCommand wcm:action="add"
+                                     xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State">
+                <Order>6</Order>
+                <Description>winrm-https.ps1: drop the stale HTTPS listener from the image</Description>
+                <Path>cmd /c echo foreach ($l in Get-ChildItem 'WSMan:\localhost\Listener') { if ($l.Keys -match 'HTTPS') { Remove-Item -Path $l.PSPath -Recurse -Force -ErrorAction SilentlyContinue } }&gt;&gt;C:\Windows\Setup\Scripts\winrm-https.ps1</Path>
+              </RunSynchronousCommand>
+              <RunSynchronousCommand wcm:action="add"
+                                     xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State">
+                <Order>7</Order>
+                <Description>winrm-https.ps1: mint a certificate for THIS machine name</Description>
+                <Path>cmd /c echo $c = New-SelfSignedCertificate -DnsName $env:COMPUTERNAME -CertStoreLocation Cert:\LocalMachine\My&gt;&gt;C:\Windows\Setup\Scripts\winrm-https.ps1</Path>
+              </RunSynchronousCommand>
+              <RunSynchronousCommand wcm:action="add"
+                                     xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State">
+                <Order>8</Order>
+                <Description>winrm-https.ps1: bind the HTTPS listener to it</Description>
+                <Path>cmd /c echo New-Item -Path 'WSMan:\localhost\Listener' -Transport HTTPS -Address * -CertificateThumbPrint $c.Thumbprint -Force&gt;&gt;C:\Windows\Setup\Scripts\winrm-https.ps1</Path>
+              </RunSynchronousCommand>
+              <RunSynchronousCommand wcm:action="add"
+                                     xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State">
+                <Order>9</Order>
+                <Description>winrm-https.ps1: open 5986 through the CIS-enabled firewall</Description>
+                <Path>cmd /c echo [void](New-NetFirewallRule -DisplayName 'WinRM HTTPS' -Direction Inbound -LocalPort 5986 -Protocol TCP -Action Allow -ErrorAction SilentlyContinue)&gt;&gt;C:\Windows\Setup\Scripts\winrm-https.ps1</Path>
+              </RunSynchronousCommand>
+              <RunSynchronousCommand wcm:action="add"
+                                     xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State">
+                <Order>10</Order>
+                <Description>winrm-https.ps1: restart WinRM and close the transcript</Description>
+                <Path>cmd /c echo Restart-Service WinRM&gt;&gt;C:\Windows\Setup\Scripts\winrm-https.ps1</Path>
+              </RunSynchronousCommand>
+              <RunSynchronousCommand wcm:action="add"
+                                     xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State">
+                <Order>11</Order>
+                <Description>winrm-https.ps1: stop the transcript</Description>
+                <Path>cmd /c echo Stop-Transcript&gt;&gt;C:\Windows\Setup\Scripts\winrm-https.ps1</Path>
+              </RunSynchronousCommand>
+              <RunSynchronousCommand wcm:action="add"
+                                     xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State">
+                <Order>12</Order>
+                <Description>SetupComplete.cmd: run it at the end of Setup, as SYSTEM, before any logon</Description>
+                <Path>cmd /c echo powershell -NoProfile -ExecutionPolicy Bypass -File C:\Windows\Setup\Scripts\winrm-https.ps1&gt;&gt;C:\Windows\Setup\Scripts\SetupComplete.cmd</Path>
+              </RunSynchronousCommand>
+            </RunSynchronous>
+          </component>
         </settings>
 
         <settings pass="oobeSystem">
@@ -298,6 +413,18 @@ resource "kubernetes_secret" "windows_sysprep" {
               </Password>
             </AutoLogon>
 
+            <!-- KEPT DELIBERATELY, AND NO LONGER LOAD-BEARING (#377).
+
+                 On an UNHARDENED image AutoLogon works and these still run, so
+                 removing them would drop a working path before the replacement
+                 above is proven - the additive-only rule. On a CIS L1 image
+                 they never run at all; see the specialize block for why.
+
+                 Running both is harmless: the specialize path removes the stale
+                 HTTPS listener and rebinds, and if these ever do fire afterwards
+                 they simply mint another certificate and rebind again. Delete
+                 them only once the specialize path has proven itself on both
+                 hardened and unhardened media. -->
             <FirstLogonCommands>
               <SynchronousCommand wcm:action="add"
                                   xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State">
