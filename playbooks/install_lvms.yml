@@ -1,0 +1,199 @@
+---
+# ===========================================================================
+# install_lvms.yml — install LVMS (LVM Storage) on the cluster.
+#
+# Installs the lvms-operator and creates an LVMCluster CR that auto-discovers
+# available block devices. The resulting StorageClass is set as the cluster
+# default.
+#
+# Prerequisites:
+#   - The node must have unallocated disk space or additional devices.
+#     On a SNO built from the installer kit, the install-config.yaml limits
+#     the root partition to ~200 GB so the remaining space is available.
+#   - A cluster where the root partition consumed the entire disk (e.g. a
+#     default ABI install) has nothing for LVMS to use.
+#
+#   ansible-playbook playbooks/install_lvms.yml -i inventory --limit edge \
+#     --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
+#
+# Creates no AAP token, so there is nothing to clean up in an `always:` block.
+# ===========================================================================
+
+- name: Install LVM Storage
+  hosts: aap
+  gather_facts: false
+
+  environment:
+    K8S_AUTH_HOST: "{{ openshift_api_url }}"
+    K8S_AUTH_API_KEY: "{{ openshift_api_token }}"
+    K8S_AUTH_VERIFY_SSL: "{{ openshift_validate_certs | default(false) | bool }}"
+
+  vars:
+    lvms_namespace: "openshift-storage"
+    lvms_channel: "stable-4.22"
+    lvms_package: "lvms-operator"
+    lvms_catalog_source: "redhat-operators"
+    lvms_catalog_source_namespace: "openshift-marketplace"
+    lvms_storage_class_name: "lvms-vg1"
+    lvms_vg_name: "vg1"
+    lvms_wait_retries: 60
+    lvms_wait_delay: 20
+    # Thin provisioning uses a fraction of the VG; LVMS manages overcommit.
+    lvms_thin_pool_name: "thin-pool-1"
+    lvms_thin_pool_overprovision_ratio: 10
+
+  tasks:
+    - name: Assert the environment is unambiguous
+      ansible.builtin.include_tasks: tasks/assert_target_environment.yml
+
+    - name: Assert the required connection variables are set
+      ansible.builtin.assert:
+        that:
+          - openshift_api_url is defined
+          - openshift_api_url | length > 0
+          - openshift_api_token is defined
+          - openshift_api_token | length > 0
+        fail_msg: >-
+          openshift_api_url and openshift_api_token are required.
+        quiet: true
+
+    - name: Confirm the cluster is reachable
+      kubernetes.core.k8s_info:
+        api_version: config.openshift.io/v1
+        kind: ClusterVersion
+        name: version
+      register: lvms_clusterversion
+
+    - name: Show the cluster version
+      ansible.builtin.debug:
+        msg: >-
+          OpenShift {{ lvms_clusterversion.resources[0].status.desired.version }}
+          — installing {{ lvms_package }} from channel {{ lvms_channel }}.
+
+    - name: Create the openshift-storage namespace
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: v1
+          kind: Namespace
+          metadata:
+            name: "{{ lvms_namespace }}"
+            labels:
+              openshift.io/cluster-monitoring: "true"
+
+    - name: Create the OperatorGroup
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: operators.coreos.com/v1
+          kind: OperatorGroup
+          metadata:
+            name: lvms-operator
+            namespace: "{{ lvms_namespace }}"
+          spec:
+            targetNamespaces:
+              - "{{ lvms_namespace }}"
+
+    - name: Subscribe to the LVMS operator
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: operators.coreos.com/v1alpha1
+          kind: Subscription
+          metadata:
+            name: lvms-operator
+            namespace: "{{ lvms_namespace }}"
+          spec:
+            name: "{{ lvms_package }}"
+            channel: "{{ lvms_channel }}"
+            source: "{{ lvms_catalog_source }}"
+            sourceNamespace: "{{ lvms_catalog_source_namespace }}"
+            installPlanApproval: Automatic
+
+    - name: Wait for the operator ClusterServiceVersion to succeed
+      kubernetes.core.k8s_info:
+        api_version: operators.coreos.com/v1alpha1
+        kind: ClusterServiceVersion
+        namespace: "{{ lvms_namespace }}"
+      register: lvms_csv
+      retries: "{{ lvms_wait_retries }}"
+      delay: "{{ lvms_wait_delay }}"
+      until:
+        - lvms_csv.resources | default([]) | selectattr('metadata.name', 'search', '^lvms-operator')
+          | selectattr('status.phase', 'defined')
+          | selectattr('status.phase', 'equalto', 'Succeeded') | list | length > 0
+
+    - name: Report the installed operator version
+      ansible.builtin.debug:
+        msg: >-
+          {{
+            lvms_csv.resources
+            | selectattr('metadata.name', 'search', '^lvms-operator')
+            | map(attribute='metadata.name') | first
+          }} is Succeeded.
+
+    - name: Wait for the LVMCluster CRD to be established
+      kubernetes.core.k8s_info:
+        api_version: apiextensions.k8s.io/v1
+        kind: CustomResourceDefinition
+        name: lvmclusters.lvm.topolvm.io
+      register: lvms_crd
+      retries: "{{ lvms_wait_retries }}"
+      delay: "{{ lvms_wait_delay }}"
+      until: lvms_crd.resources | default([]) | length > 0
+
+    - name: Create the LVMCluster
+      kubernetes.core.k8s:
+        state: present
+        apply: true
+        definition:
+          apiVersion: lvm.topolvm.io/v1alpha1
+          kind: LVMCluster
+          metadata:
+            name: lvms-cluster
+            namespace: "{{ lvms_namespace }}"
+          spec:
+            storage:
+              deviceClasses:
+                - name: "{{ lvms_vg_name }}"
+                  default: true
+                  thinPoolConfig:
+                    name: "{{ lvms_thin_pool_name }}"
+                    overprovisionRatio: "{{ lvms_thin_pool_overprovision_ratio }}"
+                    sizePercent: 90
+                  nodeSelector:
+                    nodeSelectorTerms:
+                      - matchExpressions:
+                          - key: node-role.kubernetes.io/worker
+                            operator: Exists
+
+    - name: Wait for the LVMCluster to be Ready
+      kubernetes.core.k8s_info:
+        api_version: lvm.topolvm.io/v1alpha1
+        kind: LVMCluster
+        name: lvms-cluster
+        namespace: "{{ lvms_namespace }}"
+      register: lvms_cluster
+      retries: "{{ lvms_wait_retries }}"
+      delay: "{{ lvms_wait_delay }}"
+      until:
+        - lvms_cluster.resources | default([]) | length > 0
+        - lvms_cluster.resources[0].status.state | default('') == 'Ready'
+
+    - name: Verify the StorageClass was created
+      kubernetes.core.k8s_info:
+        api_version: storage.k8s.io/v1
+        kind: StorageClass
+        name: "{{ lvms_storage_class_name }}"
+      register: lvms_sc
+      failed_when: lvms_sc.resources | default([]) | length == 0
+
+    - name: Summarize what is now on the cluster
+      ansible.builtin.debug:
+        msg:
+          - "LVM Storage is installed and Ready."
+          - "Namespace:       {{ lvms_namespace }}"
+          - "Channel:         {{ lvms_channel }}"
+          - "VolumeGroup:     {{ lvms_vg_name }}"
+          - "StorageClass:    {{ lvms_storage_class_name }} (default)"
+          - "Thin pool:       {{ lvms_thin_pool_name }} (90% of VG, {{ lvms_thin_pool_overprovision_ratio }}x overcommit)"

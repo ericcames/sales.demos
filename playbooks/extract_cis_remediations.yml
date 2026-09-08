@@ -1,0 +1,204 @@
+---
+# ===========================================================================
+# extract_cis_remediations.yml — run a CIS L1 scan and extract MachineConfigs.
+#
+# Applies a ScanSettingBinding for ocp4-cis-node, waits for the scan to
+# complete, and writes each ComplianceRemediation that produces a MachineConfig
+# to a local YAML file.
+#
+# The output is a set of static MachineConfig manifests that can be applied
+# as Day 0 extra manifests in an ABI ISO (image.builder.pipeline Phase 5).
+#
+# Prerequisites:
+#   - Compliance Operator installed (install_compliance.yml)
+#   - Cluster has a StorageClass (the scan result server needs PVCs)
+#
+#   ansible-playbook playbooks/extract_cis_remediations.yml \
+#     -i inventory --limit sandbox \
+#     --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
+#
+# Override the output directory:
+#   -e cis_output_dir=/path/to/output
+#
+# Creates no AAP token, so there is nothing to clean up in an `always:` block.
+# ===========================================================================
+
+- name: Extract CIS L1 MachineConfig remediations
+  hosts: aap
+  gather_facts: false
+
+  environment:
+    K8S_AUTH_HOST: "{{ openshift_api_url }}"
+    K8S_AUTH_API_KEY: "{{ openshift_api_token }}"
+    K8S_AUTH_VERIFY_SSL: "{{ openshift_validate_certs | default(false) | bool }}"
+
+  vars:
+    compliance_namespace: "openshift-compliance"
+    cis_profile: "ocp4-cis-node"
+    cis_binding_name: "cis-node-l1"
+    cis_scan_setting: "default"
+    cis_output_dir: "{{ playbook_dir }}/files/cis-l1-extracted"
+    # The scan can take 10-20 minutes on a loaded cluster.
+    cis_scan_retries: 90
+    cis_scan_delay: 20
+
+  tasks:
+    - name: Assert the environment is unambiguous
+      ansible.builtin.include_tasks: tasks/assert_target_environment.yml
+
+    - name: Assert the required connection variables are set
+      ansible.builtin.assert:
+        that:
+          - openshift_api_url is defined
+          - openshift_api_url | length > 0
+          - openshift_api_token is defined
+          - openshift_api_token | length > 0
+        fail_msg: >-
+          openshift_api_url and openshift_api_token are required.
+        quiet: true
+
+    - name: Confirm the Compliance Operator is installed
+      kubernetes.core.k8s_info:
+        api_version: operators.coreos.com/v1alpha1
+        kind: ClusterServiceVersion
+        namespace: "{{ compliance_namespace }}"
+      register: cis_csv
+      failed_when: >-
+        cis_csv.resources | default([])
+        | selectattr('metadata.name', 'search', '^compliance-operator')
+        | selectattr('status.phase', 'equalto', 'Succeeded')
+        | list | length == 0
+
+    - name: Confirm the ocp4-cis-node Profile exists
+      kubernetes.core.k8s_info:
+        api_version: compliance.openshift.io/v1alpha1
+        kind: Profile
+        namespace: "{{ compliance_namespace }}"
+        name: "{{ cis_profile }}"
+      register: cis_profile_check
+      failed_when: cis_profile_check.resources | default([]) | length == 0
+
+    - name: Apply the ScanSettingBinding
+      kubernetes.core.k8s:
+        state: present
+        apply: true
+        definition:
+          apiVersion: compliance.openshift.io/v1alpha1
+          kind: ScanSettingBinding
+          metadata:
+            name: "{{ cis_binding_name }}"
+            namespace: "{{ compliance_namespace }}"
+          profiles:
+            - name: "{{ cis_profile }}"
+              kind: Profile
+              apiGroup: compliance.openshift.io/v1alpha1
+          settingsRef:
+            name: "{{ cis_scan_setting }}"
+            kind: ScanSetting
+            apiGroup: compliance.openshift.io/v1alpha1
+
+    - name: Wait for the ScanSettingBinding to be READY
+      kubernetes.core.k8s_info:
+        api_version: compliance.openshift.io/v1alpha1
+        kind: ScanSettingBinding
+        name: "{{ cis_binding_name }}"
+        namespace: "{{ compliance_namespace }}"
+      register: cis_binding
+      retries: 30
+      delay: 10
+      until:
+        - cis_binding.resources | default([]) | length > 0
+        - cis_binding.resources[0].status.phase | default('') == 'READY'
+
+    - name: Wait for the ComplianceSuite to finish
+      kubernetes.core.k8s_info:
+        api_version: compliance.openshift.io/v1alpha1
+        kind: ComplianceSuite
+        name: "{{ cis_binding_name }}"
+        namespace: "{{ compliance_namespace }}"
+      register: cis_suite
+      retries: "{{ cis_scan_retries }}"
+      delay: "{{ cis_scan_delay }}"
+      until:
+        - cis_suite.resources | default([]) | length > 0
+        - cis_suite.resources[0].status.phase | default('') == 'DONE'
+
+    - name: Report the suite result
+      ansible.builtin.debug:
+        msg: >-
+          ComplianceSuite {{ cis_binding_name }}:
+          phase={{ cis_suite.resources[0].status.phase }},
+          result={{ cis_suite.resources[0].status.result }}.
+
+    - name: Collect all ComplianceRemediation objects for this suite
+      kubernetes.core.k8s_info:
+        api_version: compliance.openshift.io/v1alpha1
+        kind: ComplianceRemediation
+        namespace: "{{ compliance_namespace }}"
+        label_selectors:
+          - "compliance.openshift.io/suite={{ cis_binding_name }}"
+      register: cis_remediations
+
+    - name: Filter remediations that produce MachineConfigs
+      ansible.builtin.set_fact:
+        cis_mc_remediations: >-
+          {{
+            cis_remediations.resources | default([])
+            | selectattr('spec.current.object.kind', 'defined')
+            | selectattr('spec.current.object.kind', 'equalto', 'MachineConfig')
+            | list
+          }}
+
+    - name: Report remediation counts
+      ansible.builtin.debug:
+        msg:
+          - "Total ComplianceRemediations: {{ cis_remediations.resources | default([]) | length }}"
+          - "MachineConfig remediations:   {{ cis_mc_remediations | length }}"
+
+    - name: Create the output directory
+      ansible.builtin.file:
+        path: "{{ cis_output_dir }}"
+        state: directory
+        mode: "0755"
+
+    - name: Write each MachineConfig remediation to a file
+      ansible.builtin.copy:
+        content: |
+          ---
+          # Extracted from ComplianceRemediation {{ item.metadata.name }}
+          # Profile: {{ cis_profile }}, Suite: {{ cis_binding_name }}
+          {{ item.spec.current.object | to_nice_yaml(indent=2) }}
+        dest: "{{ cis_output_dir }}/50-{{ item.metadata.name }}.yaml"
+        mode: "0644"
+      loop: "{{ cis_mc_remediations }}"
+      loop_control:
+        label: "{{ item.metadata.name }}"
+
+    - name: Write a manifest of exempt (non-MachineConfig) remediations
+      ansible.builtin.copy:
+        content: |
+          ---
+          # Remediations from {{ cis_profile }} that are NOT MachineConfigs.
+          # These require Day 1 handling (e.g. the Compliance Operator applying
+          # them, or manual configuration).
+          #
+          # Extracted: {{ ansible_date_time.iso8601 | default('unknown') }}
+          {% for r in cis_remediations.resources | default([])
+             if r.spec.current.object.kind | default('') != 'MachineConfig' %}
+          - name: {{ r.metadata.name }}
+            kind: {{ r.spec.current.object.kind | default('unknown') }}
+            type: {{ r.spec.type | default('unknown') }}
+          {% endfor %}
+        dest: "{{ cis_output_dir }}/non-machineconfig-remediations.yml"
+        mode: "0644"
+      when: >-
+        cis_remediations.resources | default([])
+        | rejectattr('spec.current.object.kind', 'equalto', 'MachineConfig')
+        | list | length > 0
+
+    - name: Summarize
+      ansible.builtin.debug:
+        msg:
+          - "Wrote {{ cis_mc_remediations | length }} MachineConfig manifests to {{ cis_output_dir }}/"
+          - "Copy these to image.builder.pipeline/playbooks/files/sno-manifests/cis-l1/"
+          - "for inclusion in the SNO installer kit."

@@ -8,6 +8,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **`playbooks/install_compliance.yml` (#376).** Installs the Compliance
+  Operator on any environment. Follows the `install_cnv.yml` pattern: own
+  playbook, idempotent, waits for the ProfileBundle to be VALID.
+- **`playbooks/extract_cis_remediations.yml` (#376).** Applies a
+  `ScanSettingBinding` for `ocp4-cis-node`, waits for the scan, and writes
+  each `ComplianceRemediation` that produces a MachineConfig as a static YAML
+  file. Output feeds `image.builder.pipeline` Phase 5.3 (Day 0 CIS L1
+  manifests for the SNO installer kit).
+- **`playbooks/install_lvms.yml` (#376).** Installs the LVMS operator and
+  creates an `LVMCluster` with thin provisioning for clusters that have
+  unallocated disk space (e.g. a SNO built with limited root partitioning).
 - **`edge` environment for on-prem SNO on a NUC (#373).** Third inventory
   environment alongside `sandbox` and `demo`. Bare-metal Single Node OpenShift
   with AAP 2.7, OpenShift Virtualization, and Compliance Operator, produced by
@@ -15,6 +26,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`openshift-edge` MCP server (#373).** Read-write `kubernetes-mcp-server`
   for the edge cluster, matching the pattern of `openshift-sandbox` and
   `openshift-demo`. Kubeconfig at `.kube/edge.kubeconfig` (gitignored).
+- **`edge` stubs in `secrets.yml.example` (#376).** The example file now
+  includes the `edge` environment under `env_secrets`, matching the pattern
+  of `sandbox` and `demo`.
 
 ### Changed -- both environments repointed to a MEASURED CIS L1 image (#358)
 - **`quay_windows_image` -> `win2k22-cis-l1-golden:20260908-1853`** in both

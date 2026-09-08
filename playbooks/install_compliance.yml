@@ -1,0 +1,159 @@
+---
+# ===========================================================================
+# install_compliance.yml — install the Compliance Operator on the cluster.
+#
+# Follows the install_cnv.yml pattern: own playbook, idempotent, no prompts.
+# Every input via extra_vars or from inventory/group_vars.
+#
+#   ansible-playbook playbooks/install_compliance.yml -i inventory --limit sandbox \
+#     --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
+#
+# Installs the operator and waits for it to be ready. Does NOT apply a
+# ScanSettingBinding — that is a separate step (extract_cis_remediations.yml)
+# because the scan profile and output handling vary by use case.
+#
+# Creates no AAP token, so there is nothing to clean up in an `always:` block.
+# ===========================================================================
+
+- name: Install the Compliance Operator
+  hosts: aap
+  gather_facts: false
+
+  environment:
+    K8S_AUTH_HOST: "{{ openshift_api_url }}"
+    K8S_AUTH_API_KEY: "{{ openshift_api_token }}"
+    K8S_AUTH_VERIFY_SSL: "{{ openshift_validate_certs | default(false) | bool }}"
+
+  vars:
+    compliance_namespace: "openshift-compliance"
+    compliance_channel: "stable"
+    compliance_package: "compliance-operator"
+    compliance_catalog_source: "redhat-operators"
+    compliance_catalog_source_namespace: "openshift-marketplace"
+    compliance_wait_retries: 60
+    compliance_wait_delay: 20
+
+  tasks:
+    - name: Assert the environment is unambiguous
+      ansible.builtin.include_tasks: tasks/assert_target_environment.yml
+
+    - name: Assert the required connection variables are set
+      ansible.builtin.assert:
+        that:
+          - openshift_api_url is defined
+          - openshift_api_url | length > 0
+          - openshift_api_token is defined
+          - openshift_api_token | length > 0
+        fail_msg: >-
+          openshift_api_url and openshift_api_token are required. They live in
+          inventory/group_vars/<env>/secrets.yml (gitignored) — copy
+          secrets.yml.example and fill it in, then run with
+          `-i inventory --limit <env>`.
+        quiet: true
+
+    - name: Confirm the cluster is reachable and the token is valid
+      kubernetes.core.k8s_info:
+        api_version: config.openshift.io/v1
+        kind: ClusterVersion
+        name: version
+      register: compliance_clusterversion
+
+    - name: Show the cluster version
+      ansible.builtin.debug:
+        msg: >-
+          OpenShift {{ compliance_clusterversion.resources[0].status.desired.version }}
+          — installing {{ compliance_package }} from channel {{ compliance_channel }}.
+
+    - name: Create the openshift-compliance namespace
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: v1
+          kind: Namespace
+          metadata:
+            name: "{{ compliance_namespace }}"
+            labels:
+              openshift.io/cluster-monitoring: "true"
+
+    - name: Create the OperatorGroup
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: operators.coreos.com/v1
+          kind: OperatorGroup
+          metadata:
+            name: compliance-operator
+            namespace: "{{ compliance_namespace }}"
+          spec:
+            targetNamespaces:
+              - "{{ compliance_namespace }}"
+
+    - name: Subscribe to the Compliance Operator
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: operators.coreos.com/v1alpha1
+          kind: Subscription
+          metadata:
+            name: compliance-operator
+            namespace: "{{ compliance_namespace }}"
+          spec:
+            name: "{{ compliance_package }}"
+            channel: "{{ compliance_channel }}"
+            source: "{{ compliance_catalog_source }}"
+            sourceNamespace: "{{ compliance_catalog_source_namespace }}"
+            installPlanApproval: Automatic
+
+    - name: Wait for the operator ClusterServiceVersion to succeed
+      kubernetes.core.k8s_info:
+        api_version: operators.coreos.com/v1alpha1
+        kind: ClusterServiceVersion
+        namespace: "{{ compliance_namespace }}"
+      register: compliance_csv
+      retries: "{{ compliance_wait_retries }}"
+      delay: "{{ compliance_wait_delay }}"
+      until:
+        - compliance_csv.resources | default([]) | selectattr('metadata.name', 'search', '^compliance-operator')
+          | selectattr('status.phase', 'defined')
+          | selectattr('status.phase', 'equalto', 'Succeeded') | list | length > 0
+
+    - name: Report the installed operator version
+      ansible.builtin.debug:
+        msg: >-
+          {{
+            compliance_csv.resources
+            | selectattr('metadata.name', 'search', '^compliance-operator')
+            | map(attribute='metadata.name') | first
+          }} is Succeeded.
+
+    - name: Wait for the ProfileBundle CRD to be established
+      kubernetes.core.k8s_info:
+        api_version: apiextensions.k8s.io/v1
+        kind: CustomResourceDefinition
+        name: profilebundles.compliance.openshift.io
+      register: compliance_crd
+      retries: "{{ compliance_wait_retries }}"
+      delay: "{{ compliance_wait_delay }}"
+      until: compliance_crd.resources | default([]) | length > 0
+
+    - name: Wait for the ocp4 ProfileBundle to be VALID
+      kubernetes.core.k8s_info:
+        api_version: compliance.openshift.io/v1alpha1
+        kind: ProfileBundle
+        name: ocp4
+        namespace: "{{ compliance_namespace }}"
+      register: compliance_ocp4_bundle
+      retries: "{{ compliance_wait_retries }}"
+      delay: "{{ compliance_wait_delay }}"
+      until:
+        - compliance_ocp4_bundle.resources | default([]) | length > 0
+        - compliance_ocp4_bundle.resources[0].status.dataStreamStatus | default('') == 'VALID'
+
+    - name: Summarize what is now on the cluster
+      ansible.builtin.debug:
+        msg:
+          - "Compliance Operator is installed and ready."
+          - "Namespace:       {{ compliance_namespace }}"
+          - "Channel:         {{ compliance_channel }}"
+          - "ocp4 bundle:     VALID"
+          - "Next: apply a ScanSettingBinding (e.g. extract_cis_remediations.yml)."
