@@ -1,0 +1,145 @@
+---
+# ===========================================================================
+# windows_compliance — verify the CIS L1 hardening on the running guest and
+# publish the report next to the demo page.
+#
+# THE HONEST NAME FOR THIS IS VERIFICATION, NOT A SCAN, and the report says so
+# in its own title. OpenSCAP has no Windows agent, so unlike roles/linux_
+# compliance there is no scanner to install and no data stream to evaluate.
+# What there is instead is a contract with the producer — see
+# defaults/main.yml — and this reads a curated subset of it back off the guest.
+#
+# ALL READS, NOTHING WRITTEN TO THE SYSTEM. Registry gets and one
+# `secedit /export`, which is why this is safe to re-run mid-demo. The only
+# files it writes are its own two artifacts under the IIS docroot.
+#
+# RUNS AFTER roles/windows_configure, not before: it publishes into that role's
+# docroot, and the demo page links to what it publishes. Running it against an
+# unconfigured guest produces a correct report in a directory nothing serves.
+#
+# EXPECTED TO SHOW EXCEPTIONS, NOT FAILURES, and the distinction is the demo.
+# The Linux scan's story is "the golden image starts clean and the workload
+# moved it"; this one's is "the golden image is 444 rule toggles with sixteen
+# deliberate exceptions, and here is who decided each of them and why".
+# ===========================================================================
+
+- name: Collect the configured controls from the guest
+  # ONE ROUND TRIP for all 27 checks. See the script's own header for why that
+  # is the design rather than 27 win_reg_stat tasks.
+  ansible.windows.win_powershell:
+    script: "{{ lookup('ansible.builtin.template', 'collect_compliance.ps1.j2') }}"
+    parameters:
+      # Passed as data, not interpolated into the script text, so a path
+      # containing a space or a backslash cannot become a quoting bug --
+      # 'Session Manager\Kernel' is exactly that path.
+      ChecksJson: "{{ windows_compliance_checks | to_json }}"
+  register: windows_compliance_raw
+  # The script sets $Ansible.Changed itself; this states the same thing at the
+  # task level so a reader of the playbook does not have to open the script to
+  # know the node changes nothing.
+  changed_when: false
+
+- name: Sort the results into compliant, non-compliant and not configured
+  ansible.builtin.set_fact:
+    windows_compliance_results: "{{ windows_compliance_raw.result.checks }}"
+    windows_compliance_pass: >-
+      {{ windows_compliance_raw.result.checks
+         | selectattr('status', 'eq', 'compliant') | list | length }}
+    windows_compliance_fail: >-
+      {{ windows_compliance_raw.result.checks
+         | selectattr('status', 'eq', 'noncompliant') | list | length }}
+    # NOT CONFIGURED IS COUNTED SEPARATELY FROM NON-COMPLIANT. Both are
+    # deviations, but they have different causes -- a wrong value means
+    # something changed it, an absent value means the hardening never applied
+    # -- and collapsing them would hide which.
+    windows_compliance_notconfigured: >-
+      {{ windows_compliance_raw.result.checks
+         | selectattr('status', 'eq', 'notconfigured') | list | length }}
+    windows_compliance_errors: >-
+      {{ windows_compliance_raw.result.checks
+         | selectattr('status', 'eq', 'error') | list | length }}
+
+- name: Score the verified controls
+  # THE DENOMINATOR IS THE CONTROLS THIS ROLE CHECKED, NOT THE BENCHMARK'S 444,
+  # and the report says so beside the number. A percentage over a curated
+  # subset is a useful demo figure and a dishonest audit figure; labeling it
+  # is what keeps it the former.
+  #
+  # Exceptions are in neither half of the fraction. They are documented
+  # decisions, not results.
+  ansible.builtin.set_fact:
+    # The `if` is not defensive noise: windows_compliance_checks is a default,
+    # so a survey or an -e can legitimately narrow it, and narrowing it to
+    # nothing would divide by zero and fail the node instead of reporting an
+    # empty run.
+    windows_compliance_score: >-
+      {{ ((windows_compliance_pass | int) * 100 / (windows_compliance_checks | length))
+         | round(0, 'floor') | int
+         if (windows_compliance_checks | length) > 0 else 0 }}
+
+- name: Create the report directory
+  ansible.windows.win_file:
+    path: "{{ windows_compliance_report_dir }}"
+    state: directory
+
+- name: Publish the compliance report
+  ansible.windows.win_template:
+    src: report.html.j2
+    dest: "{{ windows_compliance_report_dir }}\\report.html"
+
+- name: Publish the compliance summary
+  # THE SAME SHAPE AS roles/linux_compliance/templates/summary.json.j2 plus an
+  # exceptions[] array, so one parser reads both guests' summaries and the two
+  # can be diffed.
+  ansible.windows.win_template:
+    src: summary.json.j2
+    dest: "{{ windows_compliance_report_dir }}\\summary.json"
+
+- name: Report the verification results
+  ansible.builtin.debug:
+    msg:
+      - "{{ windows_compliance_profile }}"
+      - >-
+        Verified {{ windows_compliance_checks | length }} controls:
+        {{ windows_compliance_pass }} compliant /
+        {{ windows_compliance_fail }} non-compliant /
+        {{ windows_compliance_notconfigured }} not configured
+        -- {{ windows_compliance_score }}% of those checked.
+      - >-
+        Plus {{ windows_compliance_exceptions | length }} documented exceptions,
+        which are decisions rather than results and are counted in neither half.
+      - >-
+        {{ 'WARNING: local security policy could not be exported ('
+           ~ windows_compliance_raw.result.secedit_failure
+           ~ '), so the nine policy controls report as not configured.'
+           if windows_compliance_raw.result.secedit_failure
+           else 'Local security policy exported cleanly.' }}
+      - >-
+        {{ 'Full report:  ' ~ web_url ~ '/compliance/report.html'
+           if (web_url | default('', true) | length > 0)
+           else 'Full report:  <web_url>/compliance/report.html' }}
+      - >-
+        {{ 'Summary JSON: ' ~ web_url ~ '/compliance/summary.json'
+           if (web_url | default('', true) | length > 0)
+           else 'Summary JSON: <web_url>/compliance/summary.json' }}
+
+- name: Fail on any non-compliant control
+  # OFF BY DEFAULT, and only ever fires on a control the producer's profile
+  # ENABLES. The sixteen documented exceptions can never trip it -- they are
+  # not in windows_compliance_checks at all.
+  #
+  # Deliberately the LAST task, so the report and summary are already on disk
+  # and being served when the job goes red. A gate that destroys its own
+  # evidence is worse than no gate.
+  ansible.builtin.assert:
+    that:
+      - (windows_compliance_fail | int) == 0
+      - (windows_compliance_notconfigured | int) == 0
+    fail_msg: >-
+      {{ windows_compliance_fail }} non-compliant and
+      {{ windows_compliance_notconfigured }} unconfigured control(s) on
+      {{ inventory_hostname }}. The report at
+      {{ web_url | default('<web_url>', true) }}/compliance/report.html lists
+      which, with the value found and the value expected.
+    quiet: true
+  when: windows_compliance_fail_on_noncompliant | bool

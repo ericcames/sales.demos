@@ -1,0 +1,220 @@
+---
+# ===========================================================================
+# windows_configure — turn a bare Windows guest into the demo web server.
+#
+# THIS IS WHAT MAKES web_url STOP RETURNING 503. terraform/ocpvirt now wires a
+# Service and a Route to port 80 for the Windows VM too (#340 part 1), and
+# until something serves there the Route correctly reports 503. IIS plus the
+# firewall rule below is the other half of that story.
+#
+# PORTED FROM dc1.azure/playbooks/roles/website_setup_azure, NOT from
+# aap.dailydemo.windows/roles/website_setup. The Azure fork defaults every
+# variable its page uses, so it runs standalone; the original needs ten
+# undefined AWS-shaped facts (my_ami_id, my_availability_zone, ...) supplied by
+# an upstream EC2 workflow node that does not exist here.
+#
+# WHAT THE PORT CHANGED, beyond restyling the page to match linux_configure:
+#
+#   * The firewall rule is new. The Azure source had no equivalent because a
+#     cloud NSG did that job outside the guest; here the guest's own CIS-
+#     hardened firewall is what blocks port 80. See defaults/main.yml.
+#   * `win_wait_for` on 5986 is gone. It waited on the port it was already
+#     connected over, from the guest, which cannot fail in a way that matters.
+#     patch_windows_vm.yml's wait_for_connection is the real gate.
+#   * The bundled images are gone — a personal QR code and a PNG logo. The
+#     logos here are the official SVG marks, and there are two of them, not
+#     three: see files/logos/SOURCE.md.
+#   * `ansible_python_interpreter` is gone from vars/. Setting a POSIX
+#     interpreter path on a WinRM host is meaningless at best.
+#
+# REQUIRES A REACHABLE GUEST AND NOTHING ELSE. Unlike the Linux chain there is
+# no registration step to depend on — the golden image ships complete, with
+# every feature source it needs on disk. Node 2 is Patch rather than Register,
+# and this role does not require it to have run.
+# ===========================================================================
+
+- name: Install the IIS web server
+  # Web-Server alone, not the management tools: the demo page is templated in
+  # by Ansible, so nothing needs the IIS console. include_management_tools
+  # defaults to false, which is the behavior wanted here — stated rather than
+  # relied on would be noise, but it is worth knowing it is deliberate.
+  ansible.windows.win_feature:
+    name: Web-Server
+    state: present
+  register: windows_configure_iis
+
+- name: Reboot if installing IIS asked for one
+  # win_feature reports reboot_required rather than acting on it. Unlike
+  # windows_patching_reboot this is NOT optional: an IIS install that wants a
+  # reboot has not finished, and templating a page into a docroot that is not
+  # being served yet is a silent failure.
+  ansible.windows.win_reboot:
+    post_reboot_delay: 30
+  when: windows_configure_iis.reboot_required | default(false)
+
+- name: Open the Windows firewall for HTTP
+  # THE COUNTERPART OF linux_configure'S firewalld TASK. Without it IIS serves
+  # perfectly and the Route still returns 503, because the golden image is CIS
+  # hardened and the guest's NIC sits on the Public profile. defaults/main.yml
+  # carries the full reasoning, including why a local rule is effective here at
+  # all.
+  #
+  # win_powershell rather than community.windows.win_firewall_rule:
+  # community.windows is in neither the EE base nor the published image, and
+  # adding it would force an EE rebuild for one rule (collections/requirements.yml).
+  #
+  # IDEMPOTENT BY CONSTRUCTION, not by hope: it looks the rule up first, sets
+  # $Ansible.Changed itself, and re-enables a rule someone disabled rather than
+  # reporting ok because a rule by that name exists.
+  ansible.windows.win_powershell:
+    parameters:
+      RuleName: "{{ windows_configure_firewall_rule_name }}"
+    script: |
+      param([String]$RuleName)
+      $ErrorActionPreference = 'Stop'
+      $Ansible.Changed = $false
+
+      $rule = Get-NetFirewallRule -DisplayName $RuleName -ErrorAction SilentlyContinue
+      if ($null -eq $rule) {
+          New-NetFirewallRule -DisplayName $RuleName -Direction Inbound `
+              -Action Allow -Protocol TCP -LocalPort 80 `
+              -Profile Any -Enabled True | Out-Null
+          $Ansible.Changed = $true
+          $Ansible.Result = 'created'
+      }
+      elseif ($rule.Enabled -ne 'True') {
+          Enable-NetFirewallRule -DisplayName $RuleName
+          $Ansible.Changed = $true
+          $Ansible.Result = 're-enabled'
+      }
+      else {
+          $Ansible.Result = 'already present and enabled'
+      }
+  when: windows_configure_firewall | bool
+
+- name: Publish the demo page
+  ansible.windows.win_template:
+    src: index.html.j2
+    dest: "{{ windows_configure_docroot }}\\index.html"
+
+- name: Publish the product logos
+  # SERVED FROM THIS HOST, not fetched from redhat.com at render time. The page
+  # is displayed from a cluster whose egress you do not control, in front of a
+  # customer; a hotlinked logo is a blank box waiting to happen. See
+  # files/logos/SOURCE.md for where they came from and why there are two.
+  #
+  # SOURCE.md is deliberately copied to the guest along with them. It is a
+  # trademark attribution for files being served over HTTP, and leaving the
+  # attribution behind on the controller would be the wrong half to keep.
+  ansible.windows.win_copy:
+    src: logos/
+    dest: "{{ windows_configure_docroot }}\\logos\\"
+
+- name: Publish the gathered facts as JSON
+  # ON DISK AND REACHABLE, at <web_url>/facts.json -- the raw data behind the
+  # page, for the part of a demo where someone asks "where is that coming
+  # from?". The Linux role publishes the same file with the same keys, so the
+  # two guests answer the same question in the same shape.
+  #
+  # win_template, NOT win_copy's `content`, and the module says why: "This is
+  # for simple values, for anything complex or with formatting please switch
+  # to win_template". A formatted JSON document is what it means. The Linux
+  # role does build its copy inline, which is fine there -- that is
+  # ansible.builtin.copy, which carries no such caveat.
+  ansible.windows.win_template:
+    src: facts.json.j2
+    dest: "{{ windows_configure_docroot }}\\facts.json"
+
+- name: Show the legal notice before authentication
+  # THE WINDOWS ANALOGUE OF /etc/issue, and the wording is the same wording —
+  # templates/legal_notice.j2 here and linux_configure's templates/issue.j2 are
+  # the same notice with the same owner, differing only in that this one has no
+  # ASCII box, because Windows renders it in a dialog rather than a terminal.
+  #
+  # Neither source repo had a Windows equivalent; this is new.
+  #
+  # TWO VALUES, AND BOTH ARE REQUIRED. Windows shows the dialog only when
+  # legalnoticecaption is non-empty — setting the text alone produces nothing
+  # at all, silently.
+  #
+  # SAFE, UNLIKE THE LINUX HALF. The Linux banner touches sshd, which is how
+  # AAP reaches the guest, so that task validates and reloads carefully. This
+  # one is read by the interactive logon UI only: WinRM never renders it, so
+  # this cannot lock AAP out of the guest.
+  when: windows_configure_legal_notice | bool
+  block:
+    - name: Render the legal notice text
+      ansible.builtin.set_fact:
+        windows_configure_legal_text: "{{ lookup('ansible.builtin.template', 'legal_notice.j2') | trim }}"
+
+    - name: Write the legal notice
+      ansible.windows.win_regedit:
+        path: HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System
+        name: "{{ item.name }}"
+        data: "{{ item.data }}"
+        type: string
+      loop:
+        - name: legalnoticecaption
+          data: "{{ windows_configure_legal_caption }}"
+        - name: legalnoticetext
+          data: "{{ windows_configure_legal_text }}"
+      loop_control:
+        label: "{{ item.name }}"
+
+- name: Create the demo local account
+  # OFF BY DEFAULT. See defaults/main.yml for why this neither joins
+  # Administrators nor relaxes password complexity, both of which the source
+  # role in aap.dailydemo.windows did.
+  when: windows_configure_create_demo_user | bool
+  block:
+    - name: Require a compliant password before creating an account
+      # BEFORE win_user, not after: a password that fails the guest's policy
+      # makes win_user fail with a Windows API error that reads like a
+      # permissions problem. 14 is CIS rule 1.1.4's minimum, which the golden
+      # image enforces.
+      ansible.builtin.assert:
+        that:
+          - windows_configure_demo_user_password | default('', true) | length >= 14
+        fail_msg: >-
+          windows_configure_create_demo_user is true but
+          windows_configure_demo_user_password is unset or shorter than 14
+          characters. The golden image is CIS L1 hardened and rule 1.1.4 sets
+          the minimum password length to 14, so a shorter password is rejected
+          by the guest. Set it from the vault or the job template survey.
+        quiet: true
+
+    - name: Create the account
+      # no_log ON THE TASK THAT CARRIES THE PASSWORD. The source role had this
+      # exactly inverted -- `no_log: true` on the harmless directory loop above
+      # and `no_log: false` on the password-bearing one below it, which printed
+      # every account password into the job output.
+      ansible.windows.win_user:
+        name: "{{ windows_configure_demo_user }}"
+        password: "{{ windows_configure_demo_user_password }}"
+        description: "{{ windows_configure_demo_user_description }}"
+        groups: "{{ windows_configure_demo_user_groups }}"
+        groups_action: replace
+        state: present
+        update_password: on_create
+        password_never_expires: true
+      no_log: true
+
+- name: Report where the demo page is
+  # THE URL IS THE POINT OF THIS ROLE, so it is printed rather than described —
+  # the same call linux_configure makes (#49). web_url arrives as a host
+  # variable from playbooks/tasks/register_hosts.yml.
+  ansible.builtin.debug:
+    msg:
+      - "{{ inventory_hostname }} is serving on port 80 via IIS."
+      - >-
+        {{ 'Firewall:  inbound TCP 80 allowed (' ~ windows_configure_firewall_rule_name ~ ').'
+           if (windows_configure_firewall | bool)
+           else 'Firewall:  NOT touched -- windows_configure_firewall is false. The Route stays 503 if the Public profile blocks 80.' }}
+      - >-
+        {{ 'Open it:   ' ~ windows_configure_web_url
+           if (windows_configure_web_url | length > 0)
+           else 'Open it:   run `terraform output -raw web_url`; re-provision to have it printed here.' }}
+      - >-
+        {{ 'Compliance: ' ~ windows_configure_compliance_url ~ ' (published by the next node, Windows Day 1 - 4 Compliance Scan).'
+           if (windows_configure_compliance_url | length > 0)
+           else 'Compliance: <web_url>/compliance/report.html once the compliance node has run.' }}

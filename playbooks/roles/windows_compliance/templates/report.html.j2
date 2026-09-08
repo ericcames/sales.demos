@@ -1,0 +1,194 @@
+{# ==========================================================================
+   The CIS L1 verification report.
+
+   Styled to match roles/windows_configure/templates/index.html.j2 and its
+   Linux twin, because the demo page links straight here and a jarring change
+   of visual language reads as "this came from somewhere else".
+
+   IT SAYS "VERIFICATION" IN ITS OWN TITLE, everywhere, on purpose. The job
+   template is named "Compliance Scan" to sit alongside its Linux sibling, but
+   nothing produced this report scanned anything: OpenSCAP has no Windows
+   agent. Someone who opens this artifact should not have to be told that.
+
+   Self-contained: no CDN, no webfonts, no images. Same reasoning as the demo
+   page -- it is served from a cluster whose egress you do not control.
+   ========================================================================== #}
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ inventory_hostname_short }} — CIS L1 verification</title>
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 2.5rem 1.5rem;
+    font: 16px/1.6 "Red Hat Text", system-ui, -apple-system, sans-serif;
+    background: #f4f4f4; color: #151515;
+    display: flex; justify-content: center;
+  }
+  @media (prefers-color-scheme: dark) {
+    body { background: #151515; color: #e0e0e0; }
+    .card { background: #1f1f1f !important; border-color: #3d3d3d !important; }
+    td, th { border-color: #3d3d3d !important; }
+    .k, .muted { color: #a0a0a0 !important; }
+    h1, h2 { color: #e0e0e0 !important; }
+  }
+  .wrap { width: 100%; max-width: 60rem; }
+  h1 { margin: 0 0 1rem; font-size: 1.5rem; line-height: 1.35; font-weight: 700; color: #151515; }
+  h2 { font-size: 1.1rem; margin: 2rem 0 .75rem; color: #151515; }
+  .bar { height: 4px; background: #ee0000; border-radius: 2px; margin-bottom: 1.5rem; }
+  .host { margin: 0 0 1.25rem; font-size: 1.05rem; font-weight: 600; }
+  .card {
+    background: #fff; border: 1px solid #d2d2d2; border-radius: .4rem;
+    padding: 1.25rem 1.5rem; margin-bottom: 1rem;
+  }
+  table { width: 100%; border-collapse: collapse; }
+  th { text-align: left; font-weight: 600; color: #6a6e73; font-size: .8rem;
+       text-transform: uppercase; letter-spacing: .04em; padding: .4rem 0; }
+  td, th { padding: .5rem .6rem .5rem 0; border-bottom: 1px solid #ebebeb; vertical-align: top; }
+  tr:last-child td { border-bottom: 0; }
+  .k { width: 12rem; color: #6a6e73; }
+  .v, .mono { font-family: "Red Hat Mono", ui-monospace, SFMono-Regular, monospace; word-break: break-all; }
+  .muted { color: #6a6e73; }
+
+  /* Score band. Deliberately not a single red/green verdict: this is a
+     curated subset, and a big green tick would be claiming more than it can. */
+  .score {
+    background: #151515; color: #fff; border-radius: .4rem;
+    padding: 1.5rem; margin-bottom: 1rem; display: flex; flex-wrap: wrap;
+    gap: 2.5rem; align-items: baseline; justify-content: center;
+  }
+  .score .n { font-size: 2rem; font-weight: 700; line-height: 1; }
+  .score .l { font-size: .8rem; text-transform: uppercase; letter-spacing: .04em; color: #b8bbbe; }
+  .score div { text-align: center; }
+
+  .pill {
+    display: inline-block; padding: .1rem .55rem; border-radius: 1rem;
+    font-size: .75rem; font-weight: 600; white-space: nowrap;
+  }
+  .ok   { background: #e7f5e7; color: #1e4f18; }
+  .bad  { background: #fce6e6; color: #7d1007; }
+  .warn { background: #fdf7e7; color: #3d2c00; }
+  .info { background: #e7f1fa; color: #002952; }
+  @media (prefers-color-scheme: dark) {
+    .ok   { background: #1b3318; color: #7ed07e; }
+    .bad  { background: #3d1010; color: #f0a8a2; }
+    .warn { background: #332a10; color: #f0ab00; }
+    .info { background: #10243d; color: #92c5f9; }
+  }
+  .notice {
+    border-left: 4px solid #f0ab00; background: #fdf7e7; color: #3d2c00;
+    padding: .9rem 1.1rem; border-radius: .25rem; margin: 1rem 0;
+  }
+  @media (prefers-color-scheme: dark) { .notice { background: #232323; color: #f0ab00; } }
+  .notice strong { display: block; margin-bottom: .15rem; }
+  footer { color: #6a6e73; font-size: .85rem; text-align: center; margin-top: 1.5rem; }
+  footer a { color: #06c; text-decoration: none; }
+  footer a:hover { text-decoration: underline; }
+  @media (prefers-color-scheme: dark) { footer a { color: #73bcf7; } }
+  .scroll { overflow-x: auto; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>CIS Level 1 verification report</h1>
+  <div class="bar"></div>
+  <p class="host">{{ inventory_hostname_short }}</p>
+
+  <div class="score">
+    <div><div class="n">{{ windows_compliance_score | int }}%</div><div class="l">of checked controls</div></div>
+    <div><div class="n">{{ windows_compliance_pass | int }}</div><div class="l">compliant</div></div>
+    <div><div class="n">{{ windows_compliance_fail | int }}</div><div class="l">non-compliant</div></div>
+    <div><div class="n">{{ windows_compliance_notconfigured | int }}</div><div class="l">not configured</div></div>
+    <div><div class="n">{{ windows_compliance_exceptions | length }}</div><div class="l">documented exceptions</div></div>
+  </div>
+
+  <div class="card">
+    <table>
+      <tr><td class="k">Profile</td><td class="v">{{ windows_compliance_profile }}</td></tr>
+      <tr><td class="k">Method</td><td class="v">Configuration verification — read back off the running guest</td></tr>
+      <tr><td class="k">Controls checked</td><td class="v">{{ windows_compliance_checks | length }}</td></tr>
+      <tr><td class="k">Verified</td><td class="v">{{ ansible_date_time.iso8601 }}</td></tr>
+      <tr><td class="k">Profile source</td><td class="v">{{ windows_compliance_profile_source }}</td></tr>
+{% if golden_image_source | default('', true) | length > 0 %}
+      <tr><td class="k">Golden image</td><td class="v">{{ golden_image_source }}</td></tr>
+{% endif %}
+      <tr><td class="k">Machine-readable</td><td class="v"><a href="summary.json">summary.json</a></td></tr>
+    </table>
+  </div>
+
+  <div class="notice">
+    <strong>Read the percentage carefully.</strong>
+    It is {{ windows_compliance_pass | int }} of the
+    {{ windows_compliance_checks | length }} controls this report checks — not of
+    the {{ windows_compliance_profile }}'s full rule set, which the image applies
+    through 444 rule toggles in the ansible-lockdown Windows-2022-CIS role.
+    This is a demo artifact showing that the hardening took and is still in
+    place. It is not an audit, and no OpenSCAP scanner was involved: none exists
+    for Windows.
+  </div>
+
+{% if windows_compliance_raw.result.secedit_failure %}
+  <div class="notice">
+    <strong>Local security policy could not be exported.</strong>
+    <span class="mono">{{ windows_compliance_raw.result.secedit_failure }}</span>
+    — the password and lockout controls below are reported as not configured
+    because they could not be read, which is not the same as their being unset.
+  </div>
+{% endif %}
+
+  <h2>Controls verified</h2>
+  <div class="card scroll">
+    <table>
+      <tr><th>Rule</th><th>Control</th><th>Expected</th><th>Found</th><th>Status</th></tr>
+{% for c in windows_compliance_results %}
+      <tr>
+        <td class="mono">{{ c.rule }}</td>
+        <td>{{ c.title }}<br><span class="muted mono">{{ c.name }}{% if c.path %} in {{ c.path }}{% endif %}</span>
+{%- if c.note %}<br><span class="muted">{{ c.note }}</span>{% endif %}</td>
+        <td class="mono">{{ c.op }} {{ c.expected }}</td>
+        <td class="mono">{{ c.actual if c.actual is not none else '(not set)' }}</td>
+        <td>
+{%- if c.status == 'compliant' %}<span class="pill ok">compliant</span>
+{%- elif c.status == 'noncompliant' %}<span class="pill bad">non-compliant</span>
+{%- elif c.status == 'notconfigured' %}<span class="pill warn">not configured</span>
+{%- else %}<span class="pill info">{{ c.status }}</span>{% endif %}
+        </td>
+      </tr>
+{% endfor %}
+    </table>
+  </div>
+
+  <h2>Documented exceptions</h2>
+  <p class="muted">
+    Controls the benchmark defines that this image deliberately does not apply.
+    They are decisions, not results, so they are counted in neither the
+    compliant nor the non-compliant column above. Each names who made the
+    decision and why — the point being that an exception nobody can account for
+    is the only kind that should worry you.
+  </p>
+  <div class="card scroll">
+    <table>
+      <tr><th>Rule</th><th>Control</th><th>Decided by</th><th>Reason</th></tr>
+{% for e in windows_compliance_exceptions %}
+      <tr>
+        <td class="mono">{{ e.rule }}</td>
+        <td>{{ e.title }}</td>
+        <td class="mono muted">{{ e.source }}</td>
+        <td>{{ e.reason }}</td>
+      </tr>
+{% endfor %}
+    </table>
+  </div>
+
+  <footer>
+    Verified by Red Hat Ansible Automation Platform against the profile applied by
+    <a href="{{ windows_compliance_pipeline_url }}">{{ windows_compliance_pipeline_url | replace('https://', '') }}</a><br>
+    <a href="../index.html">Back to the demo page</a>
+  </footer>
+</div>
+</body>
+</html>

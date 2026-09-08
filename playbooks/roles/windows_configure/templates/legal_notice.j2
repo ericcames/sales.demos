@@ -1,0 +1,28 @@
+{#
+  Pre-authentication notice, written to the two `legalnotice*` values under
+  HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System. The
+  interactive logon UI shows it as a dialog the user must dismiss BEFORE the
+  credential prompt — the Windows equivalent of /etc/issue.
+
+  THE SAME WORDING AS roles/linux_configure/templates/issue.j2, deliberately.
+  One demo estate, one notice; a customer shown both guests should not be shown
+  two different legal positions. The only difference is that the ASCII box is
+  gone: this is rendered in a proportional-font dialog, where a box drawn with
+  # characters would be ragged nonsense.
+
+  DELIBERATELY NOT BRANDED. It is shown before anyone has proved who they are,
+  so it carries no product story and no demo URL. The demo page is what the
+  branding is for.
+
+  BOILERPLATE, NOT LEGAL ADVICE. Override windows_configure_banner_owner, or
+  replace this template, if your organization has approved text of its own.
+-#}
+This system is the property of {{ windows_configure_banner_owner }} and is provided for demonstration and evaluation purposes. Access is permitted only to authorized users, for authorized purposes.
+
+By continuing past this notice you acknowledge that:
+
+  * Your use of this system may be monitored, recorded and audited.
+  * You have no expectation of privacy in your use of this system.
+  * Unauthorized access or use may result in disciplinary action and civil or criminal penalties under applicable law.
+
+If you are not an authorized user, disconnect now.

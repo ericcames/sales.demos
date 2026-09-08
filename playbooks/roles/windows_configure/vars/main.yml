@@ -1,0 +1,59 @@
+---
+# ===========================================================================
+# vars/main.yml — values derived from gathered facts, defined ONCE.
+#
+# The same shape and the same reason as roles/linux_configure/vars/main.yml:
+# the demo page and facts.json both report these, and two copies of the
+# derivation is exactly how the Linux pair drifted on a live VM (#160). This is
+# the one definition both consumers read.
+#
+# vars/ rather than defaults/ on purpose: derived, not configuration. Nothing
+# should override it, and defaults/ invites exactly that. Lazily evaluated, so
+# referencing gathered facts here is safe — they resolve when a task uses the
+# value, long after fact gathering.
+# ===========================================================================
+
+# THE SAME NORMALISATION AS THE LINUX ROLE, AND FOR THE SAME MEASURED REASON.
+# ansible.windows' setup module ends its virtualization detection with a
+# literal fallback of 'NA' for both facts (setup.ps1, the `virtual` subset) —
+# byte for byte what the RHEL facts do — so `| default()` does not fire here
+# either, because "NA" is defined.
+#
+# A KubeVirt guest reaches that fallback. image.builder.pipeline records the
+# measurement in playbooks/vars/cis_profile.yml: "KubeVirt reports
+# ansible_virtualization_type 'NA' and ansible_system_vendor 'Red Hat'", which
+# is load-bearing enough there that a whole CIS variable is set because of it.
+# The upstream detection has a `KubVirt` typo in its manufacturer map, so a
+# guest identifying itself correctly would miss anyway.
+#
+# Landing on 'KVM (guest)' is the true answer and the same one the Linux page
+# gives, because it is the same hypervisor underneath.
+windows_configure_virt_type: >-
+  {{ (ansible_virtualization_type | default('') | trim)
+     if (ansible_virtualization_type | default('NA')) not in ['NA', '']
+     else 'KVM' }}
+
+windows_configure_virt_role: >-
+  {{ (ansible_virtualization_role | default('') | trim)
+     if (ansible_virtualization_role | default('NA')) not in ['NA', '']
+     else 'guest' }}
+
+# --- Golden image: derived from the source tag ------------------------------
+# Tag format contract from image.builder.pipeline: YYYYMMDD-HHMM (immutable).
+# Tags are never overwritten there, so a build date derived from the tag cannot
+# describe a different image than the one running.
+windows_configure_golden_image_repo: >-
+  {{ windows_configure_golden_image_source | regex_replace(':[^:]+$', '')
+     if windows_configure_golden_image_source | length > 0 else '' }}
+
+windows_configure_golden_image_tag: >-
+  {{ windows_configure_golden_image_source | regex_replace('^.*:', '')
+     if windows_configure_golden_image_source | length > 0 else '' }}
+
+windows_configure_golden_image_build_date: >-
+  {{ (windows_configure_golden_image_tag[:4] ~ '-'
+      ~ windows_configure_golden_image_tag[4:6] ~ '-'
+      ~ windows_configure_golden_image_tag[6:8] ~ ' '
+      ~ windows_configure_golden_image_tag[9:11] ~ ':'
+      ~ windows_configure_golden_image_tag[11:13] ~ ' UTC')
+     if windows_configure_golden_image_tag | length >= 13 else windows_configure_golden_image_tag }}

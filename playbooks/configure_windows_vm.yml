@@ -1,0 +1,45 @@
+---
+# ===========================================================================
+# configure_windows_vm.yml — install IIS and publish the demo page. Node 3 of
+# `Windows Day 1 - 0 Workflow`. Issue #340.
+#
+# THE MIRROR OF configure_linux_vm.yml, with one real difference: it does not
+# depend on the node before it. The Linux configure step cannot run until
+# registration succeeds, because every dnf task fails on an unregistered rhel9
+# image with no repositories. The Windows golden image ships complete and
+# carries its own feature source, so IIS installs whether or not patching ran.
+#
+# The chain still runs Patch first, and that ordering is deliberate rather than
+# required: it puts any reboot before IIS is serving rather than after.
+#
+# No wait_for_connection here: by the time this runs, patch_windows_vm.yml has
+# already proved the guest is reachable.
+#
+# THIS IS WHAT TURNS web_url FROM 503 INTO A PAGE. terraform/ocpvirt wires a
+# Service and a Route to port 80 for the Windows VM (#340 part 1), and until
+# something serves there the Route correctly returns 503.
+# ===========================================================================
+
+- name: Configure the Windows demo web server
+  hosts: "{{ demo_group | default('windemo') }}"
+  gather_facts: true
+
+  tasks:
+    - name: Configure the Windows demo web server
+      ansible.builtin.include_role:
+        name: windows_configure
+
+    - name: Summarize
+      # web_url is a host variable registered by playbooks/tasks/register_hosts.yml
+      # (#340 part 1). Windows gets no ssh_command or cockpit_url: it is reached
+      # over WinRM and RDP, and Cockpit is a RHEL web console.
+      ansible.builtin.debug:
+        msg:
+          - "{{ inventory_hostname }} is configured and serving."
+          - "It returned 503 before this ran, and should now return the demo page."
+          - >-
+            {{ 'Open it:  ' ~ web_url if (web_url | default('', true) | length > 0)
+               else 'Open it:  run `terraform output -raw web_url` (re-provision to have it printed here).' }}
+          - >-
+            RDP from your laptop:  the headless Service publishes 3389; port-forward it with
+            `virtctl port-forward vm/{{ vm_name | default('<vm>') }} 3389:3389` and connect to localhost.

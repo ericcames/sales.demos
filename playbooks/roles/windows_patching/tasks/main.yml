@@ -1,0 +1,71 @@
+---
+# ===========================================================================
+# windows_patching — bring the Windows guest current from Windows Update.
+#
+# SLOT 2 IN THE CHAIN, WHERE LINUX HAS REGISTER. Windows has no CDN
+# registration to do: the golden image ships complete, with no equivalent of
+# the CNV rhel9 image's empty repository set. The honest analogue of "entitle
+# the guest to content" is "point it at its update source and bring it
+# current", so this is what stands in that slot -- and it puts any reboot
+# BEFORE IIS is installed, which is the safe order.
+#
+# REWORKED FROM aap.dailydemo.windows/roles/windows_patching, not copied. See
+# defaults/main.yml for the two defects fixed on the way across.
+#
+# NO wait_for_connection HERE. patch_windows_vm.yml waits before this role
+# runs, so every caller -- the workflow node, the one-shot template, the
+# Repair wrapper -- is protected by the same gate.
+# ===========================================================================
+
+- name: Apply Windows updates
+  ansible.windows.win_updates:
+    category_names: "{{ windows_patching_categories }}"
+    # win_updates' own reboot handling, not a separate win_reboot task: it
+    # reboots between update batches when an update demands it and then
+    # reconnects, which a task afterwards cannot do.
+    reboot: "{{ windows_patching_reboot | bool }}"
+    reject_list: "{{ windows_patching_reject_list }}"
+  register: windows_patching_result
+  # ASYNC ONLY WHEN NOT REBOOTING, because the module says so outright:
+  # win_updates' documentation for `reboot` reads "Async does not work when
+  # reboot=true". The reboot is performed by the module itself, mid-task, and
+  # an async job cannot survive its own connection going away.
+  #
+  # So the default path (reboot off) gets the timeout, and the reboot path runs
+  # synchronously and is bounded by the connection instead. async: 0 is
+  # Ansible's "run this normally", not a zero-second deadline.
+  async: "{{ 0 if (windows_patching_reboot | bool) else (windows_patching_timeout | int) }}"
+  poll: 30
+
+- name: Report what was applied
+  ansible.builtin.debug:
+    msg:
+      - "{{ inventory_hostname }} patched from Windows Update."
+      - "Categories: {{ windows_patching_categories | join(', ') }}"
+      - "Found: {{ windows_patching_result.found_update_count | default(0) }}"
+      - "Installed: {{ windows_patching_result.installed_update_count | default(0) }}"
+      - "Failed: {{ windows_patching_result.failed_update_count | default(0) }}"
+      # reboot_required is what win_updates reports; whether it was ACTED on is
+      # windows_patching_reboot. Saying both keeps a job log from implying the
+      # guest rebooted when it did not.
+      - >-
+        {{ 'Reboot required and performed.'
+           if (windows_patching_result.reboot_required | default(false)) and (windows_patching_reboot | bool)
+           else ('Reboot required and NOT performed -- windows_patching_reboot is false. '
+                 ~ 'The updates apply at the next boot; the nightly teardown supplies one.'
+                 if (windows_patching_result.reboot_required | default(false))
+                 else 'No reboot required.') }}
+
+- name: Fail if any update failed to install
+  # win_updates does not fail the task on a per-update failure, so without this
+  # the chain would carry on to Configure with a partially patched guest and a
+  # green node behind it.
+  ansible.builtin.assert:
+    that:
+      - (windows_patching_result.failed_update_count | default(0) | int) == 0
+    fail_msg: >-
+      {{ windows_patching_result.failed_update_count | default(0) }} update(s)
+      failed to install on {{ inventory_hostname }}. See the `updates`
+      dictionary in this task's output for which, then either fix the cause or
+      add the update's title to windows_patching_reject_list.
+    quiet: true

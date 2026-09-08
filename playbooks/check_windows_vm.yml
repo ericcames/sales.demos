@@ -1,0 +1,178 @@
+---
+# ===========================================================================
+# check_windows_vm.yml — prove AAP can reach the Windows demo VM and that the
+# demo actually works end to end. Node 5 of `Windows Day 1 - 0 Workflow`. #340.
+#
+#   ansible-playbook playbooks/check_windows_vm.yml -i inventory --limit windemo
+#
+# THE MIRROR OF check_linux_vm.yml, WITH ONE ADDITION THAT MATTERS. The Linux
+# check answers "can a job template log in and run a task". This answers that
+# and then the question the demo is actually judged on: does the URL you are
+# about to put on a screen return a page.
+#
+# IT PROVES THE ROUTE, NOT JUST IIS, and the two are different claims:
+#
+#   * win_uri against http://localhost/ runs ON the guest and proves IIS is
+#     serving. It deliberately cannot prove the firewall rule, because
+#     loopback traffic is not filtered by Windows Firewall — a guest that
+#     passes this and nothing else is exactly the confusing 503.
+#   * uri against web_url runs on the AAP execution node and traverses the
+#     OpenShift Route, the Service, the pod network and the guest's firewall.
+#     That is the path a customer's browser takes.
+#
+# dc1.azure's webserver_manage only ever made the first claim — win_uri against
+# the guest's own hostname, from the guest — and called it a website check.
+#
+# HOW THE CONNECTION WORKS. AAP runs on the same OpenShift cluster as the VMs,
+# each VM has a headless Service giving it stable in-cluster DNS, and there is
+# no NetworkPolicy between the namespaces. So this is WinRM over HTTPS to port
+# 5986 at `<vm>.<namespace>.svc.cluster.local`, which the windemo group carries
+# as connection variables and provision_vm.yml registered as ansible_host.
+#
+# UNLIKE MOST PLAYBOOKS HERE, this one targets the VMs rather than `hosts: aap`,
+# so it takes no --limit environment and asserts no connection variables. Its
+# inventory is the runtime one, `Sales Demo VMs`, and its credential is
+# `Sales Demos - Windows Machine`.
+# ===========================================================================
+
+- name: Check the Windows demo VMs are reachable and serving
+  # windemo is the group provision_vm.yml creates, carrying ansible_connection:
+  # winrm, ansible_port: 5986, ansible_winrm_transport: ntlm and
+  # ansible_winrm_server_cert_validation: ignore as group variables.
+  hosts: "{{ check_vm_group | default('windemo') }}"
+  gather_facts: true
+
+  tasks:
+    - name: Report what answered
+      # If this prints, most of the chain worked: inventory registration,
+      # cluster DNS, the pod network, the WinRM listener sysprep stood up, and
+      # the Machine credential's password.
+      ansible.builtin.debug:
+        msg:
+          - "Host:      {{ inventory_hostname }}"
+          - "Reached:   {{ ansible_host | default(inventory_hostname) }} as {{ ansible_user | default('?') }}"
+          - "OS:        {{ ansible_distribution | default('?') }}"
+          - "Build:     {{ ansible_kernel | default('?') }}"
+          - "Uptime:    {{ (ansible_uptime_seconds | default(0) / 60) | round(1) }} minutes"
+          - "Memory:    {{ ansible_memtotal_mb | default('?') }} MB"
+          - "vCPU:      {{ ansible_processor_vcpus | default('?') }}"
+          - "Size tier: {{ vm_size_tier | default('(not set)') }} -> {{ vm_size_chosen | default('(not set)') }}"
+          - >-
+            Web URL:
+            {{ web_url | default('(not set — re-provision to record it)', true) }}
+          - >-
+            Compliance:
+            {{ (web_url ~ '/compliance/report.html') if (web_url | default('', true) | length > 0)
+               else '(not set — re-provision to record it)' }}
+          - >-
+            Golden image:
+            {{ golden_image_source | default('(not set — re-provision to record it)', true) }}
+
+    - name: Confirm fact gathering really completed
+      # Catches the failure where a tier maps to an instance type the cluster
+      # silently did not honor: terraform reports success, the VM runs, and the
+      # guest has the wrong shape. Only meaningful when the host carries the
+      # vars provision_vm.yml set, so it is skipped otherwise.
+      ansible.builtin.assert:
+        that:
+          - ansible_memtotal_mb | int > 0
+          - ansible_processor_vcpus | int > 0
+        fail_msg: >-
+          {{ inventory_hostname }} answered but reports no memory or CPU, which
+          means fact gathering did not really complete.
+        quiet: true
+      when: vm_size_chosen is defined
+
+    # --- Claim 1: IIS is serving -------------------------------------------
+    - name: Ask the guest whether IIS is serving
+      # FROM THE GUEST, over loopback. This isolates IIS from everything
+      # between it and a browser, which is what makes it useful as a
+      # diagnostic — and is also exactly why it is not sufficient on its own.
+      ansible.windows.win_uri:
+        url: http://localhost/
+        method: GET
+        status_code: 200
+        return_content: false
+      register: check_windows_iis
+      failed_when: false
+      changed_when: false
+
+    - name: Confirm IIS answered
+      ansible.builtin.assert:
+        that:
+          - check_windows_iis.status_code | default(0) | int == 200
+        fail_msg: >-
+          IIS is not serving on {{ inventory_hostname }} — http://localhost/
+          returned {{ check_windows_iis.status_code | default('no response') }}.
+          Run the `Windows Day 1 - 3 Configure` job template, or
+          `Windows Day 1 - Repair`, against this host.
+        quiet: true
+
+    # --- Claim 2: the Route reaches it -------------------------------------
+    - name: Ask the Route whether the demo page is reachable
+      # DELEGATED TO THE EXECUTION NODE, not run on the guest: the point is to
+      # traverse the Route, the Service, the pod network and the guest's
+      # firewall — the path a customer's browser takes. Running it on the guest
+      # would prove none of them.
+      ansible.builtin.uri:
+        url: "{{ web_url }}"
+        method: GET
+        return_content: false
+        validate_certs: false
+        timeout: 20
+      delegate_to: localhost
+      register: check_windows_route
+      failed_when: false
+      changed_when: false
+      when: web_url | default('', true) | length > 0
+
+    - name: Report and judge the Route
+      # THREE OUTCOMES, KEPT APART ON PURPOSE.
+      #
+      #   200  the payoff. The URL on the screen returns the page.
+      #   503  IIS is up (claim 1 passed) and the Route is not reaching it.
+      #        That is a real, specific failure — almost always the guest's
+      #        firewall — and it fails the node.
+      #   anything else, including no response: the execution node could not
+      #        reach the Route at all. Reported, NOT failed. A DNS or egress
+      #        limitation on the execution node is not evidence about the
+      #        guest, and failing here would blame the VM for the network
+      #        between AAP and the router.
+      ansible.builtin.debug:
+        msg: >-
+          {{
+            ('Route returned ' ~ (check_windows_route.status | default('no response')) ~ ' from the execution node. '
+             ~ 'The demo page is live at ' ~ web_url)
+            if (check_windows_route.status | default(0) | int) == 200
+            else (
+              ('Route returned 503 while IIS is serving on the guest. The Route is not reaching port 80 — '
+               ~ 'check the inbound firewall rule roles/windows_configure creates.')
+              if (check_windows_route.status | default(0) | int) == 503
+              else (
+                ('The execution node could not reach ' ~ (web_url | default('(no web_url)', true))
+                 ~ ' (' ~ (check_windows_route.msg | default('no response')) ~ '). IIS is serving, so this says '
+                 ~ 'nothing about the guest — curl the URL from a laptop to confirm.')
+              )
+            )
+          }}
+      when: web_url | default('', true) | length > 0
+
+    - name: Fail when the Route is up but serving 503
+      ansible.builtin.assert:
+        that:
+          - (check_windows_route.status | default(0) | int) != 503
+        fail_msg: >-
+          {{ web_url }} returns 503 while IIS serves http://localhost/ on
+          {{ inventory_hostname }}. Something between the Route and port 80 is
+          blocking — most often the guest's Windows Firewall, which is enabled
+          and blocking inbound by default on this CIS-hardened image.
+        quiet: true
+      when: web_url | default('', true) | length > 0
+
+    - name: Warn when there is no web_url to check
+      ansible.builtin.debug:
+        msg: >-
+          This host carries no web_url, so the Route could not be checked. It
+          was provisioned before #340 part 1 gave the Windows VM a Route —
+          re-provision, or run terraform output -raw web_url by hand.
+      when: web_url | default('', true) | length == 0

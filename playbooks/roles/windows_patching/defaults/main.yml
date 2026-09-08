@@ -1,0 +1,51 @@
+---
+# ===========================================================================
+# windows_patching — defaults.
+#
+# DEFAULTS/, NOT VARS/, AND THAT IS THE WHOLE POINT OF THE PORT (#340).
+# The source role in aap.dailydemo.windows put both of these in vars/, which
+# outranks a job template survey and an `-e` on the command line alike. Its
+# patching survey therefore could not change anything it appeared to control,
+# and the survey compounded it by writing to a variable named `patches` that
+# the role never read. Two ways to be decorative in one role.
+#
+# Everything a survey is expected to set has to live here.
+# ===========================================================================
+
+# WHICH UPDATE CATEGORIES TO APPLY.
+#
+# `CrticalUpdates` IS THE UPSTREAM SPELLING AND IT IS A TYPO. win_updates
+# matches category names against what the Windows Update agent reports, and
+# nothing reports a category by that name, so the source role silently applied
+# no critical updates at all -- a green job that patched nothing. Fixed here.
+#
+# Security + Critical only, on purpose. The full set drags in driver and
+# feature updates that can run half an hour on a fresh clone, which is a long
+# time to stand in front of a customer watching a spinner. Override from the
+# survey when patching IS the demo.
+windows_patching_categories:
+  - SecurityUpdates
+  - CriticalUpdates
+
+# REBOOT AFTER PATCHING. Off by default, matching linux_configure_reboot and
+# for the same reason: a reboot mid-demo takes the page away with someone
+# watching, and these guests are rebuilt nightly by the teardown schedules.
+#
+# The chain still puts this node BEFORE `3 Configure`, so turning it on
+# reboots while nothing is serving yet rather than after IIS is up.
+windows_patching_reboot: false
+
+# How long win_updates may spend on one host before the task fails. A fresh
+# CIS-hardened Windows 2022 clone typically has 200-600 MB of updates; 45
+# minutes is generous rather than expected, and only reached when the survey
+# has widened the categories above.
+#
+# ONLY APPLIES WHEN windows_patching_reboot IS FALSE. The module's own
+# documentation says async does not work with reboot=true, so the reboot path
+# runs synchronously and this value is not consulted -- see tasks/main.yml.
+windows_patching_timeout: 2700
+
+# Skip updates matching these titles. Empty by default. The escape hatch for
+# the one update that hangs or reboots badly on a demo day -- name it here
+# rather than turning patching off wholesale.
+windows_patching_reject_list: []

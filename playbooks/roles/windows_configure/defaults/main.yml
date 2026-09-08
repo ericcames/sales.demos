@@ -1,0 +1,115 @@
+---
+# ===========================================================================
+# windows_configure — defaults.
+#
+# Mirrors roles/linux_configure/defaults/main.yml key for key where the two
+# demos make the same claim, so the Windows and Linux pages can be read side by
+# side without wondering whether a difference is deliberate. Where they differ
+# there is a comment saying why.
+# ===========================================================================
+
+# THE HEADLINE on the demo page — the point of the whole thing, not a caption.
+# American spelling: this is a US-facing sales demo.
+#
+# It names Windows explicitly BECAUSE the logo band does not. See
+# files/logos/SOURCE.md: there is no Microsoft mark on the page, so this line
+# and the facts table are where the guest OS is identified.
+windows_configure_message: >-
+  Running on Microsoft Windows Server 2022, virtualized by Red Hat OpenShift
+  Virtualization, provisioned by Terraform and configured by Red Hat Ansible
+  Automation Platform.
+
+# Shown in the "this VM is temporary" notice. Kept in step BY HAND with the
+# schedules in inventory/group_vars/<env>/controller_schedules.yml — sandbox
+# tears down at 6 PM and 10 PM, demo at 6 PM, both America/Phoenix. If those
+# schedules change, change this too; the page has no way to read them.
+windows_configure_teardown_time: "6 PM America/Phoenix"
+
+# Linked in the page footer. The close for a technical audience: everything the
+# demo just did is inspectable, in public, as code.
+windows_configure_repo_url: "https://github.com/ericcames/sales.demos"
+
+# --- IIS and the firewall ---------------------------------------------------
+# The docroot of the IIS Default Web Site. Nothing here creates a site or an
+# application pool: the default site already listens on port 80, which is the
+# port terraform/ocpvirt's Service and Route target (#340 part 1).
+windows_configure_docroot: 'C:\inetpub\wwwroot'
+
+# OPEN PORT 80 IN THE WINDOWS FIREWALL. This is the exact counterpart of
+# linux_configure's firewalld task and it is not optional decoration: the
+# golden image is CIS L1 hardened, so rule 9.3.1 has the Public profile
+# enabled and 9.3.2 has its default inbound action set to Block. A KubeVirt
+# guest's NIC lands on an unidentified network, which Windows classifies as
+# Public. Without this rule IIS serves perfectly and the Route still returns
+# 503 — the same confusing failure firewalld causes on the Linux guest.
+#
+# A LOCAL RULE WORKS ONLY BECAUSE THE PRODUCER SKIPPED 9.3.4. That control is
+# "Public: Apply local firewall rules = No", and it is one of the eleven
+# win_skip_for_test controls the image build leaves unapplied (recorded in
+# roles/windows_compliance/defaults/main.yml). Had it been applied, the rule
+# below would be created, look correct in `Get-NetFirewallRule`, and be
+# ignored. Worth knowing before debugging a 503 that has no cause.
+windows_configure_firewall: true
+windows_configure_firewall_rule_name: "sales.demos IIS (HTTP 80 inbound)"
+
+# --- Legal notice (#340) ----------------------------------------------------
+# The pre-authentication notice, the Windows analogue of linux_configure's
+# /etc/issue. Windows has no /etc/issue: the equivalent is two registry values
+# under the System policies key, which the logon UI renders as a dialog the
+# user must dismiss BEFORE the credential prompt.
+#
+# ON BY DEFAULT, like the Linux banner. Unlike the Linux one it touches nothing
+# AAP depends on — WinRM never sees it, so there is no sshd-shaped risk here.
+# It IS visible over RDP, which is the point.
+windows_configure_legal_notice: true
+
+# Named as the system's owner in the notice. Boilerplate, not legal advice.
+# THE SAME VALUE AS linux_configure_banner_owner on purpose: one demo estate,
+# one owner, and a customer who opens both should not see two answers.
+windows_configure_banner_owner: "Red Hat, Inc."
+windows_configure_legal_caption: "AUTHORIZED ACCESS ONLY"
+
+# --- Demo local account -----------------------------------------------------
+# A second local account, so the demo has something to show in Computer
+# Management and Day 2 has an account to audit. Off by default: it is not
+# needed to turn the Route green, and an account nobody asked for is one more
+# thing to explain.
+#
+# NOTHING HERE RELAXES PASSWORD COMPLEXITY, and the source role in
+# aap.dailydemo.windows did (`PasswordComplexity: 0`, machine-wide, never
+# restored). That would have failed CIS rule 1.1.5 on the compliance node
+# running immediately after this one — the demo breaking its own next step.
+# The answer is a compliant password, not a lowered bar.
+#
+# NOT IN Administrators, and that too is a change from the source role, which
+# put every account it created there. CIS rule 18.4.1 sets
+# LocalAccountTokenFilterPolicy to 0, which strips the admin token from a
+# non-built-in local account arriving over the network — so a second local
+# administrator would be an administrator that cannot administer anything
+# remotely, which is worse than not having one. `Users` is honest.
+windows_configure_create_demo_user: false
+windows_configure_demo_user: "demouser"
+windows_configure_demo_user_groups:
+  - Users
+windows_configure_demo_user_description: "Demo account created by sales.demos roles/windows_configure"
+# No default. Set it from the vault or a survey when
+# windows_configure_create_demo_user is true; the role asserts it is present
+# and at least 14 characters, which is what CIS rule 1.1.4 requires.
+windows_configure_demo_user_password: ""
+
+# --- URLs carried from provisioning -----------------------------------------
+# HOST VARIABLES set by playbooks/tasks/register_hosts.yml (#340 part 1). The
+# role runs on the guest via AAP, which has no access to connection.yml, so
+# provisioning forwards the metadata. The roles read these rather than carrying
+# fallbacks — closing that gap was the point of part 1.
+windows_configure_web_url: "{{ web_url | default('', true) }}"
+
+# CIS compliance report URL. Derived from web_url — the report is published at
+# /compliance/report.html by roles/windows_compliance, which runs after this.
+windows_configure_compliance_url: >-
+  {{ (web_url ~ '/compliance/report.html') if (web_url | default('', true) | length > 0) else '' }}
+
+# --- Golden image provenance ------------------------------------------------
+windows_configure_golden_image_source: "{{ golden_image_source | default('') }}"
+windows_configure_golden_image_cis_level: "{{ golden_image_cis_level | default('') }}"
+windows_configure_golden_image_pipeline_url: "https://github.com/ericcames/image.builder.pipeline"

@@ -1,0 +1,35 @@
+---
+# ===========================================================================
+# windows_compliance_scan.yml — verify the CIS L1 hardening on the Windows demo
+# VMs and publish the report. Node 4 of `Windows Day 1 - 0 Workflow`. #340.
+#
+# FROM AAP (the normal path):
+#   The "Windows Day 1 - 4 Compliance Scan" job template runs this against the
+#   windemo group.
+#
+# FROM A LAPTOP (against a VM already registered in AAP's inventory):
+#   Not directly — the VMs are reachable only via in-cluster DNS from AAP.
+#   Use the job template, or port-forward 5986 with virtctl.
+#
+# THE TEMPLATE IS CALLED A SCAN; THE ROLE VERIFIES. The name matches its Linux
+# sibling so the two families read alike, but there is no scanner here:
+# OpenSCAP ships no Windows agent. roles/windows_compliance reads a curated
+# subset of the controls image.builder.pipeline's cis_profile.yml applies, back
+# off the running guest. The report it publishes says "verification" in its own
+# title so the artifact cannot mislead anyone who opens it.
+#
+# EXPECTED TO SHOW EXCEPTIONS, NOT FAILURES, and that is the opposite of the
+# Linux story on purpose. The Linux scan's demo point is the delta a workload
+# introduces — install httpd and open ports, and some controls deviate. This
+# one's is the sixteen documented exceptions: fifteen the image factory made
+# and one this repo made at provisioning time, each with a name against it.
+#
+# ALL READS. Safe to re-run mid-demo.
+# ===========================================================================
+
+- name: Verify the CIS Level 1 hardening
+  hosts: "{{ demo_group | default('windemo') }}"
+  gather_facts: true
+
+  roles:
+    - windows_compliance

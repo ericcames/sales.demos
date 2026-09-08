@@ -1,0 +1,157 @@
+# ===========================================================================
+# collect_compliance.ps1 — read every configured control off the guest in ONE
+# WinRM round trip and hand the results back as structured data.
+#
+# WHY ONE SCRIPT INSTEAD OF 27 TASKS. A win_reg_stat per control would be
+# readable and would also be 27 separate WinRM round trips. Windows remoting
+# pays a per-task cost that Linux SSH pipelining does not, and this role runs
+# as a workflow node with a customer watching. One round trip is the design,
+# not an optimization.
+#
+# IT IS ALL READS. Nothing here writes to the guest: Get-ItemProperty for
+# registry values and `secedit /export` for policy. That is what makes the
+# compliance node safe to re-run mid-demo, and it is why the calling task
+# carries changed_when: false as well as $Ansible.Changed = $false here.
+#
+# NO JINJA IN THIS FILE. It is rendered through the template lookup only so it
+# can live beside the role rather than inline in tasks/main.yml; the checks
+# arrive as a parameter, deliberately, so the data never has to survive a trip
+# through PowerShell quoting.
+# ===========================================================================
+param(
+    [Parameter(Mandatory = $true)]
+    [String]$ChecksJson
+)
+
+$ErrorActionPreference = 'Stop'
+$Ansible.Changed = $false
+
+$checks = $ChecksJson | ConvertFrom-Json
+
+# --- Local security policy, exported once ----------------------------------
+# secedit is the only way to read effective password and lockout policy.
+# `net accounts` reports the same numbers but formats them in the machine's
+# display language, so parsing it breaks on a non-English guest; the INF keys
+# secedit emits are invariant.
+$policy = @{}
+# [System.IO.Path]::GetTempPath() rather than $env:TEMP: the environment
+# variable is not guaranteed to be populated in every context a WinRM session
+# can run under, and Join-Path throws on a null Path rather than falling back.
+# The .NET call always returns a usable directory.
+$cfgPath = Join-Path -Path ([System.IO.Path]::GetTempPath()) -ChildPath ('sd-secpol-{0}.inf' -f [Guid]::NewGuid())
+$seceditFailure = $null
+try {
+    # EAP relaxed for the native call ONLY. secedit is chatty on stderr even on
+    # a clean export, and with ErrorActionPreference 'Stop' in effect a native
+    # command's stderr becomes a terminating error -- which would throw away
+    # nine perfectly good policy readings because of a status message. The
+    # exit code and the file's existence are what actually say whether it
+    # worked, so those are what get checked.
+    $previousEap = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    $seceditOutput = & secedit.exe /export /cfg $cfgPath /areas SECURITYPOLICY 2>&1
+    $seceditExit = $LASTEXITCODE
+    $ErrorActionPreference = $previousEap
+
+    if ($seceditExit -ne 0) {
+        throw "secedit exited $seceditExit : $($seceditOutput -join ' ')"
+    }
+    if (-not (Test-Path -LiteralPath $cfgPath)) {
+        throw 'secedit reported success but produced no output file'
+    }
+
+    # Exported as UTF-16LE. Read the [System Access] section only: the
+    # [Registry Values] section further down uses the same key=value shape
+    # with backslash-laden names, and a whole-file parse would mix them.
+    $section = ''
+    foreach ($line in (Get-Content -LiteralPath $cfgPath -Encoding Unicode)) {
+        $trimmed = $line.Trim()
+        if ($trimmed -match '^\[(.+)\]$') {
+            $section = $Matches[1]
+            continue
+        }
+        if ($section -ne 'System Access') { continue }
+        if ($trimmed -match '^([A-Za-z][A-Za-z0-9_]*)\s*=\s*(.*)$') {
+            $policy[$Matches[1]] = $Matches[2].Trim()
+        }
+    }
+}
+catch {
+    # Recorded rather than thrown. A guest that will not export its policy
+    # should produce a report saying so against the nine policy controls, not
+    # a failed job with no artifact at all.
+    $seceditFailure = $_.Exception.Message
+}
+finally {
+    Remove-Item -LiteralPath $cfgPath -Force -ErrorAction SilentlyContinue
+}
+
+# --- Evaluate --------------------------------------------------------------
+$results = New-Object System.Collections.Generic.List[Object]
+
+foreach ($check in $checks) {
+    $found = $false
+    $actual = $null
+    $note = $null
+
+    if ($check.kind -eq 'registry') {
+        $item = Get-ItemProperty -LiteralPath $check.path -Name $check.name -ErrorAction SilentlyContinue
+        if ($null -ne $item) {
+            $actual = $item.($check.name)
+            $found = $true
+        }
+    }
+    else {
+        if ($null -ne $seceditFailure) {
+            $note = "secedit export failed: $seceditFailure"
+        }
+        elseif ($policy.ContainsKey($check.name)) {
+            $actual = $policy[$check.name]
+            $found = $true
+        }
+    }
+
+    $status = 'noncompliant'
+    if (-not $found) {
+        # NOT CONFIGURED IS NOT COMPLIANT. Every control in the list is one the
+        # producer's profile applies, so an absent value means the hardening
+        # did not take -- which is exactly the thing worth surfacing.
+        $status = 'notconfigured'
+    }
+    else {
+        $numeric = 0
+        $isNumeric = [Int32]::TryParse([String]$actual, [ref]$numeric)
+        if (-not $isNumeric) {
+            $status = if ([String]$actual -eq [String]$check.expected) { 'compliant' } else { 'noncompliant' }
+            $note = 'compared as text: the value is not an integer'
+        }
+        else {
+            switch ($check.op) {
+                'eq' { if ($numeric -eq [Int32]$check.expected) { $status = 'compliant' } }
+                'gte' { if ($numeric -ge [Int32]$check.expected) { $status = 'compliant' } }
+                'lte' { if ($numeric -le [Int32]$check.expected) { $status = 'compliant' } }
+                'between' { if ($numeric -ge [Int32]$check.min -and $numeric -le [Int32]$check.max) { $status = 'compliant' } }
+                default { $status = 'error'; $note = "unknown operator '$($check.op)'" }
+            }
+        }
+    }
+
+    $results.Add([PSCustomObject]@{
+            rule = $check.rule
+            title = $check.title
+            kind = $check.kind
+            name = $check.name
+            path = $check.path
+            expected = if ($check.op -eq 'between') { "$($check.min)-$($check.max)" } else { [String]$check.expected }
+            op = $check.op
+            actual = if ($found) { [String]$actual } else { $null }
+            status = $status
+            note = $note
+        })
+}
+
+$Ansible.Result = @{
+    checks = $results.ToArray()
+    secedit_failure = $seceditFailure
+    computer_name = $env:COMPUTERNAME
+}

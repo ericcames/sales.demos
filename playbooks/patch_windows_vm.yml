@@ -1,0 +1,51 @@
+---
+# ===========================================================================
+# patch_windows_vm.yml — bring the Windows demo guest current from Windows
+# Update. Node 2 of `Windows Day 1 - 0 Workflow`. Issue #340.
+#
+# WHY PATCH IS IN THE SLOT LINUX USES FOR REGISTER. The Linux chain is
+# Provision -> Register -> Configure -> Compliance -> Check, where registering
+# entitles the guest to content and nothing can install until it succeeds.
+# Windows has no CDN registration: the golden image ships complete. The honest
+# analogue of "entitle it to content" is "point it at its update source and
+# bring it current", so that is what stands here — and it puts any reboot
+# BEFORE IIS is installed, which is the safe order.
+#
+# WHY IT WAITS FIRST, and this is the same lesson register_linux_vm.yml
+# learned: provision_vm.yml returns as soon as terraform apply completes and
+# the hosts are registered in AAP, which is BEFORE the guest is accepting
+# connections. On Windows the gap is considerably longer than the Linux one —
+# the clone runs sysprep's specialize and oobeSystem passes, then the
+# FirstLogonCommands that stand up the WinRM listener, and only then is port
+# 5986 answering. In a workflow the two nodes run back to back with no human
+# pause, so without this gate the chain fails on its second step every time it
+# builds a VM from scratch.
+#
+# The wait lives HERE rather than as its own workflow node so it protects every
+# caller — the workflow, the one-shot template, and repair_windows_vm.yml.
+# ===========================================================================
+
+- name: Patch the Windows demo VMs
+  hosts: "{{ demo_group | default('windemo') }}"
+  # Deliberately AFTER the wait below. Fact gathering is itself a connection,
+  # so with gather_facts on it would fail before wait_for_connection ever ran.
+  gather_facts: false
+
+  tasks:
+    - name: Wait for the guest to accept WinRM
+      # LONGER THAN THE LINUX 300s DEFAULT, on purpose. A freshly cloned RHEL
+      # guest is up in about a minute; a Windows clone has to complete sysprep
+      # and a first logon before the listener exists. 900 seconds is generous
+      # rather than expected — the alternative is failing a demo build on a
+      # cold cluster, which costs far more than waiting.
+      ansible.builtin.wait_for_connection:
+        timeout: "{{ patch_vm_winrm_timeout | default(900) }}"
+        delay: 15
+        sleep: 15
+
+    - name: Gather facts now the guest is reachable
+      ansible.builtin.setup:
+
+    - name: Apply Windows updates
+      ansible.builtin.include_role:
+        name: windows_patching

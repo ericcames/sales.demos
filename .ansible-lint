@@ -48,6 +48,25 @@ mock_modules:
   - ansible.controller.project_update
   # Guest configuration (Phase 4, playbooks/run_demo.yml).
   - ansible.posix.firewalld
+  # Windows Day 1 (#340). ansible.windows is pinned in
+  # collections/requirements.yml and already ships in the execution
+  # environment, but CI installs nothing, so every module the Windows roles
+  # call has to be declared here or syntax-check fails on it.
+  #
+  # community.windows is deliberately absent from this list AND from
+  # requirements.yml: it is in neither the EE base nor the published image, so
+  # needing it would force an EE rebuild. Anything appearing here must be an
+  # `ansible.windows.` module.
+  - ansible.windows.win_copy
+  - ansible.windows.win_feature
+  - ansible.windows.win_file
+  - ansible.windows.win_powershell
+  - ansible.windows.win_reboot
+  - ansible.windows.win_regedit
+  - ansible.windows.win_template
+  - ansible.windows.win_updates
+  - ansible.windows.win_uri
+  - ansible.windows.win_user
 
 mock_roles:
   - infra.aap_configuration.dispatch

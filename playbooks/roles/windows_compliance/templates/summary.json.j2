@@ -1,0 +1,39 @@
+{# THE LINUX SHAPE PLUS THREE ADDITIONS, deliberately. The top-level keys and
+   the results{} block match roles/linux_compliance/templates/summary.json.j2
+   key for key, so one parser reads both guests and the two can be diffed.
+
+   `fail` COUNTS BOTH KINDS OF DEVIATION -- a control set to the wrong value
+   and a control never set at all. Both are failures of the applied profile,
+   and the Linux schema has one slot for them, so they share it rather than
+   one of them being quietly filed under `notchecked` and disappearing from
+   the number a reader looks at first. `not_configured` beside it carries the
+   breakdown for anyone who wants to know which.
+
+   `notapplicable` is always 0: this role only ever lists controls that do
+   apply to a member server. `notchecked` is where a control that could not be
+   evaluated lands. Both are present and honest rather than absent and tidy.
+
+   `score_percent` is over controls_checked, NOT over the benchmark's 444.
+   report.html says so in words next to the figure. #}
+{{ {
+  'hostname': inventory_hostname,
+  'scanned': ansible_date_time.iso8601,
+  'profile': windows_compliance_profile,
+  'method': 'configuration verification (no OpenSCAP agent exists for Windows)',
+  'profile_source': windows_compliance_profile_source,
+  'controls_checked': windows_compliance_checks | length,
+  'results': {
+    'pass': windows_compliance_pass | int,
+    'fail': (windows_compliance_fail | int) + (windows_compliance_notconfigured | int),
+    'not_configured': windows_compliance_notconfigured | int,
+    'notapplicable': 0,
+    'notchecked': windows_compliance_errors | int,
+    'score_percent': windows_compliance_score | int,
+  },
+  'golden_image': {
+    'source': golden_image_source | default(none, true),
+    'cis_level': golden_image_cis_level | default(none, true),
+  },
+  'controls': windows_compliance_results,
+  'exceptions': windows_compliance_exceptions,
+} | to_nice_json }}

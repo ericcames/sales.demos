@@ -1,0 +1,47 @@
+{# THE SAME KEYS AS THE LINUX facts.json, in the same order, so one parser
+   reads both guests and the two can be diffed. roles/linux_configure builds
+   its copy inline in tasks/main.yml with ansible.builtin.copy's `content`;
+   this is a template instead because ansible.windows.win_copy's own
+   documentation says so — "This is for simple values, for anything complex or
+   with formatting please switch to win_template". A formatted JSON document is
+   exactly what it means.
+
+   `kernel` on Windows is the OS build (10.0.20348.x), which is what
+   ansible.windows' setup module populates ansible_kernel with. It is the
+   closest true analogue of the Linux field, and keeping the key name means one
+   JSON schema across both guests rather than two.
+
+   CURATED, NOT A DUMP. `ansible_facts` in full is roughly a megabyte including
+   every interface, mount and environment variable — noise on a demo page, and
+   it changes shape between runs. These are the fields the page itself uses,
+   plus the provisioning metadata that proves the chain. #}
+{{ {
+  'hostname': inventory_hostname,
+  'gathered': ansible_date_time.iso8601,
+  'os': {
+    'distribution': ansible_distribution,
+    'version': ansible_distribution_version,
+    'kernel': ansible_kernel,
+  },
+  'resources': {
+    'vcpus': ansible_processor_vcpus,
+    'memory_mb': ansible_memtotal_mb,
+  },
+  'virtualization': {
+    'type': windows_configure_virt_type,
+    'role': windows_configure_virt_role,
+  },
+  'provisioning': {
+    'vm_size_tier': vm_size_tier | default(none),
+    'instance_type': vm_size_chosen | default(none),
+    'in_cluster_address': ansible_host | default(inventory_hostname),
+    'repository': windows_configure_repo_url,
+  },
+  'golden_image': {
+    'source': windows_configure_golden_image_source | default(none, true),
+    'repo': windows_configure_golden_image_repo | default(none, true),
+    'build_date': windows_configure_golden_image_build_date | default(none, true),
+    'cis_level': windows_configure_golden_image_cis_level | default(none, true),
+    'pipeline': windows_configure_golden_image_pipeline_url,
+  },
+} | to_nice_json }}

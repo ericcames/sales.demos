@@ -7,6 +7,122 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added -- Windows Day 1 roles and playbooks (#340, part 2 of 3)
+- **Everything between provisioning a Windows VM and it being useful.** Three
+  roles -- `windows_patching`, `windows_configure`, `windows_compliance` -- and
+  five playbooks: `patch_windows_vm.yml`, `configure_windows_vm.yml`,
+  `windows_compliance_scan.yml`, `check_windows_vm.yml`, and
+  `repair_windows_vm.yml` as an `import_playbook` wrapper mirroring
+  `repair_linux_vm.yml`. The job templates and workflow that drive them are
+  part 3; this is the content they run.
+- **Slot 2 is Patch, where Linux has Register.** Windows has no CDN
+  registration -- the golden image ships complete -- so the honest analogue of
+  "entitle the guest to content" is "bring it current". It also puts any reboot
+  before IIS is installed, which is the safe order.
+- **The chain turns `web_url` from 503 into a page**, which part 1 made possible
+  by giving the Windows VM a Route.
+
+#### Three defects fixed on the port, not carried across
+- `windows_patching` came from `aap.dailydemo.windows` with its settings in
+  `vars/`, which outranks a job template survey -- so **its patching survey
+  could not change anything it appeared to control**, and it wrote to a variable
+  named `patches` the role never read. Both settings are in `defaults/` here.
+- Its category list read **`CrticalUpdates`**, a typo. `win_updates` matches
+  category names against what the Windows Update agent reports and nothing
+  reports that, so the source role silently applied no critical updates at all:
+  a green job that patched nothing.
+- The account half of `windows_account_create` had **`no_log` inverted** --
+  `true` on a harmless directory loop, `false` on the password-bearing one. It
+  also set `PasswordComplexity: 0` machine-wide without restoring it, which
+  would fail CIS rule 1.1.5 **on the very next node of the same workflow**. The
+  demo account here is off by default, is not put in `Administrators`, and
+  requires a 14-character password rather than lowering the bar to accept a
+  short one.
+
+#### The compliance role verifies; it does not scan, and says so
+- **OpenSCAP has no Windows agent**, so there is no equivalent of
+  `linux_compliance`'s `oscap xccdf eval`. What exists is a contract with the
+  producer, cited by path: `image.builder.pipeline/playbooks/vars/cis_profile.yml`.
+  The role reads 27 controls that file *enables* back off the running guest.
+  The job template is named "Compliance Scan" to sit with its Linux sibling; the
+  report says **verification** in its own title so the artifact cannot mislead.
+- **The exception list is 16, and #340 said 4.** `cis_profile.yml` sets four
+  `win22cis_rule_*: false` -- but it also sets `win_skip_for_test: true`, which
+  the vendored role's own `defaults/main.yml` documents as skipping **eleven
+  further controls "even if they are set to true"**. Those eleven stay `true` in
+  the profile, so reading only the explicit falses says they were applied. They
+  were not. A check for `18.10.89.2.1` would have shown a **red failure for
+  something the producer deliberately skipped**, in front of a customer, on a
+  page the demo invites them to open.
+- **The sixteenth is ours.** `terraform/ocpvirt/main.tf` sets
+  `LocalAccountTokenFilterPolicy` back to `1` in the sysprep unattend so NTLM
+  works for `demoadmin`, which is CIS 18.4.1 undone -- by this repo, at
+  provisioning time. It is now the most interesting row in the report: the demo
+  platform's own accepted risk, with a file and a line against it.
+- All reads -- registry gets plus one `secedit /export`, `changed_when: false`
+  throughout -- so the node is safe to re-run mid-demo. 27 controls in **one
+  WinRM round trip**, because Windows remoting pays a per-task cost that SSH
+  pipelining does not.
+- Output matches `linux_compliance`'s `summary.json` shape plus `exceptions[]`.
+  `fail` counts **both** wrong-valued and never-set controls -- filing "not
+  configured" under `notchecked` would have hidden a real deviation in the
+  field a reader looks at first.
+
+#### The check playbook proves the Route, not just IIS
+- Two separate claims. `win_uri` to `http://localhost/` runs **on** the guest
+  and proves IIS is serving -- and deliberately cannot prove the firewall,
+  because loopback is not filtered. `uri` delegated to localhost traverses the
+  Route, Service, pod network and guest firewall: the path a browser takes.
+  dc1.azure's `webserver_manage` only ever made the first claim and called it a
+  website check.
+- **503 fails the node; unreachable does not.** IIS up plus a 503 is a specific,
+  actionable failure. An execution node that cannot reach the Route at all says
+  nothing about the guest, and failing there would blame the VM for the network.
+
+#### Smaller things worth knowing
+- **`windows_configure` must open port 80 itself.** The image is CIS hardened,
+  so rule 9.3.1 has the Public profile on and 9.3.2 blocks inbound by default,
+  and a KubeVirt NIC lands on Public. Without the rule IIS serves perfectly and
+  the Route still returns 503 -- the exact confusion firewalld causes on Linux.
+  A *local* rule works only because the producer skips 9.3.4.
+- **A legal notice for Windows is new**; neither source repo had one. Same
+  wording and same owner as `linux_configure`'s `/etc/issue`, via
+  `legalnoticecaption` + `legalnoticetext`. Both values are required -- the text
+  alone renders nothing, silently.
+- **Two logos, not three, and no Microsoft mark.** `rhel.svg` is dropped because
+  the guest is not RHEL, and a Windows mark is not ours to redistribute. The
+  guest OS is named in the headline and the facts table.
+- `facts.json` is a `win_template`, not `win_copy` with `content` -- the
+  module's own docs say formatted content belongs in a template. Its schema is
+  **identical to the Linux one**, verified key by key.
+- `powershell_improvement` is deliberately not ported: its last task sets
+  `RequireStrongKey` to `0`, which is demo choreography, not hardening. In this
+  chain node 3 would break a control node 4 flags immediately. If that break/fix
+  beat is wanted it belongs in #241 as an explicit template.
+- `async` on `win_updates` is applied **only when not rebooting**, because the
+  module's documentation says outright that "Async does not work when
+  reboot=true".
+- `.ansible-lint` gained mocks for the ten `ansible.windows` modules; CI
+  installs no collections, so an unmocked one fails syntax-check there while
+  passing on a laptop.
+
+#### Verified
+- All eight CI gates green locally.
+- **The whole chain syntax-checks inside `sales-demos-ee:v1.2.0`** via
+  `utilities/run-in-ee.sh` -- ansible-core `2.16.19` there against `2.18.18rc1`
+  on the laptop. The EE carries `ansible.windows` 3.6.1 (matching the pin), all
+  ten modules, and `pywinrm` 0.5.0; `community.windows` is absent, confirming it
+  could not have been used without an EE rebuild.
+- **The collector's logic was executed, not just parsed**, against synthetic
+  registry and `secedit` data: correct results for compliant, wrong-value,
+  absent, non-numeric and out-of-range `between` inputs on both bounds, plus the
+  degraded path where `secedit` fails and the nine policy controls report as not
+  configured while the report is still produced.
+- Every template rendered with representative facts: valid JSON, well-formed
+  HTML, no Jinja leakage.
+- **Not yet run against a live Windows VM** -- that is part 3's gate, once the
+  job templates exist to launch it.
+
 ### Fixed -- the sd1.* catalog could never be created: cpu.guest was a string (#352)
 - Defect in #348. The namespace half worked; the catalog half failed for all
   three tiers, so **no VM of either OS could be provisioned**:
