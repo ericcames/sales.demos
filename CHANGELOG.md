@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **`edge` environment for on-prem SNO on a NUC (#373).** Third inventory
+  environment alongside `sandbox` and `demo`. Bare-metal Single Node OpenShift
+  with AAP 2.7, OpenShift Virtualization, and Compliance Operator, produced by
+  `image.builder.pipeline` Phase 5. Target with `--limit edge`.
+
 ### Changed -- both environments repointed to a MEASURED CIS L1 image (#358)
 - **`quay_windows_image` -> `win2k22-cis-l1-golden:20260908-1853`** in both
   `sandbox` and `demo`. This is the first Windows golden image whose CIS L1 label

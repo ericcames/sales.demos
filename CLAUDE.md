@@ -154,9 +154,15 @@ ansible-vault edit playbooks/group_vars/all/secrets.yml \
 
 ## Environments
 
-`sandbox` (building against) and `demo` (showing customers). Two only. There is
-no `golden` environment — proven-good config is `main` plus a release tag, not a
-connection target.
+`sandbox` (building against), `demo` (showing customers), and `edge`
+(bare-metal SNO on a NUC — on-prem / edge demo). There is no `golden`
+environment — proven-good config is `main` plus a release tag, not a connection
+target.
+
+`edge` differs from the RHDP environments: it is a persistent bare-metal
+cluster on a home network, not an ephemeral RHDP provisioning. DNS is local
+(dnsmasq, not a public domain). The same playbooks target it via `--limit edge`.
+Its SNO installer is produced by `image.builder.pipeline` Phase 5 (#86).
 
 ## Skills and playbooks
 

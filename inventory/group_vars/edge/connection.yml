@@ -1,0 +1,47 @@
+---
+# ===========================================================================
+# connection.yml — everything about the edge environment that is NOT a
+# credential. Committed, plaintext.
+#
+# This is a bare-metal Single Node OpenShift on a NUC, not an RHDP cluster.
+# There is no ephemeral lifecycle — the cluster persists until the hardware
+# is repurposed.
+#
+# DNS is provided by local dnsmasq, not a public domain. See
+# image.builder.pipeline docs/design.md §11.8 for setup instructions.
+# ===========================================================================
+
+aap_env_name: "edge"
+
+# --- Ansible Automation Platform -------------------------------------------
+aap_hostname: "aap-aap.apps.demo.internal.ames.net"
+aap_username: "admin"
+aap_validate_certs: false
+aap_request_timeout: 30
+
+# --- OpenShift -------------------------------------------------------------
+openshift_api_url: "https://api.demo.internal.ames.net:6443"
+openshift_validate_certs: false
+
+# --- Credentials, resolved from the vaulted secrets.yml --------------------
+aap_password: "{{ env_secrets[aap_env_name].aap_password }}"
+openshift_api_token: "{{ env_secrets[aap_env_name].openshift_api_token }}"
+linux_admin_password: "{{ env_secrets[aap_env_name].linux_admin_password | default('') }}"
+windows_admin_password: "{{ env_secrets[aap_env_name].windows_admin_password | default('') }}"
+
+# --- Demo VM defaults (not secret) -----------------------------------------
+windows_admin_username: "demoadmin"
+linux_admin_username: "cloud-user"
+quay_windows_image: "quay.io/zigfreed/win2k22-cis-l1-golden:20260908-1853"
+quay_rhel9_image: "quay.io/zigfreed/rhel9-cis-l1-golden:20260905-0411"
+
+# The *.apps ingress domain for this cluster.
+openshift_apps_domain: "apps.demo.internal.ames.net"
+
+# Namespace the demo VMs are created in.
+ocpvirt_namespace: "sales-demos-edge"
+
+# --- Cluster memory budget -------------------------------------------------
+# The NUC has ~64 GB RAM. Measure with /sales-demos-probe-env before
+# adjusting.
+available_memory_gb: 50
