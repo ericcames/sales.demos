@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added -- ansible.windows pinned, and no EE rebuild was needed (#339)
+- Pinned at **3.6.1**, the prerequisite for the Windows Day 1 chain (#340).
+- **The EE rebuild this was expected to need does not exist.** Measured against
+  the published image AAP runs today, `quay.io/zigfreed/sales-demos-ee:v1.2.0`,
+  and against the base digest it was built from -- not assumed:
+
+  ```
+  ansible/windows    3.6.1  at /usr/share/ansible/collections
+  community/windows  ABSENT
+  pywinrm            0.5.0  (plus requests_ntlm 1.3.0, pyspnego 0.12.1)
+  ```
+
+  So no `v1.3.0`, no re-proving `Linux Day 1 - 0 Workflow` on a new image, and no
+  `pywinrm` verification step. `controller_templates.yml:628-641` and
+  `CHANGELOG.md`'s #301 entry both said a Windows template "would need a
+  collection bump and an EE rebuild". The first half was right.
+- **The pin still earns its place.** The laptop had **3.0.0** against the image's
+  3.6.1 -- exactly the drift the `ansible.hub` pin was added to stop, in the same
+  file, for the same reason: "a laptop resolving different code from the EE is
+  exactly the drift this file exists to stop."
+- **`community.windows` is deliberately not pinned**, and the measurement gave a
+  second reason on top of the module-level one. It is absent from both images, so
+  it is the one collection that *would* have forced a rebuild -- the risky step
+  would have been self-inflicted, caused by a collection nothing needs.
+  `ansible.windows` carries every module the chain uses, including
+  `win_user` and `win_audit_policy_system`. The sole draw was
+  `win_security_policy`, and both callers went away.
 ### Fixed -- teardown still carried #295's inverted insecure flag (#342)
 - Every teardown failed on **both** environments -- sandbox jobs 377 and 380,
   demo job 121 -- with the error #295 already has a name for:

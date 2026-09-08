@@ -56,6 +56,30 @@ collections:
   - name: ansible.posix
     version: "2.2.0"
 
+  # Windows demo content (#339, #340). ALREADY IN THE EXECUTION ENVIRONMENT at
+  # this exact version -- measured against the published image
+  # quay.io/zigfreed/sales-demos-ee:v1.2.0, not assumed, and against the base
+  # digest it was built from. So pinning it changes nothing about AAP and needs
+  # no rebuild; it exists so the laptop resolves the same code the image does.
+  # That is not academic here: 3.0.0 was installed locally against the image's
+  # 3.6.1, which is the same drift the ansible.hub pin above was added to stop.
+  #
+  # community.windows is NOT pinned, and is the one collection that would have
+  # forced a rebuild -- it is absent from both the base and the published image.
+  # Nothing needs it. ansible.windows carries every module the Windows Day 1
+  # chain uses: win_feature, win_template, win_copy, win_service, win_wait_for,
+  # win_reboot, win_regedit, win_user, win_updates, win_reg_stat, win_powershell,
+  # win_audit_policy_system, win_uri, win_ping. The only draw was
+  # win_security_policy, and both callers went away: the ported account role used
+  # it solely to set PasswordComplexity: 0, which would fail the compliance node
+  # that runs next, and the compliance role's use was a *set* module read in
+  # check mode -- password and lockout policy are read honestly through
+  # win_powershell. Its IIS modules are not needed either: the demo page is
+  # served from the default site at C:\inetpub\wwwroot, so win_feature plus
+  # win_template is the whole story.
+  - name: ansible.windows
+    version: "3.6.1"
+
   # Terraform. Phase 3 drives the terraform CLI through ansible.builtin.command,
   # so the binary — not this collection — is the hard requirement; the custom
   # execution environment exists to supply it (#31, execution-environment.yml).
