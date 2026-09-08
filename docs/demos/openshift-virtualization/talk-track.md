@@ -583,3 +583,7 @@ Every claim in this track is checkable in the repo. If you get pushed on one:
 | The percentage is over checked controls, not the benchmark | `playbooks/roles/windows_compliance/templates/report.html.j2`, and `summary.json`'s `controls_checked` |
 | Windows page: two logos, no Microsoft mark | `playbooks/roles/windows_configure/files/logos/SOURCE.md` |
 | Windows was blocked on the golden image, and no longer is | `ROADMAP.md`, `CHANGELOG.md`, issues #3, #234, #257, #340 |
+| Windows takes ~15 min cold, Linux ~9 min | `docs/plan/ocpvirt-demo-plan.md` → Windows demo performance budget (workflow job 433) |
+| ~6m 30s of it is sysprep first boot, and cannot be shortened | same, Finding 2 — 26.7s against an already-booted guest |
+| A Windows clone reaches Running in ~36 seconds | same, and #340's verification notes |
+| Repair against an existing guest is ~7 min | same, projected from the per-node measurements |

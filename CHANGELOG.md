@@ -33,6 +33,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   to `"\n"`. Kept LF because a browser and `jq` do not care, modern Notepad has
   handled LF since 2018, and `facts.json` is meant to be comparable with the
   Linux guest's copy -- which is LF. Recorded rather than discovered later.
+### Added -- the Windows demo performance budget is written down (#360)
+- **A sub-10-minute Windows demo was chased and deliberately abandoned**, and the
+  arithmetic is now in `docs/plan/ocpvirt-demo-plan.md` so it is not re-chased:
+
+  ```
+  provision 50s + sysprep 6m30s + update scan 2m30s + compliance 2m41s + check 41s
+    = 12m 42s   before configure does anything at all
+  ```
+
+  **~15m 40s cold is the accepted target.**
+- **Two findings that change what is worth optimising**, both measured rather
+  than reasoned about:
+  - **On Windows the round trip IS the cost.** Writing a 5 KB HTML file takes 57
+    seconds. Task *count* matters more than what the tasks do — the opposite of
+    the Linux roles, and the reason copying `linux_configure` task-for-task was
+    wrong. Rule of thumb now recorded: budget **~45 seconds per task** in any
+    `roles/windows_*`.
+  - **Sysprep first boot is a hard floor of ~6m 30s**, versus **26.7s** against an
+    already-booted guest. Nothing in this repo shortens it; it is why Linux
+    manages 9m 9s and Windows cannot.
+- **Baking patches into the golden image saves ~0 demo minutes**, which is
+  counterintuitive enough to be worth the paragraph it now gets. The ~2m 30s is
+  the Windows Update *scan*, and the scan costs the same whether it finds forty
+  updates or none — established from the VM CPU and Network I/O panels of this
+  repo's own Grafana dashboard. Do it for correctness, not speed.
+- The run sheet now tells a presenter the real number, that the sysprep wait is
+  good material rather than dead air, and that `Windows Day 1 - Repair` against
+  an existing guest is the ~7-minute option when only ten minutes exist.
+- `talk-track.md`'s "Where the words come from" table gains four rows, one per
+  new timing claim.
 
 ### Fixed -- the Patch survey offered a mode the role does not have, and not the one it does (#340)
 - **`config.yml` failed against sandbox.** AAP rejected the survey outright:

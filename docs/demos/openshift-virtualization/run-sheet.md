@@ -303,6 +303,30 @@ There is a **second, complete chain**, same shape as the Linux one:
 1 Provision → 2 Patch → 3 Configure → 4 Compliance Scan → 5 Check
 ```
 
+#### It takes about 15 minutes, and you must launch it before you start talking
+
+**Windows is not Linux's 9 minutes and never will be.** Measured on sandbox:
+roughly **15–16 minutes** for a cold build. About **6 minutes 30 seconds of that
+is Windows first-boot after sysprep**, before Ansible can reach the guest at all
+— specialize, oobeSystem, and standing up the WinRM listener. No amount of
+automation shortens it. The full budget is in
+[`docs/plan/ocpvirt-demo-plan.md`](../../plan/ocpvirt-demo-plan.md) →
+*Windows demo performance budget*.
+
+**So treat it exactly like the Linux workflow, only more so: launch it first,
+then do the cold open while it runs.** Fifteen minutes of talking is a lot, so
+plan for it rather than discovering it live:
+
+- The sysprep wait is **good material, not dead air**. It is the one moment where
+  "this is a real Windows Server doing a real first boot from a generalized
+  image" is visible, and it is worth saying so instead of apologising for it.
+- If you only have ten minutes, **run against a guest that already exists** and
+  launch `Windows Day 1 - Repair` instead — same steps, no sysprep, about
+  **7 minutes**. You lose only the provisioning beat.
+- If you want the provisioning beat *and* the short demo, do both: show a clone
+  starting (about **36 seconds** to `Running`) as its own moment, and run Repair
+  against the guest you built earlier.
+
 **The one difference is worth calling out rather than glossing**, because a
 Windows admin in the room will notice it:
 

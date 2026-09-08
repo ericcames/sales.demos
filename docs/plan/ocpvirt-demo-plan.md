@@ -648,6 +648,108 @@ one `dc1.azure` already produces.
 
 ---
 
+## Windows demo performance budget (#360, measured 2026-09-08)
+
+**Read this before trying to make the Windows demo faster.** Everything here is
+measured on sandbox against a `large` guest, not estimated, and the two findings
+at the bottom are the ones that change what is worth optimising.
+
+### Where the time goes
+
+Workflow job 433, cold-ish build, **27m 49s total**:
+
+| Node | Time |
+|---|---|
+| 1 Provision | 49s |
+| 2 Patch | 3m 19s |
+| 3 Configure | **20m 12s** |
+| 4 Compliance Scan | 2m 41s |
+| 5 Check | 41s |
+
+Configure, task by task (job 436 events):
+
+| Task | Time |
+|---|---|
+| Gathering Facts | 6s |
+| Install the IIS web server | **3m 42s** |
+| Reboot after IIS | **12m 26s** |
+| Open the Windows firewall for HTTP | 31s |
+| Publish the demo page | 57s |
+| Publish the product logos | 48s |
+| Publish facts.json | 58s |
+| Write the legal notice | 29s |
+
+The 12m 26s reboot was inflated by a one-off — the guest was also applying
+updates that an aborted async `win_updates` had staged — so do not quote it as
+steady state. `win_feature` did report `reboot_required`, so a reboot is
+genuinely in that path.
+
+### Finding 1 — on Windows, the round trip IS the cost
+
+Writing a 5 KB HTML file takes 57 seconds. That is not work; it is a connection,
+a PowerShell process, a module payload and a result. **Task count matters more
+than what the tasks do.**
+
+This is the opposite of the Linux roles' economics, where the same operations are
+milliseconds over SSH with pipelining. `linux_configure` is therefore the wrong
+template to copy task-for-task, and copying it is exactly the mistake #361 had to
+undo.
+
+**Rule of thumb for anything new in `roles/windows_*`: budget ~45 seconds per
+task, and prefer one task that does five things to five tasks that do one.**
+
+### Finding 2 — sysprep first boot is a hard floor of ~6m 30s
+
+That is `wait_for_connection` in node 2 on a cold build: specialize, oobeSystem,
+and the `FirstLogonCommands` that stand up the WinRM listener. Against an
+already-booted guest the same wait is **26.7 seconds**.
+
+Nothing in this repo can shorten it. It is why Linux manages 9m 9s end to end and
+Windows cannot.
+
+### Why a cold build cannot be under 10 minutes
+
+```
+provision 50s + sysprep 6m30s + update scan 2m30s + compliance 2m41s + check 41s
+  = 12m 42s   before configure does anything at all
+```
+
+**This was chased and abandoned deliberately.** The target was under 10 minutes;
+the arithmetic above says no, and **~15m 40s cold was accepted instead** (#360).
+Do not re-open it without new information about the sysprep floor.
+
+### What each proposed change is actually worth
+
+| Change | Where | Saves |
+|---|---|---|
+| Pre-install IIS in the golden image | producer, [ibp#87] | **~16 min** |
+| Collapse `windows_configure`'s file writes | this repo, #361 | ~2m 30s |
+| Bake Windows Updates into the image | producer, [ibp#88] | **~0 min** |
+
+**Patching the image saves no demo time, and that is counterintuitive enough to
+write down.** The ~2m 30s of node 2 is the Windows Update *scan*, and the scan
+costs the same whether it finds forty updates or none — established from the VM
+CPU and Network I/O panels of this repo's own Grafana dashboard, where the search
+phase shows CPU climbing with the network flat. Bake patches in for correctness
+(a golden image forty updates behind is not golden) and to make
+`windows_patching_state=installed` viable, not for speed.
+
+Projected with all three: **~8m 50s warm** (Repair against an existing guest),
+**~15m 40s cold**.
+
+[ibp#87]: https://github.com/ericcames/image.builder.pipeline/issues/87
+[ibp#88]: https://github.com/ericcames/image.builder.pipeline/issues/88
+
+### Still on the table, not done
+
+- The compliance node publishes its report and summary as two separate
+  `win_template` tasks — the same ~1 minute of round-trip overhead #361 removed
+  from `windows_configure`, untouched.
+- A scheduled pre-provision, mirroring the nightly teardowns, would make the
+  ~8m 50s warm path the default rather than something to remember to set up.
+
+---
+
 ## Open items
 
 - ~~Quay.io namespace needs choosing~~ — **resolved: `quay.io/zigfreed`**, already
