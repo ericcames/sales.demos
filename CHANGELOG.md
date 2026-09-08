@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed -- the falsely-labelled Windows image is gone from Quay (#358)
+- **`quay.io/zigfreed/win2k22-cis-l1-golden:20260907-0516` has been deleted.** It
+  carried `com.redhat.cis.level=L1` on media measuring **0 of 10**, in a private
+  repository other SEs consume. Verified after deletion: `skopeo` can no longer
+  resolve it, the repository holds only `20260908-1853`, and that tag still
+  resolves with `cis: L1` on media measured at 10 of 10.
+- **Nothing referenced it operationally** -- both environments and the cluster
+  DataSource were already on `20260908-1853`. Every surviving mention in the docs
+  recounts it as history, which is where the record belongs.
+
 ### Fixed -- the compliance report under-reported a hardened guest (#382)
 - **Rule 18.9.20.1.1 was checked at `HKLM:\SOFTWARE\Policies\Microsoft\Windows`.**
   The CIS role writes it to `...\Windows Nt\Printers`; the path omitted both
@@ -121,9 +131,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   run, `05:01:04`-`05:02:13`, matching that VM's own shutdown. `ibp#91` was a
   publish that packaged a stale Sep 5 qcow2, not a build that failed. The
   hardened media simply never got out.
-- **The retired tag `20260907-0516` carries no hardening at all** (0 of 10) and
-  must not be used. Tags are immutable, so it stays as a permanent record of the
-  defect rather than being overwritten.
+- **The retired tag `20260907-0516` carried no hardening at all** (0 of 10) and
+  **has since been deleted from Quay** (2026-09-08). This entry first said it
+  would stay "as a permanent record of the defect"; that reasoning confused two
+  different things. Tags here are immutable, which forbids *overwriting* one --
+  it never required *keeping* one whose `com.redhat.cis.level=L1` label was a
+  false claim on media other SEs can pull. The record lives in #358, ibp#91 and
+  this changelog, where it costs nobody a mislabelled image.
 
 ### Fixed -- a control the reader could never find (#370)
 - **`utilities/inspect-golden-image.py` checked `DisableWebPnPDownload` at

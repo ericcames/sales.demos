@@ -507,7 +507,7 @@ all found by executing the playbook and none by lint:
 
 | Observation | Value |
 |---|---|
-| Image | `quay.io/zigfreed/win2k22-cis-l1-golden:20260907-0516` (private, 8.67 GiB). **The `CIS L1 hardened` this row used to claim was false** — that tag measures 0 of 10 and is superseded by `20260908-1853`; see the #358 section below |
+| Image | `quay.io/zigfreed/win2k22-cis-l1-golden:20260907-0516` (private, 8.67 GiB). **The `CIS L1 hardened` this row used to claim was false** — that tag measures 0 of 10 and is superseded by `20260908-1853`. **The tag was deleted from Quay on 2026-09-08**; see the #358 section below |
 | Import time | ~5 min (much faster than the estimated 80 min) |
 | DataSource | `win2k22` — `Ready=True`, `spec.source.pvc.name: win2k22-initial-import` |
 | Backing PVC | `win2k22-initial-import` — `Bound`, 60Gi |
