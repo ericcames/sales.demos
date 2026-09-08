@@ -730,7 +730,7 @@ controller_templates_all:
   # one without the other silently restores the original defect.
   # ---------------------------------------------------------------------
   - name: "Windows Day 1 - 2 Patch"
-    description: "Wait for WinRM, then apply Windows updates. Security and Critical only by default, so a live demo is not a 30-minute node."
+    description: "Wait for WinRM, then search Windows Update and install one of what it finds. Installing everything takes 45+ minutes on a fresh guest, so it is opt-in."
     labels:
       - windows
       - day-1
@@ -763,9 +763,17 @@ controller_templates_all:
             without changing it. Download stages the updates. Install applies
             them and is the slow one -- 10 minutes or more on a fresh guest.
           variable: windows_patching_state
+          # `one` HERE, MATCHING THE ROLE'S OWN DEFAULT. It read `searched` for
+          # one commit and the two disagreed, which is worse than either value:
+          # a survey default always wins over a role default, so the shipped
+          # behaviour was report-only while the role, the CHANGELOG and the
+          # docs all said it installed one. Measured on job 435 -- "Mode:
+          # searched" in the output against `windows_patching_state: one` in
+          # defaults/main.yml. The survey values ARE the contract; when they
+          # drift from the role the role loses silently.
           type: multiplechoice
           required: true
-          default: searched
+          default: one
           choices:
             - searched
             - downloaded

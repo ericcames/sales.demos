@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed -- the Patch survey default disagreed with the role, and the survey wins (#340)
+- Shipped in #356 with `windows_patching_state` defaulting to **`one` in the
+  role** and **`searched` in the job template survey**. A survey default always
+  outranks a role default, so the behaviour was report-only while the role, the
+  CHANGELOG and the docs all said it installs one update.
+- **Caught by reading the job output rather than the code.** Job 435 printed
+  `Mode: searched` against `windows_patching_state: one` in `defaults/main.yml`.
+  Nothing else would have found it: both values are valid, both lint clean, and
+  the node passes either way -- it just quietly does less than it claims.
+- **This is the failure mode this repo already warns about**, in the very role
+  it was introduced to: the ported `windows_patching` had a survey writing to a
+  variable the role never read. Same class of defect, one release later. Survey
+  variable names AND their defaults are the contract.
+- The template description also still promised "Security and Critical only by
+  default, so a live demo is not a 30-minute node", which was written before the
+  45-minute timeout failure was measured. Corrected to say what it now does.
+
 ### Added -- Windows Day 1 is a complete family: workflow, templates, skill, docs (#340, part 3 of 3)
 - **Closes #340.** Windows now has the same eight-object day 1 family Linux has:
   `Windows Day 1 - 0 Workflow`, five numbered steps, an off-chain `Repair`, and
