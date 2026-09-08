@@ -810,6 +810,27 @@ believed to be stripping the hardening; for it to explain the missing
 `WindowsFirewall` key it would have had to delete exactly that key while leaving
 six stock siblings. It does not do that, and there was nothing to strip anyway.
 
+**The producer-side mechanism is now known, and it was not the one first
+proposed** (`image.builder.pipeline#92`). The guess was that the publish exported
+a stale PVC. It did not — the cluster's `win2k22-build-root` was created by the
+Sep 7 build VM from a blank source and carries that VM's own
+`kubevirt.io/created-by` UID, so the export selected the right volume. **The
+stale artifact was on the operator's laptop.** The producer's conversion step was
+guarded by `creates: disk.qcow2` while its cleanup deleted only the two larger
+intermediates, so a qcow2 survived between runs: the Sep 7 publish downloaded the
+fresh disk, expanded it, *skipped the conversion*, deleted the fresh copy, and
+packaged the Sep 5 one. The file's size — 9307619328 bytes — is recorded in the
+Sep 7 run's own publish record and matches the disk pushed on Sep 5 as the
+deliberately unhardened `win2k22-golden:20260905-2217`.
+
+`creates:` asks whether an output **exists**, never whether it is **current** —
+the same shape as cause 1 here, where *Ready* stood in for *which image*.
+
+**It does not change what this repo does.** The consumer verifies the media it is
+handed regardless of what the producer's gate does, which is the point of
+`utilities/inspect-golden-image.py` — two independent measurements, not one
+trusted upstream promise.
+
 ### What is still unknown
 
 **Whether CIS hardening survives `sysprep /generalize` has never been

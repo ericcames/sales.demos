@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Documentation -- the producer-side root cause of #358, once it was known (#358)
+- **`docs/plan/ocpvirt-demo-plan.md` cause 2 now records the mechanism**, which
+  turned out not to be the one first proposed. The guess was that the producer's
+  publish exported a stale PVC; the cluster disproves it -- `win2k22-build-root`
+  was created by the Sep 7 build VM from a blank source and carries that VM's own
+  `kubevirt.io/created-by` UID, so the export selected the right volume.
+- **The stale artifact was on the operator's laptop.** The producer's qcow2
+  conversion was guarded by `creates: disk.qcow2` while its cleanup deleted only
+  the two larger intermediates, so a qcow2 survived between runs: the Sep 7
+  publish downloaded the fresh disk, expanded it, *skipped the conversion*,
+  deleted the fresh copy, and packaged the Sep 5 one. Its size, 9307619328
+  bytes, is in the Sep 7 run's own publish record and matches the disk pushed on
+  Sep 5 as the deliberately unhardened `win2k22-golden:20260905-2217`.
+- **`creates:` asks whether an output EXISTS, never whether it is CURRENT** --
+  the same shape as cause 1 here, where *Ready* stood in for *which image*.
+- Fixed upstream in `image.builder.pipeline#92`. **This changes nothing this repo
+  does**: the consumer verifies the media it is handed regardless of the
+  producer's gate, which is the whole point of two independent measurements.
+  #358 stays open until a genuinely hardened image is published.
+
 ### Added -- read the CIS hardening OFF the published image, offline (#358)
 - **`utilities/inspect-golden-image.py`** pulls a Windows golden containerdisk,
   extracts the qcow2 from its single `FROM scratch` layer, carves the Windows
