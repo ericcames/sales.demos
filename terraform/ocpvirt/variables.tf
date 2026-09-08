@@ -45,6 +45,15 @@ variable "vm_size_tier" {
   type        = string
   default     = "small"
 
+  # THIS LIST REPEATS tiers.yaml, AND THAT IS TOLERATED RATHER THAN OVERLOOKED
+  # (#348). Terraform does not allow a variable validation to reference a local,
+  # so it cannot read the catalog the rest of the module now reads.
+  #
+  # It is safe because it CANNOT DRIFT SILENTLY, which is the property the
+  # duplications behind #334 and #342 lacked. Add a tier to tiers.yaml and not
+  # here, and this validation rejects it by name. Remove one from tiers.yaml and
+  # not here, and `local.tier_defs[local.canonical_tier]` fails on a missing key.
+  # Both directions fail loudly, at plan time, before anything is built.
   validation {
     condition     = contains(["small", "medium", "large", "small-1cpu-2gb", "medium-1cpu-4gb", "large-2cpu-6gb"], var.vm_size_tier)
     error_message = "vm_size_tier must be one of: small, medium, large (or legacy: small-1cpu-2gb, medium-1cpu-4gb, large-2cpu-6gb)."
