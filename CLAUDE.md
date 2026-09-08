@@ -373,6 +373,27 @@ Environment secrets.
   imports via an explicit DataVolume (#224). Tags are immutable, so **repoint —
   never overwrite**; `20260905-1826` keeps the defect for ever.
 
+  **Those steps were correct and did not work, for two days** (#358). The
+  playbook decided whether to import from whether the `win2k22` DataSource was
+  *Ready* — never from *which image* it served. After the first successful
+  import every environment is Ready for ever, so a changed `quay_windows_image`
+  patched the HCO cron template (which imports nothing on a private registry,
+  #224), skipped the DataVolume, skipped the repoint, passed a verification
+  that only asked "Ready?" and "Bound?", and printed success. Sandbox
+  advertised `win2k22-cis-l1-golden:20260907-0516` while every clone booted
+  `win2k22-golden:20260906-0300` — the repo the producer publishes its
+  **unhardened** build to, imported 26 hours before the hardened image was
+  built. The demo guest scored 9 of 27 CIS controls and the talk track was
+  inviting customers to read that report.
+
+  **The import decision is now identity, not readiness**, and the identity is
+  re-read from the cluster and asserted on every run, including runs that
+  import nothing. Ready and Bound are both true of the wrong image; that is the
+  whole lesson, and it is the same one as check 2 in
+  `utilities/check-no-secrets.sh` — desired state is tested, not trusted.
+  A DataVolume's source is immutable, so a changed tag deletes and re-imports
+  rather than editing in place.
+
 - **Document before fixing** — open a GitHub issue before making code changes.
 - **Always label new issues** — run `gh label list --repo ericcames/sales.demos`
   and apply every label that genuinely fits.

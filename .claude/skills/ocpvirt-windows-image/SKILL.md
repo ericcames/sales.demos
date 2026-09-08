@@ -141,6 +141,24 @@ oc get dataimportcron -n openshift-virtualization-os-images
 `win2k22` should report `Ready=True`, and the cron template should be listed in
 `spec` alongside nothing else unless someone added another.
 
+**`Ready=True` is not the check. It is the check that lied for two days**
+(#358). A DataSource stays Ready for ever once populated, whatever
+`quay_windows_image` is later set to, and the HyperConverged entry above shows
+the tag that was *asked for* — not the one imported. Ask what is actually
+served:
+
+```bash
+oc get datavolume win2k22-initial-import \
+  -n openshift-virtualization-os-images \
+  -o jsonpath='{.spec.source.registry.url}{"\n"}'
+```
+
+That must equal `docker://` plus `quay_windows_image` from this environment's
+`connection.yml`. If it does not, every Windows clone is booting the wrong
+image and the compliance report is describing something nobody chose. The
+playbook now asserts this itself on every run, so a green run is the same
+statement — this is how to confirm it by hand.
+
 ## Where this sits
 
 1. `ocpvirt-setup` — installs OpenShift Virtualization.

@@ -7,6 +7,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed -- repointing the Windows image tag was a silent no-op (#358)
+- **The demo guest was booting `win2k22-golden:20260906-0300`, the repo the
+  producer publishes its UNHARDENED build to**, while `connection.yml` had said
+  `win2k22-cis-l1-golden:20260907-0516` since #294. `Windows Day 1 - 4
+  Compliance Scan` scored it 9 of 27 CIS controls, and all 9 were Windows
+  defaults -- because none of the hardening was ever on the media.
+- **The dates settle it without a measurement.** The backing PVC finished
+  importing at 2026-09-06 03:20; `skopeo inspect` puts the L1 image's creation
+  at 2026-09-07 05:26. A PVC cannot hold an image that did not exist when it
+  was populated.
+- **Root cause: `link_windows_image.yml` decided whether to import from whether
+  the DataSource was *Ready*, never from *which image* it served.** Once the
+  first import succeeds a DataSource is Ready for ever, so a changed
+  `quay_windows_image` patched the HCO cron template -- which imports nothing
+  on a private registry (#224) -- then skipped the DataVolume, skipped the
+  DataSource repoint, passed a verification whose only questions were "Ready?"
+  and "Bound?", and printed
+  `DataSource win2k22 is Ready [...] terraform -var os_type=windows can now boot`.
+- **The import decision is now identity, not readiness.** The existing
+  DataVolume already records the URL it imported, so the cluster is asked what
+  it holds rather than told what it should hold; a mismatch deletes and
+  re-imports, because a DataVolume's source is immutable and cannot be edited
+  in place.
+- **And the identity is asserted on every run, including runs that import
+  nothing** -- the run that decides there is nothing to do is exactly the run
+  that had to be able to fail. Ready and Bound were both true of the wrong
+  image for two days. Same reasoning as check 2 in
+  `utilities/check-no-secrets.sh`.
+- `CLAUDE.md`'s repoint procedure and the `ocpvirt-windows-image` skill's
+  verification section both said to check `Ready=True`. Both now say why that
+  is not the check, and give the `oc get datavolume -o jsonpath` that is.
+- **Withdraws the `sysprep /generalize` hypothesis** recorded on #358. It never
+  explained the absent `HKLM\SOFTWARE\Policies\...` values -- the producer
+  writes those directly with `win22cis_ansible_remediation: true` /
+  `win22cis_create_gpos: false` -- and reading the wrong image explains the
+  whole pattern with nothing left over. Whether generalize survives hardening
+  is now an open question to measure once the correct image is imported.
+
+
 ### Changed -- windows_configure published 15 KB in 3m 43s of WinRM overhead (#361)
 - **On Windows the round trip IS the cost, and the role was shaped as if it were
   not.** Measured on sandbox, job 436, per task:
