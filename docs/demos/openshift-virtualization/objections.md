@@ -64,13 +64,20 @@ deployment.
 
 > **"Yes — same five steps, same button, one difference. There's a Windows
 > workflow beside the Linux one: provision, patch, configure, check compliance,
-> verify. It builds from a CIS Level 1 hardened Windows Server 2022 golden
-> image, and it ends the same way the Linux one does — a URL that returned 503
+> verify. It builds from a Windows Server 2022 golden image out of our own image
+> factory, and it ends the same way the Linux one does — a URL that returned 503
 > and now returns a page."**
 
-**This answer used to be "the plumbing's done, the image isn't."** It is done
-now (#340), so do not hedge it. Claiming a gap that has closed costs you as much
-credibility as claiming a capability you do not have.
+**This answer used to be "the plumbing's done, the image isn't."** The plumbing
+is done (#340), so do not hedge *that*. Claiming a gap that has closed costs you
+as much credibility as claiming a capability you do not have.
+
+> **The words "CIS Level 1 hardened" have been removed from the line above on
+> purpose.** [#358](https://github.com/ericcames/sales.demos/issues/358): a clone
+> of the image scores 33% and carries none of the hardening, so that phrase is a
+> claim we cannot currently support in the room. The workflow, the five steps and
+> the 503-to-200 payoff are all still true — say those. Restore the phrase when
+> #358 closes.
 
 **The one difference, if they are technical:** step 2 registers the Linux guest
 to the Red Hat CDN, because the RHEL boot source ships with no repositories at
@@ -86,8 +93,10 @@ media. **That is worth saying out loud**, because "bring your own Windows boot
 source" sounds like a gap and is actually the supported pattern.
 
 If they ask what the build involves: unattended install from an answer file,
-virtio drivers and guest agent, CIS Level 1 hardening via the Ansible Lockdown
-role, WinRM over HTTPS, sysprep, then publish as a containerdisk. About
+virtio drivers and guest agent, a CIS Level 1 hardening pass via the Ansible
+Lockdown role, WinRM over HTTPS, sysprep, then publish as a containerdisk.
+(**Describe the build, not the guest** — #358; the hardening step runs, whether
+it survives to the clone is what is open.) About
 forty-five minutes, once, in a separate repo — `ericcames/image.builder.pipeline`
 is the factory, this repo is the consumer.
 

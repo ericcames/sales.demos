@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed -- demo docs coached a CIS L1 claim the report contradicts (#365)
+- **`run-sheet.md` walked a presenter into opening the Windows compliance report
+  and narrating "sixteen exceptions, and every one has a name against it."** That
+  narration only works if the page shows a hardened guest. It currently shows
+  **9 of 27 controls compliant (33%)**, 7 non-compliant and 11 not configured, so
+  a presenter following the script opens a page that says the opposite of what
+  they just said.
+- Blocking warning added at the Windows compliance node in `run-sheet.md`: skip
+  the node in the narration, do not open `report.html`. The workflow still runs
+  it and still goes green.
+- `talk-track.md` offered the compliance percentage as a substitute third
+  admission, described as "a demonstration that the hardening took and is still
+  in place". **That sentence is currently false**, so the substitution is
+  withdrawn and the beat stays at two items.
+- `architecture.md` stated the published image is "CIS L1 hardened and
+  generalized" as settled fact; it now says **built to be** hardened, with the
+  gap named. `objections.md` drops "CIS Level 1 hardened" from the spoken answer
+  and describes the *build* rather than the guest.
+- **This is not a retraction of the compliance node's design.** The node
+  verifies rather than asserts, and the first time it ran against a real guest it
+  caught the platform's own claim being wrong -- that framing is correct and is
+  kept. Every warning cites #358 so it is obvious when it is stale.
+
+
 ### Fixed -- repointing the Windows image tag was a silent no-op (#358)
 - **The demo guest was booting `win2k22-golden:20260906-0300`, the repo the
   producer publishes its UNHARDENED build to**, while `connection.yml` had said

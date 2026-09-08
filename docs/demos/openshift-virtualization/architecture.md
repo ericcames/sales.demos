@@ -123,7 +123,7 @@ provider driving `kubernetes_manifest`. No community KubeVirt provider.
 | `kubernetes_namespace.demo` | The VM namespace, `sales-demos-<env>` |
 | `VirtualMachineClusterInstancetype` ×3 | The `sd1.small` / `.medium` / `.large` types |
 | `kubernetes_manifest.linux_vm` | RHEL 9 guest, cloned from the `rhel9` DataSource |
-| `kubernetes_manifest.windows_vm` | Windows Server 2022 (CIS L1 hardened), cloned from `win2k22` |
+| `kubernetes_manifest.windows_vm` | Windows Server 2022 (CIS L1 hardening **unconfirmed — [#358](https://github.com/ericcames/sales.demos/issues/358)**), cloned from `win2k22` |
 | `kubernetes_service.linux` | **Headless.** Stable in-cluster DNS for the AAP inventory |
 | `kubernetes_service.linux_web` | ClusterIP on :80, existing solely to back the Route |
 | `kubernetes_manifest.linux_web_route` | The public URL, edge TLS |
@@ -291,9 +291,20 @@ a 30 GiB Linux one does.
 
 ### How the Windows clone works
 
-The published image is **CIS L1 hardened and generalized** — the build in
-`image.builder.pipeline` applies the `ansible-lockdown/Windows-2022-CIS` role,
-then runs `sysprep /generalize /oobe /shutdown`. A clone boots into the OOBE
+The published image is **built to be CIS L1 hardened, and generalized** — the
+build in `image.builder.pipeline` applies the `ansible-lockdown/Windows-2022-CIS`
+role, then runs `sysprep /generalize /oobe /shutdown`.
+
+> **The hardening half of that sentence is not currently demonstrable, and this
+> page used to state it as settled fact.**
+> [#358](https://github.com/ericcames/sales.demos/issues/358): a clone of the L1
+> image scores 9 of 27 controls (33%), with every set value at the Windows
+> default and every `HKLM\SOFTWARE\Policies\...` key CIS would have written
+> absent. What the build *does* is accurate as described; whether it reaches a
+> clone is open. The `/generalize` in this very sentence is one of the two
+> candidate explanations — it rebuilds the local security policy database, which
+> would account for the password and lockout controls, though not for the absent
+> registry values. A clone boots into the OOBE
 specialize pass and the built-in Administrator holds a random password the build
 discarded. `terraform/ocpvirt` answers that with a `sysprep` volume: a Secret
 holding an `Unattend.xml`, attached as a read-only CD-ROM, which sets the

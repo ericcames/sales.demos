@@ -511,13 +511,16 @@ Come back to the pause from Beat 2 — *who deletes it?*
 
 **This beat used to have a third admission and no longer does.** It said Windows
 was wired up and would not boot — true until #340, and now stale. **Delete it
-from your delivery rather than softening it**, and if you would like the beat to
-keep its third item, use the compliance percentage instead:
+from your delivery rather than softening it.**
 
-> **"Three — the compliance number on the Windows report is over the controls
-> that report checks, not the whole benchmark. It says so on the page. It's a
-> demonstration that the hardening took and is still in place; it is not an
-> audit, and I'm not going to let you leave thinking it is."**
+> ### ⛔ Do not substitute the compliance percentage here
+>
+> This slot used to offer the Windows compliance number as a replacement third
+> item, on the grounds that it is "a demonstration that the hardening took and
+> is still in place". **That sentence is currently false** — see
+> [#358](https://github.com/ericcames/sales.demos/issues/358), the guest scores
+> 33% and carries none of the hardening. Leave the beat at two items until #358
+> closes, then restore the third from this file's history.
 
 That is a better third item anyway: a limitation you are choosing to disclose
 about something that *works* lands harder than one about something that does

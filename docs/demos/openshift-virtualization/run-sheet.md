@@ -339,6 +339,22 @@ Windows admin in the room will notice it:
 **The payoff is identical** — a Route that returns 503 until IIS serves, then
 200. `web_url` resolves per-OS, so it is the same one command either way.
 
+
+> ### ⛔ DO NOT OPEN THE WINDOWS COMPLIANCE REPORT IN FRONT OF A CUSTOMER
+>
+> **Open issue [#358](https://github.com/ericcames/sales.demos/issues/358).**
+> The Windows guest currently scores **9 of 27 controls compliant (33%)** — 7
+> non-compliant, 11 not configured. Every value that is set is the Windows
+> default and every policy key CIS would have written is absent, so the guest is
+> not carrying the hardening the rest of this page describes.
+>
+> **Skip the compliance node in the narration and do not open `report.html`.**
+> The workflow still runs it and still goes green; you simply do not show it.
+>
+> This is not the node misbehaving — **the node is working, and it is what
+> caught the platform's own claim being wrong.** Delete this warning when #358
+> closes.
+
 **The compliance node is where the Windows story gets better than the Linux
 one.** There is no OpenSCAP for Windows, so it does not pretend to scan: it
 reads controls back off the running guest and reports what the image
