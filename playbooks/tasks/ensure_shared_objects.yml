@@ -79,29 +79,56 @@
   # near-duplicates. Only the three canonical tiers are created -- the legacy
   # aliases in tiers.yaml resolve to these, and creating one object per alias
   # would make three duplicates of each.
+  #
+  # THE WHOLE DEFINITION IS ONE JINJA EXPRESSION, AND THAT IS THE FIX FOR #352.
+  # Written the obvious way -- `guest: "{{ item.value.cpu }}"` -- every tier was
+  # rejected by the CRD:
+  #
+  #     spec.cpu.guest: Invalid value: "string":
+  #     spec.cpu.guest in body must be of type integer
+  #
+  # `cpu` is an integer in tiers.yaml. A value that crosses the templating
+  # boundary as its OWN YAML scalar comes back a string regardless. Measured:
+  #
+  #     form                      inside Jinja   after assignment
+  #     {{ item.value.cpu }}      int            str
+  #     {{ item.value.cpu | int}} int            str
+  #
+  # so `| int` is not the fix -- the filter was never the problem. Templating
+  # the whole dict in one expression keeps the Python types, measured on the
+  # same data: spec.cpu.guest -> int 4, spec.memory.guest -> str "16Gi",
+  # exactly what the CRD wants.
+  #
+  # yamllint and ansible-lint both pass on the broken form: it is valid YAML and
+  # valid Ansible, and only the CRD rejects it, at apply time. Nothing in CI
+  # executes this. A live run is the only gate.
   loop: "{{ ocpvirt_tier_catalog.tiers | dict2items }}"
   loop_control:
     label: "{{ item.value.instancetype }}"
   kubernetes.core.k8s:
     state: present
-    definition:
-      apiVersion: instancetype.kubevirt.io/v1beta1
-      kind: VirtualMachineClusterInstancetype
-      metadata:
-        name: "{{ item.value.instancetype }}"
-        labels:
-          app.kubernetes.io/managed-by: sales.demos
-          app.kubernetes.io/part-of: sales-demos
-        annotations:
-          sales-demos/tier: "{{ item.key }}"
-          instancetype.kubevirt.io/description: >-
-            sales.demos {{ item.key }} - {{ item.value.cpu }} vCPU /
-            {{ item.value.memory_gb }} GiB
-      spec:
-        cpu:
-          guest: "{{ item.value.cpu }}"
-        memory:
-          guest: "{{ item.value.memory_gb }}Gi"
+    definition: >-
+      {{ {
+           'apiVersion': 'instancetype.kubevirt.io/v1beta1',
+           'kind': 'VirtualMachineClusterInstancetype',
+           'metadata': {
+             'name': item.value.instancetype,
+             'labels': {
+               'app.kubernetes.io/managed-by': 'sales.demos',
+               'app.kubernetes.io/part-of': 'sales-demos'
+             },
+             'annotations': {
+               'sales-demos/tier': item.key,
+               'instancetype.kubevirt.io/description':
+                 'sales.demos ' ~ item.key ~ ' - ' ~ item.value.cpu ~
+                 ' vCPU / ' ~ item.value.memory_gb ~ ' GiB'
+             }
+           },
+           'spec': {
+             'cpu': {'guest': item.value.cpu},
+             'memory': {'guest': item.value.memory_gb ~ 'Gi'}
+           }
+         } }}
   environment: *ocpvirt_k8s_auth
 
 - name: Report the shared scaffolding

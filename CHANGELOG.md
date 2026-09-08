@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed -- the sd1.* catalog could never be created: cpu.guest was a string (#352)
+- Defect in #348. The namespace half worked; the catalog half failed for all
+  three tiers, so **no VM of either OS could be provisioned**:
+
+  ```
+  VirtualMachineClusterInstancetype "sd1.small" is invalid:
+  spec.cpu.guest: Invalid value: "string": spec.cpu.guest in body must be of type integer
+  ```
+
+- **A value that crosses the templating boundary as its own YAML scalar comes
+  back a string**, whatever its type in `tiers.yaml`. Measured rather than
+  reasoned about:
+
+  | form | inside Jinja | after assignment |
+  |---|---|---|
+  | `{{ item.value.cpu }}` | `int` | `str` |
+  | `{{ item.value.cpu \| int }}` | `int` | `str` |
+
+  **So `| int` is not the fix** -- the filter was never the problem, which is the
+  sharper form of a trap this repo had already recorded once for an
+  `IntOrString` port.
+- Fixed by templating the whole definition as **one expression**, so no inner
+  scalar is separately templated and the dict keeps its Python types. Measured on
+  the same data: `spec.cpu.guest -> int 4`, `spec.memory.guest -> str "16Gi"`.
+- **Verified against the live CRD before merging, not just linted.** All three
+  types created from nothing on sandbox, and the server returns
+  `"spec":{"cpu":{"guest":4},"memory":{"guest":"16Gi"}}` -- unquoted integer.
+- **`yamllint` and `ansible-lint` passed on the broken form**, because it is
+  valid YAML and valid Ansible; only the CRD rejects it, at apply time. Nothing
+  in CI executes this file. A live run was the only gate, which is the case
+  `/sales-demos-verify-ee` exists to make.
+
 ### Fixed -- Linux teardown destroyed shared objects, taking a running Windows VM with them (#348)
 - **Tearing down Linux while a Windows VM was running would have destroyed the
   Windows VM.** `kubernetes_namespace.demo` and the `sd1.*` instance type catalog
