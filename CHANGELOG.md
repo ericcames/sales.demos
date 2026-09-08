@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed -- the compliance report under-reported a hardened guest (#382)
+- **Rule 18.9.20.1.1 was checked at `HKLM:\SOFTWARE\Policies\Microsoft\Windows`.**
+  The CIS role writes it to `...\Windows Nt\Printers`; the path omitted both
+  `Nt` and `\Printers`, so the value could not be found on any machine.
+- **The guest is 27 of 27, not 26 of 27.** Read from `sd-win-large`'s own
+  exported hive: the old path is `<VALUE ABSENT>` and the correct path is `1`.
+  The single "not configured" line in the published report was the report being
+  wrong, not the guest. The demo now shows **100%**.
+- **This was the THIRD copy of one bug** -- the same wrong path shipped in
+  `utilities/inspect-golden-image.py` (#370) and `image.builder.pipeline`'s
+  `verify_cis_disk.py` (ibp#93), and survived both fixes. **When a control
+  definition is wrong, grep the value name across every reader before closing.**
+- It survived for the same reason each time: **a control that reads "absent" on
+  unhardened media proves nothing about whether its path is right**, and every
+  report before #358 closed was taken from an unhardened guest.
+
 ### Documentation -- correct a stale CIS L1 claim in the plan doc (#358)
 - **`docs/plan/ocpvirt-demo-plan.md` described `20260907-0516` as "CIS L1
   hardened" in a current-state observation table.** That tag measures **0 of 10**

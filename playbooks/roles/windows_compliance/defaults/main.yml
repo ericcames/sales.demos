@@ -261,7 +261,19 @@ windows_compliance_checks:
   - rule: "18.9.20.1.1"
     title: "Turn off downloading of print drivers over HTTP is set to Enabled"
     kind: registry
-    path: 'HKLM:\SOFTWARE\Policies\Microsoft\Windows'
+    # \Windows NT\Printers, not \Windows (#382). The CIS role writes this to
+    # HKLM:\SOFTWARE\Policies\Microsoft\Windows Nt\Printers; the old path
+    # omitted both `Nt` and `\Printers`, so the value could not be found on any
+    # machine and the report showed a hardened guest as 26/27 instead of 27/27.
+    #
+    # THIS WAS THE THIRD COPY of one bug -- the same wrong path shipped in
+    # utilities/inspect-golden-image.py (#370) and image.builder.pipeline's
+    # verify_cis_disk.py (ibp#93). It survived the first two fixes because a
+    # control that reads "absent" on UNHARDENED media proves nothing about
+    # whether its path is right, and every report before #358 closed was taken
+    # from an unhardened guest. When a control definition is wrong here, grep the
+    # value name across every reader before closing.
+    path: 'HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Printers'
     name: DisableWebPnPDownload
     op: eq
     expected: 1
