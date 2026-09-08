@@ -72,7 +72,14 @@ CONTROLS = [
     ("SOFTWARE", r"\Policies\Microsoft\WindowsFirewall\PublicProfile", "EnableFirewall", 1),
     ("SOFTWARE", r"\Policies\Microsoft\WindowsFirewall\PublicProfile", "DefaultInboundAction", 1),
     ("SOFTWARE", r"\Microsoft\Windows\CurrentVersion\Policies\System", "DontDisplayLastUserName", 1),
-    ("SOFTWARE", r"\Policies\Microsoft\Windows", "DisableWebPnPDownload", 1),
+    # \Windows NT\Printers, not \Windows. The CIS role writes
+    # `HKLM:\SOFTWARE\Policies\Microsoft\Windows Nt\Printers` (rule
+    # 18.9.20.1.1); the stock key is spelled `Windows NT`. The old path could
+    # not hold this value on ANY machine, and that was invisible for as long as
+    # the only disk ever measured was unhardened -- where the honest answer and
+    # the bug are both "VALUE ABSENT". Caught by image.builder.pipeline#93 the
+    # first time genuinely hardened media was read.
+    ("SOFTWARE", r"\Policies\Microsoft\Windows NT\Printers", "DisableWebPnPDownload", 1),
     ("SYSTEM", r"\Control\Lsa", "SCENoApplyLegacyAuditPolicy", 1),
     ("SYSTEM", r"\Services\LanmanWorkstation\Parameters", "RequireSecuritySignature", 1),
     ("SYSTEM", r"\Services\LanmanServer\Parameters", "RequireSecuritySignature", 1),
