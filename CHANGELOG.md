@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed -- windows_configure published 15 KB in 3m 43s of WinRM overhead (#361)
+- **On Windows the round trip IS the cost, and the role was shaped as if it were
+  not.** Measured on sandbox, job 436, per task:
+
+  | Task | Time | What it does |
+  |---|---|---|
+  | Publish the demo page | 57s | writes one ~5 KB HTML file |
+  | Publish the product logos | 48s | copies two SVGs |
+  | Publish facts.json | 58s | writes one ~1 KB JSON file |
+
+  A connection, a PowerShell process, a module payload and a result, three times
+  over, to move about 6 KB.
+- **This is the opposite of the Linux roles' economics**, which is why
+  `linux_configure` is not written this way and why copying its shape task for
+  task was the wrong instinct. Over SSH with pipelining these are milliseconds.
+- The three now render into a staging directory **on the controller** and ship
+  in **one** `win_copy`. Expected saving ~2m 30s of a node someone is watching.
+- **The templates are unchanged** -- only where they are rendered moved, not how.
+  Verified by staging the real templates offline: five files, 19.9 KB,
+  `facts.json` schema still identical to the Linux one key for key, and the
+  `KVM (guest)` virtualization normalisation still firing.
+- **Line endings changed from CRLF to LF, deliberately.** `win_template`
+  defaults to `newline_sequence: "\r\n"`; `ansible.builtin.template` defaults
+  to `"\n"`. Kept LF because a browser and `jq` do not care, modern Notepad has
+  handled LF since 2018, and `facts.json` is meant to be comparable with the
+  Linux guest's copy -- which is LF. Recorded rather than discovered later.
+
 ### Fixed -- the Patch survey offered a mode the role does not have, and not the one it does (#340)
 - **`config.yml` failed against sandbox.** AAP rejected the survey outright:
 

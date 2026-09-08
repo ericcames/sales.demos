@@ -92,38 +92,99 @@
       }
   when: windows_configure_firewall | bool
 
-- name: Publish the demo page
-  ansible.windows.win_template:
-    src: index.html.j2
-    dest: "{{ windows_configure_docroot }}\\index.html"
+# ===========================================================================
+# PUBLISH EVERYTHING IN ONE ROUND TRIP (#361).
+#
+# WHY THIS IS NOT FOUR TASKS. It was, mirroring linux_configure task for task,
+# and that turned out to be the wrong instinct: over WinRM the round trip IS the
+# cost. Measured on sandbox, job 436, per task --
+#
+#   Publish the demo page      57s   writes one ~5 KB HTML file
+#   Publish the product logos  48s   copies two SVGs
+#   Publish facts.json         58s   writes one ~1 KB JSON file
+#
+# 2m 43s to write about 6 KB. None of that is work; it is a connection, a
+# PowerShell process, a module payload and a result, three times over. Over SSH
+# with pipelining the same three tasks are milliseconds, which is why the Linux
+# role is shaped the way it is and why copying that shape here was a mistake.
+#
+# So the rendering happens on the CONTROLLER, into a staging directory, and one
+# win_copy ships the lot. Readability cost: you have to look in two places to
+# see what lands on the guest. Time saved: about two and a half minutes of a
+# demo someone is watching.
+# ===========================================================================
+- name: Publish the demo page, logos and facts in one operation
+  block:
+    - name: Make a staging directory on the controller
+      ansible.builtin.tempfile:
+        state: directory
+        suffix: windows-configure
+      register: windows_configure_stage
+      delegate_to: localhost
+      changed_when: false
 
-- name: Publish the product logos
-  # SERVED FROM THIS HOST, not fetched from redhat.com at render time. The page
-  # is displayed from a cluster whose egress you do not control, in front of a
-  # customer; a hotlinked logo is a blank box waiting to happen. See
-  # files/logos/SOURCE.md for where they came from and why there are two.
-  #
-  # SOURCE.md is deliberately copied to the guest along with them. It is a
-  # trademark attribution for files being served over HTTP, and leaving the
-  # attribution behind on the controller would be the wrong half to keep.
-  ansible.windows.win_copy:
-    src: logos/
-    dest: "{{ windows_configure_docroot }}\\logos\\"
+    - name: Render the templated files into it
+      # `template`, not `win_template` -- these are written on the controller.
+      # They stay templates rather than hand-built strings so index.html.j2 and
+      # facts.json.j2 keep reading gathered facts and the role's vars exactly as
+      # before; only where they are rendered has changed, not how.
+      #
+      # THIS CHANGES THE LINE ENDINGS, AND THAT IS DELIBERATE. win_template
+      # defaults to `newline_sequence: "\r\n"`; ansible.builtin.template
+      # defaults to "\n". So these two files land LF-terminated now where they
+      # used to be CRLF.
+      #
+      # Kept rather than forced back, for three reasons: a browser and `jq` do
+      # not care, modern Notepad has handled LF since 2018, and facts.json is
+      # supposed to be comparable with the Linux guest's copy -- which is LF.
+      # Set newline_sequence: "\r\n" here if a consumer ever turns up that
+      # does care.
+      ansible.builtin.template:
+        src: "{{ item.src }}"
+        dest: "{{ windows_configure_stage.path }}/{{ item.dest }}"
+        mode: "0644"
+      loop:
+        - {src: index.html.j2, dest: index.html}
+        - {src: facts.json.j2, dest: facts.json}
+      loop_control:
+        label: "{{ item.dest }}"
+      delegate_to: localhost
+      changed_when: false
 
-- name: Publish the gathered facts as JSON
-  # ON DISK AND REACHABLE, at <web_url>/facts.json -- the raw data behind the
-  # page, for the part of a demo where someone asks "where is that coming
-  # from?". The Linux role publishes the same file with the same keys, so the
-  # two guests answer the same question in the same shape.
-  #
-  # win_template, NOT win_copy's `content`, and the module says why: "This is
-  # for simple values, for anything complex or with formatting please switch
-  # to win_template". A formatted JSON document is what it means. The Linux
-  # role does build its copy inline, which is fine there -- that is
-  # ansible.builtin.copy, which carries no such caveat.
-  ansible.windows.win_template:
-    src: facts.json.j2
-    dest: "{{ windows_configure_docroot }}\\facts.json"
+    - name: Stage the product logos alongside them
+      # SERVED FROM THIS HOST, not fetched from redhat.com at render time. The
+      # page is displayed from a cluster whose egress you do not control, in
+      # front of a customer; a hotlinked logo is a blank box waiting to happen.
+      #
+      # SOURCE.md travels with them deliberately. It is the trademark
+      # attribution for files being served over HTTP, and leaving the
+      # attribution behind on the controller would be the wrong half to keep.
+      ansible.builtin.copy:
+        src: logos/
+        dest: "{{ windows_configure_stage.path }}/logos/"
+        mode: "0644"
+      delegate_to: localhost
+      changed_when: false
+
+    - name: Copy the whole docroot to the guest
+      # THE ONE ROUND TRIP. Trailing slash on src copies the directory's
+      # CONTENTS into dest, which is what puts index.html at the docroot rather
+      # than in a subdirectory.
+      ansible.windows.win_copy:
+        src: "{{ windows_configure_stage.path }}/"
+        dest: "{{ windows_configure_docroot }}\\"
+
+  always:
+    - name: Remove the staging directory
+      # In `always` so a failure mid-render does not leave a temp directory
+      # behind on the controller -- which, on an AAP execution node, is a
+      # container that goes away anyway, and on a laptop is not.
+      ansible.builtin.file:
+        path: "{{ windows_configure_stage.path }}"
+        state: absent
+      when: windows_configure_stage.path is defined
+      delegate_to: localhost
+      changed_when: false
 
 - name: Show the legal notice before authentication
   # THE WINDOWS ANALOGUE OF /etc/issue, and the wording is the same wording —
