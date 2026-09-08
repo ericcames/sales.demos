@@ -63,10 +63,19 @@ run-it-by-hand path.
 
 | Question | Variable | Choices | Default |
 |---|---|---|---|
-| Operating system | `os_type` | `linux` · `windows` · `both` | `linux` |
-| VM size tier | `vm_size_tier` | `small-1cpu-2gb` · `medium-1cpu-4gb` · `large-2cpu-6gb` | `small-1cpu-2gb` |
+| Hypervisor | `hypervisor` | `ocpvirt` | `ocpvirt` |
+| VM size tier | `vm_size_tier` | `small` · `medium` · `large` | `small` |
 
-**There is deliberately no question for the target environment.** A dropdown is
+**There is deliberately no question for the operating system, and there used to
+be.** This table showed `os_type` with a `linux · windows · both` dropdown until
+#300 removed it and #301 removed the possibility behind it. With one Terraform
+state per environment, picking `windows` in that dropdown set `create_linux=false`
+and planned the *running* Linux VM for destruction — a way to delete the demo
+mid-demo. `os_type` is now pinned per template: `Linux Day 1 - 1 Provision`
+provisions Linux, `Windows Day 1 - 1 Provision` provisions Windows, and each has
+its own state.
+
+**There is deliberately no question for the target environment either.** A dropdown is
 one mis-click away from provisioning into the customer-facing cluster. Each
 controller's template is templated off its own `aap_env_name`, and
 `playbooks/tasks/assert_target_environment.yml` fails the run if `limit` and
@@ -150,17 +159,17 @@ All of it is configuration-as-code under `inventory/group_vars/`, applied by
 | Organization | `IT Service Automation` |
 | Project | `Sales Demos` |
 | Execution environment | `Sales Demos - OCP Virt EE` |
-| Credentials | `Sales Demos - Vault` · `Sales Demos - Linux Machine` · `Sales Demos - PAH Registry` |
+| Credentials | `Sales Demos - Vault` · `Sales Demos - Env Secrets` · `Sales Demos - Linux Machine` · `Sales Demos - Windows Machine` · `Sales Demos - PAH Registry` |
 | Inventory | `Sales Demo VMs` · `Sales Demo VMs - Control` |
 | Job templates | `Linux Day 1 - 1 Provision` · `2 Register` · `3 Configure` · `4 Compliance Scan` · `5 Check` · `Repair` · `Teardown` |
 | | `AAP Ecosystem - Install Automation Orchestrator` · `Install MCP Server` · `Install Self-Service Portal` |
 | | `AAP Observability - 1 Deploy Alloy` · `2 Deploy Dashboards` |
 | | `Cluster Day 0 - 1 Install OpenShift Virtualization` · `2 Verify Environment` · `Probe Capacity` |
 | | `Golden Image - Link RHEL 9 CIS L1` · `Link Windows 2022 CIS L1` |
-| | `Windows Day 1 - 1 Provision` · `Teardown` |
-| Workflows | `Cluster Day 0` · `Linux Day 1 - 0 Workflow` |
+| | `Windows Day 1 - 1 Provision` · `2 Patch` · `3 Configure` · `4 Compliance Scan` · `5 Check` · `Repair` · `Teardown` |
+| Workflows | `Cluster Day 0` · `Linux Day 1 - 0 Workflow` · `Windows Day 1 - 0 Workflow` |
 | Labels | `linux` · `windows` · `cluster` · `aap-ecosystem` · `observability` · `golden-image` · `day-0` · `day-1` · `install` · `ocpvirt` · `read-only` |
-| Schedules | `Linux Day 1 - Nightly teardown (6 PM)` (+ a 10 PM safety net in sandbox) |
+| Schedules | `Linux Day 1 - Nightly teardown (6 PM)` · `Windows Day 1 - Nightly teardown (6 PM)` (+ 10 PM safety nets in sandbox) |
 
 **Almost everything runs from AAP now, and the exceptions are deliberate.**
 Standing up an environment is one laptop command — `config.yml` — and then

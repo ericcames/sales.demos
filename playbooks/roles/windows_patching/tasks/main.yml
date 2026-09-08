@@ -17,44 +17,125 @@
 # Repair wrapper -- is protected by the same gate.
 # ===========================================================================
 
-- name: Apply Windows updates
+- name: Search Windows Update
+  # ALWAYS A SEARCH FIRST, WHATEVER THE MODE, and it is cheap: ~2 minutes of
+  # the 36+ a full install took. It is what lets the node report how far behind
+  # the machine is even when it is about to change almost nothing, and it is
+  # what supplies the candidate list the `one` mode picks from.
   ansible.windows.win_updates:
     category_names: "{{ windows_patching_categories }}"
-    # win_updates' own reboot handling, not a separate win_reboot task: it
-    # reboots between update batches when an update demands it and then
-    # reconnects, which a task afterwards cannot do.
-    reboot: "{{ windows_patching_reboot | bool }}"
+    state: searched
     reject_list: "{{ windows_patching_reject_list }}"
-  register: windows_patching_result
-  # ASYNC ONLY WHEN NOT REBOOTING, because the module says so outright:
-  # win_updates' documentation for `reboot` reads "Async does not work when
-  # reboot=true". The reboot is performed by the module itself, mid-task, and
-  # an async job cannot survive its own connection going away.
-  #
-  # So the default path (reboot off) gets the timeout, and the reboot path runs
-  # synchronously and is bounded by the connection instead. async: 0 is
-  # Ansible's "run this normally", not a zero-second deadline.
-  async: "{{ 0 if (windows_patching_reboot | bool) else (windows_patching_timeout | int) }}"
-  poll: 30
+  register: windows_patching_search
+  changed_when: false
+  async: "{{ windows_patching_timeout | int }}"
+  poll: 20
 
-- name: Report what was applied
+- name: Choose which updates to install
+  # THE PICK IS DETERMINISTIC, so the same guest demos the same way twice.
+  # Sorted by title, cumulative and servicing-stack updates pushed to the back
+  # rather than removed -- if they are all there is, we still patch. See
+  # defaults/main.yml for why size cannot be used here.
+  ansible.builtin.set_fact:
+    windows_patching_chosen: >-
+      {{ (windows_patching_search.updates | default({}) | dict2items | map(attribute='value') | list
+          | sort(attribute='title')
+          | rejectattr('title', 'search', windows_patching_prefer_small_pattern) | list
+          + windows_patching_search.updates | default({}) | dict2items | map(attribute='value') | list
+          | sort(attribute='title')
+          | selectattr('title', 'search', windows_patching_prefer_small_pattern) | list)
+         [:windows_patching_install_count | int]
+         if (windows_patching_prefer_small_pattern | length > 0)
+         else (windows_patching_search.updates | default({}) | dict2items | map(attribute='value') | list
+               | sort(attribute='title'))[:windows_patching_install_count | int] }}
+  when: windows_patching_state == 'one'
+
+- name: Report what the search found
   ansible.builtin.debug:
     msg:
-      - "{{ inventory_hostname }} patched from Windows Update."
+      - "{{ inventory_hostname }} is {{ windows_patching_search.found_update_count | default(0) }} update(s) behind."
       - "Categories: {{ windows_patching_categories | join(', ') }}"
-      - "Found: {{ windows_patching_result.found_update_count | default(0) }}"
+      - "Mode: {{ windows_patching_state }}"
+      - >-
+        {{ ('About to install: ' ~ (windows_patching_chosen | map(attribute='title') | join(' | ')))
+           if windows_patching_state == 'one' and (windows_patching_chosen | default([]) | length > 0)
+           else ('Nothing will be installed -- report only.'
+                 if windows_patching_state == 'searched'
+                 else ('Installing all ' ~ (windows_patching_search.found_update_count | default(0))
+                       ~ ' -- this is the slow path, 30 minutes or more.'
+                       if windows_patching_state == 'installed'
+                       else 'Nothing found to install.')) }}
+
+- name: Install the chosen updates
+  # accept_list TAKES KB NUMBERS AS REGEXES, which is why the pick above keeps
+  # whole update objects rather than titles: a title is free text and would
+  # need escaping, a KB is a number.
+  ansible.windows.win_updates:
+    category_names: "{{ windows_patching_categories }}"
+    state: installed
+    accept_list: "{{ windows_patching_chosen | map(attribute='kb') | flatten | unique }}"
+    reboot: "{{ windows_patching_reboot | bool }}"
+  register: windows_patching_one
+  async: "{{ 0 if (windows_patching_reboot | bool) else (windows_patching_timeout | int) }}"
+  poll: 20
+  when:
+    - windows_patching_state == 'one'
+    - windows_patching_chosen | default([]) | length > 0
+
+- name: Install every update found
+  # THE SLOW PATH, and it is opt-in for a reason -- measured at 36+ minutes and
+  # still running on a fresh guest. Correct when patching is the story.
+  ansible.windows.win_updates:
+    category_names: "{{ windows_patching_categories }}"
+    state: installed
+    reject_list: "{{ windows_patching_reject_list }}"
+    reboot: "{{ windows_patching_reboot | bool }}"
+  register: windows_patching_all
+  async: "{{ 0 if (windows_patching_reboot | bool) else (windows_patching_timeout | int) }}"
+  poll: 30
+  when: windows_patching_state == 'installed'
+
+- name: Settle the result whichever path ran
+  # One name for the rest of the role to read, so the reporting and the assert
+  # below do not each have to know which of the three modes fired.
+  ansible.builtin.set_fact:
+    windows_patching_result: >-
+      {{ windows_patching_all if (windows_patching_state == 'installed')
+         else (windows_patching_one
+               if (windows_patching_state == 'one' and (windows_patching_one is defined) and (windows_patching_one.skipped is not defined))
+               else windows_patching_search) }}
+
+- name: Report what was found or applied
+  # THE WORDING CHANGES WITH THE MODE, because a log saying "patched" after a
+  # search-only run would be a lie.
+  ansible.builtin.debug:
+    msg:
+      - >-
+        {{ inventory_hostname }}
+        {{ 'checked against Windows Update (report only -- nothing was installed).'
+           if windows_patching_state == 'searched'
+           else ('patched from Windows Update.' if windows_patching_state == 'installed'
+                 else 'had a bounded set of updates applied from Windows Update.') }}
+      - "Mode: {{ windows_patching_state }}"
+      - "Categories: {{ windows_patching_categories | join(', ') }}"
+      - "Found by the search: {{ windows_patching_search.found_update_count | default(0) }}"
       - "Installed: {{ windows_patching_result.installed_update_count | default(0) }}"
       - "Failed: {{ windows_patching_result.failed_update_count | default(0) }}"
-      # reboot_required is what win_updates reports; whether it was ACTED on is
-      # windows_patching_reboot. Saying both keeps a job log from implying the
-      # guest rebooted when it did not.
       - >-
-        {{ 'Reboot required and performed.'
-           if (windows_patching_result.reboot_required | default(false)) and (windows_patching_reboot | bool)
-           else ('Reboot required and NOT performed -- windows_patching_reboot is false. '
-                 ~ 'The updates apply at the next boot; the nightly teardown supplies one.'
-                 if (windows_patching_result.reboot_required | default(false))
-                 else 'No reboot required.') }}
+        {{ ('Still behind by '
+            ~ ((windows_patching_search.found_update_count | default(0) | int)
+               - (windows_patching_result.installed_update_count | default(0) | int))
+            ~ ' update(s). Re-run with windows_patching_state=installed to apply the rest.')
+           if windows_patching_state != 'installed' else 'Fully patched for the selected categories.' }}
+      - >-
+        {{ 'Reboot not applicable -- nothing was installed.'
+           if (windows_patching_result.installed_update_count | default(0) | int) == 0
+           else ('Reboot required and performed.'
+                 if (windows_patching_result.reboot_required | default(false)) and (windows_patching_reboot | bool)
+                 else ('Reboot required and NOT performed -- windows_patching_reboot is false. '
+                       ~ 'The updates apply at the next boot; the nightly teardown supplies one.'
+                       if (windows_patching_result.reboot_required | default(false))
+                       else 'No reboot required.')) }}
 
 - name: Fail if any update failed to install
   # win_updates does not fail the task on a per-update failure, so without this

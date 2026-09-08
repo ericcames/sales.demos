@@ -93,16 +93,27 @@ Reflect it back, then:
 
 ---
 
-## 6–8 · The entire interface is two questions
+## 6–8 · The entire interface is one question
 
 **Show `aap-survey.png`.** This is the whole thing a requester sees:
 
 | Question | Variable | Choices | Default |
 |---|---|---|---|
-| Operating system | `os_type` | `linux` · `windows` · `both` | `linux` |
-| VM size tier | `vm_size_tier` | `small-1cpu-2gb` · `medium-1cpu-4gb` · `large-2cpu-6gb` | `small-1cpu-2gb` |
+| VM size tier | `vm_size_tier` | `small` · `medium` · `large` | `small` |
 
-Source: `inventory/group_vars/aap/controller_workflows.yml:36-64`.
+Source: `inventory/group_vars/aap/controller_workflows.yml:178-193`.
+
+**This said "two questions" and showed an `os_type` dropdown until #300/#301.**
+If your screenshot still has it, retake it. Removing it was not simplification
+for its own sake: with one Terraform state per environment, choosing `windows`
+in that dropdown set `create_linux=false` and planned the *running* Linux VM for
+destruction. The operating system is now chosen by *which workflow you launch* —
+`Linux Day 1 - 0 Workflow` or `Windows Day 1 - 0 Workflow` — and each owns its
+own state, so neither can touch the other's VM.
+
+**That is a better answer to give than the old one anyway**, because someone
+always asks how you stop a self-service portal from letting a requester break
+production. Here the answer is structural rather than procedural.
 
 **Land the question that is deliberately missing.** There is no dropdown for
 *which environment* — that is set per-controller from `connection.yml`:
@@ -275,20 +286,54 @@ than answering well.
 - **No live migration in this demo.** The lab cluster is a single node. CNV does
   live migration; this environment cannot show it. *"I'd rather tell you that
   than show you a slide about it."*
-- **Windows boots, and cannot be logged into yet.** The golden image is built,
-  published and linked, and a Windows VM provisions like any other — the 60 GiB
-  disk clones in **under a minute** and the VM is `Running` about 40 seconds
-  later. What it will not do is finish setup: the image is generalized, and it
-  ignores the answer file we hand it because the build left its own cached at a
-  higher-precedence location, so the guest stops at the Windows OOBE screen. The
-  fix is a one-line change in the image build plus a rebuild. Tracked in public
-  as #3 and #201 here (both done) and
-  ericcames/image.builder.pipeline#59 (the blocker).
+- **No live migration in this demo** (see above) is the only capability gap
+  left in this list. **Windows used to be the second one and is not any more** —
+  see the section below.
 
-  **If you are asked to show Windows, show the provisioning, not the guest.** The
-  sub-minute clone of a 60 GiB Windows disk is a genuinely good number and it is
-  a CSI snapshot rather than a copy — that is the interesting part. Do not open
-  the console.
+### Windows, if you are asked
+
+**You can show it now, and this run sheet told you not to until #340.** The old
+advice was "show the provisioning, not the guest, and do not open the console",
+because a generalized image ignored the answer file we handed it and stopped at
+the Windows OOBE screen. Three stacked bugs, all fixed and verified.
+
+There is a **second, complete chain**, same shape as the Linux one:
+
+```
+1 Provision → 2 Patch → 3 Configure → 4 Compliance Scan → 5 Check
+```
+
+**The one difference is worth calling out rather than glossing**, because a
+Windows admin in the room will notice it:
+
+> **"On Linux, step 2 registers the guest to the Red Hat CDN — that image ships
+> with no repositories at all, so nothing installs until it does. Windows has
+> nothing to register; the golden image is complete. So step 2 is patching
+> instead. Same slot, same job: get the machine entitled to content before you
+> ask it to do anything."**
+
+**The payoff is identical** — a Route that returns 503 until IIS serves, then
+200. `web_url` resolves per-OS, so it is the same one command either way.
+
+**The compliance node is where the Windows story gets better than the Linux
+one.** There is no OpenSCAP for Windows, so it does not pretend to scan: it
+reads controls back off the running guest and reports what the image
+deliberately *does not* apply as documented exceptions, each with the file and
+the decision behind it.
+
+> **"Sixteen exceptions, and every one has a name against it. Fifteen are the
+> image factory's — controls that would sever the very connection doing the
+> hardening. The sixteenth is ours: we put a UAC setting back so automation can
+> log in at all. That's on the report, in front of you, rather than in
+> somebody's head."**
+
+That usually lands better than a green tick, because it is the conversation a
+security team actually wants to have.
+
+**Do not claim the percentage is an audit.** It is over the controls the report
+checks, and the report says so in words next to the number. If someone presses,
+that honesty is the point — hand them `summary.json`.
+
 - **`config.yml` always reports `changed`.** AAP returns one setting as
   `$encrypted$` on every read, so Ansible can never see it as converged. Known,
   cosmetic, documented.

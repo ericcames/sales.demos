@@ -62,25 +62,40 @@ deployment.
 
 ## "Does this do Windows?"
 
-> **"The plumbing's done — it points at a Windows boot source the same way the
-> cluster already points at RHEL's. What's missing is the image itself. Red Hat
-> can't redistribute Windows media, so somebody has to build the golden image
-> once, and I haven't. It's tracked in public as issues #3 and ericcames/image.builder.pipeline#24."**
+> **"Yes — same five steps, same button, one difference. There's a Windows
+> workflow beside the Linux one: provision, patch, configure, check compliance,
+> verify. It builds from a CIS Level 1 hardened Windows Server 2022 golden
+> image, and it ends the same way the Linux one does — a URL that returned 503
+> and now returns a page."**
 
-If they ask how it works: OpenShift Virtualization keeps its boot sources current
-with `DataImportCron` objects pointed at a registry — that is how `rhel9` stays
-fresh on every cluster. Windows is the same mechanism with your own image in your
-own private registry. **That is worth saying out loud**, because "bring your own
-Windows boot source" sounds like a gap and is actually the supported pattern.
+**This answer used to be "the plumbing's done, the image isn't."** It is done
+now (#340), so do not hedge it. Claiming a gap that has closed costs you as much
+credibility as claiming a capability you do not have.
+
+**The one difference, if they are technical:** step 2 registers the Linux guest
+to the Red Hat CDN, because the RHEL boot source ships with no repositories at
+all. Windows has nothing to register — the golden image is complete — so step 2
+is patching from Windows Update instead. Same slot, same job: entitle the machine
+to content before asking it to do anything.
+
+If they ask how the image gets there: OpenShift Virtualization keeps its boot
+sources current with `DataImportCron` objects pointed at a registry — that is how
+`rhel9` stays fresh on every cluster. Windows is the same mechanism with your own
+image in your own private registry, because Red Hat cannot redistribute Windows
+media. **That is worth saying out loud**, because "bring your own Windows boot
+source" sounds like a gap and is actually the supported pattern.
 
 If they ask what the build involves: unattended install from an answer file,
 virtio drivers and guest agent, CIS Level 1 hardening via the Ansible Lockdown
 role, WinRM over HTTPS, sysprep, then publish as a containerdisk. About
-forty-five minutes, once. After that Windows guests provision on the same
-t-shirt sizes as Linux.
+forty-five minutes, once, in a separate repo — `ericcames/image.builder.pipeline`
+is the factory, this repo is the consumer.
 
-**Do not promise a date**, and **do not claim the image is hardened until it
-is** — the hardening is the plan for ericcames/image.builder.pipeline#24, not something already shipped.
+**Where to be careful now is the compliance report, not the image.** The Windows
+node verifies rather than scans — there is no OpenSCAP agent for Windows — and
+the percentage it shows is over the controls it checks, not the whole benchmark.
+The report says so in words. **Say so too**; if you let someone leave thinking
+they saw an audit, the next conversation is worse.
 
 ---
 

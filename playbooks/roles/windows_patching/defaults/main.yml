@@ -12,6 +12,64 @@
 # Everything a survey is expected to set has to live here.
 # ===========================================================================
 
+# WHAT THE NODE ACTUALLY DOES.
+#
+#   searched   report what is missing, change nothing        ~2 min
+#   one        report, then install a bounded number of them  (see below)
+#   installed  report, then install everything found         16-40 min
+#
+# `one` IS THE DEFAULT, AND THE NUMBERS ARE MEASURED, NOT ESTIMATED. Timed on
+# sandbox 2026-09-08 building a large Windows guest from the golden image, with
+# the phases separated using this repo's own Grafana dashboard (VM CPU vs VM
+# Network I/O panels):
+#
+#   search      ~2 min     CPU climbing, network flat
+#   download    ~4 min     network spikes to ~4.5 MB/s
+#   install    >39 min     network back to zero, ~3 of 4 cores pegged
+#
+# THE FULL INSTALL DID NOT MERELY RUN LONG -- IT NEVER FINISHED. Job 427 on
+# sandbox ran 76 async polls and then died on this role's own 45-minute
+# ceiling:
+#
+#   ASYNC FAILED ... "msg": "timed out waiting for module completion"
+#   PLAY RECAP: ok=2  failed=1
+#
+# So the previous default of installing everything was not just a slow demo,
+# it was a **workflow that could not complete on a freshly built guest**, and
+# the chain correctly stopped at node 2 with the Route still 503. Nothing in
+# CI, in `--syntax-check`, or in a laptop EE run could have found that; it took
+# a real guest and 45 minutes.
+#
+# Installing everything is still available and is still right when patching IS
+# the story and nobody is watching -- see the raised ceiling below.
+#
+# WHY NOT REPORT-ONLY BY DEFAULT. It was, for one commit. A report is fast but
+# it changes nothing, and "watch us actually fix one, live" is a better beat
+# than "here is a list". `one` keeps a real change in the demo while bounding
+# it.
+windows_patching_state: one
+
+# HOW MANY TO INSTALL when windows_patching_state is `one`. Named for what it
+# does rather than fixed at 1, so "show me two" needs no code change.
+windows_patching_install_count: 1
+
+# WHICH ONE TO PICK, and this is the honest part of the design.
+#
+# **THE WINDOWS UPDATE API DOES NOT TELL US HOW BIG AN UPDATE IS.** win_updates
+# returns title, kb, id and categories per update -- no download size, no
+# estimated install time. So `one` bounds the COUNT and cannot bound the
+# DURATION: land on the OS cumulative update and you are back to half an hour.
+#
+# The mitigation is a title filter, not a promise. Cumulative and servicing-stack
+# updates are the enormous ones and they say so in their own titles, so the pick
+# skips them when anything else is available. If every pending update is
+# cumulative, the first is chosen anyway and the node is slow -- correctly, since
+# refusing to patch would be worse than being slow.
+#
+# Set this to "" to disable the preference and simply take the first update.
+windows_patching_prefer_small_pattern: "(?i)cumulative|servicing stack"
+
+
 # WHICH UPDATE CATEGORIES TO APPLY.
 #
 # `CrticalUpdates` IS THE UPSTREAM SPELLING AND IT IS A TYPO. win_updates
@@ -35,15 +93,23 @@ windows_patching_categories:
 # reboots while nothing is serving yet rather than after IIS is up.
 windows_patching_reboot: false
 
-# How long win_updates may spend on one host before the task fails. A fresh
-# CIS-hardened Windows 2022 clone typically has 200-600 MB of updates; 45
-# minutes is generous rather than expected, and only reached when the survey
-# has widened the categories above.
+# How long win_updates may spend on one host before the task fails.
+#
+# RAISED FROM 45 MINUTES TO TWO HOURS, BECAUSE 45 WAS NOT A CEILING, IT WAS A
+# TRIPWIRE. "45 minutes is generous rather than expected" is what this comment
+# used to say, and job 427 disproved it: a full install on a fresh guest blew
+# straight through it and failed the node. A ceiling that the documented slow
+# path cannot fit under is not protecting anything, it is just guaranteeing a
+# red workflow.
+#
+# The default mode does not go anywhere near this -- `one` finishes in minutes.
+# This exists so `windows_patching_state=installed` is genuinely usable rather
+# than nominally offered.
 #
 # ONLY APPLIES WHEN windows_patching_reboot IS FALSE. The module's own
 # documentation says async does not work with reboot=true, so the reboot path
 # runs synchronously and this value is not consulted -- see tasks/main.yml.
-windows_patching_timeout: 2700
+windows_patching_timeout: 7200
 
 # Skip updates matching these titles. Empty by default. The escape hatch for
 # the one update that hangs or reboots badly on a demo day -- name it here

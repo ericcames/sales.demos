@@ -33,9 +33,13 @@ What that means for how you present:
 
 **The single most persuasive thing you can do is admit what does not work.** A
 sysadmin has sat through demos where the hard parts were skipped. Volunteering
-the single-node limitation and the unfinished Windows image buys you more
-credibility than any feature. Beat 7 exists for exactly this reason — do not cut
-it for time.
+the single-node limitation buys you more credibility than any feature. Beat 7
+exists for exactly this reason — do not cut it for time.
+
+**The Windows gap that used to sit beside it has closed** (#340), so beat 7 is
+one admission shorter than it was. Do not keep saying it: an admitted limitation
+that turns out to be stale costs you the credibility the admission was supposed
+to buy.
 
 **Do not oversell the speed.** "Nine minutes" is a fact and it is fine. "Minutes
 instead of weeks" sounds like a slide and invites them to start arguing with the
@@ -111,18 +115,26 @@ what makes it land.
 
 ---
 
-## Beat 3 · The interface is two questions (6–8)
+## Beat 3 · The interface is one question (6–8)
 
 ![The launch survey — the entire interface a requester sees](../../images/aap-survey.png)
 
 | Question | Variable | Choices | Default |
 |---|---|---|---|
-| Operating system | `os_type` | `linux` · `windows` · `both` | `linux` |
 | VM size tier | `vm_size_tier` | `small` · `medium` · `large` | `small` |
 
-> **"That's it. An OS and a t-shirt size. No IP address, no storage class, no
-> hostname — because none of those are decisions the person asking for the
-> machine should be making."**
+> **"That's it. A t-shirt size. No IP address, no storage class, no hostname —
+> because none of those are decisions the person asking for the machine should
+> be making."**
+
+**This used to be two questions, and the OS dropdown was removed on purpose**
+(#300, #301). Worth a sentence if anyone asks where the operating system is
+chosen, because the answer is a good one:
+
+> **"It's which workflow you launch — there's a Linux one and a Windows one, and
+> each owns its own Terraform state. When it was a dropdown, picking Windows
+> planned the running Linux VM for destruction. The fix wasn't a warning label;
+> it was making the two unable to see each other."**
 
 Then the missing dropdown. **This is the beat that earns their attention:**
 
@@ -493,16 +505,23 @@ Come back to the pause from Beat 2 — *who deletes it?*
 > physically can't demonstrate it. I'd rather say that than put up a slide about
 > it."**
 >
-> **"Two — Windows is wired up and doesn't boot yet. Terraform builds the VM,
-> the inventory group's there, WinRM's configured, and the cluster now points at
-> a Windows boot source the same way it points at RHEL's. What's missing is the
-> image — Red Hat can't redistribute Windows media, so somebody has to build the
-> golden image once, and I haven't. It's tracked in public as issues #3 and
-> ericcames/image.builder.pipeline#24, and you can go read them."**
->
-> **"Three — one of the config jobs always reports 'changed' even when nothing
+> **"Two — one of the config jobs always reports 'changed' even when nothing
 > changed, because the platform returns one setting as encrypted on every read
 > so Ansible can never see it as settled. Cosmetic, known, written down."**
+
+**This beat used to have a third admission and no longer does.** It said Windows
+was wired up and would not boot — true until #340, and now stale. **Delete it
+from your delivery rather than softening it**, and if you would like the beat to
+keep its third item, use the compliance percentage instead:
+
+> **"Three — the compliance number on the Windows report is over the controls
+> that report checks, not the whole benchmark. It says so on the page. It's a
+> demonstration that the hardening took and is still in place; it is not an
+> audit, and I'm not going to let you leave thinking it is."**
+
+That is a better third item anyway: a limitation you are choosing to disclose
+about something that *works* lands harder than one about something that does
+not.
 
 **Why this works.** You are not confessing weaknesses; you are demonstrating
 that the *documentation is honest*, which is the actual claim you want them to
@@ -547,12 +566,20 @@ Every claim in this track is checkable in the repo. If you get pushed on one:
 
 | Claim | Source |
 |---|---|
-| The survey is two questions, no environment dropdown | `inventory/group_vars/aap/controller_workflows.yml`, `controller_templates.yml` |
+| The survey is one question, no environment or OS dropdown | `inventory/group_vars/aap/controller_workflows.yml:178-193`, `controller_templates.yml` |
 | Register must precede configure; the image has no repos | `controller_workflows.yml:10-14`, `playbooks/roles/linux_register/tasks/main.yml` |
 | 10 s / 45 s / +1 min | `README.md`, `playbooks/register_linux_vm.yml` |
 | 36 s / 4 m 25 s / 3 m 49 s / 5 s, 9 m 9 s total | `docs/images/aap-job-timings.png` — one measured run |
 | Memory budget fails at plan time | `terraform/ocpvirt/locals.tf` |
 | Nightly teardown, preserving CNV and boot sources | `inventory/group_vars/<env>/controller_schedules.yml`, `playbooks/teardown.yml` |
 | Single node, no live migration | `docs/plan/ocpvirt-demo-plan.md` → Constraints |
-| Windows blocked on the golden image | `ROADMAP.md`, issues #3 and ericcames/image.builder.pipeline#24 |
 | The page and banners shown above | `playbooks/roles/linux_configure/templates/` |
+| Windows has the same five-step chain | `inventory/group_vars/aap/controller_workflows.yml` → `Windows Day 1 - 0 Workflow` |
+| Step 2 is Patch on Windows, Register on Linux | `playbooks/patch_windows_vm.yml` header, `playbooks/roles/windows_patching/tasks/main.yml` |
+| Windows compliance verifies rather than scans | `playbooks/roles/windows_compliance/tasks/main.yml`, and the published `report.html` title |
+| Sixteen documented exceptions, each with an owner | `playbooks/roles/windows_compliance/defaults/main.yml` → `windows_compliance_exceptions` |
+| Fifteen are the image factory's | `image.builder.pipeline/playbooks/vars/cis_profile.yml`, plus `win_skip_for_test` in the vendored Windows-2022-CIS role's `defaults/main.yml` |
+| The sixteenth is ours — a UAC setting put back | `terraform/ocpvirt/main.tf`, sysprep unattend `FirstLogonCommands` order 2 |
+| The percentage is over checked controls, not the benchmark | `playbooks/roles/windows_compliance/templates/report.html.j2`, and `summary.json`'s `controls_checked` |
+| Windows page: two logos, no Microsoft mark | `playbooks/roles/windows_configure/files/logos/SOURCE.md` |
+| Windows was blocked on the golden image, and no longer is | `ROADMAP.md`, `CHANGELOG.md`, issues #3, #234, #257, #340 |

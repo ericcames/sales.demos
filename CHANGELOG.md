@@ -7,6 +7,155 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added -- Windows Day 1 is a complete family: workflow, templates, skill, docs (#340, part 3 of 3)
+- **Closes #340.** Windows now has the same eight-object day 1 family Linux has:
+  `Windows Day 1 - 0 Workflow`, five numbered steps, an off-chain `Repair`, and
+  the `1 Provision` / `Teardown` pair that already existed. The roles and
+  playbooks landed in part 2; this is what makes them reachable from AAP.
+
+```
+Windows Day 1 - 0 Workflow
+Windows Day 1 - 1 Provision        existed
+Windows Day 1 - 2 Patch            new
+Windows Day 1 - 3 Configure        new
+Windows Day 1 - 4 Compliance Scan  new
+Windows Day 1 - 5 Check            new
+Windows Day 1 - Repair             new
+Windows Day 1 - Teardown           existed
+```
+
+- **The `0` in the workflow name was measured, not assumed**, which the issue
+  asked for explicitly. `/api/controller/v2/unified_job_templates/?order_by=name`
+  on the live sandbox returns `Linux Day 1 - 0 Workflow` *ahead of*
+  `Linux Day 1 - 1 Provision` -- Postgres ignores punctuation at the primary
+  collation level, so a bare `Windows Day 1 - Workflow` would have sorted last in
+  its own family (#303). `Cluster Day 0` is bare only because its name already
+  prefixes every template in that family.
+- **The `ocpvirt` label goes on Provision and Teardown only.** Those two run
+  terraform; the five guest-facing steps reach the VM over WinRM and know nothing
+  about the hypervisor. Same line the Linux family draws.
+- The `Windows Day 1 - 2 Patch` survey exposes `windows_patching_categories` and
+  `windows_patching_reboot` -- **the exact variable names the role reads**. The
+  role this was ported from kept both in `vars/`, where a survey cannot reach
+  them, and wrote to a third name the role ignored; the names are the contract,
+  and part 2's move to `defaults/` is what makes this survey real.
+- `Windows Day 1 - 5 Check` carries `use_fact_cache: true`, matching its Linux
+  sibling, so gathered facts appear on the host in AAP.
+
+#### The skill dispatches on OS rather than growing a sibling
+- `.claude/skills/ocpvirt-demo/SKILL.md` now opens by asking **which OS**, with a
+  table of the seven things that differ (group, template, credential, transport,
+  step 1, web server, compliance method) and an MCP call to ask the cluster when
+  it is not obvious. A near-identical `ocpvirt-windows-demo` sibling would have
+  drifted from this one within a release.
+- **Its "Windows" section used to say there is no Windows configure path** and
+  that `windemo` was referenced by zero playbooks and zero job templates. Both
+  were true when written and are now false.
+
+#### Docs corrected, including things that were already stale
+- **The survey is one question, not two.** `architecture.md`, `run-sheet.md` and
+  `talk-track.md` all still showed an `os_type` dropdown with `linux · windows ·
+  both`, removed in #300/#301, and two of them still showed the legacy
+  `small-1cpu-2gb` tier names. The replacement text explains *why* it went: with
+  one Terraform state per environment, picking `windows` planned the running
+  Linux VM for destruction. That is a better beat than the dropdown ever was.
+- **Three places told a presenter to admit Windows does not work.**
+  `run-sheet.md`'s honest-bits list, `talk-track.md`'s beat 7, and
+  `objections.md`'s "Does this do Windows?" all described a guest that stops at
+  the OOBE screen. Fixed and verified since #234/#257. **An admitted limitation
+  that turns out to be stale costs the credibility the admission was meant to
+  buy**, so these are rewritten rather than softened -- and beat 7 gets a
+  replacement third item that is true: the compliance percentage is over the
+  controls checked, not the benchmark.
+- `talk-track.md`'s **"Where the words come from" table gains nine rows**, one
+  per new claim, including who owns each of the sixteen compliance exceptions.
+  Every path in that table was checked to exist before commit.
+- `architecture.md`'s object table gains the five templates, the workflow, the
+  Windows Machine and Env Secrets credentials, and the Windows nightly teardown
+  schedules -- names verified against `controller_schedules.yml`, not assumed.
+- **`ROADMAP.md` phase 4 said "Not started"** and #5 has been closed since the
+  Linux chain shipped. Corrected in passing, and a `4W` row added for the Windows
+  half.
+
+#### Fixed while verifying: the patching default could never finish
+- **A full Windows Update install does not fit in a workflow.** Job 427 on
+  sandbox, building a `large` guest from the golden image, ran **76 async polls
+  over ~39 minutes** and then died on the role's own 45-minute ceiling:
+
+  ```
+  ASYNC FAILED ... "msg": "timed out waiting for module completion"
+  PLAY RECAP: ok=2  failed=1
+  ```
+
+- So part 2's default -- install every Security and Critical update -- was not
+  merely a slow demo node. It was **a workflow that could not complete on a
+  freshly built guest**, and it failed at node 2 with the Route still 503.
+- **Phases separated using this repo's own Grafana dashboard** (the VM CPU and
+  VM Network I/O panels deployed by `/sales-demos-dashboard`): search ~2 min,
+  download ~4 min with network at ~4.5 MB/s, then **30+ minutes of pure install**
+  with the network flat at zero and ~3 of 4 cores pegged.
+- **`windows_patching_state` replaces the all-or-nothing behavior**, defaulting
+  to `one`: search (fast), then install a bounded number of the updates found.
+  A real change in the demo rather than a report, without the intermission.
+  `searched` and `installed` are the other two modes, both on the survey.
+- **The pick is deterministic and prefers small updates**, pushing cumulative
+  and servicing-stack updates to the back of the queue rather than removing
+  them -- if they are all that is pending, we still patch. This is honest about
+  its own limits: **the Windows Update API returns no download size**, so `one`
+  bounds the COUNT and cannot bound the DURATION.
+- **The timeout went from 45 minutes to two hours**, because 45 was not a
+  ceiling, it was a tripwire -- the documented slow path could not fit under it.
+- Selection logic verified offline against synthetic update sets: normal mix
+  (picks the Defender update over the cumulative), all-cumulative (falls back
+  rather than refusing), `install_count: 2`, and no updates found (empty list,
+  install skipped by its `when`).
+- **Nothing short of a live run could have found this.** `--syntax-check`,
+  `ansible-lint` and the laptop EE run in part 2 all passed on the broken
+  default.
+
+#### Fixed while verifying: the Route probe raced the router
+- **`check_windows_vm.yml` used `timeout: 20`, and the router's own backend
+  timeout is about the same.** Measured on sandbox against a guest whose port 80
+  was still blocked: the Windows Route returns a real **503, but only after ~20
+  seconds**, because the CIS-hardened Public profile DROPS the router's SYN and
+  the router waits out its backend timeout before answering. The Linux Route
+  returns 503 in **~3 seconds** for the same "nothing is serving" condition,
+  because firewalld REJECTS and the router hears immediately.
+- Same verdict, very different latency -- and at `timeout: 20` the outcome was
+  luck. Sometimes the 503 arrived and the node failed correctly; sometimes the
+  probe gave up first and landed in the "could not reach it, so this says nothing
+  about the guest" branch, **which does not fail**. Flaky towards a false green
+  on the single most likely failure the check exists to catch.
+- Raised to 60s (overridable via `check_windows_route_timeout`), comfortably past
+  the router's backend timeout, so the 503 always wins the race.
+- **Only a live run could have found this.** Both `--syntax-check` and
+  `ansible-lint` pass on either value, and the laptop-side EE run in part 2 never
+  traversed a Route.
+
+#### Verified
+- All eight CI gates green.
+- **`config.yml` applied to sandbox and all eight objects landed correctly**:
+  the workflow plus seven templates, `ocpvirt` on Provision/Teardown/Workflow
+  only, and the sort order confirmed against the live API rather than assumed.
+- **`Windows Day 1 - 0 Workflow` launched from AAP and its wiring is proven** --
+  `provision -> patch -> configure -> compliance -> check`, success nodes only.
+  Node 1 built a `large` guest from the golden image in **36 seconds** (CSI
+  fast-clone); node 2's `wait_for_connection` cleared WinRM after sysprep in
+  **6m 30s** on a cold build and **26.7s** against an already-booted guest.
+- **Two design assumptions confirmed on a real guest**, not inferred:
+  `ansible_virtualization_type` and `..._role` both come back as the literal
+  `"NA"`, so `windows_configure`'s normalisation is load-bearing and the page
+  would otherwise render "NA (NA)" -- the #160 bug the Linux role already hit.
+- **Node 2 then failed on the patching ceiling**, which is the defect written up
+  above. The chain stopped there rather than configuring a half-patched guest,
+  which is the `success_nodes`-only design behaving correctly.
+- **The 503 -> 200 payoff is NOT yet confirmed end to end.** It cannot be until
+  the corrected patching role is in the project the job templates run from --
+  AAP reads the SCM checkout, not a branch. The run is the first thing after
+  this merges, and the result goes on #340.
+- Also observed: a Linux VM present throughout a Windows provision was
+  **untouched** -- separate state, as #301 intended.
+
 ### Added -- Windows Day 1 roles and playbooks (#340, part 2 of 3)
 - **Everything between provisioning a Windows VM and it being useful.** Three
   roles -- `windows_patching`, `windows_configure`, `windows_compliance` -- and

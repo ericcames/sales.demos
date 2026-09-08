@@ -625,14 +625,36 @@ controller_templates_all:
       target_env: "{{ aap_env_name }}"
 
   # ---------------------------------------------------------------------
-  # WINDOWS DAY 1 (#301). Provision and Teardown only — deliberately.
+  # WINDOWS DAY 1 (#301, completed by #340). The full eight-object family,
+  # mirroring Linux: a workflow, five numbered steps, an off-chain Repair,
+  # plus Provision and Teardown.
   #
-  # There is no Configure or Check here because there is no Windows content to
-  # run yet: this repo has no configure_windows_vm.yml, and ansible.windows is
-  # not in collections/requirements.yml or the EE, so a Windows check template
-  # would need a collection bump and an EE rebuild. That is #241's work. What
-  # these two templates deliver is the thing that was actually blocked —
-  # building a Windows VM without destroying the Linux one.
+  # THIS BLOCK USED TO SAY "Provision and Teardown only — deliberately", and
+  # gave three reasons that have each since stopped being true. Recorded rather
+  # than deleted, because the shape of the answer matters:
+  #
+  #   * "this repo has no configure_windows_vm.yml" — it does now (#340 part 2),
+  #     along with patch, compliance, check and repair.
+  #   * "ansible.windows is not in collections/requirements.yml" — pinned at
+  #     3.6.1 in #339.
+  #   * "would need ... an EE rebuild" — it did not. The published image
+  #     already shipped ansible.windows 3.6.1 and pywinrm 0.5.0; #339 measured
+  #     it rather than assuming, and the riskiest step in the plan evaporated.
+  #
+  # SLOT 2 IS PATCH, WHERE LINUX HAS REGISTER. Windows has no CDN registration
+  # to do — the golden image ships complete, unlike the CNV rhel9 image which
+  # has no repositories at all. The honest analogue of "entitle the guest to
+  # content" is "point it at its update source and bring it current", and it
+  # puts any reboot BEFORE IIS is installed, which is the safe order.
+  #
+  # THE `ocpvirt` LABEL GOES ON PROVISION AND TEARDOWN ONLY. Those two run
+  # terraform; the five guest-facing steps reach the VM over WinRM and know
+  # nothing about the hypervisor. Same line as the Linux family draws — see the
+  # header of controller_labels.yml (#303).
+  #
+  # EVERY ONE CARRIES THE VAULT CREDENTIAL, including the steps that use no
+  # secrets, because group_vars/all/secrets.yml is parsed for every play. See
+  # the note on Linux Day 1 - 5 Check above.
   #
   # THESE COULD NOT EXIST BEFORE THE STATE SPLIT. With one state per
   # environment, launching a Windows provision set create_linux=false and
@@ -688,6 +710,238 @@ controller_templates_all:
             - small
             - medium
             - large
+
+  # ---------------------------------------------------------------------
+  # Node 2. Windows Update, in the slot Linux uses for CDN registration.
+  #
+  # IT WAITS FOR WinRM BEFORE ANYTHING ELSE, and that wait is the reason the
+  # workflow is not naive. Provision returns as soon as terraform apply
+  # finishes; a Windows clone then has to complete sysprep's specialize and
+  # oobeSystem passes and run the FirstLogonCommands that stand up the WinRM
+  # listener. That is considerably longer than the Linux guest's ~1 minute to
+  # sshd. The gate lives in patch_windows_vm.yml itself rather than here, so it
+  # also protects the one-shot and by-hand paths.
+  #
+  # THE SURVEY ACTUALLY WORKS, WHICH IS NOT A GIVEN. The role this was ported
+  # from kept both of these in vars/, which outranks a survey — so its patching
+  # survey could not change anything it appeared to control, and wrote to a
+  # variable named `patches` the role never read. Both live in defaults/ here.
+  # The variable names below and the role's defaults ARE the contract; changing
+  # one without the other silently restores the original defect.
+  # ---------------------------------------------------------------------
+  - name: "Windows Day 1 - 2 Patch"
+    description: "Wait for WinRM, then apply Windows updates. Security and Critical only by default, so a live demo is not a 30-minute node."
+    labels:
+      - windows
+      - day-1
+    job_type: run
+    organization: "IT Service Automation"
+    inventory: "Sales Demo VMs"
+    project: "Sales Demos"
+    playbook: playbooks/patch_windows_vm.yml
+    execution_environment: "Sales Demos - OCP Virt EE"
+    credentials:
+      - "Sales Demos - Windows Machine"
+      - "Sales Demos - Vault"
+      - "Sales Demos - Env Secrets"
+    limit: windemo
+    ask_limit_on_launch: true
+    survey_enabled: true
+    survey_spec:
+      name: ""
+      description: "Choose how much to patch, and whether to reboot"
+      spec:
+        # REPORT-ONLY IS THE DEFAULT, AND IT IS A MEASUREMENT. Timed on sandbox
+        # 2026-09-08 against a large guest built from the golden image: search
+        # ~2 min, download ~4 min, install 10 min+ -- over 16 minutes for the
+        # node, with the phases separated using this repo's own Grafana
+        # dashboard. Reporting drift in ~2 minutes is the better demo beat;
+        # installing is one click away here for when patching IS the story.
+        - question_name: What to do
+          question_description: >-
+            Report only (fast, ~2 min) tells you how far behind the machine is
+            without changing it. Download stages the updates. Install applies
+            them and is the slow one -- 10 minutes or more on a fresh guest.
+          variable: windows_patching_state
+          type: multiplechoice
+          required: true
+          default: searched
+          choices:
+            - searched
+            - downloaded
+            - installed
+        - question_name: Update categories
+          question_description: >-
+            Which Windows Update categories to apply. The default two keep the
+            node short enough to run in front of a customer; the wider sets can
+            take half an hour on a fresh clone.
+          variable: windows_patching_categories
+          type: multiselect
+          required: true
+          default: "SecurityUpdates\nCriticalUpdates"
+          choices:
+            - SecurityUpdates
+            - CriticalUpdates
+            - UpdateRollups
+            - DefinitionUpdates
+            - Updates
+        - question_name: Reboot if updates require it
+          question_description: >-
+            Off by default — a reboot mid-demo takes the page away with someone
+            watching, and these VMs are rebuilt nightly. Turn it on when
+            patching IS the demo. Note the node runs before IIS is installed,
+            so a reboot here costs nothing that is serving yet.
+          variable: windows_patching_reboot
+          type: multiplechoice
+          required: true
+          default: "no"
+          choices:
+            - "no"
+            - "yes"
+
+  # ---------------------------------------------------------------------
+  # Node 3. IIS, the demo page, the firewall rule, and the legal notice.
+  #
+  # THIS IS THE NODE THAT TURNS web_url FROM 503 INTO A PAGE. terraform/ocpvirt
+  # wires the Windows Service and Route to port 80 (#340 part 1) and until
+  # something serves there the Route correctly returns 503.
+  #
+  # UNLIKE ITS LINUX COUNTERPART IT DOES NOT DEPEND ON THE NODE BEFORE IT. The
+  # Linux configure step fails outright on an unregistered guest because every
+  # dnf task has no repository to reach. The Windows golden image ships
+  # complete and carries its own feature source, so IIS installs whether or not
+  # patching ran. The chain still runs Patch first — that is ordering by
+  # preference, not by requirement, and it is worth knowing which.
+  # ---------------------------------------------------------------------
+  - name: "Windows Day 1 - 3 Configure"
+    description: "Install IIS, open the firewall for HTTP, and publish the demo page. Turns the web_url Route from 503 into the demo page."
+    labels:
+      - windows
+      - day-1
+    job_type: run
+    organization: "IT Service Automation"
+    inventory: "Sales Demo VMs"
+    project: "Sales Demos"
+    playbook: playbooks/configure_windows_vm.yml
+    execution_environment: "Sales Demos - OCP Virt EE"
+    credentials:
+      - "Sales Demos - Windows Machine"
+      - "Sales Demos - Vault"
+      - "Sales Demos - Env Secrets"
+    limit: windemo
+    ask_limit_on_launch: true
+
+  # ---------------------------------------------------------------------
+  # Node 4. CIS L1 verification, published beside the demo page.
+  #
+  # NAMED "Compliance Scan" TO SIT WITH ITS LINUX SIBLING; THE ROLE VERIFIES.
+  # OpenSCAP ships no Windows agent, so there is no oscap to run. Instead the
+  # role reads 27 controls that image.builder.pipeline's cis_profile.yml
+  # ENABLES back off the running guest, in one WinRM round trip, and reports
+  # the controls that file does not enable as documented exceptions rather than
+  # as failures. The published report says "verification" in its own title, so
+  # the artifact cannot mislead anyone who opens it.
+  #
+  # THE EXCEPTIONS NUMBER SIXTEEN, NOT FOUR. cis_profile.yml sets four
+  # win22cis_rule_*: false, but it also sets win_skip_for_test: true, which the
+  # vendored ansible-lockdown role documents as skipping eleven more. The
+  # sixteenth is this repo's own: terraform/ocpvirt/main.tf puts
+  # LocalAccountTokenFilterPolicy back to 1 in the sysprep unattend so NTLM
+  # works for demoadmin, which is CIS 18.4.1 undone at provisioning time.
+  #
+  # ALL READS, so it is safe to re-run mid-demo — and it does NOT fail the node
+  # on a non-compliant control by default, for the same reason linux_compliance
+  # treats oscap's exit code 2 as expected: the report is the deliverable, and
+  # a red node in front of a customer teaches nothing.
+  # ---------------------------------------------------------------------
+  - name: "Windows Day 1 - 4 Compliance Scan"
+    description: "Verify the CIS Level 1 hardening on the guest and publish the report at <web_url>/compliance/. All reads — safe to re-run mid-demo."
+    labels:
+      - windows
+      - day-1
+    job_type: run
+    organization: "IT Service Automation"
+    inventory: "Sales Demo VMs"
+    project: "Sales Demos"
+    playbook: playbooks/windows_compliance_scan.yml
+    execution_environment: "Sales Demos - OCP Virt EE"
+    credentials:
+      - "Sales Demos - Windows Machine"
+      - "Sales Demos - Vault"
+      - "Sales Demos - Env Secrets"
+    limit: windemo
+    ask_limit_on_launch: true
+
+  # ---------------------------------------------------------------------
+  # Node 5. Reach the VM, and prove the Route — two separate claims.
+  #
+  # win_uri to http://localhost/ runs ON the guest and proves IIS is serving.
+  # It deliberately cannot prove the firewall rule, because loopback traffic is
+  # not filtered by Windows Firewall. The second check runs ansible.builtin.uri
+  # on the EXECUTION NODE against web_url, traversing the Route, the Service,
+  # the pod network and the guest's firewall — the path a customer's browser
+  # takes.
+  #
+  # A 503 FAILS THIS NODE; UNREACHABLE DOES NOT. IIS up plus a 503 is a
+  # specific, actionable failure, almost always the guest firewall. An
+  # execution node that cannot reach the Route at all says nothing about the
+  # guest, and failing there would blame the VM for the network between AAP and
+  # the router.
+  # ---------------------------------------------------------------------
+  - name: "Windows Day 1 - 5 Check"
+    description: "Smoke test: log in over WinRM, gather facts, and prove the Route serves the page rather than only that IIS is running."
+    labels:
+      - windows
+      - day-1
+    job_type: run
+    organization: "IT Service Automation"
+    inventory: "Sales Demo VMs"
+    project: "Sales Demos"
+    playbook: playbooks/check_windows_vm.yml
+    execution_environment: "Sales Demos - OCP Virt EE"
+    credentials:
+      - "Sales Demos - Windows Machine"
+      - "Sales Demos - Vault"
+      - "Sales Demos - Env Secrets"
+    limit: windemo
+    ask_limit_on_launch: true
+    # Persist the gathered facts in AAP's database so they appear in the host's
+    # Facts tab, matching Linux Day 1 - 5 Check. The same information is written
+    # to <web_url>/facts.json by windows_configure — this is the controller-side
+    # copy, that one is the curl-able copy.
+    use_fact_cache: true
+
+  # ---------------------------------------------------------------------
+  # Off-chain. For a Windows VM that ALREADY EXISTS — a page tweak, a re-run
+  # after a failed step, or the recovery half of a break/fix story — without
+  # going anywhere near terraform.
+  #
+  # IT RUNS THE COMPLIANCE STEP TOO, AND THAT IS #300'S LESSON TAKEN RATHER
+  # THAN RE-LEARNED. The Linux repair path did not scan at first, so a repair
+  # rewrote the demo page and left YESTERDAY'S report beside it, still being
+  # served, now describing a machine that no longer existed in that state. The
+  # workflow scanned and this path did not, and the two entry points disagreed
+  # about what "configured" means. Building the Windows wrapper with all three
+  # from the outset is cheaper than fixing it twice.
+  # ---------------------------------------------------------------------
+  - name: "Windows Day 1 - Repair"
+    description: "Patch, configure and re-verify an existing Windows demo VM in one shot. Lands it in the same state a freshly built one reaches."
+    labels:
+      - windows
+      - day-1
+    job_type: run
+    organization: "IT Service Automation"
+    inventory: "Sales Demo VMs"
+    project: "Sales Demos"
+    playbook: playbooks/repair_windows_vm.yml
+    execution_environment: "Sales Demos - OCP Virt EE"
+    credentials:
+      - "Sales Demos - Windows Machine"
+      - "Sales Demos - Vault"
+      - "Sales Demos - Env Secrets"
+    limit: windemo
+    # So a single misbehaving VM can be targeted without editing the template.
+    ask_limit_on_launch: true
 
   - name: "Windows Day 1 - Teardown"
     description: "Destroy the Windows demo VM only. The Linux VM has its own state and is untouched."

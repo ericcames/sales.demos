@@ -114,12 +114,30 @@
       # traverse the Route, the Service, the pod network and the guest's
       # firewall — the path a customer's browser takes. Running it on the guest
       # would prove none of them.
+      #
+      # THE TIMEOUT MUST BEAT THE ROUTER'S OWN, AND 20 WAS A RACE. Measured on
+      # sandbox against a guest whose port 80 was still blocked: the Windows
+      # Route returns a real 503, but only after ~20 seconds, because the
+      # CIS-hardened Public profile DROPS the router's SYN and the router waits
+      # out its backend timeout before answering. The Linux Route returns 503 in
+      # ~3 seconds for the same "nothing is serving" condition, because
+      # firewalld REJECTS and the router hears about it immediately.
+      #
+      # Same verdict, very different latency. At timeout: 20 this probe raced
+      # the router and the outcome was luck: sometimes the 503 arrived and the
+      # node failed correctly, sometimes the probe gave up first and landed in
+      # the "could not reach it, so this says nothing about the guest" branch
+      # below -- which does NOT fail. Flaky, and flaky towards a false green on
+      # the single most likely failure this check exists to catch.
+      #
+      # 60 is comfortably past the router's backend timeout, so the 503 always
+      # wins the race and the classification is deterministic.
       ansible.builtin.uri:
         url: "{{ web_url }}"
         method: GET
         return_content: false
         validate_certs: false
-        timeout: 20
+        timeout: "{{ check_windows_route_timeout | default(60) }}"
       delegate_to: localhost
       register: check_windows_route
       failed_when: false
