@@ -130,7 +130,13 @@ controller_templates_all:
           variable: vm_size_tier
           type: multiplechoice
           required: true
-          default: small
+          # LARGE, NOT SMALL, AND THAT IS THE POINT OF A DEMO. Set 2026-09-08:
+          # these are demo machines and the thing being demonstrated is speed,
+          # so the default should not be the tier that makes every step slower.
+          # A large guest is 4 vCPU / 16 GiB; the cluster has room for a large
+          # Linux and a large Windows at once. Pick a smaller tier deliberately
+          # when the smaller tier is what you are showing.
+          default: large
           choices:
             - small
             - medium
@@ -705,7 +711,13 @@ controller_templates_all:
           variable: vm_size_tier
           type: multiplechoice
           required: true
-          default: small
+          # LARGE, NOT SMALL, AND THAT IS THE POINT OF A DEMO. Set 2026-09-08:
+          # these are demo machines and the thing being demonstrated is speed,
+          # so the default should not be the tier that makes every step slower.
+          # A large guest is 4 vCPU / 16 GiB; the cluster has room for a large
+          # Linux and a large Windows at once. Pick a smaller tier deliberately
+          # when the smaller tier is what you are showing.
+          default: large
           choices:
             - small
             - medium
@@ -759,9 +771,10 @@ controller_templates_all:
         # installing is one click away here for when patching IS the story.
         - question_name: What to do
           question_description: >-
-            Report only (fast, ~2 min) tells you how far behind the machine is
-            without changing it. Download stages the updates. Install applies
-            them and is the slow one -- 10 minutes or more on a fresh guest.
+            Report only (~2 min) tells you how far behind the machine is without
+            changing it. One (the default) installs a single update, so the demo
+            shows a real change without the wait. Install applies everything and
+            took over 45 minutes on a fresh guest -- opt into it deliberately.
           variable: windows_patching_state
           # `one` HERE, MATCHING THE ROLE'S OWN DEFAULT. It read `searched` for
           # one commit and the two disagreed, which is worse than either value:
@@ -774,9 +787,18 @@ controller_templates_all:
           type: multiplechoice
           required: true
           default: one
+          # `one` MUST BE IN THIS LIST, and it was not: AAP rejects the whole
+          # survey with "Default choice must be answered from the choices
+          # listed" and config.yml fails. The mode was added to the role and the
+          # choices here were left behind.
+          #
+          # `downloaded` IS DELIBERATELY GONE. It was offered here and the role
+          # has no branch for it, so choosing it did exactly what `searched`
+          # does -- a decorative option, which is the same defect this role was
+          # ported to fix. Three modes, each of which does something distinct.
           choices:
             - searched
-            - downloaded
+            - one
             - installed
         - question_name: Update categories
           question_description: >-

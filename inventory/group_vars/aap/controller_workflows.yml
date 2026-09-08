@@ -186,7 +186,13 @@ controller_workflows_all:
           variable: vm_size_tier
           type: multiplechoice
           required: true
-          default: small
+          # LARGE, NOT SMALL, AND THAT IS THE POINT OF A DEMO. Set 2026-09-08:
+          # these are demo machines and the thing being demonstrated is speed,
+          # so the default should not be the tier that makes every step slower.
+          # A large guest is 4 vCPU / 16 GiB; the cluster has room for a large
+          # Linux and a large Windows at once. Pick a smaller tier deliberately
+          # when the smaller tier is what you are showing.
+          default: large
           choices:
             - small
             - medium
@@ -316,7 +322,13 @@ controller_workflows_all:
           variable: vm_size_tier
           type: multiplechoice
           required: true
-          default: small
+          # LARGE, NOT SMALL, AND THAT IS THE POINT OF A DEMO. Set 2026-09-08:
+          # these are demo machines and the thing being demonstrated is speed,
+          # so the default should not be the tier that makes every step slower.
+          # A large guest is 4 vCPU / 16 GiB; the cluster has room for a large
+          # Linux and a large Windows at once. Pick a smaller tier deliberately
+          # when the smaller tier is what you are showing.
+          default: large
           choices:
             - small
             - medium

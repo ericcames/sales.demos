@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed -- the Patch survey offered a mode the role does not have, and not the one it does (#340)
+- **`config.yml` failed against sandbox.** AAP rejected the survey outright:
+
+  ```
+  error: Failed to update survey: Default choice must be answered from the choices listed.
+  ```
+
+- #357 set the default to `one` without adding `one` to the **choices** list,
+  which still read `searched / downloaded / installed` from the first draft. AAP
+  validated it correctly and refused the whole survey.
+- **`downloaded` is removed at the same time, because the role has no branch for
+  it.** Choosing it did exactly what `searched` does. That is a decorative
+  survey option -- precisely the defect this role was ported to fix, since the
+  original wrote to a variable named `patches` that the role never read. Three
+  modes now, each doing something distinct.
+- **The error was hidden by `no_log`.** The failing task reported only
+  "the output has been hidden due to the fact that 'no_log: true' was
+  specified"; re-running with `aap_configuration_secure_logging=false` produced
+  the real message in one line. Worth knowing before debugging a silent
+  config.yml failure again.
+
+### Changed -- demo VMs default to the `large` tier, on every provisioning entry point
+- `vm_size_tier` now defaults to **`large`** on `Linux Day 1 - 1 Provision`,
+  `Windows Day 1 - 1 Provision`, `Linux Day 1 - 0 Workflow` and
+  `Windows Day 1 - 0 Workflow` -- all four, so no path still lands on `small`.
+- **These are demo machines and the thing being demonstrated is speed**, so the
+  default should not be the tier that makes every step slower. Picking a smaller
+  tier stays one click away for when the smaller tier is what you are showing.
+- **Verified it fits before changing it**, rather than assuming: `large` is
+  4 vCPU / 16 GiB in `tiers.yaml`, and both environments set
+  `available_memory_gb: 63`, so a large Linux and a large Windows co-exist with
+  room to spare.
+
 ### Fixed -- the Patch survey default disagreed with the role, and the survey wins (#340)
 - Shipped in #356 with `windows_patching_state` defaulting to **`one` in the
   role** and **`searched` in the job template survey**. A survey default always
