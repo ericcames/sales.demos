@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added -- read the CIS hardening OFF the published image, offline (#358)
+- **`utilities/inspect-golden-image.py`** pulls a Windows golden containerdisk,
+  extracts the qcow2 from its single `FROM scratch` layer, carves the Windows
+  volume, and reads `SOFTWARE` and `SYSTEM` straight out of
+  `/Windows/System32/config` -- then reports whether the CIS controls are
+  actually there. Exit `1` means the image does not carry what its label claims.
+- **`com.redhat.cis.level=L1` is the producer's INTENT, not a measurement.**
+  `publish_windows_containerdisk.yml` defaults to `cis_level=L1` and the
+  `win2k22-cis-l1-golden` repo name, so the label records what the operator
+  meant and nothing reads the media back. This does read it back.
+- **It answers a question no cluster can.** Scanning a running guest cannot
+  distinguish "the image was never hardened" from "something stripped it after
+  boot" -- #358 spent two rebuilds on exactly that ambiguity.
+- **The controls it checks are deliberately only ones impossible on a clean
+  install.** #358's original evidence was ambiguous precisely because nine
+  "compliant" controls were stock Windows values, so a check that can pass on a
+  default install is worthless here.
+- **It also prints provenance** -- how many `sysprep` runs the disk records, and
+  when. That is what caught `image.builder.pipeline#91`: `win2k22-cis-l1-golden:20260907-0516`
+  holds a disk sysprepped exactly once, on 2026-09-05, published two days later.
+- **No root, no libguestfs**: `qemu-img` and `ntfsprogs` are already present on a
+  Fedora workstation; `regipy` comes from pip. A check that needs `sudo` is a
+  check nobody runs.
+- Documented in the `ocpvirt-windows-image` skill as a per-new-tag step before
+  linking (tags are immutable, so one verification holds for ever), and the
+  whole two-cause story is written up in `docs/plan/ocpvirt-demo-plan.md`.
+
+
 ### Fixed -- demo docs coached a CIS L1 claim the report contradicts (#365)
 - **`run-sheet.md` walked a presenter into opening the Windows compliance report
   and narrating "sixteen exceptions, and every one has a name against it."** That

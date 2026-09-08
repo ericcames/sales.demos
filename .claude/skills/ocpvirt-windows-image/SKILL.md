@@ -83,6 +83,39 @@ curl -sk -o /dev/null -w "API: %{http_code}\n" \
 `playbooks/group_vars/all/secrets.yml`; the playbook asserts both and rejects
 `CHANGEME`.
 
+## Before linking a NEW tag: prove the image is actually hardened
+
+**`com.redhat.cis.level=L1` is the producer's INTENT, not a measurement of the
+disk.** `publish_windows_containerdisk.yml` defaults to `cis_level=L1` and the
+`win2k22-cis-l1-golden` repository name, so the label says what the operator
+meant. Nothing reads the media back.
+
+That is not a theoretical gap. **#358 spent two rebuilds on it**, because a
+running guest cannot tell you whether the image was unhardened or whether
+something stripped the hardening after boot. Reading the published media settles
+it with no cluster, no VM, and no credential beyond the quay pull:
+
+```bash
+pip install regipy   # once; qemu-img and ntfsprogs are already present
+utilities/inspect-golden-image.py \
+  --image "$(grep '^quay_windows_image' inventory/group_vars/sandbox/connection.yml | cut -d'"' -f2)"
+```
+
+Exit `0` means the image carries the hardening; exit `1` means it does not, and
+you should **not link it**. The controls it reads are deliberately only ones
+that *cannot* be set on a clean install — #358's original evidence was
+ambiguous precisely because nine "compliant" controls were stock Windows values,
+so a check that could pass on a default install would be worthless here.
+
+It also prints **provenance** — how many `sysprep` runs the disk records and
+when. That is what caught image.builder.pipeline#91: a disk sysprepped exactly
+once, on 2026-09-05, published two days later as
+`win2k22-cis-l1-golden:20260907-0516`.
+
+> The pull is ~9 GiB and the conversion needs ~70 GiB of scratch, so this is a
+> **per-new-tag** check, not something to run before every link. Tags are
+> immutable — verify a tag once and the answer holds for ever.
+
 ## Run
 
 ```bash

@@ -750,6 +750,82 @@ Projected with all three: **~8m 50s warm** (Repair against an existing guest),
 
 ---
 
+## The CIS L1 claim is not yet supportable (#358, measured 2026-09-08)
+
+**The Windows demo guest carries no CIS L1 hardening.** `Windows Day 1 - 4
+Compliance Scan` scores it **9 of 27 controls (33%)**, and all nine passing
+controls are stock Windows Server 2022 values. Two independent defects produced
+that, both of the same shape — **a declared value trusted instead of the
+artifact measured** — and only one of them is this repo's.
+
+### Cause 1 — the cluster never imported the image `connection.yml` names (fixed, #364)
+
+`link_windows_image.yml` decided whether to re-import from whether the `win2k22`
+DataSource was **Ready**, never from **which image** it served. A DataSource is
+Ready for ever once populated, so on any environment past its first run,
+changing `quay_windows_image` and re-running:
+
+- patched the HCO cron template with the new URL — the half that does nothing,
+  because CDI cannot authenticate a `DataImportCron` to a private registry (#224);
+- skipped the DataVolume and the DataSource repoint;
+- passed verification, whose only questions were "Ready?" and "Bound?" — both
+  true of the old image;
+- printed success.
+
+Sandbox therefore advertised `win2k22-cis-l1-golden:20260907-0516` while every
+clone booted `win2k22-golden:20260906-0300`, the producer's deliberately
+**unhardened** publish, imported 26 hours before the hardened image existed.
+
+**Fixed:** the import decision is now identity, not readiness, and the identity
+is re-read and asserted on every run — including runs that import nothing, which
+is the run that had to be able to fail.
+
+**The generalizable rule:** on KubeVirt, `DataSource Ready=True` and `PVC Bound`
+tell you *something* is served, never *what*. Ask the DataVolume:
+
+```bash
+oc get datavolume win2k22-initial-import -n openshift-virtualization-os-images \
+  -o jsonpath='{.spec.source.registry.url}{"\n"}'
+```
+
+A DataVolume's `spec.source` is immutable, so a changed tag needs delete and
+re-import, never an edit in place.
+
+### Cause 2 — the image itself is unhardened (open, image.builder.pipeline#91)
+
+After re-importing the correct tag and rebuilding the guest (workflow 459, five
+nodes green, 21m 08s), the score was **unchanged at 33%**. Reading the published
+containerdisk offline settled why, with no cluster involved:
+
+- **0 of 10** CIS controls that cannot be set on a clean install are present in
+  `win2k22-cis-l1-golden:20260907-0516`;
+- `\Policies\Microsoft` exists with only its six stock subkeys and **no
+  `WindowsFirewall`** among them;
+- the disk records **exactly one** sysprep run — `2026-09-05 22:14:45` to
+  `22:16:19` — two days before the tag, and one minute before the unhardened
+  `win2k22-golden:20260905-2217` was published.
+
+**This also disproves the leading hypothesis.** `sysprep /generalize` was
+believed to be stripping the hardening; for it to explain the missing
+`WindowsFirewall` key it would have had to delete exactly that key while leaving
+six stock siblings. It does not do that, and there was nothing to strip anyway.
+
+### What is still unknown
+
+**Whether CIS hardening survives `sysprep /generalize` has never been
+measured.** This image cannot answer it, because the hardening never ran on it.
+The question only becomes answerable once a genuinely hardened build is
+published, and it still gates `image.builder.pipeline#87` and `#88`.
+
+### What this repo does about it now
+
+- `utilities/inspect-golden-image.py` reads the hardening off a published
+  containerdisk offline — `qemu-img` + `ntfsprogs` + `regipy`, no root, no
+  libguestfs, no cluster. Run it once per new tag before linking; exit `1` means
+  do not link.
+- The demo docs no longer coach the L1 claim (#365). The run sheet tells the
+  presenter to skip the compliance node entirely until #358 closes.
+
 ## Open items
 
 - ~~Quay.io namespace needs choosing~~ — **resolved: `quay.io/zigfreed`**, already
