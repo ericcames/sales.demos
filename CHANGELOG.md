@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed -- a control the reader could never find (#370)
+- **`utilities/inspect-golden-image.py` checked `DisableWebPnPDownload` at
+  `\Policies\Microsoft\Windows`**, but the CIS role writes it to
+  `HKLM:\SOFTWARE\Policies\Microsoft\Windows Nt\Printers` (rule 18.9.20.1.1,
+  `level1-memberserver`, enabled). The value could not be found on any machine.
+- **It was invisible because every run so far read unhardened media**, where the
+  honest answer and the bug are both `VALUE ABSENT`. Caught in
+  `image.builder.pipeline#93` the first time genuinely hardened media was
+  measured, which returned 9 of 10 instead of 10.
+- **#358's conclusions are unaffected** -- `win2k22-cis-l1-golden:20260907-0516`
+  carries no hardening by any measure. The bug could only ever *under*-report a
+  hardened image.
+- **The other nine controls are now validated in both directions**: `OK` on
+  hardened media, `ABSENT`/`WRONG` on the unhardened Sep 5 disk. Only this one
+  had never been seen passing.
+
 ### Documentation -- the producer-side root cause of #358, once it was known (#358)
 - **`docs/plan/ocpvirt-demo-plan.md` cause 2 now records the mechanism**, which
   turned out not to be the one first proposed. The guess was that the producer's
