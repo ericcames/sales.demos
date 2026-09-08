@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed -- the Windows demo can show its compliance report again (#358)
+- **A clone of `win2k22-cis-l1-golden:20260908-1853` scores 26 of 27 controls
+  compliant (96%)** -- 0 non-compliant, 1 not configured. Measured 2026-09-08 on
+  a guest verified to have been rebuilt (VM and DataVolume both created
+  21:10:11Z) from the DataSource serving that image. The five-node
+  `Windows Day 1 - 0 Workflow` completed green in 19.7 minutes.
+- **`sysprep /generalize` strips nothing.** Read directly off the booted,
+  sysprepped guest's own disk: 10 of 10 controls that cannot be set on a clean
+  install. This was the leading suspicion for two days of #358 and it is now
+  measured and wrong. It also unblocks `image.builder.pipeline#87` and `#88`,
+  which were gated on exactly this question.
+- **The four demo docs stop coaching around the problem** (reversing #365/#366):
+  the run sheet no longer says to skip the compliance node, the talk track gets
+  its third item back, `architecture.md` states the hardening as verified rather
+  than unconfirmed, and "CIS Level 1 hardened" returns to `objections.md`.
+- **Every 33% reading in this issue came from guests cloned from unhardened
+  media.** Three defects of one shape had to be fixed first, each a status
+  trusted instead of the artifact measured: #364 (DataSource *Ready* vs *which
+  image*), `image.builder.pipeline#92` (`creates:` -- the file *exists* vs is
+  *current*), and #377 (a guest that could never configure its own WinRM).
+
 ### Fixed -- a CIS-hardened guest could never configure its own WinRM (#377)
 - **`FirstLogonCommands` needs a logon, and a CIS L1 image is built to prevent
   one.** Measured on the guest's own disk: `legalnoticecaption` is set to the DoD

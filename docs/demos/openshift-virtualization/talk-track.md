@@ -515,12 +515,10 @@ from your delivery rather than softening it.**
 
 > ### ⛔ Do not substitute the compliance percentage here
 >
-> This slot used to offer the Windows compliance number as a replacement third
-> item, on the grounds that it is "a demonstration that the hardening took and
-> is still in place". **That sentence is currently false** — see
-> [#358](https://github.com/ericcames/sales.demos/issues/358), the guest scores
-> 33% and carries none of the hardening. Leave the beat at two items until #358
-> closes, then restore the third from this file's history.
+> The Windows compliance number is available as a third item again: measured
+> 2026-09-08, a clone scores **26 of 27 (96%)**, which really is a demonstration
+> that the hardening took and is still in place after `sysprep /generalize`.
+> It was withdrawn while #358 was open and the guest scored 33%; that is fixed.
 
 That is a better third item anyway: a limitation you are choosing to disclose
 about something that *works* lands harder than one about something that does

@@ -72,12 +72,11 @@ deployment.
 is done (#340), so do not hedge *that*. Claiming a gap that has closed costs you
 as much credibility as claiming a capability you do not have.
 
-> **The words "CIS Level 1 hardened" have been removed from the line above on
-> purpose.** [#358](https://github.com/ericcames/sales.demos/issues/358): a clone
-> of the image scores 33% and carries none of the hardening, so that phrase is a
-> claim we cannot currently support in the room. The workflow, the five steps and
-> the 503-to-200 payoff are all still true — say those. Restore the phrase when
-> #358 closes.
+> **"CIS Level 1 hardened" is a supportable claim again.** It was struck while
+> #358 was open and a clone scored 33%. Measured 2026-09-08: a clone scores
+> **26 of 27 (96%)**, and the image itself reads 10 of 10 offline on controls
+> that cannot exist on a clean install. Say it — and still say what the
+> percentage covers, per the note below.
 
 **The one difference, if they are technical:** step 2 registers the Linux guest
 to the Red Hat CDN, because the RHEL boot source ships with no repositories at
@@ -95,8 +94,8 @@ source" sounds like a gap and is actually the supported pattern.
 If they ask what the build involves: unattended install from an answer file,
 virtio drivers and guest agent, a CIS Level 1 hardening pass via the Ansible
 Lockdown role, WinRM over HTTPS, sysprep, then publish as a containerdisk.
-(**Describe the build, not the guest** — #358; the hardening step runs, whether
-it survives to the clone is what is open.) About
+(You can now describe the guest as well as the build: the hardening survives to
+the clone, measured at 26 of 27.) About
 forty-five minutes, once, in a separate repo — `ericcames/image.builder.pipeline`
 is the factory, this repo is the consumer.
 

@@ -340,20 +340,17 @@ Windows admin in the room will notice it:
 200. `web_url` resolves per-OS, so it is the same one command either way.
 
 
-> ### ⛔ DO NOT OPEN THE WINDOWS COMPLIANCE REPORT IN FRONT OF A CUSTOMER
+> ### The Windows compliance report is now safe to show
 >
-> **Open issue [#358](https://github.com/ericcames/sales.demos/issues/358).**
-> The Windows guest currently scores **9 of 27 controls compliant (33%)** — 7
-> non-compliant, 11 not configured. Every value that is set is the Windows
-> default and every policy key CIS would have written is absent, so the guest is
-> not carrying the hardening the rest of this page describes.
+> Measured 2026-09-08: a clone of
+> `win2k22-cis-l1-golden:20260908-1853` scores **26 of 27 controls compliant
+> (96%)** — 0 non-compliant, 1 not configured. The hardening is real, it
+> survives `sysprep /generalize`, and the guest carries it.
 >
-> **Skip the compliance node in the narration and do not open `report.html`.**
-> The workflow still runs it and still goes green; you simply do not show it.
->
-> This is not the node misbehaving — **the node is working, and it is what
-> caught the platform's own claim being wrong.** Delete this warning when #358
-> closes.
+> Getting here took fixing three defects of one shape — a status trusted instead
+> of the artifact measured (#364, image.builder.pipeline#92, #377). **The node
+> that surfaced all of it is this one**, which is worth saying out loud if
+> anyone asks why the number moved.
 
 **The compliance node is where the Windows story gets better than the Linux
 one.** There is no OpenSCAP for Windows, so it does not pretend to scan: it
