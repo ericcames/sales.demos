@@ -110,13 +110,30 @@ locals {
   linux_fqdn   = "${local.linux_vm_name}.${var.namespace}.svc.cluster.local"
 
   # Web service and Route — HTTP access for the demo web server.
-  create_web_route     = local.create_linux && var.openshift_apps_domain != ""
+  #
+  # PER-OS SINCE #340, AND IT USED TO BE LINUX-ONLY. This was a single
+  # `create_web_route = local.create_linux && ...`, so a Windows VM got no
+  # Service, no Route and a null `web_url`: IIS could be installed and serve
+  # nobody. The Linux demo's whole payoff is the Route turning 503 into a page,
+  # and Windows had no counterpart to it.
+  #
+  # Two gates rather than one, because the OSes are not symmetric here: Cockpit
+  # is a RHEL web console and stays behind the Linux gate below.
+  create_linux_web_route   = local.create_linux && var.openshift_apps_domain != ""
+  create_windows_web_route = local.create_windows && var.openshift_apps_domain != ""
+
   linux_web_svc_name   = "${local.linux_vm_name}-web"
   linux_web_route_host = "${local.linux_web_svc_name}-${var.namespace}.${var.openshift_apps_domain}"
   # https, matching the Route edge termination added in #45. It was http://
   # while the Route had no TLS, which made every browser either warn about an
   # insecure page or fail outright on auto-upgrade.
   linux_web_url = "https://${local.linux_web_route_host}"
+
+  # Windows web Service and Route (#340). Same shape as the Linux pair above;
+  # IIS serves the Default Web Site on :80, so the port matches.
+  windows_web_svc_name   = "${local.windows_vm_name}-web"
+  windows_web_route_host = "${local.windows_web_svc_name}-${var.namespace}.${var.openshift_apps_domain}"
+  windows_web_url        = "https://${local.windows_web_route_host}"
 
   # Cockpit (RHEL web console) Service and Route — browser terminal (#63).
   linux_cockpit_svc_name   = "${local.linux_vm_name}-cockpit"

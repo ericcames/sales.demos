@@ -82,14 +82,28 @@ output "memory_budget" {
 # connects. `-t/--local-ssh-opts` is the surviving way to pass ssh options.
 # ---------------------------------------------------------------------------
 
+# WEB_URL RESOLVES PER-OS, AND THAT KEEPS THE CONTRACT SINGLE (#340). One state
+# builds exactly one OS since #301, so this is never ambiguous. Returning the
+# right URL from the same output name means every downstream consumer is
+# unchanged: the host var in register_hosts.yml, the set_stats in
+# provision_artifacts.yml, the demo page, the compliance report link, and the
+# check playbook all keep reading `web_url`. A second `windows_web_url` output
+# would have forced every one of them to learn which OS it was looking at.
 output "web_url" {
-  description = "Public HTTP URL for the Linux VM. Returns 503 until httpd is installed by AAP demo content. Null when os_type excludes linux or openshift_apps_domain is not set."
-  value       = local.create_web_route ? local.linux_web_url : null
+  description = "Public HTTPS URL for the demo VM's web server — the Linux VM under os_type=linux, the Windows VM under os_type=windows. Returns 503 until the web server is installed by AAP demo content. Null when openshift_apps_domain is not set."
+  value = (
+    local.create_windows_web_route ? local.windows_web_url :
+    local.create_linux_web_route ? local.linux_web_url :
+    null
+  )
 }
 
+# NO WINDOWS COUNTERPART, DELIBERATELY. Cockpit is the RHEL web console; there
+# is no equivalent to expose on Windows, and RDP is already published on the
+# headless Service rather than through a Route (it is not HTTP).
 output "cockpit_url" {
   description = "Cockpit (RHEL web console) URL for the Linux VM. Provides a browser-based terminal. Null when os_type excludes linux or openshift_apps_domain is not set."
-  value       = local.create_web_route ? local.linux_cockpit_url : null
+  value       = local.create_linux_web_route ? local.linux_cockpit_url : null
 }
 
 output "ssh_command" {

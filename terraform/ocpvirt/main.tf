@@ -598,7 +598,7 @@ resource "kubernetes_service" "linux_web" {
 }
 
 resource "kubernetes_manifest" "linux_web_route" {
-  count = local.create_web_route ? 1 : 0
+  count = local.create_linux_web_route ? 1 : 0
 
   computed_fields = [
     "metadata.annotations",
@@ -687,7 +687,7 @@ resource "kubernetes_service" "linux_cockpit" {
 }
 
 resource "kubernetes_manifest" "linux_cockpit_route" {
-  count = local.create_web_route ? 1 : 0
+  count = local.create_linux_web_route ? 1 : 0
 
   computed_fields = [
     "metadata.annotations",
@@ -723,5 +723,94 @@ resource "kubernetes_manifest" "linux_cockpit_route" {
   depends_on = [
     kubernetes_namespace.demo,
     kubernetes_service.linux_cockpit,
+  ]
+}
+
+# ---------------------------------------------------------------------------
+# Windows web Service and Route (#340) — the Windows half of the demo payoff.
+#
+# WHY THIS EXISTS. The Linux demo's whole point is the Route going 503 -> 200:
+# provision, and the URL is already there and correctly broken; configure, and
+# it serves a page. Windows had no counterpart. `create_web_route` was gated on
+# `create_linux`, so `os_type=windows` produced no Service, no Route and a null
+# `web_url` — IIS could be installed and would serve nobody outside the cluster.
+#
+# THE SELECTOR WORKS THE SAME WAY IT DOES FOR LINUX. The VM template stamps
+# `sales-demos/vm = <vm name>` on the virt-launcher pod, which is what both web
+# Services select on. The headless `kubernetes_service.windows` above already
+# proves arbitrary ports reach the guest through that pod — WinRM on 5986 is how
+# AAP logs in (#257) — so :80 needs nothing special.
+#
+# PORT 80 IS IIS'S DEFAULT WEB SITE, so playbooks/roles/windows_configure only
+# has to install the Web-Server feature and drop a page in
+# C:\inetpub\wwwroot. No binding to manage.
+# ---------------------------------------------------------------------------
+
+resource "kubernetes_service" "windows_web" {
+  count = local.create_windows ? 1 : 0
+
+  metadata {
+    name      = local.windows_web_svc_name
+    namespace = var.namespace
+    labels    = local.common_labels
+  }
+
+  spec {
+    selector = {
+      "sales-demos/vm" = local.windows_vm_name
+    }
+
+    port {
+      name        = "http"
+      port        = 80
+      target_port = 80
+    }
+  }
+
+  depends_on = [kubernetes_namespace.demo]
+}
+
+resource "kubernetes_manifest" "windows_web_route" {
+  count = local.create_windows_web_route ? 1 : 0
+
+  computed_fields = [
+    "metadata.annotations",
+    "metadata.labels",
+  ]
+
+  manifest = {
+    apiVersion = "route.openshift.io/v1"
+    kind       = "Route"
+    metadata = {
+      name      = local.windows_web_svc_name
+      namespace = var.namespace
+      labels    = local.common_labels
+    }
+    spec = {
+      host = local.windows_web_route_host
+      to = {
+        kind   = "Service"
+        name   = local.windows_web_svc_name
+        weight = 100
+      }
+      port = {
+        targetPort = "http"
+      }
+      # EDGE TLS, for the same reasons as the Linux Route above (#45): without a
+      # tls block Chrome auto-upgrades to HTTPS, finds no matching TLS route and
+      # shows "Application is not available", so the demo looks broken. The
+      # RHDP *.apps wildcard is publicly trusted, so this needs no certificate
+      # management and produces a real padlock.
+      tls = {
+        termination                   = "edge"
+        insecureEdgeTerminationPolicy = "Redirect"
+      }
+      wildcardPolicy = "None"
+    }
+  }
+
+  depends_on = [
+    kubernetes_namespace.demo,
+    kubernetes_service.windows_web,
   ]
 }

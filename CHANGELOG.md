@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added -- Windows gets a web Route, so it has a demo payoff (#340, part 1 of 3)
+- **The Linux demo's whole point had no Windows counterpart.** `create_web_route`
+  was gated on `create_linux`, so `os_type=windows` produced no Service, no Route
+  and a null `web_url`. IIS could be installed and would serve nobody outside the
+  cluster; there was no 503 -> 200 beat to show.
+- `kubernetes_service.windows_web` and `kubernetes_manifest.windows_web_route`,
+  mirroring the Linux pair including the #45 edge-TLS block -- without it Chrome
+  auto-upgrades to HTTPS, finds no matching TLS route, and the demo reads as
+  broken.
+- **The gate is now two gates**, `create_linux_web_route` and
+  `create_windows_web_route`, because the OSes are not symmetric: Cockpit is a
+  RHEL web console and stays Linux-only. There is no Windows `cockpit_url`; RDP
+  is already published on the headless Service and is not HTTP.
+- **`web_url` resolves per-OS rather than gaining a sibling output.** One state
+  builds one OS since #301, so it is never ambiguous, and every downstream
+  consumer -- the host var, the `set_stats`, the demo page, the compliance
+  report link, the check playbook -- keeps reading one name. A second
+  `windows_web_url` would have forced each of them to learn which OS it was
+  looking at.
+- **The Windows host carried 5 host vars against Linux's 12.** Added `web_url`,
+  `golden_image_source`, `golden_image_cis_level` and `env_name`, which the
+  Windows roles in part 2 read; without them each role needs its own fallback
+  and the Windows page would disagree with the Linux one about what it knows.
+- Added the Windows `set_stats` block in `provision_artifacts.yml`, which had a
+  Linux one and no counterpart.
+- Corrected four stale strings still offering `os_type=both`, removed in #301:
+  `variables.tf`, `terraform.tfvars.example` (also still showing only the legacy
+  tier names), and two in `ocpvirt-demo-plan.md`.
+
 ### Added -- ansible.windows pinned, and no EE rebuild was needed (#339)
 - Pinned at **3.6.1**, the prerequisite for the Windows Day 1 chain (#340).
 - **The EE rebuild this was expected to need does not exist.** Measured against

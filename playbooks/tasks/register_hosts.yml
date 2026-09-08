@@ -79,12 +79,25 @@
         inventory: "{{ provision_aap_inventory }}"
         enabled: true
         state: present
+        # THE WINDOWS HOST USED TO CARRY FIVE OF THESE AND THE LINUX HOST
+        # TWELVE (#340). The extra four are not decoration -- windows_configure
+        # renders web_url and the golden-image provenance onto the demo page,
+        # windows_compliance links its report under web_url, and
+        # check_windows_vm.yml curls it. Without them the Windows roles would
+        # each need their own fallback and the page would disagree with the
+        # Linux one about what it knows.
+        #
+        # web_url is per-OS from Terraform now, so this is the Windows Route.
         variables:
           ansible_host: "{{ win_inventory.ansible_host }}"
           ansible_user: "{{ win_inventory.ansible_user }}"
           vm_name: "{{ win_inventory.vm_name }}"
           vm_size_tier: "{{ win_inventory.vm_size_tier }}"
           vm_size_chosen: "{{ win_inventory.vm_size_chosen }}"
+          web_url: "{{ web_url }}"
+          golden_image_source: "{{ quay_windows_image | default('') }}"
+          golden_image_cis_level: "L1"
+          env_name: "{{ aap_env_name }}"
 
     - name: Associate the Windows host with its group
       ansible.controller.group:

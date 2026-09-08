@@ -376,7 +376,7 @@ multi-OS pattern:
 - `providers.tf` — replace `azurerm` with `hashicorp/kubernetes` (~> 2.30) + `random`. Use the
   **official `kubernetes` provider with `kubernetes_manifest`**, not a community KubeVirt
   provider — no third-party dependency, and the CRDs exist after Phase 0.
-- `variables.tf` — port `vm_size_tier` and `os_type` (`windows` | `linux` | `both`) with their
+- `variables.tf` — port `vm_size_tier` and `os_type` (`windows` | `linux`; `both` was removed in #301) with their
   `validation` blocks verbatim from `dc1.azure/terraform/variables.tf:24-48`; swap the tier
   strings for the table above. Add `namespace`, `kubeconfig_path`.
 - `locals.tf` — port the `vm_size_map` → `instancetype` mapping, `random_string.suffix`,
@@ -628,9 +628,10 @@ one `dc1.azure` already produces.
 2. **Terraform** — `terraform init && terraform plan` clean, then apply each tier:
    `-var os_type=linux -var vm_size_tier=small-1cpu-2gb`, then `medium`, then `large`.
    Confirm `oc get vm,vmi -n <ns>` shows Running and the instance type matches the tier.
-3. **Windows** — link the golden image, then apply `-var os_type=both -var
-   vm_size_tier=large-2cpu-6gb`; confirm the Windows VMI reaches Running and WinRM
-   answers on 5986. (This step said `large-2cpu-8gb`, a tier that has never existed.)
+3. **Windows** — link the golden image, then apply `-var os_type=windows -var
+   vm_size_tier=large`; confirm the Windows VMI reaches Running and WinRM
+   answers on 5986. (This step said `large-2cpu-8gb`, a tier that has never
+   existed, and `os_type=both`, which #301 removed.)
 4. **Resource ceiling** — with all VMs up, `oc adm top node` must stay under ~90% memory.
    This is the test that proves the tier table fits the box.
 5. **Both entry points agree** — run each phase once via its skill and once via its AAP job

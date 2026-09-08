@@ -57,7 +57,7 @@ variable "vm_size_tier" {
 # ---------------------------------------------------------------------------
 
 variable "os_type" {
-  description = "Which OS to provision: windows only, linux (RHEL 9) only, or both. Windows requires this environment to be linked to a published golden image — playbooks/link_windows_image.yml (#3)."
+  description = "Which OS to provision: windows, or linux (RHEL 9). One apply builds one OS — `both` was removed in #301 when state became per-OS; run it twice to get both. Windows requires this environment to be linked to a published golden image — playbooks/link_windows_image.yml (#3)."
   type        = string
   default     = "linux"
 

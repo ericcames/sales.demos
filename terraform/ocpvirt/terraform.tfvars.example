@@ -28,13 +28,18 @@ openshift_insecure  = true
 namespace = "sales-demos-sandbox"
 
 # --- What to build ---------------------------------------------------------
-# vm_size_tier: small-1cpu-2gb | medium-1cpu-4gb | large-2cpu-6gb
-# os_type:      linux | windows | both
+# vm_size_tier: small | medium | large
+#               (the legacy small-1cpu-2gb / medium-1cpu-4gb / large-2cpu-6gb
+#               names are still accepted as aliases and resolve to these)
+# os_type:      linux | windows
 #
-# windows and both cannot boot until this environment is linked to a published
-# golden image — CNV ships the Windows DataSource as an empty placeholder. Run
+# ONE APPLY BUILDS ONE OS. `both` was removed in #301, when Terraform state
+# became keyed per OS — run this twice to get both guests.
+#
+# windows cannot boot until this environment is linked to a published golden
+# image — CNV ships the Windows DataSource as an empty placeholder. Run
 # playbooks/link_windows_image.yml, or the ocpvirt-windows-image skill (#3).
-vm_size_tier = "small-1cpu-2gb"
+vm_size_tier = "small"
 os_type      = "linux"
 
 # Appended to VM names so repeated runs, or several people on one cluster, do
