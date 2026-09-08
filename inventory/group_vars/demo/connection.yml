@@ -78,7 +78,7 @@ windows_admin_password: "{{ env_secrets[aap_env_name].windows_admin_password | d
 # --- Demo VM defaults (not secret) -----------------------------------------
 windows_admin_username: "demoadmin"
 linux_admin_username: "cloud-user"
-quay_windows_image: "quay.io/zigfreed/win2k22-cis-l1-golden:20260907-0516"
+quay_windows_image: "quay.io/zigfreed/win2k22-cis-l1-golden:20260908-1853"
 # BOTH IMAGE REFERENCES MUST EXIST IN BOTH ENVIRONMENTS (#322). demo carried
 # only the Windows one, so "Golden Image - Link RHEL 9 CIS L1" failed its own
 # assert -- the playbook is fine, the environment was simply never told which

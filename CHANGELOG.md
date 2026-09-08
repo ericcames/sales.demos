@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed -- both environments repointed to a MEASURED CIS L1 image (#358)
+- **`quay_windows_image` -> `win2k22-cis-l1-golden:20260908-1853`** in both
+  `sandbox` and `demo`. This is the first Windows golden image whose CIS L1 label
+  was earned rather than asserted: the producer's publish read the hardening off
+  the very qcow2 it packaged and returned **10 of 10** non-default controls
+  (`image.builder.pipeline#92`, gate corrected in its #93/#94).
+- **The Sep 7 build never failed.** `win2k22-build`'s disk on the sandbox cluster
+  had been a hardened, sysprepped golden image since 2026-09-07 -- one sysprep
+  run, `05:01:04`-`05:02:13`, matching that VM's own shutdown. `ibp#91` was a
+  publish that packaged a stale Sep 5 qcow2, not a build that failed. The
+  hardened media simply never got out.
+- **The retired tag `20260907-0516` carries no hardening at all** (0 of 10) and
+  must not be used. Tags are immutable, so it stays as a permanent record of the
+  defect rather than being overwritten.
+
 ### Fixed -- a control the reader could never find (#370)
 - **`utilities/inspect-golden-image.py` checked `DisableWebPnPDownload` at
   `\Policies\Microsoft\Windows`**, but the CIS role writes it to
