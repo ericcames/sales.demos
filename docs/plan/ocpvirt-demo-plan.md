@@ -507,7 +507,7 @@ all found by executing the playbook and none by lint:
 
 | Observation | Value |
 |---|---|
-| Image | `quay.io/zigfreed/win2k22-cis-l1-golden:20260907-0516` (private, 8.67 GiB, CIS L1 hardened) |
+| Image | `quay.io/zigfreed/win2k22-cis-l1-golden:20260907-0516` (private, 8.67 GiB). **The `CIS L1 hardened` this row used to claim was false** — that tag measures 0 of 10 and is superseded by `20260908-1853`; see the #358 section below |
 | Import time | ~5 min (much faster than the estimated 80 min) |
 | DataSource | `win2k22` — `Ready=True`, `spec.source.pvc.name: win2k22-initial-import` |
 | Backing PVC | `win2k22-initial-import` — `Bound`, 60Gi |
@@ -750,7 +750,7 @@ Projected with all three: **~8m 50s warm** (Repair against an existing guest),
 
 ---
 
-## The CIS L1 claim is not yet supportable (#358, measured 2026-09-08)
+## The CIS L1 claim IS supportable (#358, closed 2026-09-08)
 
 **The Windows demo guest carries no CIS L1 hardening.** `Windows Day 1 - 4
 Compliance Scan` scores it **9 of 27 controls (33%)**, and all nine passing
@@ -791,7 +791,7 @@ oc get datavolume win2k22-initial-import -n openshift-virtualization-os-images \
 A DataVolume's `spec.source` is immutable, so a changed tag needs delete and
 re-import, never an edit in place.
 
-### Cause 2 — the image itself is unhardened (open, image.builder.pipeline#91)
+### Cause 2 — the image itself was unhardened (fixed, image.builder.pipeline#92)
 
 After re-importing the correct tag and rebuilding the guest (workflow 459, five
 nodes green, 21m 08s), the score was **unchanged at 33%**. Reading the published
@@ -831,21 +831,74 @@ handed regardless of what the producer's gate does, which is the point of
 `utilities/inspect-golden-image.py` — two independent measurements, not one
 trusted upstream promise.
 
-### What is still unknown
+### Cause 3 — the hardened guest could not configure its own WinRM (fixed, #377)
 
-**Whether CIS hardening survives `sysprep /generalize` has never been
-measured.** This image cannot answer it, because the hardening never ran on it.
-The question only becomes answerable once a genuinely hardened build is
-published, and it still gates `image.builder.pipeline#87` and `#88`.
+With a genuinely hardened image finally published, a clone became unmanageable:
+port 5986 answered and reset without ever presenting a certificate, so every
+Day 1 node past Provision failed.
 
-### What this repo does about it now
+`FirstLogonCommands` re-mints the WinRM certificate that `sysprep /generalize`
+strips — and it runs only after somebody logs in. CIS L1 is built to stop that
+happening unattended. Read off the guest's own disk:
 
-- `utilities/inspect-golden-image.py` reads the hardening off a published
+```
+legalnoticecaption = 'DoD Notice and Consent Banner'
+disablecad         = '0'      (CTRL+ALT+DEL required)
+```
+
+Either alone blocks `AutoAdminLogon`. The clone booted to a consent banner and
+waited for a click that never came, so no certificate was minted and
+`LocalAccountTokenFilterPolicy` was never set. The WinRM setup now runs from the
+**specialize** pass, staging `SetupComplete.cmd` — SYSTEM, no logon, ComputerName
+already final.
+
+**A precedence trap worth keeping:** `Winlogon\DisableCAD` is `1`, set by the
+build, while the *policy* key `Policies\System\disablecad` is `0`. Policy wins.
+
+**An earlier theory blamed CIS 18.5.1 (`AutoAdminLogon = 0`) and was wrong** —
+the unattend's `oobeSystem` pass overrides it; the guest has `AutoAdminLogon = 1`.
+
+### Resolved, and what it measures
+
+| | |
+|---|---|
+| Current image | `quay.io/zigfreed/win2k22-cis-l1-golden:20260908-1853` (private, 10.4 GB) |
+| Verified before the label was applied | **10 of 10** non-default controls, read off the qcow2 by the producer's publish gate |
+| Verified on the booted, sysprepped guest's disk | **10 of 10** |
+| Compliance scan on the running clone | **26 of 27 compliant (96%)** — 0 non-compliant, 1 not configured |
+| Full `Windows Day 1 - 0 Workflow` | five nodes green, 19.7 min |
+
+**`sysprep /generalize` strips nothing.** That was the leading suspicion for two
+days and it is now measured and wrong. It unblocked `image.builder.pipeline#87`
+and `#88`, which were gated on that question alone.
+
+### What to do for the next tag
+
+- **`utilities/inspect-golden-image.py`** reads the hardening off a published
   containerdisk offline — `qemu-img` + `ntfsprogs` + `regipy`, no root, no
-  libguestfs, no cluster. Run it once per new tag before linking; exit `1` means
-  do not link.
-- The demo docs no longer coach the L1 claim (#365). The run sheet tells the
-  presenter to skip the compliance node entirely until #358 closes.
+  libguestfs, no cluster. **Run it once per new tag before linking**; exit `1`
+  means do not link. Tags are immutable, so one answer holds for ever.
+- The producer now gates itself too (`image.builder.pipeline#92`): its publish
+  refuses to apply `com.redhat.cis.level=L1` unless the disk it is packaging
+  measures hardened, and fails equally when the check cannot reach a verdict.
+  **Two independent measurements, not one trusted upstream promise** — keep both.
+- `link_windows_image.yml` decides from image *identity*, not DataSource
+  readiness (#364), and re-asserts it on every run including ones that import
+  nothing.
+
+### The one lesson, four times over
+
+Every defect here was **a status trusted instead of the artifact measured**:
+
+| | trusted | should have measured |
+|---|---|---|
+| #364 | DataSource is *Ready* | *which image* it serves |
+| ibp#91 / #92 | `creates:` — the file *exists* | whether it is *current* |
+| #377 | provision node *succeeded* | whether the guest was reachable |
+| nearly shipped | a 33% score from a "successful" provision | that Terraform had silently **reused a stale VM** |
+
+The fourth is the one to remember: check a VM's `creationTimestamp` and its
+DataVolume's source before believing any scan taken from it.
 
 ## Open items
 

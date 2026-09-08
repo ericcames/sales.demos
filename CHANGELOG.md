@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Documentation -- correct a stale CIS L1 claim in the plan doc (#358)
+- **`docs/plan/ocpvirt-demo-plan.md` described `20260907-0516` as "CIS L1
+  hardened" in a current-state observation table.** That tag measures **0 of 10**
+  and is superseded by `20260908-1853`. It was the last place in the repo still
+  asserting the false claim as fact rather than recounting it as history, which
+  made it the most dangerous line left.
+- **The #358 section now reads as closed**: the heading, cause 2, and a new cause
+  3 for the WinRM defect (#377), plus what the current image actually measures --
+  10 of 10 on the media, 10 of 10 on the booted guest's disk, 26 of 27 (96%) on
+  the running clone.
+- **Kept the live capability note** rather than deleting it with the stale
+  warnings: `utilities/inspect-golden-image.py` is still the per-new-tag check
+  before linking, and the producer's own gate is a second independent
+  measurement, not a replacement for it.
+
 ### Changed -- the Windows demo can show its compliance report again (#358)
 - **A clone of `win2k22-cis-l1-golden:20260908-1853` scores 26 of 27 controls
   compliant (96%)** -- 0 non-compliant, 1 not configured. Measured 2026-09-08 on
