@@ -1,0 +1,53 @@
+---
+# ===========================================================================
+# tiers.yaml — the canonical t-shirt sizing catalog. ONE source, TWO readers.
+# ===========================================================================
+# READ BY BOTH:
+#   - terraform/ocpvirt/locals.tf, via yamldecode(file(...)) — for the
+#     instancetype NAME a VM references, its root disk, and the memory budget
+#     guard.
+#   - playbooks/tasks/ensure_shared_objects.yml — which CREATES the sd1.*
+#     VirtualMachineClusterInstancetype objects from the cpu/memory here.
+#
+# WHY ONE FILE RATHER THAN A MAP IN EACH (#348). The creator moved out of
+# Terraform so the catalog outlives a per-OS teardown, which put these specs in
+# reach of two languages at once. Two copies of a value that must agree is how
+# #334 and #342 both happened in this repo inside a week — a figure silently
+# reading zero, and an inverted flag fixed in one of two places. Terraform reads
+# YAML; Ansible reads YAML; so neither owns a copy.
+#
+# CHANGING A SIZE IS A REAL CHANGE, not a config tweak. The objects are
+# cluster-scoped and shared, so a running VM keeps the spec it was admitted with
+# until it is recreated.
+#
+# ALIASES ARE LOAD-BEARING. The legacy names are still accepted by AAP surveys
+# and saved job launches (#239), so they resolve to the canonical tiers rather
+# than being removed.
+# ===========================================================================
+
+# The three real tiers. `instancetype` is the cluster-scoped object name.
+tiers:
+  small:
+    instancetype: sd1.small
+    cpu: 2
+    memory_gb: 4
+    disk_gb: 30
+  medium:
+    instancetype: sd1.medium
+    cpu: 2
+    memory_gb: 8
+    disk_gb: 30
+  large:
+    instancetype: sd1.large
+    cpu: 4
+    memory_gb: 16
+    disk_gb: 50
+
+# Legacy tier names -> canonical tier. Accepted for backward compatibility.
+aliases:
+  small-1cpu-2gb: small
+  medium-1cpu-4gb: medium
+  large-2cpu-6gb: large
+
+# Windows needs more root disk than any tier provides.
+windows_min_disk_gb: 60

@@ -16,31 +16,20 @@
 # terraform apply returns well before the guest is up.
 # ---------------------------------------------------------------------------
 
-resource "kubernetes_namespace" "demo" {
-  # SHARED BETWEEN BOTH GUESTS, so only one state may own it (#311). State is
-  # keyed per OS since #301, and a Windows apply against a namespace the Linux
-  # state already created fails with `namespaces "..." already exists`.
-  #
-  # playbooks/provision_vm.yml also ensures this namespace idempotently, naming
-  # it and nothing else, so a Windows-only environment still gets one and this
-  # resource sees no drift from it.
-  count = var.manage_shared_objects ? 1 : 0
-
-  metadata {
-    name   = var.namespace
-    labels = local.common_labels
-  }
-
-  # OpenShift's SCC controller stamps every namespace with the UID/GID/MCS ranges
-  # it allocated (openshift.io/sa.scc.*) plus the pod-security level it derived.
-  # Terraform never sent those, so it plans to strip them on every run and the
-  # controller immediately puts them back — a diff that can never converge, and
-  # applying it would hand the guests a different UID range than the one their
-  # pods were admitted under. They are the cluster's to own, so ignore them.
-  lifecycle {
-    ignore_changes = [metadata[0].annotations]
-  }
-}
+# THE NAMESPACE AND THE sd1.* CATALOG ARE NO LONGER TERRAFORM'S (#348).
+#
+# They used to live here behind `var.manage_shared_objects`, which was true only
+# for Linux. That made the Linux state their owner — and `terraform destroy`
+# deletes what a state owns. Deleting a namespace deletes everything in it, so
+# tearing down Linux while a Windows VM was running would have destroyed the
+# Windows VM: exactly the failure #301 introduced per-OS state to prevent. #301
+# stopped one OS planning the OTHER OS's VM for destruction; it did not stop one
+# OS deleting the namespace that VM lives in.
+#
+# Both objects are shared, cluster-lifetime, and must outlive either OS, so
+# playbooks/tasks/ensure_shared_objects.yml now creates them idempotently before
+# terraform runs — for BOTH OSes, and teardown leaves them alone. Resources below
+# reference var.namespace directly and no longer depend on a namespace resource.
 
 # ---------------------------------------------------------------------------
 # Linux — RHEL 9 from the CNV-shipped boot source. Works today.
@@ -164,8 +153,6 @@ resource "kubernetes_manifest" "linux_vm" {
   }
 
   depends_on = [
-    kubernetes_namespace.demo,
-    kubernetes_manifest.instancetype,
     terraform_data.memory_budget,
   ]
 }
@@ -342,8 +329,6 @@ resource "kubernetes_secret" "windows_sysprep" {
       </unattend>
     EOT
   }
-
-  depends_on = [kubernetes_namespace.demo]
 }
 
 resource "kubernetes_manifest" "windows_vm" {
@@ -487,8 +472,6 @@ resource "kubernetes_manifest" "windows_vm" {
   }
 
   depends_on = [
-    kubernetes_namespace.demo,
-    kubernetes_manifest.instancetype,
     terraform_data.memory_budget,
   ]
 }
@@ -522,8 +505,6 @@ resource "kubernetes_service" "linux" {
       target_port = 22
     }
   }
-
-  depends_on = [kubernetes_namespace.demo]
 }
 
 resource "kubernetes_service" "windows" {
@@ -557,8 +538,6 @@ resource "kubernetes_service" "windows" {
       target_port = 5986
     }
   }
-
-  depends_on = [kubernetes_namespace.demo]
 }
 
 # ---------------------------------------------------------------------------
@@ -593,8 +572,6 @@ resource "kubernetes_service" "linux_web" {
       target_port = 80
     }
   }
-
-  depends_on = [kubernetes_namespace.demo]
 }
 
 resource "kubernetes_manifest" "linux_web_route" {
@@ -645,7 +622,6 @@ resource "kubernetes_manifest" "linux_web_route" {
   }
 
   depends_on = [
-    kubernetes_namespace.demo,
     kubernetes_service.linux_web,
   ]
 }
@@ -682,8 +658,6 @@ resource "kubernetes_service" "linux_cockpit" {
       target_port = 9090
     }
   }
-
-  depends_on = [kubernetes_namespace.demo]
 }
 
 resource "kubernetes_manifest" "linux_cockpit_route" {
@@ -721,7 +695,6 @@ resource "kubernetes_manifest" "linux_cockpit_route" {
   }
 
   depends_on = [
-    kubernetes_namespace.demo,
     kubernetes_service.linux_cockpit,
   ]
 }
@@ -766,8 +739,6 @@ resource "kubernetes_service" "windows_web" {
       target_port = 80
     }
   }
-
-  depends_on = [kubernetes_namespace.demo]
 }
 
 resource "kubernetes_manifest" "windows_web_route" {
@@ -810,7 +781,6 @@ resource "kubernetes_manifest" "windows_web_route" {
   }
 
   depends_on = [
-    kubernetes_namespace.demo,
     kubernetes_service.windows_web,
   ]
 }

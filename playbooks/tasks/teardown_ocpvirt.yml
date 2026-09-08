@@ -34,7 +34,12 @@
   ansible.builtin.debug:
     msg:
       - "Destroying {{ provision_os_type }} / {{ provision_size_tier }} in namespace {{ ocpvirt_namespace_resolved }} on {{ aap_env_name }}."
-      - "PRESERVED: OpenShift Virtualization, the boot-source DataSources (including the Windows golden image), and the {{ ocpvirt_state_namespace }} state namespace."
+      - >-
+        PRESERVED: OpenShift Virtualization, the boot-source DataSources
+        (including the Windows golden image), the
+        {{ ocpvirt_state_namespace }} state namespace, and -- since #348 --
+        the {{ ocpvirt_namespace_resolved }} VM namespace and the sd1.*
+        instance type catalog, which the other OS may still be using.
 
 - name: Destroy the VMs and deregister them
   block:
@@ -255,7 +260,11 @@
         msg:
           - "Destroyed the demo VMs in {{ ocpvirt_namespace_resolved }} on {{ aap_env_name }}."
           - "Deregistered {{ teardown_hosts | length }} host(s) from '{{ provision_aap_inventory }}'."
-          - "Left intact: OpenShift Virtualization, the boot-source DataSources, and {{ ocpvirt_state_namespace }}."
+          - >-
+            Left intact: OpenShift Virtualization, the boot-source DataSources,
+            {{ ocpvirt_state_namespace }}, the
+            {{ ocpvirt_namespace_resolved }} VM namespace, and the sd1.*
+            instance type catalog (#348).
 
   always:
     - name: Remove the temporary kubeconfig

@@ -1,0 +1,112 @@
+---
+# ===========================================================================
+# ensure_shared_objects.yml — the cluster-scoped scaffolding both guests share.
+# Issue #348.
+# ===========================================================================
+# CALLER: tasks/terraform_ocpvirt.yml, before `terraform init`. Needs
+# ocpvirt_namespace_resolved, ocpvirt_api_url, ocpvirt_api_token, and
+# ocpvirt_terraform_dir.
+#
+# WHY THESE LEFT TERRAFORM. The VM namespace and the sd1.* instance types are
+# shared by both guests and must outlive either one. They used to be Terraform
+# resources gated on `manage_shared_objects`, which was true only for Linux --
+# so the Linux state owned them, and `terraform destroy` deletes what a state
+# owns.
+#
+# That made the nightly sweep destructive in a way per-OS state was meant to
+# stop. Measured on sandbox 2026-09-07: after a Linux teardown the namespace was
+# gone (this task reported `changed`, not `ok`) and `VirtualMachineClusterInstancetype`
+# listed only Red Hat's cx1./d1./m1./n1./o1./rt1./u1. series -- no sd1.* at all.
+# A Windows provision then failed with
+#
+#     admission webhook "virtualmachine-validator.kubevirt.io" denied the request:
+#     failure checking preference requirements: insufficient Memory resources of 0
+#     provided by VirtualMachine, preference requires 2Gi
+#
+# which names memory because the instancetype was missing, so the VM got none.
+# The cause is never in the message.
+#
+# WORSE THAN A FAILED PROVISION: deleting a namespace deletes everything in it,
+# so tearing down Linux while a Windows VM was running would have destroyed the
+# Windows VM. #301 stopped one OS planning the OTHER OS's VM for destruction; it
+# did not stop one OS deleting the namespace that VM lives in.
+#
+# ANSIBLE IS THE RIGHT OWNER because it is the only step both OSes run and
+# neither destroys. `kubernetes.core.k8s` with `state: present` adopts an object
+# that already exists, which `kubernetes_manifest` cannot do -- that inability is
+# what forced the single-owner model in #309/#311 in the first place.
+#
+# TEARDOWN DELIBERATELY DOES NOT REMOVE THESE. They are environment scaffolding,
+# like CNV and the boot-source DataSources: cheap to keep, and their absence is
+# invisible until the next provision fails.
+#
+# EACH TASK CARRIES ITS OWN `environment:` (#313). These sit outside the
+# Terraform block and inherit nothing; omit it and you get "Invalid kube-config
+# file. No configuration found."
+# ===========================================================================
+
+- name: Read the canonical tier catalog
+  # THE SAME FILE TERRAFORM READS -- terraform/ocpvirt/tiers.yaml, via
+  # yamldecode in locals.tf. One copy of the specs, two readers. See that file's
+  # header for why this is not a map in each language.
+  ansible.builtin.set_fact:
+    ocpvirt_tier_catalog: >-
+      {{ lookup('ansible.builtin.file',
+                ocpvirt_terraform_dir ~ '/tiers.yaml') | from_yaml }}
+
+- name: Ensure the VM namespace exists
+  # FOR BOTH OSES NOW, not just Windows. It used to be gated to non-Linux
+  # because Terraform created it on a Linux run and two creators collided
+  # (#325). With Terraform out of the way there is one creator again.
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: "{{ ocpvirt_namespace_resolved }}"
+        labels:
+          app.kubernetes.io/managed-by: sales.demos
+          app.kubernetes.io/part-of: sales-demos
+  environment: &ocpvirt_k8s_auth
+    K8S_AUTH_HOST: "{{ ocpvirt_api_url }}"
+    K8S_AUTH_API_KEY: "{{ ocpvirt_api_token }}"
+    K8S_AUTH_VERIFY_SSL: "{{ openshift_validate_certs | default(false) | bool }}"
+
+- name: Ensure the sd1.* instance type catalog exists
+  # CLUSTER-SCOPED AND UNSUFFIXED, deliberately: two people running this against
+  # one cluster converge on identical definitions rather than littering it with
+  # near-duplicates. Only the three canonical tiers are created -- the legacy
+  # aliases in tiers.yaml resolve to these, and creating one object per alias
+  # would make three duplicates of each.
+  loop: "{{ ocpvirt_tier_catalog.tiers | dict2items }}"
+  loop_control:
+    label: "{{ item.value.instancetype }}"
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: instancetype.kubevirt.io/v1beta1
+      kind: VirtualMachineClusterInstancetype
+      metadata:
+        name: "{{ item.value.instancetype }}"
+        labels:
+          app.kubernetes.io/managed-by: sales.demos
+          app.kubernetes.io/part-of: sales-demos
+        annotations:
+          sales-demos/tier: "{{ item.key }}"
+          instancetype.kubevirt.io/description: >-
+            sales.demos {{ item.key }} - {{ item.value.cpu }} vCPU /
+            {{ item.value.memory_gb }} GiB
+      spec:
+        cpu:
+          guest: "{{ item.value.cpu }}"
+        memory:
+          guest: "{{ item.value.memory_gb }}Gi"
+  environment: *ocpvirt_k8s_auth
+
+- name: Report the shared scaffolding
+  ansible.builtin.debug:
+    msg: >-
+      Shared objects ready in {{ ocpvirt_namespace_resolved }}:
+      {{ ocpvirt_tier_catalog.tiers.values() | map(attribute='instancetype') | join(', ') }}.
+      Teardown leaves these in place.

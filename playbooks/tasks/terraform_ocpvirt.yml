@@ -72,49 +72,19 @@
       namespace {{ ocpvirt_namespace_resolved }} on {{ aap_env_name }},
       registering into AAP inventory '{{ provision_aap_inventory }}'.
 
-# --- Namespaces must exist before anything else -------------------------
-- name: Ensure the VM namespace exists (Windows-only environments)
-  # ONLY WHEN TERRAFORM WILL NOT CREATE IT, and getting that wrong broke demo
-  # (#325). This guard was added unconditionally in #311 so a Windows-only
-  # environment would have somewhere to put its VM. But the Linux state OWNS
-  # the namespace (manage_shared_objects), so on a Linux run this task created
-  # the object a moment before terraform tried to create it too:
+# --- Shared scaffolding must exist before anything else -----------------
+- name: Ensure the shared namespace and instance type catalog exist
+  # MOVED OUT OF TERRAFORM IN #348, and this task file's predecessor predicted
+  # it: "it wants the same fix -- moving shared scaffolding to environment
+  # scope -- not another special case."
   #
-  #     Error: namespaces "sales-demos-demo" already exists
-  #       with kubernetes_namespace.demo[0]
-  #
-  # It was invisible on sandbox only because that environment's state already
-  # contained the namespace from before the split, so terraform never planned
-  # to create one. demo's adopted state held no VMs and no namespace, and the
-  # conflict surfaced immediately.
-  #
-  # `kubernetes_namespace` cannot adopt an existing object, so two creators can
-  # never coexist. The single-owner model from #309/#311 is right; this task
-  # was me special-casing around it. Gated, it is what it always should have
-  # been: a fallback for the ONE case terraform does not cover.
-  #
-  # THE RESIDUAL GAP IS THE SAME ONE #309 ALREADY RECORDS. An environment that
-  # provisions Windows FIRST gets its namespace here, and a later Linux run
-  # then finds terraform unable to create what already exists. That is the
-  # identical shape as the sd1.* catalog wart, and it wants the same fix --
-  # moving shared scaffolding to environment scope -- not another special case.
-  when: provision_os_type != 'linux'
-  kubernetes.core.k8s:
-    state: present
-    definition:
-      apiVersion: v1
-      kind: Namespace
-      metadata:
-        name: "{{ ocpvirt_namespace_resolved }}"
-  # THE ENVIRONMENT IS PER-TASK HERE, NOT PER-PLAY, and forgetting it is how
-  # this task failed the first time (#313): "Invalid kube-config file. No
-  # configuration found." These two guards sit OUTSIDE the Terraform block, so
-  # they inherit nothing -- each carries its own auth, and the state-namespace
-  # task below has always done the same. Copy both lines when adding a third.
-  environment:
-    K8S_AUTH_HOST: "{{ ocpvirt_api_url }}"
-    K8S_AUTH_API_KEY: "{{ ocpvirt_api_token }}"
-    K8S_AUTH_VERIFY_SSL: "{{ openshift_validate_certs | default(false) | bool }}"
+  # It used to be gated `when: provision_os_type != 'linux'`, because Terraform
+  # owned the namespace on a Linux run and two creators collided (#325). It also
+  # meant the Linux state DESTROYED both the namespace and the sd1.* catalog on
+  # teardown -- taking any running Windows VM with the namespace. Terraform no
+  # longer creates either, so this runs unconditionally, for both OSes, and
+  # teardown leaves them alone.
+  ansible.builtin.include_tasks: ensure_shared_objects.yml
 
 - name: Ensure the Terraform state namespace exists (idempotent guard)
   kubernetes.core.k8s:
@@ -258,10 +228,6 @@
           # Passed explicitly so the Terraform guard and the cluster-wide check
           # in provision_vm.yml measure against the SAME number (#301).
           - "-var=available_memory_gb={{ available_memory_gb }}"
-          # The VM namespace and the sd1.* catalog are shared by both guests,
-          # and exactly one state may own them (#309, #311). Linux does;
-          # Windows references them.
-          - "-var=manage_shared_objects={{ (provision_os_type == 'linux') | lower }}"
         chdir: "{{ ocpvirt_terraform_dir }}"
       environment:
         TF_VAR_openshift_api_url: "{{ ocpvirt_api_url }}"

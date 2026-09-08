@@ -15,52 +15,24 @@ locals {
   # deliberate: it is native OpenShift Virt functionality and demos better than
   # hand-rolled domain specs.
   #
-  # Updated for doubled RHDP hardware (#239). Old names are legacy aliases that
-  # resolve to the new specs — backward compatible with existing AAP surveys and
-  # saved job launches.
-  instancetype_map = {
-    "small"           = "sd1.small"
-    "medium"          = "sd1.medium"
-    "large"           = "sd1.large"
-    "small-1cpu-2gb"  = "sd1.small"
-    "medium-1cpu-4gb" = "sd1.medium"
-    "large-2cpu-6gb"  = "sd1.large"
-  }
+  # READ FROM tiers.yaml, NOT DECLARED HERE (#348). Terraform stopped creating
+  # the sd1.* objects when they moved to Ansible so they could outlive a per-OS
+  # teardown — which put their specs in reach of two languages. That file is the
+  # one copy; see its header for why. Terraform still needs the tier data to pick
+  # a NAME to reference, size the root disk, and run the budget guard.
+  #
+  # Legacy tier names resolve through `aliases` (#239), so existing AAP surveys
+  # and saved job launches keep working.
+  tier_catalog   = yamldecode(file("${path.module}/tiers.yaml"))
+  tier_defs      = local.tier_catalog.tiers
+  canonical_tier = lookup(local.tier_catalog.aliases, var.vm_size_tier, var.vm_size_tier)
+  tier           = local.tier_defs[local.canonical_tier]
 
-  # Guest memory per tier, in GiB. Single source of truth: instancetypes.tf
-  # builds the objects from this, and the budget guard measures against it.
-  tier_memory_gb = {
-    "small"           = 4
-    "medium"          = 8
-    "large"           = 16
-    "small-1cpu-2gb"  = 4
-    "medium-1cpu-4gb" = 8
-    "large-2cpu-6gb"  = 16
-  }
+  windows_min_disk_gb = local.tier_catalog.windows_min_disk_gb
 
-  tier_cpu = {
-    "small"           = 2
-    "medium"          = 2
-    "large"           = 4
-    "small-1cpu-2gb"  = 2
-    "medium-1cpu-4gb" = 2
-    "large-2cpu-6gb"  = 4
-  }
-
-  # Root disk per tier. Windows needs more regardless of tier.
-  tier_disk_gb = {
-    "small"           = 30
-    "medium"          = 30
-    "large"           = 50
-    "small-1cpu-2gb"  = 30
-    "medium-1cpu-4gb" = 30
-    "large-2cpu-6gb"  = 50
-  }
-  windows_min_disk_gb = 60
-
-  instancetype   = local.instancetype_map[var.vm_size_tier]
-  linux_disk_gb  = local.tier_disk_gb[var.vm_size_tier]
-  windows_disk_g = max(local.tier_disk_gb[var.vm_size_tier], local.windows_min_disk_gb)
+  instancetype   = local.tier.instancetype
+  linux_disk_gb  = local.tier.disk_gb
+  windows_disk_g = max(local.tier.disk_gb, local.windows_min_disk_gb)
 
   # Budget check. ALWAYS ONE VM NOW, because state is per OS (#301).
   #
@@ -72,7 +44,7 @@ locals {
   # fit" without a round trip, and it still runs when someone applies by hand.
   vm_count = 1
   requested_memory_gb = local.vm_count * (
-    local.tier_memory_gb[var.vm_size_tier] + (var.vm_memory_overhead_mb / 1024)
+    local.tier.memory_gb + (var.vm_memory_overhead_mb / 1024)
   )
 
   # Empty name_suffix gives deterministic names; see variables.tf for why this
@@ -92,10 +64,6 @@ locals {
     "large-2cpu-6gb"  = "sd-win-lg-2c-6g"
   }
   windows_hostname = local.tier_windows_hostname[var.vm_size_tier]
-
-  # Canonical tier names — used by instancetypes.tf for_each to avoid creating
-  # duplicate cluster objects from the legacy aliases.
-  canonical_tiers = toset(["small", "medium", "large"])
 
   common_labels = {
     "app.kubernetes.io/managed-by" = "terraform"
@@ -158,7 +126,7 @@ resource "terraform_data" "memory_budget" {
         var.vm_size_tier,
         local.requested_memory_gb,
         local.vm_count,
-        local.tier_memory_gb[var.vm_size_tier],
+        local.tier.memory_gb,
         var.vm_memory_overhead_mb,
         var.available_memory_gb,
       )

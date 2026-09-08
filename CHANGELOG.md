@@ -7,6 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed -- Linux teardown destroyed shared objects, taking a running Windows VM with them (#348)
+- **Tearing down Linux while a Windows VM was running would have destroyed the
+  Windows VM.** `kubernetes_namespace.demo` and the `sd1.*` instance type catalog
+  were Terraform resources gated on `manage_shared_objects`, true only for Linux
+  -- so the Linux state owned them, and `terraform destroy` deletes what a state
+  owns. Deleting a namespace deletes everything in it.
+- **That is exactly what #301 introduced per-OS state to prevent.** #301 stopped
+  one OS planning the OTHER OS's VM for destruction; it did not stop one OS
+  deleting the namespace that VM lives in. The nightly sweeps make the ordering
+  routine -- both fire at 6 PM, and #301 split them precisely so each OS could be
+  torn down independently.
+- **Found by the second symptom, not the first.** After tonight's teardowns a
+  Windows provision failed with `insufficient Memory resources of 0 provided by
+  VirtualMachine, preference requires 2Gi` -- which names memory because the
+  `sd1.large` instancetype was gone, so the VM got none. Measured:
+  `VirtualMachineClusterInstancetype` held only Red Hat's `cx1./d1./m1./n1./o1./rt1./u1.`
+  series, no `sd1.*` at all. The namespace was gone too, which the provision's own
+  guard revealed by reporting `changed` rather than `ok`.
+- **Both now belong to Ansible**, in `playbooks/tasks/ensure_shared_objects.yml`,
+  run for both OSes before Terraform. `kubernetes.core.k8s` with `state: present`
+  adopts an object that already exists -- the thing `kubernetes_manifest` cannot
+  do, which is what forced the single-owner model in #309/#311 in the first
+  place. Teardown leaves them alone, like CNV and the boot-source DataSources.
+- **`var.manage_shared_objects` is retired**, and with it the asymmetry that made
+  Linux the privileged OS. The `when: provision_os_type != 'linux'` guard on the
+  namespace task is gone: there is one creator again, so it needs no gate. That
+  guard's own comment predicted this fix -- "it wants the same fix, moving shared
+  scaffolding to environment scope, not another special case."
+- **New `terraform/ocpvirt/tiers.yaml` is the single tier catalog**, read by
+  Terraform through `yamldecode` and by the new task file through `from_yaml`.
+  Moving the creator to Ansible put the specs in reach of two languages, and two
+  copies of a value that must agree is how #334 and #342 both happened inside a
+  week. Neither language owns a copy. `locals.tf`'s four hardcoded maps are gone.
+- **Only applies to a state that no longer holds these objects.** `terraform
+  destroy` destroys what is in STATE, so an environment whose state still
+  contains them will still remove them once. Both environments were fully torn
+  down before this landed, so both states are already clean.
+
 ### Fixed -- pinning ansible.windows broke AAP project sync (#346)
 - Regression from #339. `config.yml --limit sandbox` failed at the project
   update, which **blocks every job template using the `Sales Demos` project**.

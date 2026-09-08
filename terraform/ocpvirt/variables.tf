@@ -109,24 +109,6 @@ variable "available_memory_gb" {
   default     = 63
 }
 
-variable "manage_shared_objects" {
-  # SHARED ENVIRONMENT SCAFFOLDING, and there are exactly two: the VM namespace
-  # and the sd1.* instance type catalog. Both are cluster objects serving BOTH
-  # guests, and state is keyed per OS since #301 — so exactly one state may own
-  # them, or the second apply fails with "already exists".
-  #
-  # This was `manage_instancetypes` for one commit (#309). That name was too
-  # narrow and the narrowness was the bug: it fixed the catalog, and the very
-  # next Windows run failed on the namespace instead. Everything else in this
-  # module is scoped to one OS by count on create_linux/create_windows, so
-  # these two are the whole set — enumerated rather than discovered one
-  # failure at a time (#311).
-  #
-  # playbooks/provision_vm.yml passes false for Windows.
-  description = "Whether this state manages the shared cluster objects — the VM namespace and the sd1.* catalog. Only the Linux state should."
-  type        = bool
-  default     = true
-}
 
 variable "vm_memory_overhead_mb" {
   description = "Per-VM KubeVirt overhead in MiB, on top of guest memory — virtio, video, page tables. Roughly 250-350 in practice."
