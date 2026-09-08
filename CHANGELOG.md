@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed -- pinning ansible.windows broke AAP project sync (#346)
+- Regression from #339. `config.yml --limit sandbox` failed at the project
+  update, which **blocks every job template using the `Sales Demos` project**.
+- **`hub/approved-collections.yml` is generated from
+  `collections/requirements.yml`, and #339 added a pin without regenerating it.**
+  Since #69, sandbox resolves project-sync collections from PAH's curated
+  `approved` repository; an AAP project update runs
+  `ansible-galaxy collection install -r collections/requirements.yml` against it,
+  so a pin that is not curated cannot resolve.
+- **The file documents this exact failure in its own header** -- "THE
+  DEPENDENCIES ARE NOT OPTIONAL... Seeded with the direct pins alone, this
+  repository failed the first real #69 run" -- which is what makes the miss
+  annoying rather than surprising. The generated header count was wrong too: 10
+  collections claimed against 10 pins.
+- Regenerated with `refresh-hub-requirements.py --write-approved` (11
+  collections, no new transitive dependencies) and curated into the live hub:
+  "Added 1, removed 0", repository verified equal to the file. `config.yml`
+  against sandbox is green again.
+- The collection was always available -- `--audit-pins` reports
+  `ok ansible.windows -- pinned 3.6.1, certified floor >=3.6.0`. It only needed
+  curating into `approved`.
+- **CI did not catch this and arguably should have.** The `generated-files` gate
+  does not cover this pairing, which is the one where drift takes an environment
+  down rather than merely going stale. Left for its own change rather than
+  widened here; noted in #346.
+
 ### Added -- Windows gets a web Route, so it has a demo payoff (#340, part 1 of 3)
 - **The Linux demo's whole point had no Windows counterpart.** `create_web_route`
   was gated on `create_linux`, so `os_type=windows` produced no Service, no Route

@@ -29,7 +29,7 @@
 # repository. A sync cannot do that; a curated repository can, which is the
 # whole reason it exists (#70).
 #
-# 10 collections, exact versions — 9 pinned by this repo,
+# 11 collections, exact versions — 10 pinned by this repo,
 # 1 pulled in as dependencies.
 # ============================================================================
 collections:
@@ -43,6 +43,8 @@ collections:
     version: "2.7.20260604"
   - name: ansible.posix
     version: "2.2.0"
+  - name: ansible.windows
+    version: "3.6.1"
   - name: cloud.terraform
     version: "4.0.0"
   - name: infra.aap_configuration
