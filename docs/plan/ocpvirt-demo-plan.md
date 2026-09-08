@@ -203,9 +203,13 @@ Map t-shirt tiers to **cluster instance types + preferences**, not raw CPU/memor
 This is native OpenShift Virt functionality and demos better than hand-rolled specs.
 
 > **Revised in #2 after measuring the cluster.** The tiers are now repo-owned `sd1.*`
-> instance types created by `terraform/ocpvirt/instancetypes.tf`, not Red Hat's shipped
-> `u1.*`, and `large` is 6 GiB rather than 8. Red Hat's `u1.*` remain on the cluster
-> untouched; reverting a tier to them is a one-line change in `locals.tf`.
+> instance types, not Red Hat's shipped `u1.*`, and `large` is 6 GiB rather than 8.
+> Red Hat's `u1.*` remain on the cluster untouched.
+>
+> **Since #348 they are created by `playbooks/tasks/ensure_shared_objects.yml`,
+> not Terraform** — a shared catalog owned by one OS's state was destroyed by
+> that OS's teardown. Sizes live in `terraform/ocpvirt/tiers.yaml`, read by both
+> Terraform and Ansible, so changing a tier is a one-line edit there.
 
 | Tier | Instance type | vCPU / RAM | Root disk |
 |---|---|---|---|

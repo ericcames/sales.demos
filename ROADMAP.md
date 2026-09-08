@@ -92,8 +92,11 @@ Supporting work, not a phase:
 ## Sizing tiers
 
 Mapped to cluster instance types rather than hand-rolled CPU/memory — but to
-**repo-owned `sd1.*` types**, not Red Hat's shipped `u1.*` series (#2,
-`terraform/ocpvirt/instancetypes.tf`). Updated for doubled RHDP hardware (#239).
+**repo-owned `sd1.*` types**, not Red Hat's shipped `u1.*` series (#2). Sizes are
+declared once in `terraform/ocpvirt/tiers.yaml`, read by both Terraform and
+`playbooks/tasks/ensure_shared_objects.yml`, which creates the objects — Ansible
+rather than Terraform since #348, so they outlive a per-OS teardown. Updated for
+doubled RHDP hardware (#239).
 
 | Tier | Instance type | vCPU / RAM | Root disk | Azure equivalent |
 |---|---|---|---|---|
