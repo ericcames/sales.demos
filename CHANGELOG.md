@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed -- the portal launcher sent `vm_count` as a string and AAP refused it (#400)
+
+- **`Self-Service - Request Linux/Windows Server` could not launch anything.**
+  Measured on sandbox, job 565: `400 {"variables_needed_to_start": ["Value 2 for
+  'vm_count' expected to be an integer."]}`. `vm_count` is an `integer` survey
+  question on both Day 1 workflows.
+- **The filter is not what decides the type -- the template form is.** A quoted
+  scalar template is rendered to text, so `vm_count: "{{ x | int }}"` yields
+  `'2'` however it is filtered. Only a value that is entirely one native
+  expression keeps its Python type. `extra_vars` is now built as a single dict
+  template.
+- **#242 diagnosed this correctly and then applied the fix in the shape that
+  cannot work**, which is why the comment now carries all three measured forms
+  rather than just the right one. Second time this trap has been hit here: the
+  first was a Kubernetes `IntOrString` port, where a string means a *named* port,
+  so nothing errored and a readiness probe simply never passed.
+
 ### Added -- self-service portal entry points (#242)
 
 - **Two launcher job templates**, `Self-Service - Request Linux Server` and

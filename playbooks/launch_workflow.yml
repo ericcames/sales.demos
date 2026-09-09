@@ -152,22 +152,32 @@
         controller_username: "{{ aap_username }}"
         controller_password: "{{ aap_password }}"
         validate_certs: "{{ aap_validate_certs | default(false) }}"
-        extra_vars:
-          hypervisor: "{{ launch_hypervisor }}"
-          vm_size_tier: "{{ launch_size_tier }}"
-          vm_role: "{{ launch_vm_role }}"
-          # `| int` HERE, NOT ONLY IN THE vars: BLOCK ABOVE, AND THE DIFFERENCE
-          # IS REAL. A `vars:` entry is a quoted template, so its result is a
-          # STRING however it was filtered -- measured, not assumed:
-          # `"{{ vm_count | default(1) | int }}"` yields `str`, and building a
-          # dict from it gives `{'vm_count': '2'}`. Re-filtering at the point of
-          # use gives `{'vm_count': 2}`.
-          #
-          # It matters because `vm_count` is an INTEGER survey question on the
-          # workflow, and a launch that answers it with a string is answering it
-          # with the wrong type. Same shape of bug as the IntOrString port that
-          # silently became a named port.
-          vm_count: "{{ launch_vm_count | int }}"
+        # ONE NATIVE DICT TEMPLATE, NOT A KEY PER LINE, AND THAT IS THE WHOLE
+        # POINT (#400). `vm_count` is an INTEGER survey question on both Day 1
+        # workflows, and AAP rejects a string answer outright:
+        #
+        #   400 {"variables_needed_to_start":
+        #        ["Value 2 for 'vm_count' expected to be an integer."]}
+        #
+        # THE FILTER IS NOT WHAT DECIDES THE TYPE -- THE TEMPLATE FORM IS.
+        # A quoted scalar template is rendered to TEXT, so `| int` inside one
+        # changes nothing that survives. Only a value that is entirely one
+        # native expression keeps its Python type. Measured three ways in one
+        # play, not reasoned about:
+        #
+        #   vm_count: "{{ lvc | int }}"            -> {'vm_count': '2'}  str
+        #   "{{ {'vm_count': lvc | int} }}"        -> {'vm_count': 2}    int
+        #   "{{ {'vm_count': vm_count | int} }}"   -> {'vm_count': 2}    int
+        #
+        # #242 shipped the first form, having correctly diagnosed the type and
+        # then applied the fix in the shape that cannot work. This is the second
+        # time the trap has been hit here: the first was a Kubernetes
+        # IntOrString port, where a string means a NAMED port, so nothing
+        # errored and a readiness probe simply never passed.
+        #
+        # So: if you add a key below, add it INSIDE the braces. A new
+        # `key: "{{ ... }}"` line underneath would quietly be a string again.
+        extra_vars: "{{ {'hypervisor': launch_hypervisor, 'vm_size_tier': launch_size_tier, 'vm_role': launch_vm_role, 'vm_count': launch_vm_count | int} }}"
         wait: false
       register: launch_result
 
