@@ -1,0 +1,33 @@
+---
+# ===========================================================================
+# break_windows_compliance.yml — deliberately violate CIS 2.3.6.6 so the
+# compliance scan shows a failure. The "break" half of a break/fix demo.
+#
+# This is choreography, not configuration: it exists so an SE can show a
+# compliance drift, prove it with the scan, fix it, and prove the fix. The
+# workflow `Windows Day 2 - 0 Break Fix` chains the four steps.
+#
+# WHAT IT BREAKS. RequireStrongKey (Netlogon\Parameters) is set to 0, which
+# violates CIS 2.3.6.6. The control is verified by windows_compliance and
+# appears in the published report at <web_url>/compliance/.
+#
+# SAFE TO RE-RUN. Setting the value to 0 when it is already 0 is a no-op.
+# ===========================================================================
+
+- name: Break a CIS compliance control for the demo
+  hosts: "{{ demo_group | default('windemo') }}"
+  gather_facts: false
+
+  tasks:
+    - name: Set RequireStrongKey to 0 (violates CIS 2.3.6.6)
+      ansible.windows.win_regedit:
+        path: 'HKLM:\SYSTEM\CurrentControlSet\Services\Netlogon\Parameters'
+        name: RequireStrongKey
+        data: 0
+        type: dword
+
+    - name: Explain what was broken
+      ansible.builtin.debug:
+        msg:
+          - "CIS 2.3.6.6 (RequireStrongKey) is now NON-COMPLIANT."
+          - "Run the compliance scan to see it fail, then fix it."

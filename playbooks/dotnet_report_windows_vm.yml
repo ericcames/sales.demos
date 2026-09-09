@@ -1,0 +1,32 @@
+---
+# ===========================================================================
+# dotnet_report_windows_vm.yml — report .NET Framework versions and patches.
+#
+# Read-only: reads the registry, prints what it finds, changes nothing.
+# ===========================================================================
+
+- name: Report .NET Framework patch status
+  hosts: "{{ demo_group | default('windemo') }}"
+  gather_facts: false
+
+  tasks:
+    - name: Read .NET Framework versions and patches from the registry
+      ansible.windows.win_powershell:
+        script: |
+          $dotnet = Get-ChildItem 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Updates' -ErrorAction SilentlyContinue |
+            Where-Object { $_.PSChildName -like '*.NET Framework*' } |
+            ForEach-Object {
+              $version = $_.PSChildName
+              $patches = Get-ChildItem $_.PSPath | Select-Object -ExpandProperty PSChildName
+              [PSCustomObject]@{
+                Version = $version
+                Patches = $patches -join ', '
+              }
+            }
+          $dotnet | Format-Table -AutoSize | Out-String
+      register: dotnet_result
+      changed_when: false
+
+    - name: Show .NET Framework patch report
+      ansible.builtin.debug:
+        msg: "{{ dotnet_result.output | default(dotnet_result.host_out | default('No .NET Framework entries found.')) }}"

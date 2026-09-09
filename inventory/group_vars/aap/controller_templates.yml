@@ -928,7 +928,7 @@ controller_templates_all:
   #
   # NAMED "Compliance Scan" TO SIT WITH ITS LINUX SIBLING; THE ROLE VERIFIES.
   # OpenSCAP ships no Windows agent, so there is no oscap to run. Instead the
-  # role reads 27 controls that image.builder.pipeline's cis_profile.yml
+  # role reads 28 controls that image.builder.pipeline's cis_profile.yml
   # ENABLES back off the running guest, in one WinRM round trip, and reports
   # the controls that file does not enable as documented exceptions rather than
   # as failures. The published report says "verification" in its own title, so
@@ -1065,6 +1065,185 @@ controller_templates_all:
       # what ask_variables_on_launch below is for.
       vm_role: web
     ask_variables_on_launch: true
+
+  # -------------------------------------------------------------------
+  # WINDOWS DAY 2 — ongoing operations on a running Windows guest.
+  #
+  # The day 1 chain builds, patches, configures and verifies. Day 2 is
+  # what happens afterward: drift detection, compliance break/fix,
+  # security checks, and reporting. Every template here targets windemo
+  # and uses the same credentials.
+  #
+  # The centrepiece is the break/fix story: deliberately break one CIS
+  # control, prove it with the compliance scan, fix it, prove it again.
+  # The workflow chains the four steps; the individual templates give
+  # the SE control over the pacing.
+  # -------------------------------------------------------------------
+
+  - name: "Windows Day 2 - Break Compliance"
+    description: "Deliberately violate CIS 2.3.6.6 (RequireStrongKey) so the compliance scan shows a failure. The 'break' half of a break/fix demo."
+    labels:
+      - windows
+      - day-2
+    job_type: run
+    organization: "IT Service Automation"
+    inventory: "Sales Demo VMs"
+    project: "Sales Demos"
+    playbook: playbooks/break_windows_compliance.yml
+    execution_environment: "Sales Demos - OCP Virt EE"
+    credentials:
+      - "Sales Demos - Windows Machine"
+      - "Sales Demos - Vault"
+      - "Sales Demos - Env Secrets"
+    limit: windemo
+    ask_limit_on_launch: true
+
+  - name: "Windows Day 2 - Fix Compliance"
+    description: "Restore CIS 2.3.6.6 (RequireStrongKey) to its hardened value. The 'fix' half of a break/fix demo."
+    labels:
+      - windows
+      - day-2
+    job_type: run
+    organization: "IT Service Automation"
+    inventory: "Sales Demo VMs"
+    project: "Sales Demos"
+    playbook: playbooks/fix_windows_compliance.yml
+    execution_environment: "Sales Demos - OCP Virt EE"
+    credentials:
+      - "Sales Demos - Windows Machine"
+      - "Sales Demos - Vault"
+      - "Sales Demos - Env Secrets"
+    limit: windemo
+    ask_limit_on_launch: true
+
+  - name: "Windows Day 2 - Compliance Scan"
+    description: "Re-run the CIS L1 verification in the Day 2 context. Same role as Day 1 — all reads, safe mid-demo."
+    labels:
+      - windows
+      - day-2
+      - read-only
+    job_type: run
+    organization: "IT Service Automation"
+    inventory: "Sales Demo VMs"
+    project: "Sales Demos"
+    playbook: playbooks/windows_compliance_scan.yml
+    execution_environment: "Sales Demos - OCP Virt EE"
+    credentials:
+      - "Sales Demos - Windows Machine"
+      - "Sales Demos - Vault"
+      - "Sales Demos - Env Secrets"
+    limit: windemo
+    ask_limit_on_launch: true
+
+  - name: "Windows Day 2 - Patch"
+    description: "Re-run Windows Update for drift detection. Defaults to report-only — installing is opt-in via the survey."
+    labels:
+      - windows
+      - day-2
+    job_type: run
+    organization: "IT Service Automation"
+    inventory: "Sales Demo VMs"
+    project: "Sales Demos"
+    playbook: playbooks/patch_windows_vm.yml
+    execution_environment: "Sales Demos - OCP Virt EE"
+    credentials:
+      - "Sales Demos - Windows Machine"
+      - "Sales Demos - Vault"
+      - "Sales Demos - Env Secrets"
+    limit: windemo
+    ask_limit_on_launch: true
+    survey_enabled: true
+    survey_spec:
+      name: ""
+      description: "Choose how much to patch, and whether to reboot"
+      spec:
+        - question_name: What to do
+          question_description: >-
+            Report only (~2 min) tells you how far behind the machine is without
+            changing it. One installs a single update. Install applies everything.
+          variable: windows_patching_state
+          type: multiplechoice
+          required: true
+          default: searched
+          choices:
+            - searched
+            - one
+            - installed
+        - question_name: Update categories
+          question_description: >-
+            Which Windows Update categories to check or apply.
+          variable: windows_patching_categories
+          type: multiselect
+          required: true
+          default: "SecurityUpdates\nCriticalUpdates"
+          choices:
+            - SecurityUpdates
+            - CriticalUpdates
+            - UpdateRollups
+            - DefinitionUpdates
+            - Updates
+        - question_name: Reboot if updates require it
+          question_description: >-
+            Off by default — a reboot mid-demo takes the page away.
+          variable: windows_patching_reboot
+          type: multiplechoice
+          required: true
+          default: "no"
+          choices:
+            - "no"
+            - "yes"
+
+  - name: "Windows Day 2 - Check SMB"
+    description: "Check whether the legacy SMBv1 protocol is enabled, and optionally disable it."
+    labels:
+      - windows
+      - day-2
+    job_type: run
+    organization: "IT Service Automation"
+    inventory: "Sales Demo VMs"
+    project: "Sales Demos"
+    playbook: playbooks/check_smb_windows_vm.yml
+    execution_environment: "Sales Demos - OCP Virt EE"
+    credentials:
+      - "Sales Demos - Windows Machine"
+      - "Sales Demos - Vault"
+      - "Sales Demos - Env Secrets"
+    limit: windemo
+    ask_limit_on_launch: true
+    survey_enabled: true
+    survey_spec:
+      name: ""
+      description: "Check or disable SMBv1"
+      spec:
+        - question_name: Action
+          question_description: >-
+            Check reports the current state. Disable turns SMBv1 off.
+          variable: windows_smb_action
+          type: multiplechoice
+          required: true
+          default: check
+          choices:
+            - check
+            - disable
+
+  - name: "Windows Day 2 - .NET Patch Report"
+    description: "Report .NET Framework versions and installed patches. Read-only."
+    labels:
+      - windows
+      - day-2
+      - read-only
+    job_type: run
+    organization: "IT Service Automation"
+    inventory: "Sales Demo VMs"
+    project: "Sales Demos"
+    playbook: playbooks/dotnet_report_windows_vm.yml
+    execution_environment: "Sales Demos - OCP Virt EE"
+    credentials:
+      - "Sales Demos - Windows Machine"
+      - "Sales Demos - Vault"
+      - "Sales Demos - Env Secrets"
+    limit: windemo
+    ask_limit_on_launch: true
 
   # -------------------------------------------------------------------
   # Retired names. Two rounds of renaming live here.

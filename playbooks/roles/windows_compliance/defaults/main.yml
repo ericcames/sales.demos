@@ -143,6 +143,13 @@ windows_compliance_checks:
     name: RequireSignOrSeal
     op: eq
     expected: 1
+  - rule: "2.3.6.6"
+    title: "Domain member: Require strong (Windows 2000 or later) session key is set to Enabled"
+    kind: registry
+    path: 'HKLM:\SYSTEM\CurrentControlSet\Services\Netlogon\Parameters'
+    name: RequireStrongKey
+    op: eq
+    expected: 1
   - rule: "2.3.7.1"
     title: "Interactive logon: Do not require CTRL+ALT+DEL is set to Disabled"
     kind: registry
@@ -264,7 +271,8 @@ windows_compliance_checks:
     # \Windows NT\Printers, not \Windows (#382). The CIS role writes this to
     # HKLM:\SOFTWARE\Policies\Microsoft\Windows Nt\Printers; the old path
     # omitted both `Nt` and `\Printers`, so the value could not be found on any
-    # machine and the report showed a hardened guest as 26/27 instead of 27/27.
+    # machine and the report showed a hardened guest as 26/27 instead of 27/27
+    # (now 28 controls after adding 2.3.6.6 in #241).
     #
     # THIS WAS THE THIRD COPY of one bug -- the same wrong path shipped in
     # utilities/inspect-golden-image.py (#370) and image.builder.pipeline's

@@ -1,0 +1,26 @@
+---
+# ===========================================================================
+# fix_windows_compliance.yml — restore CIS 2.3.6.6 after the break demo.
+# The "fix" half of a break/fix demo.
+#
+# Restores RequireStrongKey to 1, which is the value the CIS L1 golden image
+# ships with. Run the compliance scan afterward to prove the fix.
+# ===========================================================================
+
+- name: Fix the broken CIS compliance control
+  hosts: "{{ demo_group | default('windemo') }}"
+  gather_facts: false
+
+  tasks:
+    - name: Restore RequireStrongKey to 1 (CIS 2.3.6.6 compliant)
+      ansible.windows.win_regedit:
+        path: 'HKLM:\SYSTEM\CurrentControlSet\Services\Netlogon\Parameters'
+        name: RequireStrongKey
+        data: 1
+        type: dword
+
+    - name: Confirm the fix
+      ansible.builtin.debug:
+        msg:
+          - "CIS 2.3.6.6 (RequireStrongKey) is now COMPLIANT."
+          - "Run the compliance scan to verify."

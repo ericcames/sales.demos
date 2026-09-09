@@ -465,6 +465,64 @@ controller_workflows_all:
               name: "IT Service Automation"
 
   # -------------------------------------------------------------------
+  # Windows Day 2: break/fix compliance demo in one button.
+  #
+  # Four nodes, chained on success: break a CIS control, scan to prove
+  # it failed, fix it, scan to prove it passed. The individual templates
+  # are available for SEs who want to pace the story themselves.
+  # -------------------------------------------------------------------
+  - name: "Windows Day 2 - 0 Break Fix"
+    description: >-
+      Break a CIS control, prove it, fix it, prove the fix — the compliance
+      break/fix demo in one workflow. Four steps, each visible in AAP.
+    organization: "IT Service Automation"
+    labels:
+      - windows
+      - day-2
+    destroy_current_nodes: true
+    inventory: "Sales Demo VMs"
+    survey_enabled: false
+
+    related:
+      workflow_nodes:
+        - identifier: break
+          unified_job_template:
+            name: "Windows Day 2 - Break Compliance"
+            type: job_template
+            organization:
+              name: "IT Service Automation"
+          related:
+            success_nodes:
+              - identifier: scan_broken
+
+        - identifier: scan_broken
+          unified_job_template:
+            name: "Windows Day 2 - Compliance Scan"
+            type: job_template
+            organization:
+              name: "IT Service Automation"
+          related:
+            success_nodes:
+              - identifier: fix
+
+        - identifier: fix
+          unified_job_template:
+            name: "Windows Day 2 - Fix Compliance"
+            type: job_template
+            organization:
+              name: "IT Service Automation"
+          related:
+            success_nodes:
+              - identifier: scan_fixed
+
+        - identifier: scan_fixed
+          unified_job_template:
+            name: "Windows Day 2 - Compliance Scan"
+            type: job_template
+            organization:
+              name: "IT Service Automation"
+
+  # -------------------------------------------------------------------
   # Retired name — #300 moved every template and workflow into a family
   # prefix. The module does not rename in place: it creates the new name
   # and leaves the old one behind, so without this the two would sit side

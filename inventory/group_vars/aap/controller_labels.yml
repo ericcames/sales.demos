@@ -13,7 +13,7 @@
 #
 #   domain      aap-ecosystem, linux, windows, observability, golden-image,
 #               cluster
-#   phase       install, day-0, day-1       (day-2 when #241 lands)
+#   phase       install, day-0, day-1, day-2
 #   safety      read-only
 #   hypervisor  ocpvirt
 #
@@ -57,6 +57,8 @@ controller_labels_all:
   - name: day-0
     organization: "IT Service Automation"
   - name: day-1
+    organization: "IT Service Automation"
+  - name: day-2
     organization: "IT Service Automation"
 
   # --- hypervisor -----------------------------------------------------

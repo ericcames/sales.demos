@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added -- Windows Day 2 operations (#241)
+- **Break/fix compliance demo.** Four new AAP templates: Break Compliance
+  (deliberately violate CIS 2.3.6.6), Compliance Scan (re-run the verifier),
+  Fix Compliance (restore the control), and a `Windows Day 2 - 0 Break Fix`
+  workflow that chains the four steps. The break sets `RequireStrongKey=0`; the
+  fix restores it to 1. Both are single-task playbooks, not roles.
+- **CIS 2.3.6.6 added to `windows_compliance`.** `RequireStrongKey` was not
+  previously verified. The check count goes from 27 to 28. This control is the
+  one the break/fix demo targets, so it appears in the Day 1 report (passing)
+  and in the Day 2 broken scan (failing).
+- **Day 2 patching template.** `Windows Day 2 - Patch` re-uses the existing
+  `patch_windows_vm.yml` playbook with a report-only default (`searched`
+  instead of Day 1's `one`), aimed at drift detection rather than applying
+  updates during a demo.
+- **SMB check/disable.** `Windows Day 2 - Check SMB` reads SMBv1 status and
+  optionally disables it. Survey-driven (`check` / `disable`), no new role.
+- **.NET patch report.** `Windows Day 2 - .NET Patch Report` reads .NET
+  Framework versions and patches from the registry. Read-only.
+- **`day-2` label created** in `controller_labels.yml`, completing the phase
+  axis anticipated since #300.
+
 ### Fixed -- the cluster-wide memory budget check silently totalled zero from AAP (#391)
 
 - **`playbooks/tasks/sum_demo_vm_memory.yml` returned 0 GiB / 0 VMs from every

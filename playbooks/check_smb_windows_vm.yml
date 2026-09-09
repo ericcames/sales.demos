@@ -1,0 +1,43 @@
+---
+# ===========================================================================
+# check_smb_windows_vm.yml — check or disable the legacy SMBv1 protocol.
+#
+# `windows_smb_action` controls the behaviour:
+#   check   (default) — report whether SMBv1 is enabled, change nothing.
+#   disable — disable SMBv1 if it is currently enabled.
+#
+# The CIS L1 golden image ships with SMBv1 disabled (controls 18.4.2 and
+# 18.4.3), so `check` should confirm it is off. The `disable` path exists
+# for guests where it was re-enabled or for images that did not harden it.
+# ===========================================================================
+
+- name: Check or disable SMBv1
+  hosts: "{{ demo_group | default('windemo') }}"
+  gather_facts: false
+
+  vars:
+    windows_smb_action: check
+
+  tasks:
+    - name: Read SMBv1 server configuration
+      ansible.windows.win_powershell:
+        script: |
+          $smb = Get-SmbServerConfiguration | Select-Object EnableSMB1Protocol
+          $smb
+      register: smb_result
+      changed_when: false
+
+    - name: Report SMBv1 status
+      ansible.builtin.debug:
+        msg: "SMBv1 status: {{ smb_result.output | default(smb_result.host_out | default('(no output)')) }}"
+
+    - name: Disable SMBv1
+      ansible.windows.win_powershell:
+        script: |
+          Set-SmbServerConfiguration -EnableSMB1Protocol $false -Confirm:$false
+      when: windows_smb_action == 'disable'
+
+    - name: Confirm SMBv1 is disabled
+      ansible.builtin.debug:
+        msg: "SMBv1 has been disabled."
+      when: windows_smb_action == 'disable'
