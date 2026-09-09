@@ -20,7 +20,7 @@ nothing except through the governed automation path — in about twenty minutes.
 |---|---|
 | [`run-sheet.md`](run-sheet.md) | **While presenting.** Minute markers, what is on screen, exact commands, recovery moves |
 | [`talk-track.md`](talk-track.md) | **While rehearsing.** The narrative and the actual words, beat by beat |
-| [`architecture.md`](architecture.md) | **When asked "how does that work".** The five servers, the credential flow, the access posture |
+| [`architecture.md`](architecture.md) | **When asked "how does that work".** The six servers, the credential flow, the access posture |
 | [`objections.md`](objections.md) | **Before you go in.** What this audience asks — especially the security questions |
 | [`server-inventory.md`](server-inventory.md) | **When asked "what can it do".** Full tool listings, status tables, verification commands |
 | [`building-a-server.md`](building-a-server.md) | **When asked "what about *my* platform".** When no MCP server exists: whether to build one, what language, transport, packaging, hosting |
@@ -34,16 +34,16 @@ and verification commands that `run-sheet.md` and `architecture.md` cite would
 overwhelm either one — the same reason Private Automation Hub earned
 [`clickops.md`](../private-automation-hub/clickops.md). The last two answer the
 question this demo reliably provokes — *"what about the platform I care about,
-which has no MCP server?"* — which is a different question from how the five
+which has no MCP server?"* — which is a different question from how the six
 servers here work.
 
 ---
 
 ## The 60-second version
 
-1. **Show the five MCP servers and their access posture** — two OpenShift
-   (local, one read-write, one read-only), two AAP (in-cluster, same split),
-   one Grafana Cloud (local, read-only Viewer). The environment is in the
+1. **Show the six MCP servers and their access posture** — three OpenShift
+   (local; sandbox and edge read-write, demo read-only), two AAP (in-cluster,
+   the same sandbox/demo split), one Grafana Cloud (local, read-only Viewer). The environment is in the
    server's *name*, and the audience sees the posture before a single query
    runs.
 2. **Issue a read-only query against the cluster** — ask what VMs are running,
@@ -77,14 +77,14 @@ than a live run.
 ## If you want to run it live
 
 ```bash
-/sales-demos-mcp          # sets up all five servers — kubeconfigs + AAP tokens + Grafana
+/sales-demos-mcp          # sets up all six servers — kubeconfigs + AAP tokens + Grafana
 ```
 
 Then verify the servers answer — the skill does this automatically, but if
 you want to confirm independently:
 
 ```bash
-claude mcp list           # all five servers should appear
+claude mcp list           # all six servers should appear
 ```
 
 New to this repo? Run `/sales-demos-first-time` first.

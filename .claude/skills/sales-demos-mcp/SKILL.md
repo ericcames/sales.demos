@@ -1,6 +1,6 @@
 ---
 name: sales-demos-mcp
-description: "Connect Claude Code to this repo's OpenShift clusters, AAP instances, and Grafana Cloud over MCP — five servers, one skill. Generates per-environment kubeconfigs for OpenShift, auto-creates bearer tokens for AAP, and registers the Grafana Cloud MCP server, then verifies every server answers. TRIGGER when: the user asks to set up, connect, refresh or fix the MCP servers, says an openshift-sandbox, openshift-demo, aap-sandbox, aap-demo, or grafana MCP server is failing or shows no tools, or has just repointed an environment or rotated a token. SKIP: if the user wants to install OpenShift Virtualization or apply AAP configuration — that is ocpvirt-setup — or wants to deploy the AAP MCP server into a cluster, which is playbooks/mcp_server.yml run by ocpvirt-setup."
+description: "Connect Claude Code to this repo's OpenShift clusters, AAP instances, and Grafana Cloud over MCP — six servers, one skill. Generates per-environment kubeconfigs for OpenShift, auto-creates bearer tokens for AAP, and registers the Grafana Cloud MCP server, then verifies every server answers. TRIGGER when: the user asks to set up, connect, refresh or fix the MCP servers, says an openshift-sandbox, openshift-demo, openshift-edge, aap-sandbox, aap-demo, or grafana MCP server is failing or shows no tools, or has just repointed an environment or rotated a token. SKIP: if the user wants to install OpenShift Virtualization or apply AAP configuration — that is ocpvirt-setup — or wants to deploy the AAP MCP server into a cluster, which is playbooks/mcp_server.yml run by ocpvirt-setup."
 ---
 
 # sales-demos-mcp
@@ -17,18 +17,25 @@ which is the same reasoning that keeps `collections-sync`,
 
 ## What it sets up
 
-**Five servers — four per-environment, one global:**
+**Six servers — five per-environment, one global:**
 
 | Server | Auth | Access | Source |
 |---|---|---|---|
 | `openshift-sandbox` | kubeconfig | read-write | `.mcp.json` (committed) |
 | `openshift-demo` | kubeconfig | read-only | `.mcp.json` (committed) |
+| `openshift-edge` | kubeconfig | read-write | `.mcp.json` (committed) |
 | `aap-sandbox` | bearer token | read-write | `claude mcp add --scope local` |
 | `aap-demo` | bearer token | read-only | `claude mcp add --scope local` |
 | `grafana` | service account token | read-only | `claude mcp add --scope local` |
 
+**There is no `aap-edge`, and that is not an oversight to fix in passing.**
+`edge` runs AAP, so the server is plausible, but `make-aap-mcp.sh` takes only
+`sandbox` and `demo` and defaults anything that is not `demo` to **write**
+scope. Adding `edge` is a posture decision, not a usage-line fix — the same
+call #405 made about that script.
+
 **One server per environment, named after it, is the whole design.** #16 is the
-precedent: when the two environments were not kept distinct, `--limit demo`
+precedent: when two environments were not kept distinct, `--limit demo`
 silently resolved to sandbox's hostname and sandbox's token with no warning at
 all. A single server whose target changed underneath you would reintroduce
 exactly that, so the environment is in the server's *name* and you pick it by
@@ -47,9 +54,10 @@ role (read-only, matching the governance thesis). See
 
 ### OpenShift servers
 
-`.mcp.json` is committed and defines the two OpenShift servers. `demo` has
+`.mcp.json` is committed and defines the three OpenShift servers. `demo` has
 `--read-only`, which removes the nine mutating tools and keeps every
-investigative one — including `vm_guest_info` and `vm_troubleshoot`.
+investigative one — including `vm_guest_info` and `vm_troubleshoot`. `sandbox`
+and `edge` carry all 25.
 
 The `kubevirt` toolset is enabled because this repo is an OpenShift
 Virtualization demo. It supplies `vm_create`, `vm_clone`, `vm_lifecycle`,
@@ -144,9 +152,11 @@ in shell history. Everything is read from the vault.
 bash utilities/make-kubeconfig.sh sandbox
 ```
 
-Generate `demo` too only if the user is actually working against it. It is the
-environment customers watch, and a stale kubeconfig for it is harmless whereas a
-confidently wrong one is not.
+Generate `demo` or `edge` too only if the user is actually working against
+them. `demo` is the environment customers watch, and a stale kubeconfig for it
+is harmless whereas a confidently wrong one is not. `edge` is the bare-metal
+SNO — it is persistent rather than ephemeral, so its kubeconfig goes stale far
+less often than an RHDP one.
 
 The file lands at `.kube/<env>.kubeconfig`, mode `0600`. `.gitignore` covers
 `.kube/`, and the script writes the token only after locking the file down, so

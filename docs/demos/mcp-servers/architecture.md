@@ -19,6 +19,7 @@ flowchart TD
     subgraph local ["Local (stdio)"]
         OS["<b>openshift-sandbox</b><br/>read-write · 25 tools"]
         OD["<b>openshift-demo</b><br/>read-only · 16 tools"]
+        OE["<b>openshift-edge</b><br/>read-write · 25 tools"]
     end
 
     subgraph cluster ["In-cluster (streamable HTTP)"]
@@ -32,6 +33,7 @@ flowchart TD
 
     CC -->|"kubeconfig<br/>(gitignored)"| OS
     CC -->|"kubeconfig<br/>(gitignored)"| OD
+    CC -->|"kubeconfig<br/>(gitignored)"| OE
     CC -->|"bearer token<br/>(scope local)"| AS
     CC -->|"bearer token<br/>(scope local)"| AD
     CC -->|"SA token<br/>(scope local)"| GR
@@ -43,11 +45,15 @@ cluster exists. The AAP servers run in the cluster because they are a platform
 component deployed by `setup.yml`. The transport choice follows from that — not
 the other way around.
 
-**The environment is in the server's name.** `openshift-sandbox` and
-`openshift-demo` are two servers, not one server with a switch. Issue #16 is
-the precedent — a single server whose target changed underneath you would
-reintroduce the cross-environment confusion. Picking a tool *is* picking an
-environment.
+**The environment is in the server's name.** `openshift-sandbox`,
+`openshift-demo` and `openshift-edge` are three servers, not one server with a
+switch. Issue #16 is the precedent — a single server whose target changed
+underneath you would reintroduce the cross-environment confusion. Picking a
+tool *is* picking an environment.
+
+`edge` is the odd one out by nature rather than by configuration: a persistent
+bare-metal Single Node OpenShift cluster rather than an ephemeral RHDP
+provisioning. It is read-write, like `sandbox`.
 
 ---
 
@@ -60,13 +66,15 @@ Full tool listings and verification commands are in
 |---|---|---|---|---|---|---|
 | `openshift-sandbox` | OpenShift | stdio (local) | read-write | 25 | kubeconfig | `.mcp.json` (committed) |
 | `openshift-demo` | OpenShift | stdio (local) | read-only | 16 | kubeconfig | `.mcp.json` (committed) |
+| `openshift-edge` | OpenShift | stdio (local) | read-write | 25 | kubeconfig | `.mcp.json` (committed) |
 | `aap-sandbox` | AAP | streamable HTTP | read-write | ~140 | bearer token | `claude mcp add --scope local` |
 | `aap-demo` | AAP | streamable HTTP | read-only | ~95 | bearer token | `claude mcp add --scope local` |
 | `grafana` | Grafana Cloud | stdio (local) | read-only (Viewer) | 81 | SA token | `claude mcp add --scope local` |
 
-Measured 2026-09-03 (OpenShift, AAP) and 2026-09-06 (Grafana) against
-`kubernetes-mcp-server@0.0.66` (OpenShift), AAP 2.7 / controller 4.8.6 (AAP),
-and `mcp-grafana` via `uvx` (Grafana).
+Measured 2026-09-03 (OpenShift sandbox/demo, AAP), 2026-09-06 (Grafana) and
+2026-09-09 (`openshift-edge`) against `kubernetes-mcp-server@0.0.66`
+(OpenShift), AAP 2.7 / controller 4.8.6 (AAP), and `mcp-grafana` via `uvx`
+(Grafana).
 
 ---
 
@@ -160,7 +168,7 @@ All credentials originate from `playbooks/group_vars/all/secrets.yml`
 (vault-encrypted). Nothing is committed in plaintext except the hostnames in
 `connection.yml`. Grafana Cloud credentials (`grafana_cloud_url`,
 `grafana_cloud_sa_token`) are top-level vault keys, not under `env_secrets`,
-because the instance spans both environments.
+because the instance spans every environment.
 
 ---
 
@@ -171,7 +179,7 @@ because the instance spans both environments.
 | `make-kubeconfig.sh` per environment | ~5 s | Vault decrypt + file write |
 | `make-aap-mcp.sh` per environment | ~10 s | Token creation + route lookup + client registration |
 | `make-grafana-mcp.sh` | ~5 s | Vault decrypt + client registration (no token creation) |
-| `/sales-demos-mcp` full run (both environments) | ~2 min | Includes verification |
+| `/sales-demos-mcp` full run (all environments) | ~2 min | Includes verification |
 | `mcp_server.yml` (deploy AAP MCP to cluster) | ~3 min | Part of `/ocpvirt-setup`, not part of `/sales-demos-mcp` |
 | AAP MCP pod readiness after deploy | ~60 s | Route returns 503 until the pod serves |
 

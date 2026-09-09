@@ -6,16 +6,17 @@ audience sees the same view the assistant works from.
 
 ---
 
-## The five servers at a glance
+## The six servers at a glance
 
-Measured 2026-09-03 (OpenShift, AAP) and 2026-09-06 (Grafana) against
-`kubernetes-mcp-server@0.0.66`, AAP 2.7 (controller 4.8.6), and
-`mcp-grafana` via `uvx`.
+Measured 2026-09-03 (OpenShift sandbox/demo, AAP), 2026-09-06 (Grafana) and
+2026-09-09 (`openshift-edge`) against `kubernetes-mcp-server@0.0.66`, AAP 2.7
+(controller 4.8.6), and `mcp-grafana` via `uvx`.
 
 | Server | Platform | Transport | Access | Tools | Auth | Source |
 |---|---|---|---|---|---|---|
 | `openshift-sandbox` | OpenShift | stdio (local) | read-write | 25 | kubeconfig | `.mcp.json` (committed) |
 | `openshift-demo` | OpenShift | stdio (local) | read-only | 16 | kubeconfig | `.mcp.json` (committed) |
+| `openshift-edge` | OpenShift | stdio (local) | read-write | 25 | kubeconfig | `.mcp.json` (committed) |
 | `aap-sandbox` | AAP | streamable HTTP | read-write | ~140 | bearer token | `claude mcp add --scope local` |
 | `aap-demo` | AAP | streamable HTTP | read-only | ~95 | bearer token | `claude mcp add --scope local` |
 | `grafana` | Grafana Cloud | stdio (local) | read-only (Viewer) | 81 | SA token | `claude mcp add --scope local` |
@@ -24,8 +25,13 @@ Measured 2026-09-03 (OpenShift, AAP) and 2026-09-06 (Grafana) against
 precedent: when two environments were not kept distinct, `--limit demo` silently
 resolved to sandbox's hostname and sandbox's token. The environment is in the
 server's *name* so you pick it by picking the tool. Grafana Cloud is a single
-external instance that spans both environments, so one server named `grafana`
-rather than two.
+external instance that spans every environment, so one server named `grafana`
+rather than one per cluster.
+
+**`edge` is the third environment, and it is a different kind of thing.**
+`sandbox` and `demo` are ephemeral RHDP clusters; `edge` is a persistent
+bare-metal Single Node OpenShift box on a home network. It is read-write like
+`sandbox` — you own the hardware and no customer is watching it.
 
 **`demo` is read-only on both platforms.** That is the environment customers
 watch. The write path runs against `sandbox` — the environment you break for
@@ -33,8 +39,14 @@ velocity. Grafana is read-only by a different mechanism — the service account
 has the Viewer role, so write tools are exposed but the token lacks permission
 to execute them.
 
-**Five is the whole list.** There is no ServiceNow, Dynatrace or network vendor
-server here, and the tables below are complete rather than abridged. For why
+**Six is the whole list.** There is no ServiceNow, Dynatrace or network vendor
+server here, and the tables below are complete rather than abridged.
+
+**There is no `aap-edge` server.** `edge` runs AAP, but the MCP server for it
+has not been built: `utilities/make-aap-mcp.sh` takes only `sandbox` and
+`demo`, and it defaults anything that is not `demo` to **write** scope, so
+adding `edge` is a posture decision rather than a one-line change. If asked,
+say that plainly — three OpenShift servers, two AAP. For why
 ServiceNow is absent rather than pending, see [`servicenow.md`](servicenow.md);
 for what building one would take, [`building-a-server.md`](building-a-server.md).
 
@@ -71,6 +83,16 @@ for what building one would take, [`building-a-server.md`](building-a-server.md)
 | `vm_guest_info` | Get guest OS information from a VM |
 | `vm_lifecycle` | Start, stop, restart, or migrate a VM |
 | `vm_troubleshoot` | Diagnose VM issues |
+
+### `openshift-edge` — 25 tools (read-write)
+
+Identical to `openshift-sandbox` above — same `kubernetes-mcp-server` version,
+same `core,config,kubevirt` toolsets, no `--read-only`. The list is not
+repeated here because it is the same list; if the two ever differ, one of the
+three `.mcp.json` entries has drifted.
+
+Measured 2026-09-09 against the live SNO: `namespaces_list` returns a cluster
+running `openshift-cnv`, `openshift-compliance`, `aap` and `grafana-alloy`.
 
 ### `openshift-demo` — 16 tools (read-only)
 
@@ -326,7 +348,7 @@ error is a pass.
 ### Confirm the client sees all servers
 
 ```bash
-claude mcp list   # all five servers should appear
+claude mcp list   # all six servers should appear
 ```
 
 ---

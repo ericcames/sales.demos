@@ -57,7 +57,7 @@ live.
 
 ---
 
-## Beat 2 · The five servers (3–6)
+## Beat 2 · The six servers (3–6)
 
 Switch to the status table. Show it on screen or recite from
 [`server-inventory.md`](server-inventory.md):
@@ -66,16 +66,22 @@ Switch to the status table. Show it on screen or recite from
 |---|---|---|---|---|
 | `openshift-sandbox` | OpenShift | stdio | read-write | 25 |
 | `openshift-demo` | OpenShift | stdio | read-only | 16 |
+| `openshift-edge` | OpenShift | stdio | read-write | 25 |
 | `aap-sandbox` | AAP | HTTP | read-write | ~140 |
 | `aap-demo` | AAP | HTTP | read-only | ~95 |
 | `grafana` | Grafana Cloud | stdio | read-only (Viewer) | 81 |
 
-> **"Five servers. Three platforms — OpenShift, Ansible Automation Platform,
-> and Grafana Cloud. Two environments — sandbox, where I break things, and
-> demo, where a customer watches. Demo is read-only on both. Grafana Cloud is
-> read-only everywhere — the service account is Viewer. That's not a setting
-> I toggled — on OpenShift it removes the tools. The server physically cannot
-> accept a delete request."**
+> **"Six servers. Three platforms — OpenShift, Ansible Automation Platform,
+> and Grafana Cloud. Three environments — sandbox, where I break things;
+> demo, where a customer watches; and edge, a single-node cluster on bare
+> metal. Demo is read-only on both platforms. Grafana Cloud is read-only
+> everywhere — the service account is Viewer. That's not a setting I toggled —
+> on OpenShift it removes the tools. The server physically cannot accept a
+> delete request."**
+
+If someone counts and asks why there is no `aap-edge`: there is not one yet,
+and the reason is a posture decision nobody has made. Say so — it is a better
+answer than an improvised one, and it is the same honesty the last beat runs on.
 
 Point at 25 vs 16: nine mutating tools removed. The audience does not need the
 list — they need to know the enforcement is structural, not advisory.
@@ -233,7 +239,7 @@ gets no answer to any of them.
 
 ## If you only get ten minutes
 
-Keep Beats 1, 2, 4 and 6 — the live query, the five servers with the access
+Keep Beats 1, 2, 4 and 6 — the live query, the six servers with the access
 posture, the governed write path, and the honest bits. Drop the rest.
 
 That is still a complete argument: reads everything, changes nothing except
@@ -247,14 +253,14 @@ Every claim in this track is checkable in the repo:
 
 | Claim | Source |
 |---|---|
-| Five servers, three platforms, two environments | `.mcp.json`, `SKILL.md`, `docs/plan/grafana-plan.md` |
+| Six servers, three platforms, three environments | `.mcp.json`, `SKILL.md`, `docs/plan/grafana-plan.md` |
 | Demo is read-only, sandbox is read-write | `.mcp.json` line 21 (`--read-only`), `inventory/group_vars/demo/mcp.yml` |
 | Nine mutating tools removed by `--read-only` | [`server-inventory.md`](server-inventory.md#the-nine-tools---read-only-removes) |
-| 25 tools on sandbox, 16 on demo | Measured 2026-09-03, [`server-inventory.md`](server-inventory.md) |
-| ~140 tools on AAP sandbox | Measured 2026-09-03, `SKILL.md` line 208 |
-| One server per environment, #16 precedent | `SKILL.md` lines 28–33, `CLAUDE.md` |
+| 25 tools on sandbox and edge, 16 on demo | Measured 2026-09-03 and 2026-09-09, [`server-inventory.md`](server-inventory.md) |
+| ~140 tools on AAP sandbox | Measured 2026-09-03, `SKILL.md` "AAP servers" |
+| One server per environment, #16 precedent | `SKILL.md` "One server per environment", `CLAUDE.md` |
 | Token inherits creating user's permissions | `CLAUDE.md`, Red Hat AAP token documentation |
-| MCP client token does not self-clean | `CLAUDE.md`, `SKILL.md` lines 61–64 |
+| MCP client token does not self-clean | `CLAUDE.md`, `SKILL.md` "These tokens do not clean themselves up" |
 | `vm_troubleshoot` survives read-only | [`server-inventory.md`](server-inventory.md#openshift-demo--16-tools-read-only) |
 | Server definitions committed in `.mcp.json` | `.mcp.json` |
 | Directive in `CLAUDE.md` | `CLAUDE.md` — "Ask the cluster over MCP" |

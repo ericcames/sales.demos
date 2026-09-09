@@ -7,6 +7,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed -- MCP server enumerations still said five, and omitted `openshift-edge` (#414)
+
+- **`openshift-edge` has been a committed server since #375, but nothing that
+  *counts* the servers was updated.** Measured 2026-09-09: `claude mcp list`
+  returns six connected servers -- three `openshift-*` (sandbox and edge
+  read-write at 25 tools, demo `--read-only` at 16), two `aap-*`, and
+  `grafana`. The edge server is not merely configured: `namespaces_list`
+  returns a live SNO running `openshift-cnv`, `openshift-compliance`, `aap`
+  and `grafana-alloy`.
+- **This is #405 one layer up.** That issue fixed the four operator-facing
+  *messages* that offered two environments; these are the agent instructions
+  and the demo docs that count the servers.
+- **The demo docs were the sharp end.** `server-inventory.md` opens by telling
+  the presenter its tables are "the same format Claude Code renders when asked
+  'show me the MCP servers'", then asserts **"Five is the whole list ...
+  complete rather than abridged."** Ask the question the doc invites and the
+  screen says six -- a completeness claim disproved live, in front of the
+  customer, by the tool the doc points at.
+- Updated `CLAUDE.md`, `ROADMAP.md`,
+  `.claude/skills/sales-demos-mcp/SKILL.md` (frontmatter `description`
+  included -- its TRIGGER clause named the servers), and all six affected
+  files under `docs/demos/mcp-servers/`: the at-a-glance and condensed tables,
+  the mermaid diagram, both spoken talk-track lines, the run-sheet arc, and
+  the "Where the words come from" source table.
+- **`openshift-edge`'s tool listing is stated as identical, not duplicated.**
+  Same binary, same `core,config,kubevirt` toolsets, no `--read-only`, so the
+  25-row table is not repeated -- if the two ever differ, one of the three
+  `.mcp.json` entries has drifted.
+- **Three line-number citations in `talk-track.md` became section-name
+  citations.** They pointed into `SKILL.md`, which this change edits, so they
+  would have gone stale on merge -- a footgun the source table exists to
+  prevent.
+- **The absence of `aap-edge` is now documented rather than left to be
+  noticed.** `edge` runs AAP, so a presenter who counts will ask. It is not
+  built: `make-aap-mcp.sh` takes only `sandbox` and `demo` and defaults
+  anything that is not `demo` to **write** scope, so adding `edge` is a
+  posture decision, not a usage-line fix -- the same call #405 made about that
+  script. The talk track now tells the presenter to say so plainly.
+- **`docs/plan/platform-addons-plan.md` deliberately left alone.** It records
+  two OpenShift servers as of the date it was written. Plan docs are design
+  records; updating one would rewrite history rather than correct a stale
+  instruction.
+
 ### Fixed -- roadmap environment and memory references (#410)
 
 - **`ROADMAP.md` now documents all three live environments:** `sandbox` and
