@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed -- demo VMs get instance-unique AAP host names (#354)
+- **Each provisioned VM now gets a unique AAP host name** in Route-style format:
+  `<hex>-<namespace>.<apps_domain>` (e.g.
+  `a3f8b2-sales-demos-sandbox.apps.cluster-kbjvc.dyn.redhatworkshops.io`).
+  Previously, the host name was the tier-based in-cluster FQDN, so Host Metrics
+  merged all VMs of the same tier into one row.
+- **K8s object names stay tier-based** (`sd-lnx-small`, `sd-win-large`) for
+  Terraform convergence. The unique ID comes from a `random_id` resource that
+  persists in state until `terraform destroy`, then regenerates on the next build.
+- **Teardown cleans up Host Metrics entries** via the controller API (best-effort,
+  non-fatal). Deregistration covers both the new unique name and the old FQDN for
+  migration safety.
+- **Added `hashicorp/random` provider** (~> 3.6) to the OCP Virt Terraform module.
+
 ### Fixed -- edge pointed at the demo cluster's domain (#385)
 - **`inventory/group_vars/edge/connection.yml` said `demo.internal.ames.net` in
   three places** -- `aap_hostname`, `openshift_api_url`, `openshift_apps_domain`.

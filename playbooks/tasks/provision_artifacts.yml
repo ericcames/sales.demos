@@ -23,7 +23,7 @@
       vm_name: "{{ _primary.vm_name }}"
       vm_size_chosen: "{{ _primary.vm_size_chosen }}"
       my_server: "{{ _primary.host }}"
-      my_instance_id: "{{ _primary.vm_name }}"
+      my_instance_id: "{{ _primary.aap_host_name }}"
       my_instance_type: "{{ _primary.vm_size_chosen }}"
 
 - name: Publish the Linux-specific artifacts

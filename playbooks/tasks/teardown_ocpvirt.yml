@@ -110,13 +110,23 @@
       failed_when: false
       register: tf_output
 
-    - name: Remember which hosts to deregister
+    - name: Collect inventory entries from Terraform state
       ansible.builtin.set_fact:
-        teardown_hosts: >-
+        teardown_inventories: >-
           {{ [
                (tf_output.stdout | default('{}') | from_json).linux_inventory.value | default(None, true),
                (tf_output.stdout | default('{}') | from_json).windows_inventory.value | default(None, true)
-             ] | select('mapping') | map(attribute='host') | list }}
+             ] | select('mapping') | list }}
+
+    # Both aap_host_name (instance-unique, #354) and host (in-cluster FQDN)
+    # are collected so that VMs registered under either name get cleaned up.
+    # Old state without aap_host_name contributes only the FQDN.
+    - name: Remember which hosts to deregister
+      ansible.builtin.set_fact:
+        teardown_hosts: >-
+          {{ (teardown_inventories | map(attribute='aap_host_name', default='') | reject('equalto', '') | list)
+             + (teardown_inventories | map(attribute='host') | list)
+             | unique }}
 
     - name: Build the virtctl SSH host-key names to clean up
       ansible.builtin.set_fact:
@@ -254,6 +264,40 @@
       loop: "{{ teardown_hosts }}"
       loop_control:
         label: "{{ item }}"
+
+    - name: Clean up Host Metrics entries (#354)
+      block:
+        - name: Look up Host Metrics entries for deregistered hosts
+          ansible.builtin.uri:
+            url: "{{ provision_aap_url }}/api/controller/v2/host_metrics/?hostname={{ item | urlencode }}"
+            user: "{{ provision_aap_user }}"
+            password: "{{ provision_aap_pass }}"
+            force_basic_auth: true
+            validate_certs: "{{ aap_validate_certs | default(false) }}"
+            return_content: true
+          loop: "{{ teardown_hosts }}"
+          loop_control:
+            label: "{{ item }}"
+          register: hm_lookup
+          no_log: true
+
+        - name: Soft-delete each Host Metrics entry
+          ansible.builtin.uri:
+            url: "{{ provision_aap_url }}/api/controller/v2/host_metrics/{{ item.json.results[0].id }}/"
+            method: DELETE
+            user: "{{ provision_aap_user }}"
+            password: "{{ provision_aap_pass }}"
+            force_basic_auth: true
+            validate_certs: "{{ aap_validate_certs | default(false) }}"
+            status_code: [204, 404]
+          loop: "{{ hm_lookup.results | selectattr('json.count', 'gt', 0) | list }}"
+          loop_control:
+            label: "{{ item.item }}"
+          no_log: true
+      rescue:
+        - name: Host Metrics cleanup failed (non-fatal)
+          ansible.builtin.debug:
+            msg: "Host Metrics cleanup failed — entries may need manual removal."
 
     - name: Summarize
       ansible.builtin.debug:

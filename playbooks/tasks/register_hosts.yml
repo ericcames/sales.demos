@@ -5,7 +5,8 @@
 #
 # CALLER: provision_vm.yml, after the provider task file has set:
 #   linux_inventory — dict with host, ansible_host, ansible_user, vm_name,
-#                     vm_size_tier, vm_size_chosen (or false/None)
+#                     vm_size_tier, vm_size_chosen, aap_host_name
+#                     (or false/None)
 #   win_inventory   — same shape (or false/None)
 #   web_url, cockpit_url, ssh_command — provider-specific access URLs
 #
@@ -75,7 +76,7 @@
         controller_password: "{{ provision_aap_pass }}"
         validate_certs: "{{ aap_validate_certs | default(false) }}"
         request_timeout: "{{ provision_request_timeout }}"
-        name: "{{ win_inventory.host }}"
+        name: "{{ win_inventory.aap_host_name }}"
         inventory: "{{ provision_aap_inventory }}"
         enabled: true
         state: present
@@ -108,7 +109,7 @@
         request_timeout: "{{ provision_request_timeout }}"
         name: "{{ provision_windows_group }}"
         inventory: "{{ provision_aap_inventory }}"
-        hosts: ["{{ win_inventory.host }}"]
+        hosts: ["{{ win_inventory.aap_host_name }}"]
         state: present
 
 # --- Linux ---------------------------------------------------------
@@ -122,7 +123,7 @@
         controller_password: "{{ provision_aap_pass }}"
         validate_certs: "{{ aap_validate_certs | default(false) }}"
         request_timeout: "{{ provision_request_timeout }}"
-        name: "{{ linux_inventory.host }}"
+        name: "{{ linux_inventory.aap_host_name }}"
         inventory: "{{ provision_aap_inventory }}"
         enabled: true
         state: present
@@ -148,5 +149,5 @@
         request_timeout: "{{ provision_request_timeout }}"
         name: "{{ provision_linux_group }}"
         inventory: "{{ provision_aap_inventory }}"
-        hosts: ["{{ linux_inventory.host }}"]
+        hosts: ["{{ linux_inventory.aap_host_name }}"]
         state: present

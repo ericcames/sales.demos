@@ -34,6 +34,7 @@ output "windows_inventory" {
     vm_name        = local.windows_vm_name
     vm_size_tier   = var.vm_size_tier
     vm_size_chosen = local.instancetype
+    aap_host_name  = "${random_id.windows_instance[0].hex}-${var.namespace}.${var.openshift_apps_domain}"
   } : null
 }
 
@@ -50,6 +51,7 @@ output "linux_inventory" {
     vm_name        = local.linux_vm_name
     vm_size_tier   = var.vm_size_tier
     vm_size_chosen = local.instancetype
+    aap_host_name  = "${random_id.linux_instance[0].hex}-${var.namespace}.${var.openshift_apps_domain}"
   } : null
 }
 

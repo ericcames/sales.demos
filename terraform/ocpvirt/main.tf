@@ -32,6 +32,25 @@
 # reference var.namespace directly and no longer depend on a namespace resource.
 
 # ---------------------------------------------------------------------------
+# Instance IDs — unique per build, stable across converging applies (#354).
+#
+# random_id persists in state until `terraform destroy` drops it, so the AAP
+# host name stays the same across re-applies but differs across genuine
+# build/teardown/build cycles. It appears ONLY in outputs, never in a
+# kubernetes_manifest, so the plan-time-known constraint is not triggered.
+# ---------------------------------------------------------------------------
+
+resource "random_id" "linux_instance" {
+  count       = local.create_linux ? 1 : 0
+  byte_length = 3
+}
+
+resource "random_id" "windows_instance" {
+  count       = local.create_windows ? 1 : 0
+  byte_length = 3
+}
+
+# ---------------------------------------------------------------------------
 # Linux — RHEL 9 from the CNV-shipped boot source. Works today.
 # ---------------------------------------------------------------------------
 
