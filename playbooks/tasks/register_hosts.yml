@@ -97,7 +97,14 @@
         # each need their own fallback and the page would disagree with the
         # Linux one about what it knows.
         #
-        # web_url is per-OS from Terraform now, so this is the Windows Route.
+        # web_url is PER VM since #389, read off this entry rather than off a
+        # single play fact. Each member of a farm has its own Route, so the
+        # host variable has to be the URL of the machine it is attached to.
+        #
+        # `| default('', true)` on the three URL fields, because Terraform emits
+        # null for them when openshift_apps_domain is unset. Consumers already
+        # write `web_url | default('', true)`, which copes either way -- this
+        # just keeps a literal `null` out of the AAP host-variable UI.
         variables:
           ansible_host: "{{ item.ansible_host }}"
           ansible_user: "{{ item.ansible_user }}"
@@ -106,7 +113,7 @@
           vm_index: "{{ item.vm_index }}"
           vm_size_tier: "{{ item.vm_size_tier }}"
           vm_size_chosen: "{{ item.vm_size_chosen }}"
-          web_url: "{{ item.web_url }}"
+          web_url: "{{ item.web_url | default('', true) }}"
           golden_image_source: "{{ quay_windows_image | default('') }}"
           golden_image_cis_level: "L1"
           env_name: "{{ aap_env_name }}"
@@ -151,9 +158,9 @@
           vm_index: "{{ item.vm_index }}"
           vm_size_tier: "{{ item.vm_size_tier }}"
           vm_size_chosen: "{{ item.vm_size_chosen }}"
-          web_url: "{{ item.web_url }}"
-          cockpit_url: "{{ item.cockpit_url }}"
-          ssh_command: "{{ item.ssh_command }}"
+          web_url: "{{ item.web_url | default('', true) }}"
+          cockpit_url: "{{ item.cockpit_url | default('', true) }}"
+          ssh_command: "{{ item.ssh_command | default('', true) }}"
           golden_image_source: "{{ quay_rhel9_image | default('') }}"
           golden_image_cis_level: "L1"
           env_name: "{{ aap_env_name }}"
