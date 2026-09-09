@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed -- edge pointed at the demo cluster's domain (#385)
+- **`inventory/group_vars/edge/connection.yml` said `demo.internal.ames.net` in
+  three places** -- `aap_hostname`, `openshift_api_url`, `openshift_apps_domain`.
+  The NUC cluster is `edge.internal.ames.net`; the values were a copy from the
+  `demo` environment. Verified against the live cluster: the ingress domain is
+  `apps.edge.internal.ames.net` and the API is `api.edge.internal.ames.net:6443`.
+- **This broke the `openshift-edge` MCP server outright** -- `lookup
+  api.demo.internal.ames.net ... no such host` -- so edge questions fell back to
+  shelling out with an explicit `KUBECONFIG`, the habit the "ask the cluster over
+  MCP" rule exists to prevent.
+- **`demo` is a real, live environment**, so this failed closed only because the
+  home dnsmasq has no `demo.internal.ames.net` zone. A stale hostname that
+  resolves to the wrong cluster would have been far worse than one that does not
+  resolve at all.
+
 ### Removed -- the falsely-labelled Windows image is gone from Quay (#358)
 - **`quay.io/zigfreed/win2k22-cis-l1-golden:20260907-0516` has been deleted.** It
   carried `com.redhat.cis.level=L1` on media measuring **0 of 10**, in a private

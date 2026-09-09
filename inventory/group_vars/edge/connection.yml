@@ -14,13 +14,13 @@
 aap_env_name: "edge"
 
 # --- Ansible Automation Platform -------------------------------------------
-aap_hostname: "aap-aap.apps.demo.internal.ames.net"
+aap_hostname: "aap-aap.apps.edge.internal.ames.net"
 aap_username: "admin"
 aap_validate_certs: false
 aap_request_timeout: 30
 
 # --- OpenShift -------------------------------------------------------------
-openshift_api_url: "https://api.demo.internal.ames.net:6443"
+openshift_api_url: "https://api.edge.internal.ames.net:6443"
 openshift_validate_certs: false
 
 # --- Credentials, resolved from the vaulted secrets.yml --------------------
@@ -36,7 +36,7 @@ quay_windows_image: "quay.io/zigfreed/win2k22-cis-l1-golden:20260908-1853"
 quay_rhel9_image: "quay.io/zigfreed/rhel9-cis-l1-golden:20260905-0411"
 
 # The *.apps ingress domain for this cluster.
-openshift_apps_domain: "apps.demo.internal.ames.net"
+openshift_apps_domain: "apps.edge.internal.ames.net"
 
 # Namespace the demo VMs are created in.
 ocpvirt_namespace: "sales-demos-edge"
