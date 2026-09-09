@@ -83,7 +83,7 @@
           - target_env is defined
           - target_env | length > 0
         fail_msg: >-
-          teardown.yml requires -e target_env=<sandbox|demo>, stated explicitly
+          teardown.yml requires -e target_env=<sandbox|demo|edge>, stated explicitly
           and matching --limit. This playbook destroys VMs; it will not guess
           which environment you meant.
         quiet: true

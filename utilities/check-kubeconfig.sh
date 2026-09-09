@@ -17,11 +17,23 @@
 # repos and is not this repo's to own or judge.
 #
 #   ./utilities/check-kubeconfig.sh demo
+#   ./utilities/check-kubeconfig.sh edge
 # ===========================================================================
 set -euo pipefail
 
+# Anchor to the repo root. Every path below is relative, so this script only
+# ever worked when invoked from there; without it the derived usage line below
+# prints an empty list from anywhere else, which is worse than the stale one it
+# replaced. Same anchor as make-kubeconfig.sh, for the same reason.
+cd "$(dirname "${BASH_SOURCE[0]}")/.."
+
+# The environments, read from the tree rather than hardcoded, so the usage line
+# cannot go stale the way a literal `<sandbox|demo>` did once `edge` arrived
+# (#405). `aap` is the group every environment belongs to, not an environment.
+environments() { ls -1 inventory/group_vars | grep -v '^aap$'; }
+
 ENV="${1:-}"
-[ -n "$ENV" ] || { echo "usage: $0 <sandbox|demo>" >&2; exit 2; }
+[ -n "$ENV" ] || { echo "usage: $0 <$(environments | paste -sd'|')>" >&2; exit 2; }
 
 CONN="inventory/group_vars/${ENV}/connection.yml"
 KUBE=".kube/${ENV}.kubeconfig"

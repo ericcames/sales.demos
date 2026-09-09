@@ -5,6 +5,11 @@
 #
 #   bash utilities/make-kubeconfig.sh sandbox
 #   bash utilities/make-kubeconfig.sh demo
+#   bash utilities/make-kubeconfig.sh edge
+#
+# The environments are not a list in this script. Both the usage line and the
+# unknown-environment error read `inventory/group_vars/`, so adding a fourth
+# environment needs no edit here — and cannot leave the two disagreeing.
 #
 # WHY THIS EXISTS. kubernetes-mcp-server authenticates by kubeconfig, and this
 # repo keeps its cluster credentials in a vault, not in one. Rather than ask
@@ -29,18 +34,25 @@
 # ===========================================================================
 set -euo pipefail
 
-ENV_NAME="${1:-}"
-if [[ -z "$ENV_NAME" ]]; then
-  echo "usage: bash utilities/make-kubeconfig.sh <sandbox|demo>" >&2
-  exit 2
-fi
-
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
 
+# The environments, read from the tree rather than hardcoded. `aap` is the
+# group every environment belongs to, not an environment, so it is excluded.
+# This runs BEFORE the usage check, which is why the cd above moved up here:
+# the usage line names real directories, so it cannot go stale the way a
+# literal `<sandbox|demo>` did once `edge` arrived (#405).
+environments() { ls -1 inventory/group_vars | grep -v '^aap$'; }
+
+ENV_NAME="${1:-}"
+if [[ -z "$ENV_NAME" ]]; then
+  echo "usage: bash utilities/make-kubeconfig.sh <$(environments | paste -sd'|')>" >&2
+  exit 2
+fi
+
 if [[ ! -d "inventory/group_vars/$ENV_NAME" ]]; then
   echo "❌ unknown environment '$ENV_NAME' — expected one of:" >&2
-  ls -1 inventory/group_vars | grep -v '^aap$' | sed 's/^/     /' >&2
+  environments | sed 's/^/     /' >&2
   exit 2
 fi
 
@@ -109,8 +121,10 @@ clusters:
   - name: ${CLUSTER_NAME}
     cluster:
       server: ${API_URL}
-      # RHDP clusters serve a self-signed API certificate. The *.apps ingress
-      # certificate is publicly trusted, but the :6443 endpoint is not.
+      # No environment here serves a publicly-trusted certificate on :6443.
+      # RHDP signs the API endpoint itself (its *.apps ingress IS publicly
+      # trusted; the API endpoint is not), and edge is a bare-metal SNO on a
+      # local domain where neither is.
       insecure-skip-tls-verify: true
 users:
   - name: ${CLUSTER_NAME}-user

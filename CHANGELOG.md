@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed -- four operator-facing messages still offered two environments, not three (#405)
+
+- **`edge` has been a real target since it was added, but every message that
+  enumerates the choices predated it.** `utilities/make-kubeconfig.sh` said
+  `usage: ... <sandbox|demo>` while `.mcp.json` already points `openshift-edge`
+  at `.kube/edge.kubeconfig` -- the script was not merely permitted to take
+  `edge`, it was already the documented way that MCP server gets its credential.
+  Same staleness in `utilities/check-kubeconfig.sh`, `playbooks/teardown.yml`
+  (`-e target_env=<sandbox|demo>`) and
+  `playbooks/tasks/assert_target_environment.yml`.
+- **The assert message contradicted itself out loud**: it reported
+  `This run targets 3 environments (sandbox-local, demo-local, edge-local)` and
+  then offered `--limit sandbox` or `--limit demo`. Verified by running
+  `probe_env.yml` with no `--limit`.
+- **The two shell scripts now derive the list from `inventory/group_vars/`**
+  rather than hardcoding a third value, reusing the idiom already six lines below
+  in each -- the unknown-environment error path. A fourth environment cannot
+  re-stale them, and the usage line and the error can no longer disagree. The two
+  Ansible `fail_msg` strings name all three literally; deriving inside a failure
+  message is not worth the indirection.
+- **`check-kubeconfig.sh` gained the repo-root anchor its sibling already had.**
+  Every path in it is relative, so it only ever worked from the repo root; the
+  derived usage line printed `<>` from anywhere else, which is worse than the
+  stale string it replaced. Caught by running it from `/tmp`, not by reading it.
+- **Two look-alike sites deliberately left alone.**
+  `utilities/make-aap-mcp.sh` carries the same stale string, but there is no
+  `aap-edge` server yet and the script defaults anything that is not `demo` to
+  **write** scope -- a posture decision that belongs to its own change, not to a
+  usage line. `utilities/make-env-logo.py`'s `sandbox or demo` help is
+  *accurate*: `utilities/env_colors.py` has no `edge` key, so `--env edge` exits
+  with "unknown env". Supporting it means choosing a third badge colour.
+
+
 ### Added -- edge/SNO demo docs (in-repo mirror) (#404)
 
 - **`docs/demos/edge-sno/`** — five-file demo directory for the edge / Single

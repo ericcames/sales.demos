@@ -11,8 +11,8 @@
 # host and `--limit demo` silently resolved to sandbox's credentials.
 #
 # The failure mode this closes: `hosts: aap` with no --limit matches EVERY
-# environment, so a forgotten flag would configure sandbox and demo in the
-# same run. Fail closed instead.
+# environment, so a forgotten flag would configure sandbox, demo AND edge in
+# the same run. Fail closed instead.
 # ===========================================================================
 
 - name: Assert exactly one environment is targeted
@@ -22,7 +22,7 @@
     fail_msg: >-
       This run targets {{ ansible_play_hosts_all | length }} environments
       ({{ ansible_play_hosts_all | join(', ') }}). Pass exactly one:
-      `--limit sandbox` or `--limit demo`.
+      `--limit sandbox`, `--limit demo` or `--limit edge`.
     quiet: true
   run_once: true
 
