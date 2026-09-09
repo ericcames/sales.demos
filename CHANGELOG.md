@@ -45,6 +45,14 @@ the caller carried the environment before that change either. #389 only made it
 visible, by being the first run to happen while unrelated demo VMs were already
 present.
 
+### Documentation -- correct the LVMS prerequisite comment (#387)
+- **`install_lvms.yml` said LVMS uses unallocated disk space; it discovers
+  unused block devices.** Auto-discovery ignores devices with children, so
+  `/dev/sda` is ineligible however the root partition is sized -- free space
+  behind the last partition is invisible to it. The installer kit reserves
+  partition 5 (label `lvms`) unformatted; that is an explicit partition, not
+  leftover space.
+
 ### Added -- server farms: `vm_count` and role-based naming (#389)
 - **One workflow launch can now build up to 10 VMs.** `vm_count` (1-10, default
   1) and `vm_role` (`web` / `db` / `app`, default `web`) are new survey questions

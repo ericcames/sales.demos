@@ -7,9 +7,13 @@
 # default.
 #
 # Prerequisites:
-#   - The node must have unallocated disk space or additional devices.
-#     On a SNO built from the installer kit, the install-config.yaml limits
-#     the root partition to ~200 GB so the remaining space is available.
+#   - The node must have an unused block device or partition. LVMS
+#     auto-discovery ignores devices that have children, so /dev/sda is
+#     ineligible however the root partition is sized — free space behind
+#     the last partition is invisible to it.
+#   - On a SNO built from the installer kit, partition 5 (label "lvms")
+#     is reserved unformatted for LVMS to claim. This is an explicit
+#     partition, not leftover unallocated space.
 #   - A cluster where the root partition consumed the entire disk (e.g. a
 #     default ABI install) has nothing for LVMS to use.
 #
