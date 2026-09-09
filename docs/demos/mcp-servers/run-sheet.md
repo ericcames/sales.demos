@@ -15,7 +15,7 @@ that, present from this.
 
 ## Before you start (5 minutes, offline)
 
-1. Confirm the MCP servers are working: `claude mcp list` — all five should
+1. Confirm the MCP servers are working: `claude mcp list` — all six should
    appear
 2. Open a Claude Code terminal in this repo
 3. Have these tabs ready:
@@ -34,7 +34,7 @@ minutes. Do not debug in front of an audience.
 | Time | Beat | On screen |
 |---|---|---|
 | 0–3 | Cold open — ask the cluster a question | Claude Code terminal |
-| 3–6 | The five servers | Status table from `server-inventory.md` |
+| 3–6 | The six servers | Status table from `server-inventory.md` |
 | 6–10 | A live read on the demo environment | `pods_list`, `vm_guest_info` on `openshift-demo` |
 | 10–15 | The governed write path | AAP job template launch through `aap-sandbox` |
 | 15–18 | Why this is not an ungoverned agent | The repo, `.mcp.json`, `CLAUDE.md` |
@@ -59,7 +59,7 @@ The environment (`demo`) and the access posture (`read-only`) are in the name.
 
 ---
 
-## 3–6 · The five servers
+## 3–6 · The six servers
 
 Switch to the status table in [`server-inventory.md`](server-inventory.md).
 
@@ -67,14 +67,16 @@ Switch to the status table in [`server-inventory.md`](server-inventory.md).
 |---|---|---|---|---|
 | `openshift-sandbox` | OpenShift | stdio | read-write | 25 |
 | `openshift-demo` | OpenShift | stdio | read-only | 16 |
+| `openshift-edge` | OpenShift | stdio | read-write | 25 |
 | `aap-sandbox` | AAP | HTTP | read-write | ~140 |
 | `aap-demo` | AAP | HTTP | read-only | ~95 |
 | `grafana` | Grafana Cloud | stdio | read-only (Viewer) | 81 |
 
-> **"Five servers. Three platforms, two environments. Demo is read-only —
-> that's the environment a customer would watch. Sandbox is read-write —
-> that's the one I break for velocity. Grafana Cloud spans both — one
-> instance, Viewer role, read-only everywhere."**
+> **"Six servers. Three platforms, three environments. Demo is read-only —
+> that's the environment a customer would watch. Sandbox and edge are
+> read-write — sandbox is the one I break for velocity, edge is a single-node
+> cluster on bare metal. Grafana Cloud spans all three — one instance, Viewer
+> role, read-only everywhere."**
 
 Point at the tool count difference: 25 vs 16. Nine mutating tools are removed
 by `--read-only` — see [`server-inventory.md`](server-inventory.md#the-nine-tools---read-only-removes)

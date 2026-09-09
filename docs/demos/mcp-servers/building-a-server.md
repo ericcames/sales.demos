@@ -41,8 +41,10 @@ Two live examples from this repo, on either side of that line:
 
 ## What language
 
-The honest answer is that the two servers this repo already runs are the two
-answers, and they are different on purpose.
+The honest answer is that the two server *implementations* this repo already
+runs are the two answers, and they are different on purpose. (Two
+implementations, six servers — three `openshift-*` are the same Go binary
+pointed at different clusters, two `aap-*` the same Python server.)
 
 ### Go, when the server ships
 
@@ -201,7 +203,7 @@ Two things follow that are easy to get wrong:
 ## Related
 
 - [`servicenow.md`](servicenow.md) — the worked case: why waiting beats adopting
-- [`architecture.md`](architecture.md) — the five servers this repo runs
+- [`architecture.md`](architecture.md) — the six servers this repo runs
 - [`../../plan/platform-addons-plan.md`](../../plan/platform-addons-plan.md) —
   the transport decision and the credential pattern, with reasoning
 - [`../../plan/network-mcp-plan.md`](../../plan/network-mcp-plan.md) — the
