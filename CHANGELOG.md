@@ -7,6 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed -- the cluster-wide memory budget check silently totalled zero from AAP (#391)
+
+- **`playbooks/tasks/sum_demo_vm_memory.yml` returned 0 GiB / 0 VMs from every
+  AAP job template**, whatever was actually running. The cluster-wide budget
+  assert in `provision_vm.yml` was therefore evaluating `0 + tier <= budget` and
+  passing for that reason alone -- the same shape of failure as #334, which is
+  the issue that created this shared file, with a different cause.
+- **Neither `kubernetes.core` task carried an `environment:` block**, and the
+  file's two callers do not agree about where credentials come from:
+  `probe_env.yml` supplies `K8S_AUTH_*` at PLAY level, so it worked there;
+  `provision_vm.yml` has no play-level environment -- `terraform_ocpvirt.yml`
+  puts one on each task instead -- so it supplied nothing. Both reads failed
+  with `Could not create API client: Invalid kube-config file`, `failed_when:
+  false` swallowed it, and the total came back `0.0`.
+- **Measured, not inferred.** Sandbox job 522, with three VMs holding 48 GiB
+  running at the time, printed `0.0 GiB already held by 0 demo VM(s)`. The same
+  file with the environment supplied totals `48.0` correctly.
+- **This is the third file to learn the rule** -- `terraform_ocpvirt.yml` carries
+  the same banner for #313 and #315. The environment now lives in the shared
+  file rather than at the call sites, so a third caller cannot inherit the bug
+  by not knowing about it.
+- **`failed_when: false` stays, and a new assert makes it safe.** It has to
+  stay: `probe_env.yml` runs against clusters with no OpenShift Virtualization,
+  where a missing CRD is a legitimate zero. What it must not do is turn "I could
+  not look" into that same zero. `resources` separates the two exactly, with no
+  message matching -- measured on sandbox 2026-09-09: a missing CRD returns
+  `resources: []` (defined), while missing credentials leave `resources` absent
+  entirely. So a zero is now a measurement rather than the absence of one.
+- **Both `success_msg` and `fail_msg` guard their lookups with `| default([])`.**
+  Ansible templates both before choosing one, so a bare `_demo_vms.resources` in
+  the success message raised a templating error in precisely the case the assert
+  exists to explain -- the guard fired but printed nothing useful.
+
+**Not caused by #389.** Verified against `76955ff~1`: neither the task file nor
+the caller carried the environment before that change either. #389 only made it
+visible, by being the first run to happen while unrelated demo VMs were already
+present.
+
 ### Added -- server farms: `vm_count` and role-based naming (#389)
 - **One workflow launch can now build up to 10 VMs.** `vm_count` (1-10, default
   1) and `vm_role` (`web` / `db` / `app`, default `web`) are new survey questions

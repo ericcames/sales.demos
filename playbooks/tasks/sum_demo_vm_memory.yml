@@ -37,6 +37,29 @@
 #
 # INLINE MEMORY IS STILL HONOURED FIRST, so a VM built by hand without an
 # instancetype is counted rather than skipped.
+#
+# EVERY kubernetes.core TASK HERE CARRIES ITS OWN `environment:` (#391), and
+# this file is the THIRD place that has had to learn it -- see the same banner
+# in tasks/terraform_ocpvirt.yml, which records #313 and #315.
+#
+# It is not decoration, and the way it failed is the point. This file was
+# extracted from its two callers in #334, and they do not agree about where the
+# credentials come from:
+#
+#   probe_env.yml     supplies K8S_AUTH_* at PLAY level, so it worked there
+#   provision_vm.yml  has no play-level environment -- terraform_ocpvirt.yml
+#                     puts one on each task instead -- so it supplied NOTHING
+#
+# So from an AAP job template both reads below failed with "Could not create API
+# client: Invalid kube-config file. No configuration found.", `failed_when:
+# false` swallowed it, and the total came back 0.0 GiB. The cluster-wide budget
+# assert in provision_vm.yml was therefore evaluating `0 + tier <= budget` and
+# passing for that reason alone -- exactly the failure #334 was opened to fix,
+# reappearing with a different cause. Measured on sandbox job 522 with three
+# VMs holding 48 GiB running at the time.
+#
+# Carrying the environment here rather than at the call sites makes the file
+# self-sufficient, so a third caller cannot inherit the bug by not knowing.
 # ===========================================================================
 
 # `| ansible.builtin.flatten` on a wrapped scalar accepts both shapes, so a
@@ -53,6 +76,10 @@
     namespace: "{{ demo_vm_namespace | default('', true) | ternary(demo_vm_namespace, omit) }}"
     label_selectors:
       - "app.kubernetes.io/part-of=sales-demos"
+  environment:
+    K8S_AUTH_HOST: "{{ openshift_api_url }}"
+    K8S_AUTH_API_KEY: "{{ openshift_api_token }}"
+    K8S_AUTH_VERIFY_SSL: "{{ openshift_validate_certs | default(false) | bool }}"
   register: _demo_vms
   failed_when: false
 
@@ -60,8 +87,58 @@
   kubernetes.core.k8s_info:
     api_version: instancetype.kubevirt.io/v1beta1
     kind: VirtualMachineClusterInstancetype
+  environment:
+    K8S_AUTH_HOST: "{{ openshift_api_url }}"
+    K8S_AUTH_API_KEY: "{{ openshift_api_token }}"
+    K8S_AUTH_VERIFY_SSL: "{{ openshift_validate_certs | default(false) | bool }}"
   register: _demo_instancetypes
   failed_when: false
+
+# ---------------------------------------------------------------------------
+# `failed_when: false` STAYS, AND THIS IS WHAT MAKES IT SAFE (#391).
+#
+# It has to stay: playbooks/probe_env.yml runs against clusters where OpenShift
+# Virtualization is not installed yet, and a missing CRD there is a legitimate
+# zero, not an error. What it must NOT do is turn "I could not look" into the
+# same zero.
+#
+# `resources` separates the two exactly, with no message matching. Measured on
+# sandbox 2026-09-09:
+#
+#   success                  no msg,  resources populated
+#   missing CRD (no CNV)     msg="Failed to find API for resource ...",
+#                            resources = []          <- DEFINED, and empty
+#   no credentials           msg="Could not create API client ...",
+#                            resources ABSENT        <- the module never ran a query
+#
+# So "resources is defined" means the read happened, whatever it found. A total
+# of zero is then a measurement rather than an absence of one, which is the
+# property #334 and #391 both turn on.
+# ---------------------------------------------------------------------------
+- name: Fail rather than report a zero that was never measured
+  ansible.builtin.assert:
+    that:
+      - _demo_vms.resources is defined
+      - _demo_instancetypes.resources is defined
+    fail_msg: >-
+      Could not read the cluster, so any memory total here would be a zero
+      nobody measured -- and the budget assert that consumes it would pass for
+      that reason alone. VMs: {{ _demo_vms.msg | default('(no message)') }}
+      Instancetypes: {{ _demo_instancetypes.msg | default('(no message)') }}
+      This is almost always missing credentials: every kubernetes.core task in
+      this file needs openshift_api_url and openshift_api_token in scope, which
+      from AAP arrive through the "Sales Demos - Env Secrets" credential (#129)
+      and locally from group_vars/<env>/connection.yml plus the vault.
+    # `| default([])` ON BOTH, and that is not belt-and-braces. Ansible templates
+    # success_msg and fail_msg BOTH before deciding which to show, so a bare
+    # `_demo_vms.resources` here raises "'dict object' has no attribute
+    # 'resources'" in precisely the case this assert exists to explain -- the
+    # guard still fires, but prints a templating error instead of the reason.
+    # Caught by the rescue test in the #391 PR rather than in production.
+    success_msg: >-
+      Cluster read OK -- {{ _demo_vms.resources | default([]) | length }} demo
+      VM(s) and {{ _demo_instancetypes.resources | default([]) | length }}
+      instancetype(s) visible.
 
 - name: Map each instancetype to its guest memory
   ansible.builtin.set_fact:
