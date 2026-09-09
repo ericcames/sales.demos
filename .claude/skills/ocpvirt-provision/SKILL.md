@@ -25,7 +25,7 @@ debugging a run without the controller in the way.
 | `vm_size_tier` | `small`, `medium`, `large` | `small` |
 | `os_type` | `linux`, `windows`, `both` | `linux` |
 | `vm_role` | `web`, `db`, `app` (1-8 lowercase alphanumeric) | `web` |
-| `vm_count` | `1`-`10` | `1` |
+| `vm_count` | `1` or `2` | `1` |
 
 These names are shared verbatim with the AAP survey and
 `terraform/ocpvirt/variables.tf`. Changing one means changing all three.

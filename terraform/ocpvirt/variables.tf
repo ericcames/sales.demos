@@ -92,20 +92,31 @@ variable "vm_role" {
   }
 }
 
-# THE CAP OF 10 IS A GUARD RAIL, NOT A CAPACITY FIGURE. Capacity is enforced
+# THE CAP OF 2 IS A GUARD RAIL, NOT A CAPACITY FIGURE. Capacity is enforced
 # twice and neither check lives here: the precondition in locals.tf multiplies
 # the tier by this count against available_memory_gb, and provision_vm.yml asks
 # the CLUSTER what is already requested before calling terraform, which is the
-# only source that sees the other OS's state (#301). 10 exists so a typo in a
-# survey box cannot ask for 100 VMs and spend a minute being refused.
+# only source that sees the other OS's state (#301).
+#
+# IT WAS 10, AND 10 WAS THE WRONG PLACE TO PUT A GUARD RAIL (#397). The stated
+# reason was that "a typo in a survey box cannot ask for 100 VMs and spend a
+# minute being refused" -- correct in kind, wrong in degree. A large guest is
+# 16 GiB against an available_memory_gb of 63, so THREE already exceed the
+# budget. Eight of the ten values the survey offered had no outcome but the
+# refusal the cap exists to pre-empt. Set the rail where the demo actually
+# lives, and the capacity checks below stay exactly as they were.
+#
+# The vm_role validation above still budgets for {role}-win-{2 digits} = 15
+# characters. That is now an over-estimate rather than the exact worst case --
+# a deliberately conservative bound, not a stale one.
 variable "vm_count" {
   description = "Number of VMs to create for this role. Budget-guarded by the precondition in locals.tf and by the cluster-wide check in provision_vm.yml."
   type        = number
   default     = 1
 
   validation {
-    condition     = var.vm_count >= 1 && var.vm_count <= 10 && floor(var.vm_count) == var.vm_count
-    error_message = "vm_count must be a whole number between 1 and 10."
+    condition     = var.vm_count >= 1 && var.vm_count <= 2 && floor(var.vm_count) == var.vm_count
+    error_message = "vm_count must be 1 or 2."
   }
 }
 

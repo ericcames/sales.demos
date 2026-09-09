@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed -- the `vm_count` ceiling was 10, but only 1 or 2 is buildable (#397)
+
+- **Every `vm_count` constraint is now `1..2`**, in all six places that carry
+  one: the `Linux`/`Windows Day 1 - 1 Provision` surveys, the
+  `Linux`/`Windows Day 1 - 0 Workflow` surveys, the assert in
+  `playbooks/provision_vm.yml`, and the variable validation in
+  `terraform/ocpvirt/variables.tf`. They move together on purpose -- a survey
+  offering 2 while Terraform validates 10 is the same split this closes.
+- **10 was a guard rail set above anything the platform can build.** #389 chose
+  it so "a typo in a survey box cannot ask for 100 VMs and spend a minute being
+  refused" -- right in kind, wrong in degree. A `large` guest is 16 GiB against
+  an `available_memory_gb` of 63, so three already exceed the budget. Eight of
+  the ten values the dropdown offered had no outcome but the refusal the cap
+  exists to pre-empt.
+- **The capacity checks are untouched.** `locals.tf`'s precondition and
+  `provision_vm.yml`'s cluster-wide query still do the real enforcement; this
+  only moves the guard rail down to where the demo lives.
+- **Prose that stated the old number moved with it** -- four copies of "Size of
+  the farm, 1 to 10", the `fail_msg` in `provision_vm.yml`, the "CAP OF 10"
+  comment in `variables.tf`, and the survey table in
+  `.claude/skills/ocpvirt-provision/SKILL.md`. A constraint whose comment still
+  says 10 is a constraint the next reader argues with.
+
 ### Added -- Windows Day 2 operations (#241)
 - **Break/fix compliance demo.** Four new AAP templates: Break Compliance
   (deliberately violate CIS 2.3.6.6), Compliance Scan (re-run the verifier),

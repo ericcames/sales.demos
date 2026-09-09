@@ -118,7 +118,7 @@
           # can be.
           - provision_vm_role is match('^[a-z][a-z0-9]{0,7}$')
           - (provision_vm_count | int) >= 1
-          - (provision_vm_count | int) <= 10
+          - (provision_vm_count | int) <= 2
         fail_msg: >-
           Need hypervisor (ocpvirt), vm_size_tier (small|medium|large) and
           os_type (windows|linux). `both` was removed in #301 — state is keyed
@@ -129,7 +129,7 @@
           vm_role={{ provision_vm_role }},
           vm_count={{ provision_vm_count }}. name_suffix must be lowercase
           alphanumeric; vm_role must be 1-8 lowercase alphanumeric characters
-          starting with a letter; vm_count must be between 1 and 10.
+          starting with a letter; vm_count must be 1 or 2.
         quiet: true
 
     # -------------------------------------------------------------------

@@ -158,16 +158,20 @@ controller_templates_all:
             - app
         - question_name: How many VMs
           question_description: >-
-            Size of the farm, 1 to 10. The memory budget is checked twice
+            Size of the farm, 1 or 2. The memory budget is checked twice
             before anything is built — terraform/ocpvirt multiplies the tier by
             this count, and provision_vm.yml asks the cluster what is already
             running. 1 builds a single VM, exactly as before this was added.
+            The ceiling was 10 until #397, which is not a number this platform
+            can reach: three large guests already exceed available_memory_gb,
+            so the dropdown was offering eight values whose only outcome was
+            the budget refusing them.
           variable: vm_count
           type: integer
           required: true
           default: 1
           min: 1
-          max: 10
+          max: 2
 
   # ---------------------------------------------------------------------
   # Teardown (#6). The ONLY template that runs against the control inventory,
@@ -774,16 +778,20 @@ controller_templates_all:
             - app
         - question_name: How many VMs
           question_description: >-
-            Size of the farm, 1 to 10. The memory budget is checked twice
+            Size of the farm, 1 or 2. The memory budget is checked twice
             before anything is built — terraform/ocpvirt multiplies the tier by
             this count, and provision_vm.yml asks the cluster what is already
             running. 1 builds a single VM, exactly as before this was added.
+            The ceiling was 10 until #397, which is not a number this platform
+            can reach: three large guests already exceed available_memory_gb,
+            so the dropdown was offering eight values whose only outcome was
+            the budget refusing them.
           variable: vm_count
           type: integer
           required: true
           default: 1
           min: 1
-          max: 10
+          max: 2
 
   # ---------------------------------------------------------------------
   # Node 2. Windows Update, in the slot Linux uses for CDN registration.
