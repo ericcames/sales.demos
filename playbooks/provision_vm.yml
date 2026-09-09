@@ -11,9 +11,10 @@
 # task file runs: tasks/terraform_{{ hypervisor }}.yml. Default is `ocpvirt`
 # for backward compatibility. Each provider must set these facts:
 #   tf              — full parsed Terraform output JSON
-#   linux_inventory — tf.linux_inventory.value | default(false, true)
-#   win_inventory   — tf.windows_inventory.value | default(false, true)
-#   Provider-specific URL facts (e.g. web_url, cockpit_url for OCP Virt)
+#   linux_inventory — LIST of per-VM dicts (empty when this run is not Linux)
+#   win_inventory   — LIST of per-VM dicts (empty when this run is not Windows)
+#   vm_inventory    — whichever of those two is non-empty; the farm, in order
+#   Provider-specific URL list facts (e.g. web_urls, cockpit_urls for OCP Virt)
 #
 # TWO ENTRY POINTS, ONE CONTRACT. This runs identically from the
 # `ocpvirt-provision` skill and from an AAP job template. Every input arrives
@@ -39,6 +40,29 @@
     provision_size_tier: "{{ vm_size_tier | default('small') }}"
     provision_os_type: "{{ os_type | default('linux') }}"
     provision_name_suffix: "{{ name_suffix | default('') }}"
+
+    # --- Server farm (#389) -------------------------------------------------
+    provision_vm_role: "{{ vm_role | default('web') }}"
+    provision_vm_count: "{{ vm_count | default(1) | int }}"
+
+    # THE NAME FORMULA, SECOND COPY. terraform/ocpvirt/locals.tf owns it; this
+    # predicts the same names because the budget check below has to run BEFORE
+    # terraform does, and Terraform's outputs do not exist yet.
+    #
+    # The duplication is guarded rather than tolerated: after the provider runs,
+    # "Assert the predicted VM names match what Terraform built" compares this
+    # list against the real one and fails loudly if they ever diverge. That is
+    # the same shape as check 2 in utilities/check-no-secrets.sh and the import
+    # identity check in link_windows_image.yml — the copy is not trusted, it is
+    # tested, on every run, including runs that change nothing.
+    provision_expected_vm_names: >-
+      {%- set pre = provision_vm_role ~ '-' ~ ('win' if provision_os_type == 'windows' else 'lnx') -%}
+      {%- set sfx = ('-' ~ provision_name_suffix) if provision_name_suffix else '' -%}
+      {%- set ns = namespace(names=[]) -%}
+      {%- for i in range(1, (provision_vm_count | int) + 1) -%}
+      {%- set ns.names = ns.names + [pre ~ '-' ~ i ~ sfx] -%}
+      {%- endfor -%}
+      {{ ns.names }}
 
     # --- AAP inventory the new hosts land in --------------------------------
     provision_aap_inventory: "{{ provision_inventory | default('Sales Demo VMs') }}"
@@ -87,14 +111,25 @@
           - provision_size_tier in ['small', 'medium', 'large', 'small-1cpu-2gb', 'medium-1cpu-4gb', 'large-2cpu-6gb']
           - provision_os_type in ['windows', 'linux']
           - provision_name_suffix is match('^[a-z0-9]*$')
+          # Mirrors the variable validations in terraform/ocpvirt/variables.tf,
+          # so a bad value fails here rather than several minutes later inside
+          # terraform. The 8-character cap on the role is the Windows NetBIOS
+          # budget: {role}-win-{2 digits} is 15, the maximum a computer name
+          # can be.
+          - provision_vm_role is match('^[a-z][a-z0-9]{0,7}$')
+          - (provision_vm_count | int) >= 1
+          - (provision_vm_count | int) <= 10
         fail_msg: >-
           Need hypervisor (ocpvirt), vm_size_tier (small|medium|large) and
           os_type (windows|linux). `both` was removed in #301 — state is keyed
           per OS, so one run builds one OS; run it twice for both.
           Got hypervisor={{ provision_hypervisor }},
           vm_size_tier={{ provision_size_tier }},
-          os_type={{ provision_os_type }}. name_suffix must be lowercase
-          alphanumeric.
+          os_type={{ provision_os_type }},
+          vm_role={{ provision_vm_role }},
+          vm_count={{ provision_vm_count }}. name_suffix must be lowercase
+          alphanumeric; vm_role must be 1-8 lowercase alphanumeric characters
+          starting with a letter; vm_count must be between 1 and 10.
         quiet: true
 
     # -------------------------------------------------------------------
@@ -166,7 +201,10 @@
         demo_vm_namespace: "{{ ocpvirt_namespace_resolved }}"
         # Excluded by name: this run may be CONVERGING its own VM, and counting
         # it as well as the tier it is about to request would refuse a re-run.
-        demo_vm_exclude: "sd-{{ 'win' if provision_os_type == 'windows' else 'lnx' }}-{{ provision_size_tier }}{{ ('-' ~ provision_name_suffix) if provision_name_suffix else '' }}"
+        # A LIST SINCE #389 — a farm converges several VMs, and excluding only
+        # the first would count the rest twice and refuse to re-run against the
+        # farm that is already standing.
+        demo_vm_exclude: "{{ provision_expected_vm_names }}"
       when: provision_hypervisor == 'ocpvirt'
 
     - name: Assert the cluster has room for this VM alongside the other OS
@@ -174,17 +212,20 @@
       vars:
         _tier_gb: "{{ {'small': 4, 'medium': 8, 'large': 16,
                        'small-1cpu-2gb': 4, 'medium-1cpu-4gb': 8, 'large-2cpu-6gb': 16}[provision_size_tier] }}"
+        _run_gb: "{{ (_tier_gb | float) * (provision_vm_count | int) }}"
       ansible.builtin.assert:
         that:
-          - (demo_vm_total_gb | float) + (_tier_gb | float) <= (available_memory_gb | float)
+          - (demo_vm_total_gb | float) + (_run_gb | float) <= (available_memory_gb | float)
         fail_msg: >-
           Not enough room on {{ aap_env_name }}. Demo VMs already request
           {{ demo_vm_total_gb }} GiB ({{ demo_vm_counted | join(', ') }}) and
-          os_type={{ provision_os_type }} at tier {{ provision_size_tier }}
-          wants {{ _tier_gb }} GiB more, against
+          {{ provision_vm_count }} x os_type={{ provision_os_type }} at tier
+          {{ provision_size_tier }} wants {{ _run_gb }} GiB more
+          ({{ provision_vm_count }} x {{ _tier_gb }}), against
           available_memory_gb={{ available_memory_gb }}. Terraform cannot catch
-          this since #301 — each OS has its own state and neither sees the
-          other. Tear down the other OS, pick a smaller tier, or re-run
+          this since #301 — each OS has its own state, and since #389 each role
+          does too, so none of them sees the others. Lower vm_count, tear down
+          another role or the other OS, pick a smaller tier, or re-run
           /sales-demos-probe-env if this cluster genuinely has more headroom.
         quiet: true
 
@@ -199,15 +240,50 @@
           Memory budget OK — {{ demo_vm_total_gb }} GiB already held by
           {{ demo_vm_counted | length }} demo VM(s)
           {{ '(' ~ (demo_vm_counted | join(', ')) ~ ')' if demo_vm_counted else '' }}
-          + {{ _tier_gb }} GiB for this one, against
+          + {{ _run_gb }} GiB for this run
+          ({{ provision_vm_count }} x {{ _tier_gb }} GiB), against
           available_memory_gb={{ available_memory_gb }}.
+          Not counted, because this run converges them:
+          {{ provision_expected_vm_names | join(', ') }}.
       vars:
         _tier_gb: "{{ {'small': 4, 'medium': 8, 'large': 16,
                        'small-1cpu-2gb': 4, 'medium-1cpu-4gb': 8, 'large-2cpu-6gb': 16}[provision_size_tier] }}"
+        _run_gb: "{{ (_tier_gb | float) * (provision_vm_count | int) }}"
 
     # --- Provider dispatch -------------------------------------------------
     - name: "Run provider: {{ provision_hypervisor }}"
       ansible.builtin.include_tasks: "tasks/terraform_{{ provision_hypervisor }}.yml"
+
+    # -------------------------------------------------------------------
+    # THE NAME FORMULA EXISTS TWICE AND THIS IS WHAT KEEPS THE COPIES HONEST
+    # (#389). provision_expected_vm_names above predicts what Terraform will
+    # build, because the memory check has to run before terraform does. If that
+    # prediction ever stops matching locals.tf, the exclusion list stops
+    # matching the VMs it is meant to exclude — and the failure is quiet in the
+    # dangerous direction: the budget check starts counting this run's own VMs
+    # as other people's, and refuses to converge a farm that is already there.
+    #
+    # So the prediction is not trusted, it is tested, on every run including
+    # runs that create nothing. This is the same move as check 2 in
+    # utilities/check-no-secrets.sh: the cheap guard is the one that would
+    # otherwise pass silently.
+    # -------------------------------------------------------------------
+    - name: Assert the predicted VM names match what Terraform built
+      ansible.builtin.assert:
+        that:
+          - (vm_inventory | map(attribute='vm_name') | list) == (provision_expected_vm_names | list)
+        fail_msg: >-
+          The VM name formula in playbooks/provision_vm.yml has drifted from the
+          one in terraform/ocpvirt/locals.tf. Predicted
+          {{ provision_expected_vm_names | join(', ') }}; Terraform built
+          {{ vm_inventory | map(attribute='vm_name') | join(', ') }}. The VMs
+          themselves are fine — what is broken is the memory budget check, which
+          excludes this run's own VMs by predicted name and will have counted
+          them as somebody else's. Make the two formulas agree.
+        success_msg: >-
+          VM names as predicted:
+          {{ provision_expected_vm_names | join(', ') }}.
+      when: provision_hypervisor == 'ocpvirt'
 
     # --- Shared host registration ------------------------------------------
     - name: Register hosts in AAP

@@ -272,7 +272,7 @@
            else 'No reboot pending.' }}
       - >-
         {{ 'Open it:  ' ~ web_url if (web_url | default('', true) | length > 0)
-           else 'Open it:  run `terraform output -raw web_url`; re-provision to have it printed here.' }}
+           else 'Open it:  run `terraform output -json web_urls`; re-provision to have it printed here.' }}
       - >-
         {{ 'Log in:   ' ~ ssh_command if (ssh_command | default('', true) | length > 0)
-           else 'Log in:   run `terraform output -raw ssh_command`; re-provision to have it printed here.' }}
+           else 'Log in:   run `terraform output -json ssh_commands`; re-provision to have it printed here.' }}

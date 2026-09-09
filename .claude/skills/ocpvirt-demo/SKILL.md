@@ -34,8 +34,19 @@ If it is not obvious which exists, ask the cluster rather than guessing:
 mcp__openshift-<env>__resources_list  kubevirt.io/v1 VirtualMachine
 ```
 
-`sd-lnx-*` is Linux, `sd-win-*` is Windows. Both can exist at once — they have
-separate Terraform state since #301 — in which case ask which one is broken.
+VMs are named `{role}-{os}-{index}` since #389: `*-lnx-*` is Linux, `*-win-*`
+is Windows, and the leading word is the workload role (`web`, `db`, `app`).
+`web-lnx-1` and `web-win-1` can exist at once — they have separate Terraform
+state since #301 — and so can several members of one farm, and several roles,
+each with their own state. Ask which one is broken rather than assuming there
+is only one.
+
+The role is a label too, so a farm can be selected without parsing names:
+
+```
+mcp__openshift-<env>__resources_list  kubevirt.io/v1 VirtualMachine
+  labelSelector: sales-demos/role=web
+```
 
 ## This is the repair path, not the build path
 
@@ -267,7 +278,9 @@ credential. Check the credential before debugging the network.
 ## The check that matters, either OS
 
 ```bash
-cd terraform/ocpvirt && curl -sI "$(terraform output -raw web_url)" | head -1
+cd terraform/ocpvirt && for u in $(terraform output -json web_urls | jq -r '.[]'); do
+  echo "$u"; curl -sI "$u" | head -1
+done
 ```
 
 **Before:** `HTTP/1.1 503 Service Unavailable`

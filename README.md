@@ -656,7 +656,7 @@ this repo's kubeconfig for the environment — **not** `oc login` (#161):
 
 ```bash
 KUBECONFIG=.kube/sandbox.kubeconfig \
-  virtctl ssh -n sales-demos-sandbox cloud-user@vm/sd-lnx-small
+  virtctl ssh -n sales-demos-sandbox cloud-user@vm/web-lnx-1
 ```
 
 **Name the kubeconfig; do not rely on whatever `~/.kube/config` points at.**

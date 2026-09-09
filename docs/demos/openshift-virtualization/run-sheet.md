@@ -160,7 +160,7 @@ Walk them in order. **Three beats matter here; everything else is detail.**
 tier that was requested, `-web` is the Service, then the namespace.
 
 ```
-curl -sI $(terraform output -raw web_url) | head -1
+for u in $(terraform output -json web_urls | jq -r '.[]'); do curl -sI "$u" | head -1; done
 HTTP/1.1 503 Service Unavailable     # after provision
 HTTP/1.1 200 OK                      # after configure
 ```

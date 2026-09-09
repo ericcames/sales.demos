@@ -192,5 +192,5 @@
         msg: >-
           This host carries no web_url, so the Route could not be checked. It
           was provisioned before #340 part 1 gave the Windows VM a Route —
-          re-provision, or run terraform output -raw web_url by hand.
+          re-provision, or run terraform output -json web_urls by hand.
       when: web_url | default('', true) | length == 0

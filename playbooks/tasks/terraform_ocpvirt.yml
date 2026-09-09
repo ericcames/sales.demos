@@ -7,14 +7,20 @@
 #
 # CONTRACT: must set these facts before returning:
 #   tf              — full parsed Terraform output JSON
-#   linux_inventory — tf.linux_inventory.value | default(false, true)
-#   win_inventory   — tf.windows_inventory.value | default(false, true)
-#   web_url         — OCP Virt Route URL (or '')
-#   cockpit_url     — OCP Virt Route URL (or '')
-#   ssh_command     — virtctl ssh command (or '')
+#   linux_inventory — LIST of per-VM dicts (empty when this run is not Linux)
+#   win_inventory   — LIST of per-VM dicts (empty when this run is not Windows)
+#   vm_inventory    — whichever of the two is non-empty; the farm, in order
+#   web_urls        — LIST of OCP Virt Route URLs, one per VM (or [])
+#   cockpit_urls    — LIST of OCP Virt Route URLs, one per VM (or [])
+#   ssh_commands    — LIST of virtctl ssh commands, one per VM (or [])
+#
+# THE INVENTORY FACTS ARE LISTS SINCE #389, and they used to be single dicts.
+# Every consumer loops now, including the vm_count=1 case — one code path for
+# one VM and for ten, rather than a branch that only the farm exercises.
 #
 # Reads play-level vars: ocpvirt_*, provision_size_tier, provision_os_type,
-# provision_name_suffix, aap_env_name, and the group_vars connection values.
+# provision_vm_role, provision_vm_count, provision_name_suffix, aap_env_name,
+# and the group_vars connection values.
 # ===========================================================================
 
 - name: Assert the OpenShift connection is resolved
@@ -68,7 +74,8 @@
 - name: Report the target
   ansible.builtin.debug:
     msg: >-
-      Provisioning {{ provision_os_type }} / {{ provision_size_tier }} into
+      Provisioning {{ provision_vm_count }} x {{ provision_os_type }} /
+      {{ provision_size_tier }} as role '{{ provision_vm_role }}' into
       namespace {{ ocpvirt_namespace_resolved }} on {{ aap_env_name }},
       registering into AAP inventory '{{ provision_aap_inventory }}'.
 
@@ -165,9 +172,25 @@
     # Splitting the state is what makes them independent; the #300 rename only
     # took the dangerous dropdown out of the UI.
     # -------------------------------------------------------------------
-    - name: Key the Terraform state by environment and OS
+    # -------------------------------------------------------------------
+    # THE ROLE IS PART OF THE STATE KEY SINCE #389, for the same reason the OS
+    # became part of it in #301 and by the same mechanism. `var.vm_role` feeds
+    # `local.vm_names`, which names every resource in the module — so a `db`
+    # apply against a `web` state would find every resource renamed and plan the
+    # RUNNING WEB FARM for destruction. Splitting the state is what makes roles
+    # independent, exactly as it made the two OSes independent.
+    #
+    # THIS BREAKS CONTINUITY WITH PRE-#389 STATE, DELIBERATELY AND VISIBLY. An
+    # environment holding `<env>-<os>` state has VMs this key cannot see: a
+    # teardown would init an empty `<env>-<os>-web` state and destroy nothing,
+    # leaving the old VMs running and unmanaged. Tear down with the OLD code
+    # before deploying this, which is what #389's migration note says. There is
+    # no adopt-the-old-state step here on purpose — the names change too, so
+    # adoption would only convert an orphan into a full rebuild.
+    # -------------------------------------------------------------------
+    - name: Key the Terraform state by environment, OS and role
       ansible.builtin.set_fact:
-        ocpvirt_state_suffix: "{{ aap_env_name }}-{{ provision_os_type }}"
+        ocpvirt_state_suffix: "{{ aap_env_name }}-{{ provision_os_type }}-{{ provision_vm_role }}"
 
     # MIGRATED AND REMOVED (#301). A one-time block lived here that adopted the
     # legacy `tfstate-default-<env>` secret as `<env>-linux`, so the running VM
@@ -220,6 +243,8 @@
           - -no-color
           - "-var=vm_size_tier={{ provision_size_tier }}"
           - "-var=os_type={{ provision_os_type }}"
+          - "-var=vm_role={{ provision_vm_role }}"
+          - "-var=vm_count={{ provision_vm_count }}"
           - "-var=namespace={{ ocpvirt_namespace_resolved }}"
           - "-var=name_suffix={{ provision_name_suffix }}"
           - "-var=linux_admin_username={{ linux_admin_username | default('cloud-user') }}"
@@ -286,13 +311,25 @@
       ansible.builtin.set_fact:
         tf: "{{ tf_output.stdout | from_json }}"
 
+    # `| default([], true)` on every one, so a missing OR null output becomes an
+    # empty list rather than None. The outputs are already empty lists for the
+    # OS this run did not build (#389); this covers a state written by older
+    # code, where they were null.
     - name: Split the outputs into their per-OS parts
       ansible.builtin.set_fact:
-        win_inventory: "{{ tf.windows_inventory.value | default(false, true) }}"
-        linux_inventory: "{{ tf.linux_inventory.value | default(false, true) }}"
-        web_url: "{{ tf.web_url.value | default('', true) }}"
-        cockpit_url: "{{ tf.cockpit_url.value | default('', true) }}"
-        ssh_command: "{{ tf.ssh_command.value | default('', true) }}"
+        win_inventory: "{{ tf.windows_inventory.value | default([], true) }}"
+        linux_inventory: "{{ tf.linux_inventory.value | default([], true) }}"
+        web_urls: "{{ tf.web_urls.value | default([], true) }}"
+        cockpit_urls: "{{ tf.cockpit_urls.value | default([], true) }}"
+        ssh_commands: "{{ tf.ssh_commands.value | default([], true) }}"
+
+    # ONE LIST FOR THE CONSUMERS TO LOOP OVER. Exactly one of the two is
+    # non-empty — one state builds one OS since #301 — so concatenating them is
+    # not a merge, it is picking the one that exists without a `when:` at every
+    # call site.
+    - name: Collapse the per-OS lists into the farm
+      ansible.builtin.set_fact:
+        vm_inventory: "{{ (linux_inventory | default([])) + (win_inventory | default([])) }}"
 
   always:
     - name: Remove the temporary kubeconfig

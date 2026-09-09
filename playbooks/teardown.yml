@@ -40,6 +40,16 @@
     provision_os_type: "{{ os_type | default('linux') }}"
     provision_name_suffix: "{{ name_suffix | default('') }}"
 
+    # --- Server farm (#389) -------------------------------------------------
+    # The role is part of the Terraform state key, so a teardown MUST be told
+    # which role it is destroying or it will init an empty state and destroy
+    # nothing while reporting success. vm_count is passed for completeness —
+    # `terraform destroy` works from state, not from the count — but keeping the
+    # variable set means the plan it builds to destroy matches the one that was
+    # applied, rather than tripping the budget precondition on the way past.
+    provision_vm_role: "{{ vm_role | default('web') }}"
+    provision_vm_count: "{{ vm_count | default(1) | int }}"
+
     provision_aap_inventory: "{{ provision_inventory | default('Sales Demo VMs') }}"
 
     # --- AAP, from connection.yml or an AAP Controller credential -----------

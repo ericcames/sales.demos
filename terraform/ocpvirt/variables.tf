@@ -61,6 +61,55 @@ variable "vm_size_tier" {
 }
 
 # ---------------------------------------------------------------------------
+# Workload role and farm size (#389).
+#
+# ROLE REPLACED THE TIER IN THE NAME, and that is the point rather than a side
+# effect. Names were `sd-win-large` — infrastructure sizing, which tells you
+# nothing about what the machine is for and collides the moment you want two of
+# them. `web-win-1` tells you the workload, the OS, and which member of the farm
+# it is. The tier did not disappear; it moved to the `vm_size_tier` AAP host
+# variable and the sd1.* instancetype label, where sizing belongs.
+#
+# ROLE IS FIRST because it is what you scan a list for. `web` before `win`
+# before `1`.
+#
+# THE 8-CHARACTER LIMIT IS THE NetBIOS BUDGET, NOT A STYLE RULE. A Windows
+# computer name is capped at 15 characters, and the name is used verbatim as the
+# NetBIOS hostname in the sysprep unattend. The longest name this formula can
+# build is `{8}-win-{2 digits}` = 15 exactly, so 8 is the largest value that
+# cannot overflow. locals.tf holds a precondition for the case this validation
+# cannot see — a non-empty name_suffix, which adds to the same budget.
+# ---------------------------------------------------------------------------
+
+variable "vm_role" {
+  description = "Workload role — becomes part of the K8s object name, the NetBIOS hostname, and the AAP host name. Max 8 characters, for the NetBIOS budget."
+  type        = string
+  default     = "web"
+
+  validation {
+    condition     = can(regex("^[a-z][a-z0-9]{0,7}$", var.vm_role))
+    error_message = "vm_role must be 1-8 characters, lowercase alphanumeric, starting with a letter. The 8-character cap is the Windows NetBIOS budget: the longest name this builds is {role}-win-{2 digits} = 15, which is the maximum."
+  }
+}
+
+# THE CAP OF 10 IS A GUARD RAIL, NOT A CAPACITY FIGURE. Capacity is enforced
+# twice and neither check lives here: the precondition in locals.tf multiplies
+# the tier by this count against available_memory_gb, and provision_vm.yml asks
+# the CLUSTER what is already requested before calling terraform, which is the
+# only source that sees the other OS's state (#301). 10 exists so a typo in a
+# survey box cannot ask for 100 VMs and spend a minute being refused.
+variable "vm_count" {
+  description = "Number of VMs to create for this role. Budget-guarded by the precondition in locals.tf and by the cluster-wide check in provision_vm.yml."
+  type        = number
+  default     = 1
+
+  validation {
+    condition     = var.vm_count >= 1 && var.vm_count <= 10 && floor(var.vm_count) == var.vm_count
+    error_message = "vm_count must be a whole number between 1 and 10."
+  }
+}
+
+# ---------------------------------------------------------------------------
 # OS selection — drives count-based conditionals on the Windows and Linux
 # resource blocks.
 # ---------------------------------------------------------------------------

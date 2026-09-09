@@ -33,7 +33,7 @@
 - name: Report what is about to be destroyed
   ansible.builtin.debug:
     msg:
-      - "Destroying {{ provision_os_type }} / {{ provision_size_tier }} in namespace {{ ocpvirt_namespace_resolved }} on {{ aap_env_name }}."
+      - "Destroying role '{{ provision_vm_role }}' / {{ provision_os_type }} / {{ provision_size_tier }} in namespace {{ ocpvirt_namespace_resolved }} on {{ aap_env_name }}."
       - >-
         PRESERVED: OpenShift Virtualization, the boot-source DataSources
         (including the Windows golden image), the
@@ -75,9 +75,16 @@
       no_log: true
       changed_when: false
 
-    # STATE IS PER OS (#301), so a teardown destroys only the OS it was asked
-    # for. Tearing down Windows leaves a running Linux VM alone, which is the
-    # whole point -- the shared state used to make that impossible.
+    # STATE IS PER OS (#301) AND PER ROLE (#389), so a teardown destroys only
+    # the OS and role it was asked for. Tearing down Windows leaves a running
+    # Linux VM alone, and tearing down `db` leaves the `web` farm alone -- the
+    # shared state used to make both impossible.
+    #
+    # THE COROLLARY IS THAT A TEARDOWN CAN SUCCEED HAVING DESTROYED NOTHING.
+    # Ask for a role that was never built and terraform init creates an empty
+    # state, destroy reports "0 destroyed", and the play goes green. The
+    # "Report what was found in state" task below prints "(none -- nothing to
+    # destroy)" for exactly this case; read it before believing a teardown.
     - name: Initialize Terraform against the kubernetes backend
       ansible.builtin.command:
         argv:
@@ -86,7 +93,7 @@
           - -input=false
           - -no-color
           - -reconfigure
-          - "-backend-config=secret_suffix={{ aap_env_name }}-{{ provision_os_type }}"
+          - "-backend-config=secret_suffix={{ aap_env_name }}-{{ provision_os_type }}-{{ provision_vm_role }}"
           - "-backend-config=namespace={{ ocpvirt_state_namespace }}"
           - "-backend-config=config_path={{ ocpvirt_kubeconfig.path }}"
           - "-backend-config=insecure={{ (not (openshift_validate_certs | default(false) | bool)) | lower }}"
@@ -110,13 +117,18 @@
       failed_when: false
       register: tf_output
 
+    # LISTS SINCE #389. `| flatten` accepts both shapes, so state written by
+    # pre-#389 code -- where each output was a single dict -- still yields its
+    # one entry here rather than being silently dropped. That matters precisely
+    # once, on the first run after this change, and it is the run where getting
+    # it wrong orphans a VM.
     - name: Collect inventory entries from Terraform state
       ansible.builtin.set_fact:
         teardown_inventories: >-
           {{ [
-               (tf_output.stdout | default('{}') | from_json).linux_inventory.value | default(None, true),
-               (tf_output.stdout | default('{}') | from_json).windows_inventory.value | default(None, true)
-             ] | select('mapping') | list }}
+               (tf_output.stdout | default('{}') | from_json).linux_inventory.value | default([], true),
+               (tf_output.stdout | default('{}') | from_json).windows_inventory.value | default([], true)
+             ] | flatten | select('mapping') | list }}
 
     # Both aap_host_name (instance-unique, #354) and host (in-cluster FQDN)
     # are collected so that VMs registered under either name get cleaned up.
@@ -131,12 +143,9 @@
     - name: Build the virtctl SSH host-key names to clean up
       ansible.builtin.set_fact:
         teardown_ssh_keys: >-
-          {{ [
-               (tf_output.stdout | default('{}') | from_json).linux_inventory.value | default(None, true),
-               (tf_output.stdout | default('{}') | from_json).windows_inventory.value | default(None, true)
-             ] | select('mapping') | map(attribute='vm_name')
-               | map('regex_replace', '^(.*)$', 'vm.\1.' ~ ocpvirt_namespace_resolved)
-               | list }}
+          {{ teardown_inventories | map(attribute='vm_name')
+             | map('regex_replace', '^(.*)$', 'vm.\1.' ~ ocpvirt_namespace_resolved)
+             | list }}
 
     - name: Report what was found in state
       ansible.builtin.debug:
@@ -144,16 +153,23 @@
           {{ teardown_hosts | length }} host(s) in state:
           {{ teardown_hosts | join(', ') if teardown_hosts else '(none — nothing to destroy)' }}
 
-    - name: Add the Linux guest to the in-memory inventory
+    # EVERY Linux guest, not just the first. Each one holds its own Red Hat
+    # subscription and its own Insights host, so a farm of three leaks three
+    # entitlements if this only reaches one of them.
+    - name: Add the Linux guests to the in-memory inventory
       ansible.builtin.add_host:
-        name: "{{ (tf_output.stdout | default('{}') | from_json).linux_inventory.value.host }}"
+        name: "{{ item.host }}"
         groups: teardown_guests
-        ansible_host: "{{ (tf_output.stdout | default('{}') | from_json).linux_inventory.value.ansible_host }}"
-        ansible_user: "{{ (tf_output.stdout | default('{}') | from_json).linux_inventory.value.ansible_user }}"
+        ansible_host: "{{ item.ansible_host }}"
+        ansible_user: "{{ item.ansible_user }}"
         ansible_connection: ssh
         ansible_port: 22
       changed_when: false
-      when: (tf_output.stdout | default('{}') | from_json).linux_inventory.value | default(None, true) is mapping
+      loop: >-
+        {{ [(tf_output.stdout | default('{}') | from_json).linux_inventory.value | default([], true)]
+           | flatten | select('mapping') | list }}
+      loop_control:
+        label: "{{ item.host }}"
 
     # --- Give the entitlement back BEFORE destroying -------------------
     - name: Disconnect the guest from Insights
@@ -192,6 +208,8 @@
           - -no-color
           - "-var=vm_size_tier={{ provision_size_tier }}"
           - "-var=os_type={{ provision_os_type }}"
+          - "-var=vm_role={{ provision_vm_role }}"
+          - "-var=vm_count={{ provision_vm_count }}"
           - "-var=namespace={{ ocpvirt_namespace_resolved }}"
           - "-var=name_suffix={{ provision_name_suffix }}"
           - "-var=linux_admin_username={{ linux_admin_username | default('cloud-user') }}"
@@ -302,7 +320,7 @@
     - name: Summarize
       ansible.builtin.debug:
         msg:
-          - "Destroyed the demo VMs in {{ ocpvirt_namespace_resolved }} on {{ aap_env_name }}."
+          - "Destroyed the '{{ provision_vm_role }}' {{ provision_os_type }} VMs in {{ ocpvirt_namespace_resolved }} on {{ aap_env_name }}."
           - "Deregistered {{ teardown_hosts | length }} host(s) from '{{ provision_aap_inventory }}'."
           - >-
             Left intact: OpenShift Virtualization, the boot-source DataSources,

@@ -110,7 +110,7 @@ controller_templates_all:
     survey_enabled: true
     survey_spec:
       name: ""
-      description: "Pick a hypervisor and VM size tier"
+      description: "Pick a hypervisor, VM size tier, workload role and farm size"
       spec:
         - question_name: Hypervisor
           question_description: >-
@@ -141,6 +141,33 @@ controller_templates_all:
             - small
             - medium
             - large
+        - question_name: Workload role
+          question_description: >-
+            What these machines are FOR, not how big they are. Becomes part of
+            the VM name (web-win-1), the NetBIOS hostname, and the AAP host
+            name. Each role has its OWN Terraform state, so a `db` build cannot
+            disturb a running `web` farm — and a teardown must be given the
+            same role it was built with, or it destroys nothing.
+          variable: vm_role
+          type: multiplechoice
+          required: true
+          default: web
+          choices:
+            - web
+            - db
+            - app
+        - question_name: How many VMs
+          question_description: >-
+            Size of the farm, 1 to 10. The memory budget is checked twice
+            before anything is built — terraform/ocpvirt multiplies the tier by
+            this count, and provision_vm.yml asks the cluster what is already
+            running. 1 builds a single VM, exactly as before this was added.
+          variable: vm_count
+          type: integer
+          required: true
+          default: 1
+          min: 1
+          max: 10
 
   # ---------------------------------------------------------------------
   # Teardown (#6). The ONLY template that runs against the control inventory,
@@ -182,6 +209,14 @@ controller_templates_all:
       # pass its own on launch.
       os_type: linux
       vm_size_tier: small
+      # THE ROLE MUST MATCH WHAT WAS BUILT (#389). It is part of the Terraform
+      # state key, so a teardown given the wrong role inits an EMPTY state,
+      # destroys nothing, and still goes green — the VMs keep running and
+      # nothing says so. `web` is the provision default, so the scheduled
+      # nightly runs match the scheduled nightly builds. A farm built under
+      # another role must be torn down by passing that role on launch, which is
+      # what ask_variables_on_launch below is for.
+      vm_role: web
     # So a teardown of a non-default tier can be launched without editing the
     # template. The scheduled runs use the extra_vars above.
     ask_variables_on_launch: true
@@ -692,7 +727,7 @@ controller_templates_all:
     survey_enabled: true
     survey_spec:
       name: ""
-      description: "Pick a hypervisor and VM size tier"
+      description: "Pick a hypervisor, VM size tier, workload role and farm size"
       spec:
         - question_name: Hypervisor
           question_description: >-
@@ -722,6 +757,33 @@ controller_templates_all:
             - small
             - medium
             - large
+        - question_name: Workload role
+          question_description: >-
+            What these machines are FOR, not how big they are. Becomes part of
+            the VM name (web-win-1), the NetBIOS hostname, and the AAP host
+            name. Each role has its OWN Terraform state, so a `db` build cannot
+            disturb a running `web` farm — and a teardown must be given the
+            same role it was built with, or it destroys nothing.
+          variable: vm_role
+          type: multiplechoice
+          required: true
+          default: web
+          choices:
+            - web
+            - db
+            - app
+        - question_name: How many VMs
+          question_description: >-
+            Size of the farm, 1 to 10. The memory budget is checked twice
+            before anything is built — terraform/ocpvirt multiplies the tier by
+            this count, and provision_vm.yml asks the cluster what is already
+            running. 1 builds a single VM, exactly as before this was added.
+          variable: vm_count
+          type: integer
+          required: true
+          default: 1
+          min: 1
+          max: 10
 
   # ---------------------------------------------------------------------
   # Node 2. Windows Update, in the slot Linux uses for CDN registration.
@@ -994,6 +1056,14 @@ controller_templates_all:
       provision_inventory: "Sales Demo VMs"
       os_type: windows
       vm_size_tier: small
+      # THE ROLE MUST MATCH WHAT WAS BUILT (#389). It is part of the Terraform
+      # state key, so a teardown given the wrong role inits an EMPTY state,
+      # destroys nothing, and still goes green — the VMs keep running and
+      # nothing says so. `web` is the provision default, so the scheduled
+      # nightly runs match the scheduled nightly builds. A farm built under
+      # another role must be torn down by passing that role on launch, which is
+      # what ask_variables_on_launch below is for.
+      vm_role: web
     ask_variables_on_launch: true
 
   # -------------------------------------------------------------------

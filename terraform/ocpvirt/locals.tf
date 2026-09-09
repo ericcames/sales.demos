@@ -34,16 +34,20 @@ locals {
   linux_disk_gb  = local.tier.disk_gb
   windows_disk_g = max(local.tier.disk_gb, local.windows_min_disk_gb)
 
-  # Budget check. ALWAYS ONE VM NOW, because state is per OS (#301).
+  # Budget check. THE COUNT IS NOW var.vm_count RATHER THAN A HARDCODED 1 (#389),
+  # which is the whole reason a farm cannot quietly overcommit the node: this
+  # multiplies the tier by however many VMs were asked for.
   #
-  # THIS GUARD CAN ONLY SEE ITS OWN VM, and that is the honest limit of putting
+  # THIS GUARD CAN ONLY SEE ITS OWN VMs, and that is the honest limit of putting
   # it here: the other OS lives in a different state file, so Terraform has no
-  # way to know it exists. playbooks/provision_vm.yml therefore asks the CLUSTER
-  # what is already requested before calling terraform, which is the only source
-  # that sees both. Keep this one anyway — it catches "this tier cannot possibly
-  # fit" without a round trip, and it still runs when someone applies by hand.
-  vm_count = 1
-  requested_memory_gb = local.vm_count * (
+  # way to know it exists. Since #389 the same is true of the other ROLE — state
+  # is keyed <env>-<os>-<role>, so a `web` apply cannot see the `db` VMs either.
+  # playbooks/provision_vm.yml therefore asks the CLUSTER what is already
+  # requested before calling terraform, which is the only source that sees all
+  # of them. Keep this one anyway — it catches "this tier at this count cannot
+  # possibly fit" without a round trip, and it still runs when someone applies
+  # by hand.
+  requested_memory_gb = var.vm_count * (
     local.tier.memory_gb + (var.vm_memory_overhead_mb / 1024)
   )
 
@@ -51,31 +55,59 @@ locals {
   # is a variable rather than random_string.
   suffix = var.name_suffix != "" ? "-${var.name_suffix}" : ""
 
-  windows_vm_name = "sd-win-${var.vm_size_tier}${local.suffix}"
-  linux_vm_name   = "sd-lnx-${var.vm_size_tier}${local.suffix}"
+  # -------------------------------------------------------------------------
+  # THE NAME FORMULA. EVERY OTHER NAME IN THIS MODULE DERIVES FROM IT (#389).
+  #
+  # `{role}-{os}-{index}` — `web-win-1`, `db-lnx-2`. Services, Routes, FQDNs,
+  # URLs and the AAP host name are all built from `local.vm_names` below, so
+  # this is the only place a naming decision is made. Changing it here changes
+  # all of them together, which is exactly what the tier-based scheme could not
+  # do: `windows_hostname` was a SEPARATE hand-maintained map, and it had to be,
+  # because `sd-win-medium-1cpu-4gb` does not fit NetBIOS. That map is deleted —
+  # the computed name fits by construction now.
+  #
+  # NO ENVIRONMENT IN THE NAME. The namespace (`sales-demos-sandbox`) already
+  # carries it, and every character spent here comes out of the NetBIOS budget.
+  #
+  # NO TIER IN THE NAME. Sizing is not identity. It lives in the `vm_size_tier`
+  # AAP host variable and the sd1.* instancetype the VM points at, both of which
+  # can change on a converge without renaming — and renaming a KubeVirt VM
+  # destroys and recreates it.
+  #
+  # PLAN-TIME KNOWN, which `kubernetes_manifest` requires: every input is a
+  # variable or a loop index, never a resource attribute. This is the same
+  # constraint that made name_suffix a variable instead of a random_string —
+  # see variables.tf.
+  # -------------------------------------------------------------------------
+  os_prefix = var.os_type == "windows" ? "win" : "lnx"
 
-  # Windows NetBIOS hostname: max 15 characters.
-  tier_windows_hostname = {
-    "small"           = "sd-win-small"
-    "medium"          = "sd-win-medium"
-    "large"           = "sd-win-large"
-    "small-1cpu-2gb"  = "sd-win-sm-1c-2g"
-    "medium-1cpu-4gb" = "sd-win-md-1c-4g"
-    "large-2cpu-6gb"  = "sd-win-lg-2c-6g"
-  }
-  windows_hostname = local.tier_windows_hostname[var.vm_size_tier]
+  vm_names = [
+    for i in range(var.vm_count) :
+    "${var.vm_role}-${local.os_prefix}-${i + 1}${local.suffix}"
+  ]
+
+  # The last index has the most digits, so it is the longest name in the set.
+  # Checked against the NetBIOS limit by the precondition at the foot of this
+  # file — vm_role's own validation cannot see name_suffix, which spends from
+  # the same 15 characters.
+  longest_vm_name = element(local.vm_names, var.vm_count - 1)
 
   common_labels = {
     "app.kubernetes.io/managed-by" = "terraform"
     "app.kubernetes.io/part-of"    = "sales-demos"
     "sales-demos/tier"             = var.vm_size_tier
     "sales-demos/os-type"          = var.os_type
+    # The role is a label as well as part of the name (#389), so a farm can be
+    # selected without parsing names — `oc get vm -l sales-demos/role=web`.
+    "sales-demos/role" = var.vm_role
   }
 
   # In-cluster DNS. Known at plan time, unlike a pod IP, which is why the
-  # Service exists at all — see outputs.tf.
-  windows_fqdn = "${local.windows_vm_name}.${var.namespace}.svc.cluster.local"
-  linux_fqdn   = "${local.linux_vm_name}.${var.namespace}.svc.cluster.local"
+  # Service exists at all — see outputs.tf. One entry per VM, same order as
+  # local.vm_names, so index i is the same machine everywhere in this file.
+  vm_fqdns = [
+    for n in local.vm_names : "${n}.${var.namespace}.svc.cluster.local"
+  ]
 
   # Web service and Route — HTTP access for the demo web server.
   #
@@ -90,23 +122,40 @@ locals {
   create_linux_web_route   = local.create_linux && var.openshift_apps_domain != ""
   create_windows_web_route = local.create_windows && var.openshift_apps_domain != ""
 
-  linux_web_svc_name   = "${local.linux_vm_name}-web"
-  linux_web_route_host = "${local.linux_web_svc_name}-${var.namespace}.${var.openshift_apps_domain}"
+  # ONE SET OF WEB LOCALS, NOT A LINUX PAIR AND A WINDOWS PAIR. The two were
+  # byte-identical apart from which vm_name they read, and one state builds
+  # exactly one OS since #301 — so `local.vm_names` already carries the OS and
+  # the duplication bought nothing. #340 added the Windows half by copying the
+  # Linux half; #389 merges them back now that the name is OS-agnostic.
+  #
   # https, matching the Route edge termination added in #45. It was http://
   # while the Route had no TLS, which made every browser either warn about an
   # insecure page or fail outright on auto-upgrade.
-  linux_web_url = "https://${local.linux_web_route_host}"
+  #
+  # IIS serves the Default Web Site on :80 and httpd the same, so one port
+  # covers both.
+  web_svc_names   = [for n in local.vm_names : "${n}-web"]
+  web_route_hosts = [for s in local.web_svc_names : "${s}-${var.namespace}.${var.openshift_apps_domain}"]
+  web_urls        = [for h in local.web_route_hosts : "https://${h}"]
 
-  # Windows web Service and Route (#340). Same shape as the Linux pair above;
-  # IIS serves the Default Web Site on :80, so the port matches.
-  windows_web_svc_name   = "${local.windows_vm_name}-web"
-  windows_web_route_host = "${local.windows_web_svc_name}-${var.namespace}.${var.openshift_apps_domain}"
-  windows_web_url        = "https://${local.windows_web_route_host}"
+  # virtctl SSH commands, one per VM. Defined here rather than inline in
+  # outputs.tf because BOTH the per-VM inventory entry and the top-level
+  # ssh_commands output need them, and two copies of a command line is how they
+  # drift apart.
+  #
+  # `vm/` is not decoration — virtctl takes a (VM|VMI) resource, and every
+  # example in `virtctl ssh --help` carries the prefix. Without it the bare name
+  # is ambiguous between a VM and a VMI.
+  ssh_commands = [
+    for n in local.vm_names :
+    "virtctl ssh -o StrictHostKeyChecking=accept-new -n ${var.namespace} ${var.linux_admin_username}@vm/${n}"
+  ]
 
   # Cockpit (RHEL web console) Service and Route — browser terminal (#63).
-  linux_cockpit_svc_name   = "${local.linux_vm_name}-cockpit"
-  linux_cockpit_route_host = "${local.linux_cockpit_svc_name}-${var.namespace}.${var.openshift_apps_domain}"
-  linux_cockpit_url        = "https://${local.linux_cockpit_route_host}"
+  # Linux only; there is no Windows counterpart, see outputs.tf.
+  cockpit_svc_names   = [for n in local.vm_names : "${n}-cockpit"]
+  cockpit_route_hosts = [for s in local.cockpit_svc_names : "${s}-${var.namespace}.${var.openshift_apps_domain}"]
+  cockpit_urls        = [for h in local.cockpit_route_hosts : "https://${h}"]
 }
 
 # ---------------------------------------------------------------------------
@@ -121,14 +170,53 @@ resource "terraform_data" "memory_budget" {
     precondition {
       condition = local.requested_memory_gb <= var.available_memory_gb
       error_message = format(
-        "os_type=%s at tier %s needs ~%.1f GiB (%d VM x %d GiB guest + %d MiB overhead) but available_memory_gb is %d. This checks THIS OS only — state is per OS since #301, so the other OS is invisible here and provision_vm.yml does the cluster-wide check. Pick a smaller tier, or raise available_memory_gb if this cluster has more headroom.",
+        "os_type=%s role=%s at tier %s needs ~%.1f GiB (%d VM x %d GiB guest + %d MiB overhead) but available_memory_gb is %d. This checks THIS OS AND ROLE only — state is per OS since #301 and per role since #389, so neither the other OS nor another role is visible here, and provision_vm.yml does the cluster-wide check. Lower vm_count, pick a smaller tier, or raise available_memory_gb if this cluster has more headroom.",
         var.os_type,
+        var.vm_role,
         var.vm_size_tier,
         local.requested_memory_gb,
-        local.vm_count,
+        var.vm_count,
         local.tier.memory_gb,
         var.vm_memory_overhead_mb,
         var.available_memory_gb,
+      )
+    }
+  }
+}
+
+# ---------------------------------------------------------------------------
+# NetBIOS budget guard (#389).
+#
+# WHY THIS IS NOT A VARIABLE VALIDATION. It spans three variables — vm_role,
+# vm_count and name_suffix — and a Terraform variable validation can only see
+# the one it is attached to. vm_role's own validation caps it at 8 characters,
+# which makes the longest name this formula can build `{8}-win-{2 digits}` = 15
+# exactly. A non-empty name_suffix spends from the same 15 and is invisible
+# there, so it is checked here instead.
+#
+# WHY IT FAILS RATHER THAN TRUNCATES. Windows truncates a ComputerName longer
+# than 15 characters silently, and the guest would then answer to a name the
+# K8s object, the Service DNS record and the AAP host variable all disagree
+# with. Failing at plan time costs a message; truncating costs an afternoon.
+#
+# Windows only. Linux hostnames have no such limit, and `lnx` is the same
+# length as `win` so the Linux name is never the longer of the two anyway.
+# ---------------------------------------------------------------------------
+resource "terraform_data" "netbios_budget" {
+  count = local.create_windows ? 1 : 0
+  input = local.longest_vm_name
+
+  lifecycle {
+    precondition {
+      condition = length(local.longest_vm_name) <= 15
+      error_message = format(
+        "The longest Windows VM name this run would build is '%s' (%d characters), over the 15-character NetBIOS limit. vm_role='%s' (%d), vm_count=%d, name_suffix='%s'. Shorten vm_role, or clear name_suffix — it is only needed when several people share one cluster, and it spends from the same 15 characters.",
+        local.longest_vm_name,
+        length(local.longest_vm_name),
+        var.vm_role,
+        length(var.vm_role),
+        var.vm_count,
+        var.name_suffix,
       )
     }
   }

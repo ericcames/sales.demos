@@ -4,38 +4,58 @@
 # Extracted from provision_vm.yml as part of the provider abstraction (#238).
 #
 # CALLER: provision_vm.yml, after the provider and registration task files
-# have run. Reads facts set by the provider: win_inventory, linux_inventory,
-# web_url, cockpit_url, ssh_command. Reads play-level vars:
-# provision_aap_inventory, provision_os_type, aap_env_name,
+# have run. Reads facts set by the provider: vm_inventory, win_inventory,
+# linux_inventory (all LISTS since #389), web_urls, cockpit_urls, ssh_commands.
+# Reads play-level vars: provision_aap_inventory, provision_os_type,
+# provision_vm_role, provision_vm_count, aap_env_name,
 # ocpvirt_namespace_resolved (OCP Virt only — will need generalizing for
 # other providers).
+#
+# THE SINGULAR KEYS STILL DESCRIBE VM 1, and that is a compatibility decision
+# rather than an oversight. Downstream workflow nodes and the demo talk track
+# read `vm_fqdn`, `my_server`, `web_url` and friends as scalars; a farm has a
+# natural first member, so those keep pointing at it and keep working for the
+# vm_count=1 case that every existing workflow uses. The whole set is published
+# alongside them under the plural keys, for anything that wants the farm.
 # ===========================================================================
 
 - name: Pick the primary VM for the workflow artifacts
   ansible.builtin.set_fact:
-    _primary: "{{ win_inventory if (win_inventory is mapping) else linux_inventory }}"
+    _primary: "{{ vm_inventory[0] }}"
+  when: vm_inventory | default([]) | length > 0
 
 - name: Publish provisioning details to the rest of the workflow
+  when: vm_inventory | default([]) | length > 0
   ansible.builtin.set_stats:
     data:
       os_type: "{{ provision_os_type }}"
+      vm_role: "{{ provision_vm_role }}"
+      vm_count: "{{ vm_inventory | length }}"
       vm_fqdn: "{{ _primary.host }}"
       vm_name: "{{ _primary.vm_name }}"
       vm_size_chosen: "{{ _primary.vm_size_chosen }}"
       my_server: "{{ _primary.host }}"
       my_instance_id: "{{ _primary.aap_host_name }}"
       my_instance_type: "{{ _primary.vm_size_chosen }}"
+      # THE FARM, for anything that needs more than the first member.
+      vm_names: "{{ vm_inventory | map(attribute='vm_name') | list }}"
+      vm_fqdns: "{{ vm_inventory | map(attribute='host') | list }}"
+      aap_host_names: "{{ vm_inventory | map(attribute='aap_host_name') | list }}"
+      web_urls: "{{ web_urls | default([]) }}"
 
 - name: Publish the Linux-specific artifacts
   ansible.builtin.set_stats:
     data:
-      linux_fqdn: "{{ linux_inventory.host }}"
-      linux_vm_name: "{{ linux_inventory.vm_name }}"
-      linux_admin_username: "{{ linux_inventory.ansible_user }}"
-      web_url: "{{ web_url }}"
-      cockpit_url: "{{ cockpit_url }}"
-      ssh_command: "{{ ssh_command }}"
-  when: linux_inventory is mapping
+      linux_fqdn: "{{ linux_inventory[0].host }}"
+      linux_vm_name: "{{ linux_inventory[0].vm_name }}"
+      linux_admin_username: "{{ linux_inventory[0].ansible_user }}"
+      web_url: "{{ linux_inventory[0].web_url | default('', true) }}"
+      cockpit_url: "{{ linux_inventory[0].cockpit_url | default('', true) }}"
+      ssh_command: "{{ linux_inventory[0].ssh_command | default('', true) }}"
+      linux_fqdns: "{{ linux_inventory | map(attribute='host') | list }}"
+      cockpit_urls: "{{ cockpit_urls | default([]) }}"
+      ssh_commands: "{{ ssh_commands | default([]) }}"
+  when: linux_inventory | default([]) | length > 0
 
 # THE WINDOWS MIRROR OF THE BLOCK ABOVE (#340). There was a Linux-specific
 # set_stats and no Windows one, so a Windows workflow published only the generic
@@ -45,19 +65,24 @@
 - name: Publish the Windows-specific artifacts
   ansible.builtin.set_stats:
     data:
-      windows_fqdn: "{{ win_inventory.host }}"
-      windows_vm_name: "{{ win_inventory.vm_name }}"
-      windows_admin_username: "{{ win_inventory.ansible_user }}"
-      web_url: "{{ web_url }}"
-  when: win_inventory is mapping
+      windows_fqdn: "{{ win_inventory[0].host }}"
+      windows_vm_name: "{{ win_inventory[0].vm_name }}"
+      windows_admin_username: "{{ win_inventory[0].ansible_user }}"
+      web_url: "{{ win_inventory[0].web_url | default('', true) }}"
+      windows_fqdns: "{{ win_inventory | map(attribute='host') | list }}"
+  when: win_inventory | default([]) | length > 0
 
 - name: Summarize
   ansible.builtin.debug:
-    msg:
-      - "Provisioned {{ provision_os_type }} / {{ provision_size_tier }} on {{ aap_env_name }}."
-      - "Registered in AAP inventory '{{ provision_aap_inventory }}'."
-      - "Linux: {{ linux_inventory.host | default('(none)') }}"
-      - "Windows: {{ win_inventory.host | default('(none)') }}"
-      - "SSH: {{ ssh_command | default('(none)', true) }}"
-      - "Web: {{ web_url | default('(none)', true) }} (503 until the web server is installed -- httpd on Linux, IIS on Windows)"
-      - "Cockpit: {{ cockpit_url | default('(none)', true) }}"
+    msg: >-
+      {{ ["Provisioned " ~ (vm_inventory | length) ~ " x " ~ provision_os_type
+          ~ " / " ~ provision_size_tier ~ " as role '" ~ provision_vm_role
+          ~ "' on " ~ aap_env_name ~ ".",
+          "Registered in AAP inventory '" ~ provision_aap_inventory ~ "'."]
+         + (vm_inventory | map(attribute='vm_name') | zip(vm_inventory | map(attribute='aap_host_name'))
+            | map('join', '  ->  ') | list)
+         + ["Web (503 until the web server is installed -- httpd on Linux, IIS on Windows):"]
+         + (web_urls | default([]))
+         + (["SSH:"] + ssh_commands if (ssh_commands | default([])) else [])
+         + (["Cockpit:"] + cockpit_urls if (cockpit_urls | default([])) else []) }}
+  when: vm_inventory | default([]) | length > 0

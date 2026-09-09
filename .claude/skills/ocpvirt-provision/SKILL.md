@@ -24,9 +24,25 @@ debugging a run without the controller in the way.
 |---|---|---|
 | `vm_size_tier` | `small`, `medium`, `large` | `small` |
 | `os_type` | `linux`, `windows`, `both` | `linux` |
+| `vm_role` | `web`, `db`, `app` (1-8 lowercase alphanumeric) | `web` |
+| `vm_count` | `1`-`10` | `1` |
 
 These names are shared verbatim with the AAP survey and
 `terraform/ocpvirt/variables.tf`. Changing one means changing all three.
+
+**`vm_role` and `vm_count` build a farm (#389).** VMs are named
+`{role}-{os}-{index}` — `web-win-1`, `db-lnx-2` — and `vm_count=1` behaves
+exactly as a single-VM run always did. Two things follow that are easy to get
+wrong:
+
+- **Each role has its OWN Terraform state** (`secret_suffix=<env>-<os>-<role>`),
+  the same way each OS has since #301. So `vm_role=db` cannot disturb a running
+  `web` farm — and **a teardown must be given the role it was built with**, or it
+  inits an empty state, destroys nothing, and still reports success.
+- **`vm_role` is capped at 8 characters** because a Windows computer name is
+  capped at 15 and the name is used verbatim as the NetBIOS hostname. The longest
+  name this builds is `{8}-win-{2 digits}` = 15 exactly. A non-empty
+  `name_suffix` spends from the same budget and is checked at plan time.
 
 **`os_type=windows` or `both` requires that the environment is linked to the
 published CIS L1 hardened Windows golden image.** CNV ships `win2k22` as an empty

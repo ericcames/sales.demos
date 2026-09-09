@@ -3,8 +3,14 @@
 # tasks/sum_demo_vm_memory.yml — how much guest memory the demo VMs hold. #334
 #
 #   demo_vm_namespace  optional; omit or leave empty to search cluster-wide
-#   demo_vm_exclude    optional; a VM name to leave out, for a caller that is
-#                      about to converge its own VM and must not count it twice
+#   demo_vm_exclude    optional; a LIST of VM names to leave out, for a caller
+#                      that is about to converge its own VMs and must not count
+#                      them twice. A LIST SINCE #389 — it was a single name,
+#                      which was enough while a run built exactly one VM. A farm
+#                      converges several, and excluding only the first would
+#                      count the rest twice and refuse a re-run of the very
+#                      thing that is already there. A bare string still works:
+#                      it is wrapped below.
 #
 #   sets: demo_vm_total_gb, demo_vm_counted
 #
@@ -32,6 +38,13 @@
 # INLINE MEMORY IS STILL HONOURED FIRST, so a VM built by hand without an
 # instancetype is counted rather than skipped.
 # ===========================================================================
+
+# `| ansible.builtin.flatten` on a wrapped scalar accepts both shapes, so a
+# caller that still passes one name is not broken by the list.
+- name: Normalize the exclusion list
+  ansible.builtin.set_fact:
+    _demo_vm_exclude: >-
+      {{ [demo_vm_exclude | default([], true)] | flatten | reject('equalto', '') | list }}
 
 - name: Read the demo VMs
   kubernetes.core.k8s_info:
@@ -64,12 +77,12 @@
   ansible.builtin.set_fact:
     demo_vm_counted: >-
       {{ (_demo_vms.resources | default([]))
-         | rejectattr('metadata.name', 'equalto', demo_vm_exclude | default('', true))
+         | rejectattr('metadata.name', 'in', _demo_vm_exclude)
          | map(attribute='metadata.name') | list }}
     demo_vm_total_gb: >-
       {%- set ns = namespace(total=0.0) -%}
       {%- for vm in (_demo_vms.resources | default([])) -%}
-        {%- if vm.metadata.name != (demo_vm_exclude | default('', true)) -%}
+        {%- if vm.metadata.name not in _demo_vm_exclude -%}
           {%- set dom = vm.spec.template.spec.domain | default({}) -%}
           {#- inline memory first, so a hand-built VM still counts -#}
           {%- set inline = (dom.memory | default({})).get('guest', '')

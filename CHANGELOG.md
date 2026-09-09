@@ -7,6 +7,82 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added -- server farms: `vm_count` and role-based naming (#389)
+- **One workflow launch can now build up to 10 VMs.** `vm_count` (1-10, default
+  1) and `vm_role` (`web` / `db` / `app`, default `web`) are new survey questions
+  on both provision templates and both Day 1 workflows. `vm_count=1` is
+  indistinguishable from the previous behaviour. #248 (F5 rolling patching)
+  needs the pool this creates.
+- **VM names are now `{role}-{os}-{index}`** -- `web-win-1`, `db-lnx-2` -- and
+  that is the whole naming chain. `terraform/ocpvirt/locals.tf` builds
+  `local.vm_names` and every Service, Route, in-cluster FQDN, URL and AAP host
+  name derives from it, so the formula lives in exactly one place.
+- **The name says what the machine is FOR, not how big it is.** The old
+  `sd-win-large` was infrastructure sizing, which tells you nothing about the
+  workload and collides the moment you want two. The tier did not disappear -- it
+  moved to the `vm_size_tier` AAP host variable and the `sd1.*` instancetype
+  label, where sizing belongs. A new `sales-demos/role` label makes a farm
+  selectable without parsing names.
+- **`tier_windows_hostname` is deleted.** It was a hand-maintained map of tier to
+  NetBIOS-safe hostname, and it had to exist because `sd-win-medium-1cpu-4gb`
+  does not fit in 15 characters. The computed name fits by construction:
+  `vm_role` is capped at 8 characters, so the longest name is
+  `{8}-win-{2 digits}` = 15 exactly.
+- **AAP host names keep the #354 hex and gain the VM name** --
+  `{role}-{os}-{index}-{hex}-{namespace}.{apps_domain}`. There is now one
+  `random_id` per VM rather than one per state: a farm sharing a hex would put
+  every member on the same Host Metrics row, which is the exact defect #354
+  fixed.
+- **The Terraform inventory outputs are LISTS**, one entry per VM, and the
+  per-VM `web_url`, `cockpit_url` and `ssh_command` moved inside them. A farm has
+  one Route each, so the URL has to travel with the host it belongs to -- else
+  every member gets host variables describing the first one, and the demo page,
+  the compliance report link and `check_*.yml` all agree on the wrong machine.
+
+### Changed -- Terraform state is keyed per role as well as per OS (#389)
+- **`secret_suffix` is now `<env>-<os>-<role>`.** `var.vm_role` feeds every
+  resource name, so a `db` apply against a `web` state would find everything
+  renamed and plan the RUNNING WEB FARM for destruction -- the same failure
+  per-OS state fixed in #301, one level down.
+- **A teardown must be given the role it was built with**, or it inits an empty
+  state, destroys nothing, and still reports success. Both teardown templates
+  pin `vm_role: web` to match the provision default, and
+  `ask_variables_on_launch` is already on for anything else.
+- **This is not backward compatible with pre-#389 state, deliberately.** An
+  environment holding `<env>-<os>` state has VMs the new key cannot see. Tear
+  down with the old code before deploying this. Verified 2026-09-09: both
+  `sandbox` and `demo` hold zero demo VMs, so their remaining `<env>-<os>` state
+  secrets are empty and harmless.
+
+### Changed -- Terraform outputs renamed to their plural, list forms (#389)
+- **`web_url` -> `web_urls`, `cockpit_url` -> `cockpit_urls`, `ssh_command` ->
+  `ssh_commands`.** Renamed rather than kept as a scalar pointing at `[0]`,
+  because a scalar that silently means "the first VM" is a trap: every consumer
+  would keep compiling and keep being wrong about a farm. `terraform output -raw
+  web_url` becomes `terraform output -json web_urls`; the docs and skills that
+  quoted it now iterate the list.
+- **`demo_vm_exclude` in `tasks/sum_demo_vm_memory.yml` takes a LIST.** A farm
+  converges several VMs at once, and excluding only the first would count the
+  rest twice and refuse to re-run against a farm that is already standing. A
+  bare string is still accepted.
+- **The memory budget multiplies the tier by the count**, in both the Terraform
+  precondition and the cluster-wide check in `provision_vm.yml`.
+- **A new precondition enforces the NetBIOS budget.** `vm_role`'s own validation
+  cannot see `name_suffix`, which spends from the same 15 characters, so the
+  combination is checked at plan time. Windows truncates an over-long
+  ComputerName silently; failing costs a message, truncating costs an afternoon.
+- **The name formula exists twice, and the copies are tested rather than
+  trusted.** `provision_vm.yml` has to predict the names before Terraform runs,
+  because the memory check runs first. A new assert compares the prediction
+  against what Terraform actually built, on every run including runs that create
+  nothing -- the same move as check 2 in `utilities/check-no-secrets.sh`.
+- **`web_url` is now declared a host variable in
+  `utilities/check-secrets-example.py`.** It was only ever invisible to that
+  checker because `tasks/terraform_ocpvirt.yml` also `set_fact`'d a single
+  `web_url`; with the fact gone, the AAP host variable written by
+  `register_hosts.yml` is the only definition, and the scanner does not read
+  host-variable blocks. It is not a credential.
+
 ### Changed -- demo VMs get instance-unique AAP host names (#354)
 - **Each provisioned VM now gets a unique AAP host name** in Route-style format:
   `<hex>-<namespace>.<apps_domain>` (e.g.

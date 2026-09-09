@@ -4,11 +4,18 @@
 # Extracted from provision_vm.yml as part of the provider abstraction (#238).
 #
 # CALLER: provision_vm.yml, after the provider task file has set:
-#   linux_inventory — dict with host, ansible_host, ansible_user, vm_name,
-#                     vm_size_tier, vm_size_chosen, aap_host_name
-#                     (or false/None)
-#   win_inventory   — same shape (or false/None)
-#   web_url, cockpit_url, ssh_command — provider-specific access URLs
+#   linux_inventory — LIST of dicts, each with host, ansible_host, ansible_user,
+#                     vm_name, vm_role, vm_index, vm_size_tier, vm_size_chosen,
+#                     aap_host_name, web_url, cockpit_url, ssh_command
+#                     (empty list when this run is not Linux)
+#   win_inventory   — same shape (empty list when this run is not Windows)
+#
+# LISTS SINCE #389, AND THE ACCESS URLs MOVED INSIDE THEM. They were single
+# dicts beside a single `web_url` fact, which worked only because there was one
+# VM to point at. A farm has one Route each, so the URL has to travel with the
+# host it belongs to — otherwise every member of the farm gets host variables
+# describing the first one, and the demo page, the compliance report link and
+# check_*.yml would all agree on the wrong machine.
 #
 # Reads play-level vars: provision_aap_url, provision_aap_user,
 # provision_aap_pass, provision_aap_inventory, provision_windows_group,
@@ -66,17 +73,19 @@
       ansible_port: 22
 
 # --- Windows -------------------------------------------------------
-- name: Register the Windows VM
-  when: win_inventory is mapping
+# A LOOP RATHER THAN A `when: ... is mapping` BLOCK (#389). An empty list is
+# already a no-op, so the "no Windows in this run" case needs no condition of
+# its own — which is why the outputs return [] rather than null.
+- name: Register the Windows VMs
   block:
-    - name: Add the Windows VM as a host
+    - name: Add each Windows VM as a host
       ansible.controller.host:
         controller_host: "{{ provision_aap_url }}"
         controller_username: "{{ provision_aap_user }}"
         controller_password: "{{ provision_aap_pass }}"
         validate_certs: "{{ aap_validate_certs | default(false) }}"
         request_timeout: "{{ provision_request_timeout }}"
-        name: "{{ win_inventory.aap_host_name }}"
+        name: "{{ item.aap_host_name }}"
         inventory: "{{ provision_aap_inventory }}"
         enabled: true
         state: present
@@ -90,17 +99,25 @@
         #
         # web_url is per-OS from Terraform now, so this is the Windows Route.
         variables:
-          ansible_host: "{{ win_inventory.ansible_host }}"
-          ansible_user: "{{ win_inventory.ansible_user }}"
-          vm_name: "{{ win_inventory.vm_name }}"
-          vm_size_tier: "{{ win_inventory.vm_size_tier }}"
-          vm_size_chosen: "{{ win_inventory.vm_size_chosen }}"
-          web_url: "{{ web_url }}"
+          ansible_host: "{{ item.ansible_host }}"
+          ansible_user: "{{ item.ansible_user }}"
+          vm_name: "{{ item.vm_name }}"
+          vm_role: "{{ item.vm_role }}"
+          vm_index: "{{ item.vm_index }}"
+          vm_size_tier: "{{ item.vm_size_tier }}"
+          vm_size_chosen: "{{ item.vm_size_chosen }}"
+          web_url: "{{ item.web_url }}"
           golden_image_source: "{{ quay_windows_image | default('') }}"
           golden_image_cis_level: "L1"
           env_name: "{{ aap_env_name }}"
+      loop: "{{ win_inventory | default([]) }}"
+      loop_control:
+        label: "{{ item.aap_host_name }}"
 
-    - name: Associate the Windows host with its group
+    # ONE CALL, NOT A LOOP. `hosts:` takes the whole list, so the whole farm is
+    # associated in a single request.
+    - name: Associate the Windows hosts with their group
+      when: win_inventory | default([]) | length > 0
       ansible.controller.group:
         controller_host: "{{ provision_aap_url }}"
         controller_username: "{{ provision_aap_user }}"
@@ -109,38 +126,43 @@
         request_timeout: "{{ provision_request_timeout }}"
         name: "{{ provision_windows_group }}"
         inventory: "{{ provision_aap_inventory }}"
-        hosts: ["{{ win_inventory.aap_host_name }}"]
+        hosts: "{{ win_inventory | map(attribute='aap_host_name') | list }}"
         state: present
 
 # --- Linux ---------------------------------------------------------
-- name: Register the Linux VM
-  when: linux_inventory is mapping
+- name: Register the Linux VMs
   block:
-    - name: Add the Linux VM as a host
+    - name: Add each Linux VM as a host
       ansible.controller.host:
         controller_host: "{{ provision_aap_url }}"
         controller_username: "{{ provision_aap_user }}"
         controller_password: "{{ provision_aap_pass }}"
         validate_certs: "{{ aap_validate_certs | default(false) }}"
         request_timeout: "{{ provision_request_timeout }}"
-        name: "{{ linux_inventory.aap_host_name }}"
+        name: "{{ item.aap_host_name }}"
         inventory: "{{ provision_aap_inventory }}"
         enabled: true
         state: present
         variables:
-          ansible_host: "{{ linux_inventory.ansible_host }}"
-          ansible_user: "{{ linux_inventory.ansible_user }}"
-          vm_name: "{{ linux_inventory.vm_name }}"
-          vm_size_tier: "{{ linux_inventory.vm_size_tier }}"
-          vm_size_chosen: "{{ linux_inventory.vm_size_chosen }}"
-          web_url: "{{ web_url }}"
-          cockpit_url: "{{ cockpit_url }}"
-          ssh_command: "{{ ssh_command }}"
+          ansible_host: "{{ item.ansible_host }}"
+          ansible_user: "{{ item.ansible_user }}"
+          vm_name: "{{ item.vm_name }}"
+          vm_role: "{{ item.vm_role }}"
+          vm_index: "{{ item.vm_index }}"
+          vm_size_tier: "{{ item.vm_size_tier }}"
+          vm_size_chosen: "{{ item.vm_size_chosen }}"
+          web_url: "{{ item.web_url }}"
+          cockpit_url: "{{ item.cockpit_url }}"
+          ssh_command: "{{ item.ssh_command }}"
           golden_image_source: "{{ quay_rhel9_image | default('') }}"
           golden_image_cis_level: "L1"
           env_name: "{{ aap_env_name }}"
+      loop: "{{ linux_inventory | default([]) }}"
+      loop_control:
+        label: "{{ item.aap_host_name }}"
 
-    - name: Associate the Linux host with its group
+    - name: Associate the Linux hosts with their group
+      when: linux_inventory | default([]) | length > 0
       ansible.controller.group:
         controller_host: "{{ provision_aap_url }}"
         controller_username: "{{ provision_aap_user }}"
@@ -149,5 +171,5 @@
         request_timeout: "{{ provision_request_timeout }}"
         name: "{{ provision_linux_group }}"
         inventory: "{{ provision_aap_inventory }}"
-        hosts: ["{{ linux_inventory.aap_host_name }}"]
+        hosts: "{{ linux_inventory | map(attribute='aap_host_name') | list }}"
         state: present

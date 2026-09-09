@@ -70,7 +70,9 @@ VIEWPORT = (1000, 940)
 # value here means the rendered PNG exercises that branch instead of hiding it.
 # ---------------------------------------------------------------------------
 CLUSTER = "cluster-abcde.dyn.redhatworkshops.io"
-VM_NAME = "sd-lnx-small-1cpu-2gb"
+# `{role}-{os}-{index}` since #389. The tier stays in the fixture below as a
+# host variable, which is where sizing lives now that it is out of the name.
+VM_NAME = "web-lnx-1"
 NAMESPACE = "sales-demos-demo"
 
 FIXTURE = {

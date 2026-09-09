@@ -36,7 +36,7 @@
           - "It returned 503 before this ran, and should now return the demo page."
           - >-
             {{ 'Open it:  ' ~ web_url if (web_url | default('', true) | length > 0)
-               else 'Open it:  run `terraform output -raw web_url` (re-provision to have it printed here).' }}
+               else 'Open it:  run `terraform output -json web_urls` (re-provision to have it printed here).' }}
           - >-
             {{ 'Log in from your laptop:  ' ~ ssh_command if (ssh_command | default('', true) | length > 0)
-               else 'Log in from your laptop:  run `terraform output -raw ssh_command`.' }}
+               else 'Log in from your laptop:  run `terraform output -json ssh_commands`.' }}

@@ -114,10 +114,10 @@ Do not report success on the workflow recap alone — ask the target:
 
 ```bash
 cd terraform/ocpvirt
-curl -sI "$(terraform output -raw web_url)" | head -1
+for u in $(terraform output -json web_urls | jq -r '.[]'); do curl -sI "$u" | head -1; done
 # Expect: HTTP/1.1 200 OK
 
-curl -sI "$(terraform output -raw cockpit_url)" | head -1
+for u in $(terraform output -json cockpit_urls | jq -r '.[]'); do curl -sI "$u" | head -1; done
 # Expect: HTTP/1.1 200 OK
 ```
 

@@ -70,6 +70,20 @@ STAGED: dict[str, str] = {
 # list SHORT and justified: every entry is a hole in filter 2, so an unexplained
 # addition is how a real missing key would get silenced.
 NOT_A_VAULT_KEY = {
+    "web_url": (
+        "an AAP HOST VARIABLE, written per VM by playbooks/tasks/register_hosts.yml "
+        "under the `variables:` of ansible.controller.host. That is a real definition "
+        "site, but not one this scanner counts -- it recognises `vars:`, `set_fact:`, "
+        "`register:` and vars-file keys, and an AAP host-variable block is none of "
+        "them. It was invisible until #389 only because tasks/terraform_ocpvirt.yml "
+        "also set_fact'd a single `web_url` beside the host variable; that fact went "
+        "away when a run started building a farm with one Route each, and the "
+        "host variable -- which is what check_*.yml and configure_*.yml actually read "
+        "-- is now the only definition. Every bare use of it in check_windows_vm.yml "
+        "sits inside a task guarded by `when: web_url | default('', true) | length > 0`, "
+        "so a host without one degrades to a warning rather than failing the play. "
+        "It is not a credential and must never be declared in the example."
+    ),
     "target_env": (
         "supplied per run, never stored: `-e target_env=<env>` on the CLI and an "
         "extra_var on every job template. playbooks/tasks/assert_target_environment.yml "

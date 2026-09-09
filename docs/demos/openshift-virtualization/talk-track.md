@@ -190,11 +190,13 @@ narrate every task** — you are teaching three ideas, not reading a playbook.
 > know which half broke."**
 
 **Say the URL out loud while it is on screen** — it encodes the whole story:
-`sd-lnx-medium-1cpu-4gb` is the VM, named for the tier that was requested;
-`-web` is the Service backing the route; `sales-demos-sandbox` is the namespace.
+`web-lnx-1` is the VM — its workload role, its OS, and which member of the farm
+it is; `-web` is the Service backing the route; `sales-demos-sandbox` is the
+namespace. The tier is deliberately absent: it is how big the machine is, not
+what it is for, and it lives in the host variables instead (#389).
 
 ```console
-$ curl -sI "$(terraform output -raw web_url)" | head -1
+$ for u in $(terraform output -json web_urls | jq -r '.[]'); do curl -sI "$u" | head -1; done
 HTTP/1.1 503 Service Unavailable     # after provision
 HTTP/1.1 200 OK                      # after configure
 ```
@@ -331,7 +333,7 @@ For the person who asks where the page gets its data — and someone always does
     "provisioning": {
         "vm_size_tier": "small-1cpu-2gb",
         "instance_type": "sd1.small",
-        "in_cluster_address": "sd-lnx-small-1cpu-2gb.sales-demos-demo.svc.cluster.local",
+        "in_cluster_address": "web-lnx-1.sales-demos-demo.svc.cluster.local",
         "repository": "https://github.com/ericcames/sales.demos"
     },
     "golden_image": {
@@ -419,9 +421,10 @@ restart:
                        ||----w |
                        ||     ||
 
-   Demo page:  https://sd-lnx-small-1cpu-2gb-web-sales-demos-demo.apps.cluster-abcde.dyn.redhatworkshops.io
-   Console:    https://sd-lnx-small-1cpu-2gb-cockpit-sales-demos-demo.apps.cluster-abcde.dyn.redhatworkshops.io
-   Compliance: https://sd-lnx-small-1cpu-2gb-web-sales-demos-demo.apps.cluster-abcde.dyn.redhatworkshops.io/compliance/report.html
+   Demo page:  https://web-lnx-1-web-sales-demos-demo.apps.cluster-abcde.dyn.redhatworkshops.io
+   Console:    https://web-lnx-1-cockpit-sales-demos-demo.apps.cluster-abcde.dyn.redhatworkshops.io
+   Compliance: https://web-lnx-1-web-sales-demos-demo.apps.cluster-abcde.dyn.redhatworkshops.io/compliance/report.html
+
 ```
 
 Let them enjoy the cow — a laugh here is worth having. Then take it somewhere:

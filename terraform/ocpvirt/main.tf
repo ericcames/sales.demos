@@ -38,15 +38,21 @@
 # host name stays the same across re-applies but differs across genuine
 # build/teardown/build cycles. It appears ONLY in outputs, never in a
 # kubernetes_manifest, so the plan-time-known constraint is not triggered.
+#
+# ONE PER VM SINCE #389, not one per state. A farm whose members shared a hex
+# would put them all on the same Host Metrics row, which is the exact defect
+# #354 existed to fix — it would have been fixed for one VM and reintroduced
+# for three. The index is the same one `local.vm_names` uses, so
+# `random_id.windows_instance[i]` belongs to `local.vm_names[i]`.
 # ---------------------------------------------------------------------------
 
 resource "random_id" "linux_instance" {
-  count       = local.create_linux ? 1 : 0
+  count       = local.create_linux ? var.vm_count : 0
   byte_length = 3
 }
 
 resource "random_id" "windows_instance" {
-  count       = local.create_windows ? 1 : 0
+  count       = local.create_windows ? var.vm_count : 0
   byte_length = 3
 }
 
@@ -55,7 +61,7 @@ resource "random_id" "windows_instance" {
 # ---------------------------------------------------------------------------
 
 resource "kubernetes_manifest" "linux_vm" {
-  count = local.create_linux ? 1 : 0
+  count = local.create_linux ? var.vm_count : 0
 
   # KubeVirt's mutating webhook fills in defaults the manifest never sent —
   # domain.machine, domain.firmware, domain.resources, template metadata, and
@@ -77,7 +83,7 @@ resource "kubernetes_manifest" "linux_vm" {
     apiVersion = "kubevirt.io/v1"
     kind       = "VirtualMachine"
     metadata = {
-      name      = local.linux_vm_name
+      name      = local.vm_names[count.index]
       namespace = var.namespace
       labels    = merge(local.common_labels, { "sales-demos/os" = "linux" })
     }
@@ -95,7 +101,7 @@ resource "kubernetes_manifest" "linux_vm" {
 
       dataVolumeTemplates = [{
         metadata = {
-          name = "${local.linux_vm_name}-root"
+          name = "${local.vm_names[count.index]}-root"
         }
         spec = {
           sourceRef = {
@@ -134,7 +140,7 @@ resource "kubernetes_manifest" "linux_vm" {
             "kubevirt.io/pci-topology-version" = "v3"
           }
           labels = merge(local.common_labels, {
-            "sales-demos/vm" = local.linux_vm_name
+            "sales-demos/vm" = local.vm_names[count.index]
             "sales-demos/os" = "linux"
           })
         }
@@ -149,7 +155,7 @@ resource "kubernetes_manifest" "linux_vm" {
             {
               name = "rootdisk"
               dataVolume = {
-                name = "${local.linux_vm_name}-root"
+                name = "${local.vm_names[count.index]}-root"
               }
             },
             {
@@ -161,7 +167,7 @@ resource "kubernetes_manifest" "linux_vm" {
                   ${var.linux_admin_password != "" ? "password: ${var.linux_admin_password}\nchpasswd: { expire: False }" : ""}
                   ssh_pwauth: ${var.demo_ssh_public_key != "" ? "false" : "true"}
                   ${var.demo_ssh_public_key != "" ? "ssh_authorized_keys:\n  - ${var.demo_ssh_public_key}" : ""}
-                  ${var.openshift_apps_domain != "" ? "write_files:\n  - path: /etc/cockpit/cockpit.conf\n    content: |\n      [WebService]\n      AllowUnencrypted = true\n      Origins = https://${local.linux_cockpit_route_host}" : ""}
+                  ${var.openshift_apps_domain != "" ? "write_files:\n  - path: /etc/cockpit/cockpit.conf\n    content: |\n      [WebService]\n      AllowUnencrypted = true\n      Origins = https://${local.cockpit_route_hosts[count.index]}" : ""}
                 EOT
               }
             },
@@ -242,10 +248,10 @@ resource "kubernetes_manifest" "linux_vm" {
 # ---------------------------------------------------------------------------
 
 resource "kubernetes_secret" "windows_sysprep" {
-  count = local.create_windows ? 1 : 0
+  count = local.create_windows ? var.vm_count : 0
 
   metadata {
-    name      = "${local.windows_vm_name}-sysprep"
+    name      = "${local.vm_names[count.index]}-sysprep"
     namespace = var.namespace
     labels    = merge(local.common_labels, { "sales-demos/os" = "windows" })
   }
@@ -258,7 +264,7 @@ resource "kubernetes_secret" "windows_sysprep" {
           <component name="Microsoft-Windows-Shell-Setup"
                      processorArchitecture="amd64"
                      publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
-            <ComputerName>${local.windows_hostname}</ComputerName>
+            <ComputerName>${local.vm_names[count.index]}</ComputerName>
           </component>
           <component name="Microsoft-Windows-TerminalServices-LocalSessionManager"
                      processorArchitecture="amd64"
@@ -478,7 +484,7 @@ resource "kubernetes_secret" "windows_sysprep" {
 }
 
 resource "kubernetes_manifest" "windows_vm" {
-  count = local.create_windows ? 1 : 0
+  count = local.create_windows ? var.vm_count : 0
 
   # KubeVirt's mutating webhook fills in defaults the manifest never sent —
   # domain.machine, domain.firmware, domain.resources, template metadata, and
@@ -500,7 +506,7 @@ resource "kubernetes_manifest" "windows_vm" {
     apiVersion = "kubevirt.io/v1"
     kind       = "VirtualMachine"
     metadata = {
-      name      = local.windows_vm_name
+      name      = local.vm_names[count.index]
       namespace = var.namespace
       labels    = merge(local.common_labels, { "sales-demos/os" = "windows" })
     }
@@ -518,7 +524,7 @@ resource "kubernetes_manifest" "windows_vm" {
 
       dataVolumeTemplates = [{
         metadata = {
-          name = "${local.windows_vm_name}-root"
+          name = "${local.vm_names[count.index]}-root"
         }
         spec = {
           sourceRef = {
@@ -557,7 +563,7 @@ resource "kubernetes_manifest" "windows_vm" {
             "kubevirt.io/pci-topology-version" = "v3"
           }
           labels = merge(local.common_labels, {
-            "sales-demos/vm" = local.windows_vm_name
+            "sales-demos/vm" = local.vm_names[count.index]
             "sales-demos/os" = "windows"
           })
         }
@@ -600,14 +606,14 @@ resource "kubernetes_manifest" "windows_vm" {
             {
               name = "rootdisk"
               dataVolume = {
-                name = "${local.windows_vm_name}-root"
+                name = "${local.vm_names[count.index]}-root"
               }
             },
             {
               name = "sysprep"
               sysprep = {
                 secret = {
-                  name = kubernetes_secret.windows_sysprep[0].metadata[0].name
+                  name = kubernetes_secret.windows_sysprep[count.index].metadata[0].name
                 }
               }
             },
@@ -631,17 +637,17 @@ resource "kubernetes_manifest" "windows_vm" {
 # ---------------------------------------------------------------------------
 
 resource "kubernetes_service" "linux" {
-  count = local.create_linux ? 1 : 0
+  count = local.create_linux ? var.vm_count : 0
 
   metadata {
-    name      = local.linux_vm_name
+    name      = local.vm_names[count.index]
     namespace = var.namespace
     labels    = local.common_labels
   }
 
   spec {
     selector = {
-      "sales-demos/vm" = local.linux_vm_name
+      "sales-demos/vm" = local.vm_names[count.index]
     }
     cluster_ip = "None" # Headless: DNS resolves straight to the VM's pod IP.
 
@@ -654,17 +660,17 @@ resource "kubernetes_service" "linux" {
 }
 
 resource "kubernetes_service" "windows" {
-  count = local.create_windows ? 1 : 0
+  count = local.create_windows ? var.vm_count : 0
 
   metadata {
-    name      = local.windows_vm_name
+    name      = local.vm_names[count.index]
     namespace = var.namespace
     labels    = local.common_labels
   }
 
   spec {
     selector = {
-      "sales-demos/vm" = local.windows_vm_name
+      "sales-demos/vm" = local.vm_names[count.index]
     }
     cluster_ip = "None"
 
@@ -699,17 +705,17 @@ resource "kubernetes_service" "windows" {
 # ---------------------------------------------------------------------------
 
 resource "kubernetes_service" "linux_web" {
-  count = local.create_linux ? 1 : 0
+  count = local.create_linux ? var.vm_count : 0
 
   metadata {
-    name      = local.linux_web_svc_name
+    name      = local.web_svc_names[count.index]
     namespace = var.namespace
     labels    = local.common_labels
   }
 
   spec {
     selector = {
-      "sales-demos/vm" = local.linux_vm_name
+      "sales-demos/vm" = local.vm_names[count.index]
     }
 
     port {
@@ -721,7 +727,7 @@ resource "kubernetes_service" "linux_web" {
 }
 
 resource "kubernetes_manifest" "linux_web_route" {
-  count = local.create_linux_web_route ? 1 : 0
+  count = local.create_linux_web_route ? var.vm_count : 0
 
   computed_fields = [
     "metadata.annotations",
@@ -732,15 +738,15 @@ resource "kubernetes_manifest" "linux_web_route" {
     apiVersion = "route.openshift.io/v1"
     kind       = "Route"
     metadata = {
-      name      = local.linux_web_svc_name
+      name      = local.web_svc_names[count.index]
       namespace = var.namespace
       labels    = local.common_labels
     }
     spec = {
-      host = local.linux_web_route_host
+      host = local.web_route_hosts[count.index]
       to = {
         kind   = "Service"
-        name   = local.linux_web_svc_name
+        name   = local.web_svc_names[count.index]
         weight = 100
       }
       port = {
@@ -785,17 +791,17 @@ resource "kubernetes_manifest" "linux_web_route" {
 # ---------------------------------------------------------------------------
 
 resource "kubernetes_service" "linux_cockpit" {
-  count = local.create_linux ? 1 : 0
+  count = local.create_linux ? var.vm_count : 0
 
   metadata {
-    name      = local.linux_cockpit_svc_name
+    name      = local.cockpit_svc_names[count.index]
     namespace = var.namespace
     labels    = local.common_labels
   }
 
   spec {
     selector = {
-      "sales-demos/vm" = local.linux_vm_name
+      "sales-demos/vm" = local.vm_names[count.index]
     }
 
     port {
@@ -807,7 +813,7 @@ resource "kubernetes_service" "linux_cockpit" {
 }
 
 resource "kubernetes_manifest" "linux_cockpit_route" {
-  count = local.create_linux_web_route ? 1 : 0
+  count = local.create_linux_web_route ? var.vm_count : 0
 
   computed_fields = [
     "metadata.annotations",
@@ -818,15 +824,15 @@ resource "kubernetes_manifest" "linux_cockpit_route" {
     apiVersion = "route.openshift.io/v1"
     kind       = "Route"
     metadata = {
-      name      = local.linux_cockpit_svc_name
+      name      = local.cockpit_svc_names[count.index]
       namespace = var.namespace
       labels    = local.common_labels
     }
     spec = {
-      host = local.linux_cockpit_route_host
+      host = local.cockpit_route_hosts[count.index]
       to = {
         kind   = "Service"
-        name   = local.linux_cockpit_svc_name
+        name   = local.cockpit_svc_names[count.index]
         weight = 100
       }
       port = {
@@ -866,17 +872,17 @@ resource "kubernetes_manifest" "linux_cockpit_route" {
 # ---------------------------------------------------------------------------
 
 resource "kubernetes_service" "windows_web" {
-  count = local.create_windows ? 1 : 0
+  count = local.create_windows ? var.vm_count : 0
 
   metadata {
-    name      = local.windows_web_svc_name
+    name      = local.web_svc_names[count.index]
     namespace = var.namespace
     labels    = local.common_labels
   }
 
   spec {
     selector = {
-      "sales-demos/vm" = local.windows_vm_name
+      "sales-demos/vm" = local.vm_names[count.index]
     }
 
     port {
@@ -888,7 +894,7 @@ resource "kubernetes_service" "windows_web" {
 }
 
 resource "kubernetes_manifest" "windows_web_route" {
-  count = local.create_windows_web_route ? 1 : 0
+  count = local.create_windows_web_route ? var.vm_count : 0
 
   computed_fields = [
     "metadata.annotations",
@@ -899,15 +905,15 @@ resource "kubernetes_manifest" "windows_web_route" {
     apiVersion = "route.openshift.io/v1"
     kind       = "Route"
     metadata = {
-      name      = local.windows_web_svc_name
+      name      = local.web_svc_names[count.index]
       namespace = var.namespace
       labels    = local.common_labels
     }
     spec = {
-      host = local.windows_web_route_host
+      host = local.web_route_hosts[count.index]
       to = {
         kind   = "Service"
-        name   = local.windows_web_svc_name
+        name   = local.web_svc_names[count.index]
         weight = 100
       }
       port = {
