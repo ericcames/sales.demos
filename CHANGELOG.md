@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added -- edge/SNO demo docs (in-repo mirror) (#404)
+
+- **`docs/demos/edge-sno/`** — five-file demo directory for the edge / Single
+  Node OpenShift use case, following the same template as the other three demos.
+- Covers Phase 3 (this repo's responsibility: platform config, AAP CaC, the
+  demo itself) and links to the published
+  [full guide](https://ericcames.github.io/sales.demos-docs/demos/edge-sno/)
+  for the three-phase flow including ISO build.
+- Added row to `docs/demos/README.md` use-case table.
+
 ### Fixed -- the portal launcher sent `vm_count` as a string and AAP refused it (#400)
 
 - **`Self-Service - Request Linux/Windows Server` could not launch anything.**
