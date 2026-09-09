@@ -156,7 +156,18 @@
           hypervisor: "{{ launch_hypervisor }}"
           vm_size_tier: "{{ launch_size_tier }}"
           vm_role: "{{ launch_vm_role }}"
-          vm_count: "{{ launch_vm_count }}"
+          # `| int` HERE, NOT ONLY IN THE vars: BLOCK ABOVE, AND THE DIFFERENCE
+          # IS REAL. A `vars:` entry is a quoted template, so its result is a
+          # STRING however it was filtered -- measured, not assumed:
+          # `"{{ vm_count | default(1) | int }}"` yields `str`, and building a
+          # dict from it gives `{'vm_count': '2'}`. Re-filtering at the point of
+          # use gives `{'vm_count': 2}`.
+          #
+          # It matters because `vm_count` is an INTEGER survey question on the
+          # workflow, and a launch that answers it with a string is answering it
+          # with the wrong type. Same shape of bug as the IntOrString port that
+          # silently became a named port.
+          vm_count: "{{ launch_vm_count | int }}"
         wait: false
       register: launch_result
 
