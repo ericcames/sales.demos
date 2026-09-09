@@ -87,8 +87,9 @@ Supporting work, not a phase:
 | Execution environment with terraform | `execution-environment.yml`, `/sales-demos-ee-build` | **Done** ([#31](https://github.com/ericcames/sales.demos/issues/31)) |
 | EE pulled from Private Automation Hub | `hub_ee_*.yml` | **Done** ([#35](https://github.com/ericcames/sales.demos/issues/35)) |
 
-**Both environments are live.** `sandbox` and `demo` are separate RHDP clusters;
-`--limit` selects between them.
+**All three environments are live.** `sandbox` and `demo` are separate RHDP
+clusters; `edge` is a persistent bare-metal SNO on a NUC, not an RHDP
+environment. `--limit` selects between them.
 
 ## Sizing tiers
 
@@ -110,8 +111,10 @@ accepted as aliases and resolve to the current specs.
 
 The real ceiling is enforced in code, not by this table:
 `terraform/ocpvirt/locals.tf` fails `plan` when a run exceeds
-`available_memory_gb` (default 67, measured — #118), so an over-budget request is caught before
-it schedules and sits Pending.
+`available_memory_gb` (measured — #118), so an over-budget request is caught
+before it schedules and sits Pending. The RHDP environments (`sandbox` and
+`demo`) currently use 63 GiB; the persistent `edge` environment uses a 50 GiB
+budget because the NUC has ~64 GiB RAM.
 
 ## Not scheduled
 
