@@ -46,6 +46,12 @@ mock_modules:
   # habit: projects are a controller concept and ansible.platform ships no
   # equivalent, the same reasoning as the three lines above.
   - ansible.controller.project_update
+  # Firing a workflow from the self-service portal's launcher job template
+  # (#242, playbooks/launch_workflow.yml). ansible.controller for the third
+  # time and for the same reason as the four lines above, not from habit:
+  # ansible.platform 2.7.20260604 ships 22 modules and none of them launch
+  # anything. It covers gateway objects; launching is controller-domain.
+  - ansible.controller.workflow_launch
   # Guest configuration (Phase 4, playbooks/run_demo.yml).
   - ansible.posix.firewalld
   # Windows Day 1 (#340). ansible.windows is pinned in

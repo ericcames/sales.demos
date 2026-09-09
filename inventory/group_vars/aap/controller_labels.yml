@@ -16,6 +16,7 @@
 #   phase       install, day-0, day-1, day-2
 #   safety      read-only
 #   hypervisor  ocpvirt
+#   entry point self-service
 #
 # THE HYPERVISOR LABEL IS NOT ON EVERYTHING IN THE FAMILY, deliberately. Only
 # Provision and Teardown are hypervisor-bound — they run terraform — and the
@@ -73,4 +74,22 @@ controller_labels_all:
   # breaking what is on screen?" is a different question, and it is the one an
   # SE actually asks mid-demo.
   - name: read-only
+    organization: "IT Service Automation"
+
+  # --- entry point ----------------------------------------------------
+  # A FIFTH AXIS, AND IT ANSWERS A QUESTION NONE OF THE OTHERS CAN (#242).
+  # Domain says what a template acts on, phase says when in the lifecycle,
+  # hypervisor says where, safety says whether it can run mid-demo. None of
+  # them says "is this something a REQUESTER starts, or something an SE runs?"
+  # -- which is exactly the question that decides what belongs in the
+  # self-service portal.
+  #
+  # IT IS ON THE LAUNCHER JOB TEMPLATES ONLY, NOT ON THE WORKFLOWS THEY FIRE,
+  # and that restraint is the point. `Linux Day 1 - 0 Workflow` now serves both
+  # audiences -- the SE drives it from the Templates page, the requester
+  # reaches the same object through `Self-Service - Request Linux Server`.
+  # Labelling the workflow `self-service` would claim it belongs to one of
+  # them, which is the opposite of why #242 reused it instead of building a
+  # second pair.
+  - name: self-service
     organization: "IT Service Automation"

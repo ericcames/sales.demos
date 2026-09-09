@@ -93,15 +93,40 @@ Reflect it back, then:
 
 ---
 
-## 6–8 · The entire interface is one question
+## 6–8 · The entire interface is four questions
 
 **Show `aap-survey.png`.** This is the whole thing a requester sees:
 
 | Question | Variable | Choices | Default |
 |---|---|---|---|
-| VM size tier | `vm_size_tier` | `small` · `medium` · `large` | `small` |
+| Hypervisor | `hypervisor` | `ocpvirt` | `ocpvirt` |
+| VM size tier | `vm_size_tier` | `small` · `medium` · `large` | `large` |
+| Workload role | `vm_role` | `web` · `db` · `app` | `web` |
+| How many VMs | `vm_count` | `1` · `2` | `1` |
 
-Source: `inventory/group_vars/aap/controller_workflows.yml:178-193`.
+Source: the `Linux Day 1 - 0 Workflow` survey in
+`inventory/group_vars/aap/controller_workflows.yml`.
+
+**This table has been wrong three times, and each correction is worth a
+sentence of the talk track.** It said one question and a `small` default; the
+default became `large` in 2026-09-08 (the demo is about speed, so it should not
+open on the tier that makes every step slower), `vm_role` and `vm_count` arrived
+with farms in #389, and `hypervisor` in #242. Re-check it against the file before
+you present — a survey screenshot ages faster than anything else in this
+run-sheet.
+
+**`Hypervisor` has exactly one choice, and say so rather than skipping it.**
+It is there because a *trigger* cannot pass a variable the survey does not ask
+for — the portal launcher, and later ServiceNow, hand `extra_vars` to the
+workflow, and a survey-enabled workflow rejects anything that is not one of its
+own questions. The dropdown with one entry is the seam the other providers land
+in, and it is honest about where the platform is today.
+
+**`How many VMs` stops at 2, and that number is not arbitrary.** It was 10 until
+#397. A `large` guest is 16 GiB against a 63 GiB budget, so three already
+exceed it — eight of the ten values on offer had no outcome but being refused.
+If someone asks whether they could have twenty, the answer is that the ceiling is
+set where the hardware is, in six places that move together.
 
 **This said "two questions" and showed an `os_type` dropdown until #300/#301.**
 If your screenshot still has it, retake it. Removing it was not simplification
@@ -114,6 +139,21 @@ own state, so neither can touch the other's VM.
 **That is a better answer to give than the old one anyway**, because someone
 always asks how you stop a self-service portal from letting a requester break
 production. Here the answer is structural rather than procedural.
+
+**And the portal is not hypothetical — show it if you have time (#242).** The
+same workflow has a second entry point: `Self-Service - Request Linux Server`
+in the self-service portal, which asks these four questions and fires *this*
+workflow. Not a copy of it, not a portal-flavoured variant — the same object
+you just launched from the Templates page.
+
+> **"There is one implementation and two front doors. The engineer gets a
+> Templates page; the requester gets a form. Neither is a re-creation of the
+> other, so a fix to the chain reaches both on the same day."**
+
+The wrapper exists for a dull reason worth naming if asked: the portal's catalog
+syncs job templates and not workflows, so the entry point has to *be* a job
+template. `playbooks/launch_workflow.yml` is that job template's whole
+implementation — it validates the inputs and fires the workflow.
 
 **Land the question that is deliberately missing.** There is no dropdown for
 *which environment* — that is set per-controller from `connection.yml`:

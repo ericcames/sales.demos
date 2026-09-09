@@ -184,6 +184,33 @@ Then open the portal URL in a browser. It should show the Red Hat Developer Hub
 login page. Log in with the AAP credentials — templates from the configured
 organizations should be visible.
 
+4. Confirm the two self-service entry points are in the catalog:
+   `Self-Service - Request Linux Server` and
+   `Self-Service - Request Windows Server`. Each should render its survey as a
+   request form (hypervisor, VM size tier, workload role, how many VMs). Allow
+   one sync interval — the catalog refreshes every minute.
+
+## The portal cannot surface workflows, and that is why those two exist
+
+The catalog syncs JOB templates only. There is no setting to change it: the
+plugin has no workflow provider at all.
+
+**Measured 2026-09-08, not inferred from the docs** (which are silent on the
+question). `playbooks/portal.yml` writes
+`catalog.providers.rhaap.production.sync.jobTemplates` because that is the only
+key available, and grepping the deployed plugin bundle inside the running
+`rhaap-portal` pod (chart 2.1.0) returns 200 occurrences of `jobTemplates` and
+**zero** of `workflowJobTemplates`, `WorkflowJobTemplate` or
+`AAPWorkflowJobTemplateProvider`. dc1.azure reached the same conclusion the same
+way and records it in its own `playbooks/launch_workflow.yml`.
+
+So the demo's headline entry points — `Linux Day 1 - 0 Workflow`,
+`Windows Day 1 - 0 Workflow`, `Cluster Day 0`, `Windows Day 2 - 0 Break Fix` —
+are invisible to the portal on their own. #242 closed that for the two
+provisioning paths with thin launcher job templates that fire the workflow
+(`playbooks/launch_workflow.yml`). If a future workflow needs to be portal-
+reachable, it needs a launcher too; do not go looking for a config key.
+
 ## When it finishes
 
 Report the playbook summary **and** the verification result above, then tell the
@@ -198,6 +225,8 @@ user the portal is live and accessible at the URL shown.
 | Helm deploy hangs or times out | Chart repo unreachable or cluster resources exhausted | Check `helm repo add openshift-charts https://charts.openshift.io/ && helm search repo redhat-rhaap-portal` |
 | `rhaap-portal-app-config not found` | Helm deployment failed silently | Check the Helm release: `helm list -n aap-portal --kubeconfig .kube/<env>.kubeconfig` |
 | Portal shows `UNRECOGNIZED` or no templates | Org sync not applied or still syncing | Wait 1 minute for the sync interval, or re-run the playbook |
+| A workflow is missing from the catalog | Expected — the plugin syncs job templates only, and has no workflow provider | Not a fault to fix. Give the workflow a launcher job template, as #242 did for the two provisioning workflows |
+| `Self-Service - Request …` is missing | `config.yml` has not run since #242, or it ran against the other environment | Re-run `config.yml` with the right `--limit`, then wait one sync interval |
 | `Attempting to decrypt but no vault secrets found` | `--vault-id` missing from the command | Add `--vault-id sales.demos@~/secrets/.vault_pass_sales_demos` |
 
 Never paste a live cluster hostname or token into a commit message, issue, or

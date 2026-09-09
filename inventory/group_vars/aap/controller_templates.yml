@@ -670,6 +670,207 @@ controller_templates_all:
       target_env: "{{ aap_env_name }}"
 
   # ---------------------------------------------------------------------
+  # SELF-SERVICE (#242). The two portal entry points, and nothing else.
+  #
+  # WHY A JOB TEMPLATE WRAPS A WORKFLOW AT ALL. The self-service portal (Red
+  # Hat Developer Hub with the AAP plugin) syncs JOB templates into its
+  # catalog and does not sync WORKFLOW job templates. There is no setting for
+  # it -- the plugin has no such provider. Measured 2026-09-08: portal.yml
+  # writes `catalog.providers.rhaap.production.sync.jobTemplates` because that
+  # is the only key there is, and the deployed plugin bundle inside the
+  # running rhaap-portal pod contains 200 occurrences of `jobTemplates` and
+  # ZERO of `workflowJobTemplates` or `WorkflowJobTemplate`. dc1.azure reached
+  # the same conclusion the same way, and playbooks/launch_workflow.yml is
+  # ported from its solution.
+  #
+  # SO THE ENTRY POINT A REQUESTER SEES HAS TO BE A JOB TEMPLATE. These two
+  # are that, and they are deliberately thin: each pins ONE workflow name and
+  # fires it. All the work stays in the workflow.
+  #
+  # THEY LAUNCH THE WORKFLOWS THE SE ALREADY USES, WHICH IS THE WHOLE DESIGN.
+  # #242 as written specified a second pair of provisioning workflows. Every
+  # reason it gave had expired by the time it was built: #238 made
+  # provision_vm.yml dispatch on `hypervisor`, so anything chaining Provision
+  # is already multi-hypervisor, and #300/#340 split the one workflow into the
+  # Linux and Windows pair these launch. Building a second pair would have
+  # been two more objects to keep in step, and the `Sales Demos - ` prefix it
+  # wanted for them is one #300 RETIRED -- thirteen templates at the bottom of
+  # this file carry `state: absent` for it.
+  #
+  # `Self-Service - ` IS ITS OWN FAMILY PREFIX, and it sorts as its own block
+  # between `Golden Image` and `Windows Day 1`. It is not `Linux Day 1 - `:
+  # that would drop a portal entry point into the middle of the walkthrough
+  # chain, between `5 Check` and `Repair`.
+  #
+  # NO `ocpvirt` LABEL. These do not run terraform -- the workflow node they
+  # fire does. Same line the rest of this file draws; see the header of
+  # controller_labels.yml. No `day-1` either: they are entry points, not steps.
+  #
+  # THE SURVEY IS THE SAME FOUR QUESTIONS THE WORKFLOW ASKS, and that is not
+  # duplication for its own sake -- the launcher must hand every one of them
+  # to the workflow as extra_vars, and a survey-enabled workflow rejects any
+  # extra_var that is not one of its own questions (AB#91). `vm_count` is
+  # 1..2 here because it is 1..2 everywhere since #397, not because the portal
+  # is capped separately.
+  #
+  # WHICH WORKFLOW RUNS IS PINNED, NOT SURVEYED. It is the entire difference
+  # between these two templates, not a choice a requester makes -- the same
+  # call #300 made for os_type, for the same reason. launch_workflow.yml
+  # additionally allow-lists the two names, so a mistyped extra_var cannot
+  # reach Teardown.
+  # ---------------------------------------------------------------------
+  - name: "Self-Service - Request Linux Server"
+    description: "Request a Linux demo server. Fires Linux Day 1 - 0 Workflow — the same workflow an SE runs from the Templates page."
+    labels:
+      - linux
+      - self-service
+    job_type: run
+    organization: "IT Service Automation"
+    inventory: "Sales Demo VMs"
+    project: "Sales Demos"
+    playbook: playbooks/launch_workflow.yml
+    execution_environment: "Sales Demos - OCP Virt EE"
+    credentials:
+      # Same pair as every other template here. "Sales Demos - Env Secrets"
+      # injects aap_password, which is what authenticates the launch call --
+      # dc1.azure needed a separate "Red Hat Ansible Automation Platform"
+      # credential for this and #129 means we do not.
+      - "Sales Demos - Vault"
+      - "Sales Demos - Env Secrets"
+    limit: "{{ aap_env_name }}"
+    extra_vars:
+      target_env: "{{ aap_env_name }}"
+      workflow_name: "Linux Day 1 - 0 Workflow"
+    survey_enabled: true
+    survey_spec:
+      name: ""
+      description: "Pick a hypervisor, VM size tier, workload role and farm size"
+      spec:
+        - question_name: Hypervisor
+          question_description: >-
+            Which infrastructure provider to provision on. OCP Virt is the
+            default and only provider today; others will be added in later
+            phases of #237.
+          variable: hypervisor
+          type: multiplechoice
+          required: true
+          default: ocpvirt
+          choices:
+            - ocpvirt
+        - question_name: VM size tier
+          question_description: >-
+            T-shirt size (2v/4G, 2v/8G, 4v/16G). Sized for doubled RHDP
+            hardware; terraform/ocpvirt enforces a memory budget.
+          variable: vm_size_tier
+          type: multiplechoice
+          required: true
+          default: large
+          choices:
+            - small
+            - medium
+            - large
+        - question_name: Workload role
+          question_description: >-
+            What these machines are FOR, not how big they are. Becomes part of
+            the VM name (web-lnx-1), the hostname, and the AAP host name. Each
+            role has its OWN Terraform state, so a `db` request cannot disturb
+            a running `web` farm.
+          variable: vm_role
+          type: multiplechoice
+          required: true
+          default: web
+          choices:
+            - web
+            - db
+            - app
+        - question_name: How many VMs
+          question_description: >-
+            Size of the farm, 1 or 2. The memory budget is checked twice
+            before anything is built — terraform/ocpvirt multiplies the tier by
+            this count, and provision_vm.yml asks the cluster what is already
+            running.
+          variable: vm_count
+          type: integer
+          required: true
+          default: 1
+          min: 1
+          max: 2
+
+  - name: "Self-Service - Request Windows Server"
+    description: "Request a Windows demo server. Fires Windows Day 1 - 0 Workflow — the same workflow an SE runs from the Templates page."
+    labels:
+      - windows
+      - self-service
+    job_type: run
+    organization: "IT Service Automation"
+    inventory: "Sales Demo VMs"
+    project: "Sales Demos"
+    playbook: playbooks/launch_workflow.yml
+    execution_environment: "Sales Demos - OCP Virt EE"
+    credentials:
+      - "Sales Demos - Vault"
+      - "Sales Demos - Env Secrets"
+    limit: "{{ aap_env_name }}"
+    extra_vars:
+      target_env: "{{ aap_env_name }}"
+      workflow_name: "Windows Day 1 - 0 Workflow"
+    survey_enabled: true
+    survey_spec:
+      name: ""
+      description: "Pick a hypervisor, VM size tier, workload role and farm size"
+      spec:
+        - question_name: Hypervisor
+          question_description: >-
+            Which infrastructure provider to provision on. OCP Virt is the
+            default and only provider today; others will be added in later
+            phases of #237.
+          variable: hypervisor
+          type: multiplechoice
+          required: true
+          default: ocpvirt
+          choices:
+            - ocpvirt
+        - question_name: VM size tier
+          question_description: >-
+            T-shirt size (2v/4G, 2v/8G, 4v/16G). Windows gets a 60 GiB root
+            disk regardless of tier — see windows_min_disk_gb in
+            terraform/ocpvirt/locals.tf.
+          variable: vm_size_tier
+          type: multiplechoice
+          required: true
+          default: large
+          choices:
+            - small
+            - medium
+            - large
+        - question_name: Workload role
+          question_description: >-
+            What these machines are FOR, not how big they are. Becomes part of
+            the VM name (web-win-1), the NetBIOS hostname, and the AAP host
+            name. Each role has its OWN Terraform state, so a `db` request
+            cannot disturb a running `web` farm.
+          variable: vm_role
+          type: multiplechoice
+          required: true
+          default: web
+          choices:
+            - web
+            - db
+            - app
+        - question_name: How many VMs
+          question_description: >-
+            Size of the farm, 1 or 2. The memory budget is checked twice
+            before anything is built — terraform/ocpvirt multiplies the tier by
+            this count, and provision_vm.yml asks the cluster what is already
+            running.
+          variable: vm_count
+          type: integer
+          required: true
+          default: 1
+          min: 1
+          max: 2
+
+  # ---------------------------------------------------------------------
   # WINDOWS DAY 1 (#301, completed by #340). The full eight-object family,
   # mirroring Linux: a workflow, five numbered steps, an off-chain Repair,
   # plus Provision and Teardown.

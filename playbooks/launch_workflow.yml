@@ -1,0 +1,171 @@
+---
+# ===========================================================================
+# launch_workflow.yml — the self-service portal's way into a workflow. #242.
+#
+#   ansible-playbook playbooks/launch_workflow.yml -i inventory --limit sandbox \
+#     -e target_env=sandbox \
+#     -e workflow_name="Linux Day 1 - 0 Workflow" \
+#     -e hypervisor=ocpvirt -e vm_size_tier=large -e vm_role=web -e vm_count=1 \
+#     --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
+#
+# ---------------------------------------------------------------------------
+# WHY THIS EXISTS: THE PORTAL CANNOT SEE A WORKFLOW.
+# ---------------------------------------------------------------------------
+# The self-service portal (Red Hat Developer Hub with the AAP plugin) syncs JOB
+# templates into its catalog. It does not sync WORKFLOW job templates, and
+# there is no setting that turns that on -- the plugin has no such provider.
+#
+# MEASURED, NOT ASSUMED (2026-09-08). playbooks/portal.yml writes
+# `catalog.providers.rhaap.production.sync.jobTemplates` and nothing else,
+# because nothing else is available. Grepping the deployed plugin bundle inside
+# the running rhaap-portal pod (chart 2.1.0) returns 200 occurrences of
+# `jobTemplates` and ZERO of `workflowJobTemplates`, `WorkflowJobTemplate` or
+# `AAPWorkflowJobTemplateProvider`. dc1.azure reached the same conclusion the
+# same way; its playbooks/launch_workflow.yml is where this one is ported from.
+#
+# So the entry point a requester sees has to BE a job template. This is that
+# job template's playbook: a thin launcher that fires one of the Day 1
+# workflows and gets out of the way.
+#
+# ---------------------------------------------------------------------------
+# IT LAUNCHES THE WORKFLOW THE SE ALREADY USES. THAT IS THE WHOLE DESIGN.
+# ---------------------------------------------------------------------------
+# `Linux Day 1 - 0 Workflow` and `Windows Day 1 - 0 Workflow` are not copied,
+# wrapped or re-implemented here. The portal path and the SE path launch the
+# same object, so a fix to the chain reaches both and neither can drift.
+#
+# #242 originally specified a second pair of workflows. Every reason it gave
+# had expired by the time it was built: #238 made provision_vm.yml dispatch on
+# `hypervisor`, so anything chaining Provision is already multi-hypervisor, and
+# #300/#340 split the single workflow into the Linux and Windows pair this
+# launches. A second pair would have been two more things to keep in step.
+#
+# ---------------------------------------------------------------------------
+# ansible.controller, AND THAT IS A DELIBERATE EXCEPTION.
+# ---------------------------------------------------------------------------
+# The repo rule is `ansible.platform` over `ansible.controller`. ansible.platform
+# 2.7.20260604 ships 22 modules and not one of them launches anything -- it
+# covers gateway objects (organizations, users, teams, tokens, settings).
+# Launching is controller-domain, so `ansible.controller.workflow_launch` is not
+# a legacy choice here, it is the only one. Pinned at 4.8.0 in
+# collections/requirements.yml and already in the EE, so no rebuild.
+#
+# ---------------------------------------------------------------------------
+# NO NEW CREDENTIAL, UNLIKE THE dc1.azure ORIGINAL.
+# ---------------------------------------------------------------------------
+# dc1.azure attaches a "Red Hat Ansible Automation Platform" credential to
+# inject CONTROLLER_HOST / CONTROLLER_USERNAME / CONTROLLER_PASSWORD, and reads
+# them back with an env lookup. This repo already has every one of those values
+# on the play: aap_hostname, aap_username and aap_validate_certs come from the
+# environment's connection.yml, and aap_password is injected as an extra_var by
+# the "Sales Demos - Env Secrets" custom credential type (#129). Adding a second
+# credential holding the same admin password would be a second copy to rotate,
+# which is the thing #22, #68 and #102 all exist to avoid.
+#
+# ---------------------------------------------------------------------------
+# THE VARIABLES HAVE TO BE SURVEY QUESTIONS ON THE WORKFLOW.
+# ---------------------------------------------------------------------------
+# A trigger does not talk to the workflow's nodes; it hands extra_vars to the
+# WORKFLOW, which feeds them to every node. A survey-enabled workflow accepts
+# extra_vars that answer its own survey and REJECTS everything else with
+# `400 Variables ... are not allowed on launch` unless ask_variables_on_launch
+# is set. dc1.azure found that live (AB#91).
+#
+# So `hypervisor` was added to both Day 1 workflow surveys in the same change
+# as this playbook -- without it, this launcher cannot pass it at all. If a
+# future caller needs a variable that is NOT a survey question (#243's
+# ticket_number / ticket_sys_id / ansible_eda are the known ones), that is when
+# ask_variables_on_launch has to be turned on, and not before.
+#
+# NOTE WHAT IS NOT ASSERTED HERE: the vm_count ceiling. It is 1..2 in six
+# places already (#397) -- both Provision surveys, both workflow surveys,
+# provision_vm.yml and terraform/ocpvirt/variables.tf -- and AAP enforces survey
+# min/max server-side, so an API launch is bound by the same numbers the portal
+# form is. A seventh copy here would be a seventh thing to keep in step.
+# ===========================================================================
+
+- name: Launch a Day 1 workflow (self-service portal entry point)
+  hosts: aap
+  gather_facts: false
+
+  vars:
+    # The workflow to fire. Pinned as an extra_var on each launcher job
+    # template rather than surveyed -- which workflow runs is the difference
+    # between the two templates, not a choice the requester makes. Pinning it
+    # is the same safety call #300 made for os_type.
+    launch_workflow_name: "{{ workflow_name | default('') }}"
+    launch_hypervisor: "{{ hypervisor | default('ocpvirt') }}"
+    launch_size_tier: "{{ vm_size_tier | default('large') }}"
+    launch_vm_role: "{{ vm_role | default('web') }}"
+    launch_vm_count: "{{ vm_count | default(1) | int }}"
+
+  tasks:
+    - name: Assert exactly one environment is targeted
+      ansible.builtin.include_tasks: tasks/assert_target_environment.yml
+
+    - name: Assert the launcher inputs are present and valid
+      ansible.builtin.assert:
+        that:
+          # Named explicitly rather than "any non-empty string": this playbook
+          # launches whatever it is handed, so the allow-list is what stops a
+          # mistyped extra_var from firing Teardown.
+          - launch_workflow_name in ['Linux Day 1 - 0 Workflow', 'Windows Day 1 - 0 Workflow']
+          - launch_hypervisor in ['ocpvirt']
+          - launch_size_tier in ['small', 'medium', 'large']
+          - launch_vm_role is match('^[a-z][a-z0-9]{0,7}$')
+        fail_msg: >-
+          Need workflow_name (Linux Day 1 - 0 Workflow | Windows Day 1 - 0 Workflow),
+          hypervisor (ocpvirt), vm_size_tier (small|medium|large) and vm_role
+          (1-8 lowercase alphanumeric, starting with a letter).
+          Got workflow_name={{ launch_workflow_name }},
+          hypervisor={{ launch_hypervisor }},
+          vm_size_tier={{ launch_size_tier }},
+          vm_role={{ launch_vm_role }},
+          vm_count={{ launch_vm_count }}.
+        quiet: true
+
+    - name: Assert the AAP connection details resolved
+      ansible.builtin.assert:
+        that:
+          - aap_hostname | default('') | length > 0
+          - aap_username | default('') | length > 0
+          - aap_password | default('') | length > 0
+        fail_msg: >-
+          aap_hostname/aap_username come from this environment's connection.yml
+          and aap_password from the "Sales Demos - Env Secrets" credential (or
+          the vault on a laptop run). One of them is empty.
+        quiet: true
+
+    - name: "Launch {{ launch_workflow_name }}"
+      # wait: false is deliberate, and matches dc1.azure. The requester watches
+      # the workflow in AAP; a launcher that blocked would tie a portal request
+      # to a build that takes fifteen minutes or more, and the portal would show
+      # a spinner for all of it.
+      ansible.controller.workflow_launch:
+        workflow_template: "{{ launch_workflow_name }}"
+        # aap_organization_name comes from inventory/group_vars/aap/main.yml,
+        # which is the same value controller_workflows.yml gives both
+        # workflows. Passed so the lookup cannot match a same-named workflow
+        # in another organization.
+        organization: "{{ aap_organization_name }}"
+        controller_host: "https://{{ aap_hostname }}"
+        controller_username: "{{ aap_username }}"
+        controller_password: "{{ aap_password }}"
+        validate_certs: "{{ aap_validate_certs | default(false) }}"
+        extra_vars:
+          hypervisor: "{{ launch_hypervisor }}"
+          vm_size_tier: "{{ launch_size_tier }}"
+          vm_role: "{{ launch_vm_role }}"
+          vm_count: "{{ launch_vm_count }}"
+        wait: false
+      register: launch_result
+
+    - name: Report the launched workflow job
+      # The deep link is the point of this task. A portal requester has no job
+      # id to paste into a URL bar, so print one they can click.
+      ansible.builtin.debug:
+        msg:
+          - "Launched: {{ launch_workflow_name }}"
+          - "Requested: {{ launch_vm_count }} x {{ launch_size_tier }} as role '{{ launch_vm_role }}' on {{ launch_hypervisor }}"
+          - "Workflow job {{ launch_result.id | default('unknown') }}"
+          - "Watch it: https://{{ aap_hostname }}/execution/workflow-jobs/{{ launch_result.id | default('') }}/output"

@@ -7,6 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added -- self-service portal entry points (#242)
+
+- **Two launcher job templates**, `Self-Service - Request Linux Server` and
+  `Self-Service - Request Windows Server`, each firing one of the existing Day 1
+  workflows via the new `playbooks/launch_workflow.yml`. `Self-Service - ` is a
+  new family prefix under the #300 taxonomy, sorting as its own block.
+- **The portal cannot surface workflows, and this is the answer to that.**
+  Measured 2026-09-08: `portal.yml` writes
+  `catalog.providers.rhaap.production.sync.jobTemplates` because it is the only
+  key there is, and the deployed plugin bundle in the running `rhaap-portal` pod
+  (chart 2.1.0) contains 200 occurrences of `jobTemplates` and **zero** of
+  `workflowJobTemplates` / `WorkflowJobTemplate`. There is no config key to turn
+  on. dc1.azure reached the same conclusion the same way, and
+  `launch_workflow.yml` is ported from its solution.
+- **The launchers fire the workflows an SE already uses.** #242 as written
+  specified a second pair of provisioning workflows; every reason it gave had
+  expired -- #238 made `provision_vm.yml` dispatch on `hypervisor`, so anything
+  chaining Provision is already multi-hypervisor, and #300/#340 split the single
+  workflow into the Linux and Windows pair these launch. One implementation, two
+  entry points, so a fix to the chain reaches both.
+- **`hypervisor` added to both Day 1 workflow surveys, and it is load-bearing.**
+  A trigger hands `extra_vars` to the WORKFLOW, which feeds them to its nodes; a
+  survey-enabled workflow rejects any extra_var that is not one of its own
+  questions with `400 Variables ... are not allowed on launch` (dc1.azure AB#91).
+  Without the question the launcher could not pass a hypervisor at all.
+  `ask_variables_on_launch` stays **off** -- #243 is what will need it, for
+  `ticket_number` / `ticket_sys_id` / `ansible_eda`.
+- **New `self-service` label**, a fifth axis (*entry point*) in
+  `controller_labels.yml`. On the launchers only, not the workflows: the
+  workflows now serve both audiences, which is the point of reusing them.
+- **No new credential.** `Sales Demos - Env Secrets` already injects
+  `aap_password`, so unlike the dc1.azure original this needs no second copy of
+  the admin password in a "Red Hat Ansible Automation Platform" credential.
+- **`ansible.controller.workflow_launch`, a deliberate exception** to the
+  `ansible.platform` preference. `ansible.platform` 2.7.20260604 ships 22
+  modules and none of them launch anything; launching is controller-domain.
+  Already pinned at 4.8.0 and present in the EE, so no rebuild.
+
 ### Fixed -- the `vm_count` ceiling was 10, but only 1 or 2 is buildable (#397)
 
 - **Every `vm_count` constraint is now `1..2`**, in all six places that carry

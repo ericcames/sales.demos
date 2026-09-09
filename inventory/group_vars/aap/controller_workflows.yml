@@ -177,8 +177,42 @@ controller_workflows_all:
     survey_enabled: true
     survey_spec:
       name: ""
-      description: "Pick a VM size tier, workload role and farm size"
+      description: "Pick a hypervisor, VM size tier, workload role and farm size"
       spec:
+        # ASKED HERE BECAUSE A TRIGGER CANNOT PASS WHAT THE SURVEY DOES NOT ASK
+        # (#242). A launcher, EDA rulebook or GitHub Action hands extra_vars to
+        # the WORKFLOW, which feeds them to every node -- it never talks to a
+        # node directly. A survey-enabled workflow accepts extra_vars that
+        # answer its own survey and rejects everything else with
+        # `400 Variables ... are not allowed on launch` unless
+        # ask_variables_on_launch is set. dc1.azure found that live (AB#91).
+        #
+        # So this question is what lets `Self-Service - Request Linux Server`
+        # pass a hypervisor through at all. The Provision template below has
+        # had it since #238; the workflow survey overrides its nodes', so
+        # without it here the workflow silently fell back to the ocpvirt
+        # default and the choice was unreachable from every entry point.
+        #
+        # ONE CHOICE TODAY, AND THAT IS NOT A REASON TO DROP IT. provision_vm.yml
+        # asserts `provision_hypervisor in ['ocpvirt']`, so listing aws/azure/ibm
+        # would offer values that fail. They arrive as later phases of #237.
+        #
+        # ask_variables_on_launch STAYS OFF until something needs a variable
+        # that is not a question here -- #243's ticket_number / ticket_sys_id /
+        # ansible_eda are the known ones. Turning it on early would open both
+        # workflows to arbitrary extra_vars from any caller, which is the
+        # opposite of the #300 safety posture.
+        - question_name: Hypervisor
+          question_description: >-
+            Which infrastructure provider to provision on. OCP Virt is the
+            default and only provider today; others will be added in later
+            phases of #237.
+          variable: hypervisor
+          type: multiplechoice
+          required: true
+          default: ocpvirt
+          choices:
+            - ocpvirt
         - question_name: VM size tier
           question_description: >-
             T-shirt size (2v/4G, 2v/8G, 4v/16G). Sized for doubled RHDP
@@ -343,8 +377,42 @@ controller_workflows_all:
     survey_enabled: true
     survey_spec:
       name: ""
-      description: "Pick a VM size tier, workload role and farm size"
+      description: "Pick a hypervisor, VM size tier, workload role and farm size"
       spec:
+        # ASKED HERE BECAUSE A TRIGGER CANNOT PASS WHAT THE SURVEY DOES NOT ASK
+        # (#242). A launcher, EDA rulebook or GitHub Action hands extra_vars to
+        # the WORKFLOW, which feeds them to every node -- it never talks to a
+        # node directly. A survey-enabled workflow accepts extra_vars that
+        # answer its own survey and rejects everything else with
+        # `400 Variables ... are not allowed on launch` unless
+        # ask_variables_on_launch is set. dc1.azure found that live (AB#91).
+        #
+        # So this question is what lets `Self-Service - Request Linux Server`
+        # pass a hypervisor through at all. The Provision template below has
+        # had it since #238; the workflow survey overrides its nodes', so
+        # without it here the workflow silently fell back to the ocpvirt
+        # default and the choice was unreachable from every entry point.
+        #
+        # ONE CHOICE TODAY, AND THAT IS NOT A REASON TO DROP IT. provision_vm.yml
+        # asserts `provision_hypervisor in ['ocpvirt']`, so listing aws/azure/ibm
+        # would offer values that fail. They arrive as later phases of #237.
+        #
+        # ask_variables_on_launch STAYS OFF until something needs a variable
+        # that is not a question here -- #243's ticket_number / ticket_sys_id /
+        # ansible_eda are the known ones. Turning it on early would open both
+        # workflows to arbitrary extra_vars from any caller, which is the
+        # opposite of the #300 safety posture.
+        - question_name: Hypervisor
+          question_description: >-
+            Which infrastructure provider to provision on. OCP Virt is the
+            default and only provider today; others will be added in later
+            phases of #237.
+          variable: hypervisor
+          type: multiplechoice
+          required: true
+          default: ocpvirt
+          choices:
+            - ocpvirt
         - question_name: VM size tier
           question_description: >-
             T-shirt size (2v/4G, 2v/8G, 4v/16G). Windows gets a 60 GiB root

@@ -166,9 +166,10 @@ All of it is configuration-as-code under `inventory/group_vars/`, applied by
 | | `AAP Observability - 1 Deploy Alloy` · `2 Deploy Dashboards` |
 | | `Cluster Day 0 - 1 Install OpenShift Virtualization` · `2 Verify Environment` · `Probe Capacity` |
 | | `Golden Image - Link RHEL 9 CIS L1` · `Link Windows 2022 CIS L1` |
+| | `Self-Service - Request Linux Server` · `Request Windows Server` |
 | | `Windows Day 1 - 1 Provision` · `2 Patch` · `3 Configure` · `4 Compliance Scan` · `5 Check` · `Repair` · `Teardown` |
 | Workflows | `Cluster Day 0` · `Linux Day 1 - 0 Workflow` · `Windows Day 1 - 0 Workflow` |
-| Labels | `linux` · `windows` · `cluster` · `aap-ecosystem` · `observability` · `golden-image` · `day-0` · `day-1` · `install` · `ocpvirt` · `read-only` |
+| Labels | `linux` · `windows` · `cluster` · `aap-ecosystem` · `observability` · `golden-image` · `day-0` · `day-1` · `install` · `ocpvirt` · `read-only` · `self-service` |
 | Schedules | `Linux Day 1 - Nightly teardown (6 PM)` · `Windows Day 1 - Nightly teardown (6 PM)` (+ 10 PM safety nets in sandbox) |
 
 **Almost everything runs from AAP now, and the exceptions are deliberate.**
