@@ -9,8 +9,8 @@
 # Install to the recommended path (Ansible's default, ~/.ansible/collections):
 #   ansible-galaxy collection install -r collections/requirements.yml
 #
-# Or use the `collections-sync` skill, which pins, installs, and then verifies
-# that what is installed matches this file.
+# Or use the `sales-demos-collections-sync` skill, which pins, installs, and
+# then verifies that what is installed matches this file.
 #
 # Never install into the repo. `.ansible/` and `collections/ansible_collections/`
 # are gitignored artifact directories, not somewhere collections belong.

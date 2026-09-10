@@ -1,9 +1,9 @@
 ---
-name: collections-sync
+name: sales-demos-collections-sync
 description: "Pin, install, and verify the Ansible collections this repo depends on. Writes exact versions into collections/requirements.yml, installs them to the recommended path (~/.ansible/collections), then checks that what is installed matches what is pinned and fails loudly on drift. TRIGGER when: the user asks to install or update collections, add a collection to the repo, pin or bump a collection version, or when a playbook fails with 'couldn't resolve module/action' or a collection-version error. SKIP: if the user is adding a Python package rather than an Ansible collection, or only wants to run the CI lint gate."
 ---
 
-# collections-sync
+# sales-demos-collections-sync
 
 Keeps `collections/requirements.yml` honest: every collection pinned to an
 exact version, installed to the recommended path, and verified to match.
