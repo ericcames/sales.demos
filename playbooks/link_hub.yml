@@ -53,7 +53,7 @@
 # IT IS A GATEWAY TOKEN, NOT A PAH API TOKEN. THIS COST A FAILED RUN TO LEARN.
 # -------------------------------------------------------------------------
 # The obvious mint is token #2 of the three-token table in
-# docs/plan/pah-plan.md — the hub's own API token, POST /api/galaxy/v3/auth/token/.
+# https://ericcames.github.io/sales.demos-docs/plan/pah-plan/ — the hub's own API token, POST /api/galaxy/v3/auth/token/.
 # That endpoint exists on AAP 2.7 and cheerfully issues a 40-character token.
 #
 # THE GATEWAY DOES NOT ACCEPT IT. Measured on sandbox 2026-09-04, against

@@ -215,9 +215,9 @@ lives in [Google Drive](https://drive.google.com/drive/folders/1Me_blEFV-xHUyZeL
 
 | Use case | Audience | Plan | Talk track |
 |---|---|---|---|
-| **OpenShift Virtualization** | Linux / platform sysadmins | [`docs/plan/ocpvirt-demo-plan.md`](docs/plan/ocpvirt-demo-plan.md) | [docs site](https://ericcames.github.io/sales.demos-docs/demos/openshift-virtualization/) |
-| **Private Automation Hub — ClickOps vs. config-as-code** | Sysadmins and automation leads | [`docs/plan/pah-plan.md`](docs/plan/pah-plan.md) | [docs site](https://ericcames.github.io/sales.demos-docs/demos/private-automation-hub/) |
-| **MCP Servers — Agentic Automation** | Platform engineers and automation leads | [`docs/plan/platform-addons-plan.md`](docs/plan/platform-addons-plan.md) | [docs site](https://ericcames.github.io/sales.demos-docs/demos/mcp-servers/) |
+| **OpenShift Virtualization** | Linux / platform sysadmins | [`ocpvirt-demo-plan`](https://ericcames.github.io/sales.demos-docs/plan/ocpvirt-demo-plan/) | [docs site](https://ericcames.github.io/sales.demos-docs/demos/openshift-virtualization/) |
+| **Private Automation Hub — ClickOps vs. config-as-code** | Sysadmins and automation leads | [`pah-plan`](https://ericcames.github.io/sales.demos-docs/plan/pah-plan/) | [docs site](https://ericcames.github.io/sales.demos-docs/demos/private-automation-hub/) |
+| **MCP Servers — Agentic Automation** | Platform engineers and automation leads | [`platform-addons-plan`](https://ericcames.github.io/sales.demos-docs/plan/platform-addons-plan/) | [docs site](https://ericcames.github.io/sales.demos-docs/demos/mcp-servers/) |
 | **Edge / Single Node OpenShift** | Infrastructure and edge architects | [`ROADMAP.md`](ROADMAP.md) | [docs site](https://ericcames.github.io/sales.demos-docs/demos/edge-sno/) |
 
 ## The demo: OpenShift Virtualization on the RHDP "Ansible Product Demo"
@@ -227,7 +227,7 @@ small / medium / large t-shirt sizing, AAP registers them as managed hosts, and
 the existing daily-demo content layers on top unchanged.
 
 The full research findings, design decisions, and phase-by-phase plan are in
-[`docs/plan/ocpvirt-demo-plan.md`](docs/plan/ocpvirt-demo-plan.md). Read that
+[`ocpvirt-demo-plan`](https://ericcames.github.io/sales.demos-docs/plan/ocpvirt-demo-plan/). Read that
 first — it records *why* things are the way they are, not just what to do.
 
 **Presenting it rather than building it?** The
@@ -279,9 +279,9 @@ Both environments look identical at the AAP login page, and the moment you are
 most likely to act on the wrong one is the moment before you have touched
 anything. Each gets a badged sign-in logo:
 
-![sandbox](docs/images/logo-sandbox.png)
+![sandbox](assets/aap-branding/logo-sandbox.png)
 
-![demo](docs/images/logo-demo.png)
+![demo](assets/aap-branding/logo-demo.png)
 
 Green for the environment you break, red for the one you show customers —
 the same severity convention as `aap_config`. Regenerate with:
@@ -418,7 +418,7 @@ certified content lives in `~/.ansible.cfg`, and an AAP execution environment ha
 no such file. A vaulted fallback was built and verified working, then removed —
 it bought one job template at the cost of a second copy of a rotating credential.
 So PAH work runs from a laptop, which is where `config.yml` has always been: you
-cannot use AAP to bootstrap itself. See [`docs/plan/pah-plan.md`](docs/plan/pah-plan.md).
+cannot use AAP to bootstrap itself. See [`pah-plan`](https://ericcames.github.io/sales.demos-docs/plan/pah-plan/).
 
 | Layer | Responsibility |
 |---|---|

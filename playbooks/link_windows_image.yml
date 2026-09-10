@@ -157,7 +157,7 @@
           quay_windows_image must name a real published containerdisk
           (set in inventory/group_vars/<env>/connection.yml),
           and quay_username / quay_password must be set in the vaulted
-          secrets.yml. See docs/plan/ocpvirt-demo-plan.md.
+          secrets.yml. See https://ericcames.github.io/sales.demos-docs/plan/ocpvirt-demo-plan/.
         quiet: true
       when: windows_image_link_state == 'present'
 

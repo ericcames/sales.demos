@@ -50,7 +50,7 @@ watch. That is a deliberate asymmetry, not an oversight — see #102.
 external SaaS instance that survives RHDP rebuilds. That is the whole point of
 choosing it over self-hosted (#260). The service account token has the Viewer
 role (read-only, matching the governance thesis). See
-[`docs/plan/grafana-plan.md`](../../../docs/plan/grafana-plan.md).
+[`grafana-plan`](https://ericcames.github.io/sales.demos-docs/plan/grafana-plan/).
 
 ### OpenShift servers
 
@@ -192,7 +192,7 @@ The script reads `grafana_cloud_url` and `grafana_cloud_sa_token` from the
 vault and registers the server with `claude mcp add --scope local`.
 
 **Prerequisite:** a Grafana Cloud account with a service account token
-(Viewer role). See [`docs/plan/grafana-plan.md`](../../../docs/plan/grafana-plan.md)
+(Viewer role). See [`grafana-plan`](https://ericcames.github.io/sales.demos-docs/plan/grafana-plan/)
 for the manual browser setup steps.
 
 **Restart Claude Code after running for the first time.** MCP servers are
@@ -329,7 +329,7 @@ claude mcp list
 | AAP MCP write tools missing | `aap_mcp_allow_write_operations` is false for this environment | Intentional on `demo`. Changing it needs a delete-and-recreate — re-run `mcp_server.yml`, which handles that |
 | `npx: command not found` | Node not installed | See preflight; a standalone binary is the alternative |
 | `no aap-mcp route` from make-aap-mcp.sh | MCP server not deployed | Run `/ocpvirt-setup` or `playbooks/mcp_server.yml` first |
-| Grafana `grafana_cloud_url not set` | Vault keys missing or still CHANGEME | `ansible-vault edit` and add real values — see `docs/plan/grafana-plan.md` |
+| Grafana `grafana_cloud_url not set` | Vault keys missing or still CHANGEME | `ansible-vault edit` and add real values — see the [grafana plan](https://ericcames.github.io/sales.demos-docs/plan/grafana-plan/) |
 | Grafana MCP tools present but calls fail | Token expired or revoked | Create a new SA token in the Grafana Cloud UI, update the vault |
 | `uvx: command not found` | uv not installed | See preflight; install from https://docs.astral.sh/uv/ |
 

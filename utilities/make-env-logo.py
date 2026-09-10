@@ -29,8 +29,8 @@ same colors from env_colors.py.
 
     python3 utilities/make-env-logo.py --env sandbox
 
-Writes docs/images/logo-<env>.png and the single-line base64 sidecar
-docs/images/logo-<env>.png.b64 that inventory/group_vars/<env>/gateway_settings.yml
+Writes assets/aap-branding/logo-<env>.png and the single-line base64 sidecar
+assets/aap-branding/logo-<env>.png.b64 that inventory/group_vars/<env>/gateway_settings.yml
 references. Re-run it to regenerate; both outputs are committed so they render on
 GitHub and so a clone does not need ImageMagick to apply the config.
 
@@ -51,7 +51,7 @@ from PIL import Image, ImageDraw, ImageFont
 from env_colors import COLORS
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
-IMAGES = REPO / "docs" / "images"
+IMAGES = REPO / "assets" / "aap-branding"
 SOURCE_SVG = IMAGES / "aap-logo-white.svg"
 FONT = "/usr/share/fonts/redhat/RedHatDisplay-SemiBold.otf"
 

@@ -1,10 +1,10 @@
 # Roadmap
 
 Four use cases. Full detail and rationale in
-[`docs/plan/ocpvirt-demo-plan.md`](docs/plan/ocpvirt-demo-plan.md),
-[`docs/plan/pah-plan.md`](docs/plan/pah-plan.md),
-[`docs/plan/network-mcp-plan.md`](docs/plan/network-mcp-plan.md) and
-[`docs/plan/grafana-plan.md`](docs/plan/grafana-plan.md).
+[`ocpvirt-demo-plan`](https://ericcames.github.io/sales.demos-docs/plan/ocpvirt-demo-plan/),
+[`pah-plan`](https://ericcames.github.io/sales.demos-docs/plan/pah-plan/),
+[`network-mcp-plan`](https://ericcames.github.io/sales.demos-docs/plan/network-mcp-plan/) and
+[`grafana-plan`](https://ericcames.github.io/sales.demos-docs/plan/grafana-plan/).
 
 Each phase ships two entry points — a Claude Code skill and an AAP job template —
 both driving the same playbook. `pah-sync` is the one documented exception; see
@@ -16,15 +16,15 @@ Both tooling and a demonstrable use case. Connects Claude Code straight to the
 clusters so asking an environment a question costs a tool call rather than a
 hand-rolled `curl` plus a vault read — and the governed read/write boundary is
 itself a demo worth showing customers. Full detail in
-[`docs/plan/platform-addons-plan.md`](docs/plan/platform-addons-plan.md);
+[`platform-addons-plan`](https://ericcames.github.io/sales.demos-docs/plan/platform-addons-plan/);
 demo documentation in
-[`docs/demos/mcp-servers/`](docs/demos/mcp-servers/).
+[MCP Servers demo](https://ericcames.github.io/sales.demos-docs/demos/mcp-servers/).
 
 | | Skill | Playbook | Outcome | Status |
 |---|---|---|---|---|
 | OpenShift MCP | `sales-demos-mcp` | — (laptop-only, by design) | Three committed servers: `openshift-sandbox` (full, 25 tools), `openshift-demo` (read-only, 16) and `openshift-edge` (full, 25) for the bare-metal SNO. Runs locally, so it survives environment churn and works before a cluster exists. | **Done** ([#102](https://github.com/ericcames/sales.demos/issues/102)) |
 | AAP MCP | `sales-demos-mcp` | `playbooks/mcp_server.yml` | A typed `AnsibleMCPServer` CR, deployed by `setup.yml` so a new environment arrives with it on. 140 tools including job-template launch. Write posture is per-environment and never defaulted. | **Done** ([#102](https://github.com/ericcames/sales.demos/issues/102)) |
-| ServiceNow MCP | — | — | **Not built, deliberately.** The native MCP Server Console needs Zurich Patch 9+ or Australia Patch 2+; the demo instance is Yokohama, measured 2026-09-02. The write path is `servicenow.itsm`, already pinned, and needs no MCP server at all. Community servers are read-write with no way to constrain them and are not recommended. Reasoning and the build-your-own path in [`docs/demos/mcp-servers/servicenow.md`](docs/demos/mcp-servers/servicenow.md). | **Documented, blocked on an instance upgrade** |
+| ServiceNow MCP | — | — | **Not built, deliberately.** The native MCP Server Console needs Zurich Patch 9+ or Australia Patch 2+; the demo instance is Yokohama, measured 2026-09-02. The write path is `servicenow.itsm`, already pinned, and needs no MCP server at all. Community servers are read-write with no way to constrain them and are not recommended. Reasoning and the build-your-own path in [ServiceNow](https://ericcames.github.io/sales.demos-docs/demos/mcp-servers/servicenow/). | **Documented, blocked on an instance upgrade** |
 | Cluster probe | `sales-demos-probe-env` | `playbooks/probe_env.yml` | Read-only capacity measurement, safe mid-demo. Found `available_memory_gb` five times too small and recommends a replacement. Both add-on operators confirmed present on OperatorHub. | **Done** ([#100](https://github.com/ericcames/sales.demos/issues/100)) |
 | Automation Orchestrator | `sales-demos-orchestrator` | `playbooks/install_ao.yml` | Runs on every build, default-on and skippable with `install_ao=false`. CloudNativePG supplies the three databases Temporal actually needs — the CRD asks for two and the third, `temporal_visibility`, is undocumented. Measured 1.91 vCPU / 2.47 GiB, which moved `available_memory_gb` 67 → 63. | **Done** ([#108](https://github.com/ericcames/sales.demos/issues/108), [#141](https://github.com/ericcames/sales.demos/issues/141)) |
 
@@ -32,7 +32,7 @@ demo documentation in
 
 Push cluster metrics and logs to Grafana Cloud so the AI agent can answer
 infrastructure questions through the Grafana MCP server. Full detail in
-[`docs/plan/grafana-plan.md`](docs/plan/grafana-plan.md).
+[`grafana-plan`](https://ericcames.github.io/sales.demos-docs/plan/grafana-plan/).
 
 | | Skill | Playbook | Outcome | Status |
 |---|---|---|---|---|
@@ -44,7 +44,7 @@ AI-assisted development of Cisco, Palo Alto and Aruba use cases. Nothing is buil
 yet: three decisions are held open for network SME review, and the implementation
 issues are deliberately unopened until they land — Decisions A and B change what
 the Palo Alto and Aruba issues *are*. See
-[`docs/plan/network-mcp-plan.md`](docs/plan/network-mcp-plan.md).
+[`network-mcp-plan`](https://ericcames.github.io/sales.demos-docs/plan/network-mcp-plan/).
 
 | | Skill | Playbook | Outcome | Status |
 |---|---|---|---|---|

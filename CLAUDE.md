@@ -6,11 +6,53 @@ including *why* each choice was made.
 
 | Use case | Plan |
 |---|---|
-| OpenShift Virtualization | [`docs/plan/ocpvirt-demo-plan.md`](docs/plan/ocpvirt-demo-plan.md) |
-| Private Automation Hub as code | [`docs/plan/pah-plan.md`](docs/plan/pah-plan.md) |
-| Network MCP servers | [`docs/plan/network-mcp-plan.md`](docs/plan/network-mcp-plan.md) |
-| Platform add-ons (MCP servers) | [`docs/plan/platform-addons-plan.md`](docs/plan/platform-addons-plan.md) |
-| Grafana Cloud observability | [`docs/plan/grafana-plan.md`](docs/plan/grafana-plan.md) |
+| OpenShift Virtualization | [`ocpvirt-demo-plan`](https://ericcames.github.io/sales.demos-docs/plan/ocpvirt-demo-plan/) |
+| Private Automation Hub as code | [`pah-plan`](https://ericcames.github.io/sales.demos-docs/plan/pah-plan/) |
+| Network MCP servers | [`network-mcp-plan`](https://ericcames.github.io/sales.demos-docs/plan/network-mcp-plan/) |
+| Platform add-ons (MCP servers) | [`platform-addons-plan`](https://ericcames.github.io/sales.demos-docs/plan/platform-addons-plan/) |
+| Grafana Cloud observability | [`grafana-plan`](https://ericcames.github.io/sales.demos-docs/plan/grafana-plan/) |
+
+**The plans live in [sales.demos-docs](https://github.com/ericcames/sales.demos-docs),
+not here** (#422). So do the talk tracks, run sheets and every documentation
+image. They used to exist in *both* repos with nothing keeping them in step, and
+20 of the 35 shared files had drifted — including a run sheet still telling
+presenters that Windows "cannot be logged into yet", days after that was proven
+working end to end. Clone it beside this repo:
+
+```bash
+git clone https://github.com/ericcames/sales.demos-docs.git
+```
+
+`utilities/render-demo-assets.py` and `utilities/check-docs-artifacts.py` both
+default to `../sales.demos-docs`, and `utilities/notebooklm-sources.txt` names it
+as a source repo.
+
+## `docs/` does not exist here — `assets/aap-branding/` is not documentation
+
+**Do not create a `docs/` directory in this repo.** Documentation goes to
+`sales.demos-docs`. The exceptions are the four files that would break something
+if moved, all of which sit beside the thing they describe: `CONTRIBUTING.md`
+(GitHub surfaces it during PR creation), `terraform/ocpvirt/README.md`,
+`utilities/aap-env-badge/README.md`, and `assets/aap-branding/README.md`.
+
+**`assets/aap-branding/` holds AAP gateway configuration inputs that look like
+screenshots.** `inventory/group_vars/<env>/gateway_settings.yml` reads
+`logo-<env>.png.b64` through a `file` lookup **at playbook run time, including
+from AAP's SCM checkout**, and `utilities/make-env-logo.py` reads
+`aap-logo-white.svg` as its source artwork. Deleting any of them breaks
+`config.yml` or the generator.
+
+That is exactly what nearly happened: `aap-logo-white.svg` is byte-identical to
+the copy in the docs repo, so a sweep of "images already duplicated over there"
+would have taken it, and nothing would have explained why the generator stopped
+working. The directory name is the fix.
+
+`utilities/check-env-logos.py` verifies each `.b64` really is the base64 of the
+`.png` beside it, and that every `gateway_settings.yml` lookup path resolves. It
+deliberately does **not** regenerate the PNG to compare — that needs ImageMagick,
+librsvg and a specific font, and font rasterisation is not byte-reproducible
+across machines, the same reason `check-docs-artifacts.py` skips
+`demo-page.png`.
 
 ## This repo is public
 

@@ -1,11 +1,18 @@
 ---
 name: sales-demos-talk-track
-description: "Scaffold a new use-case directory under docs/demos/ from _template/, or verify an existing one: check the five required files are present, discover renderable offline artifacts, run the renderer when applicable, visually inspect the output for broken images, and verify the 'Where the words come from' table has no empty rows and every source file exists. Laptop-only, no playbook. TRIGGER when: the user asks to create, scaffold, or start a new demo talk track or use case, verify or audit an existing talk track's structure or source table, re-render demo assets for the docs, check why a talk-track image looks wrong, or asks about the docs/demos/ conventions. SKIP: if the user is writing or editing the talk track prose itself — this skill checks structure and artifacts, not content — or if they only want to run render-demo-assets.py without the surrounding checks."
+description: "Scaffold a new use-case directory under the sales.demos-docs repo's docs/demos/ from _template/, or verify an existing one: check the five required files are present, discover renderable offline artifacts, run the renderer when applicable, visually inspect the output for broken images, and verify the 'Where the words come from' table has no empty rows and every source file exists. Laptop-only, no playbook. TRIGGER when: the user asks to create, scaffold, or start a new demo talk track or use case, verify or audit an existing talk track's structure or source table, re-render demo assets for the docs, check why a talk-track image looks wrong, or asks about the docs/demos/ conventions. Operates on a sibling checkout of ericcames/sales.demos-docs, not on this repo. SKIP: if the user is writing or editing the talk track prose itself — this skill checks structure and artifacts, not content — or if they only want to run render-demo-assets.py without the surrounding checks."
 ---
 
 # sales-demos-talk-track
 
-Scaffold or verify a use-case directory under `docs/demos/`.
+Scaffold or verify a use-case directory under `docs/demos/` **in the
+[sales.demos-docs](https://github.com/ericcames/sales.demos-docs) repo**, which
+has owned the talk tracks since #422. This repo has no `docs/` directory.
+
+The skill stays *here*, beside `render-demo-assets.py` and the
+`linux_configure` role whose templates it verifies against — and because
+`CLAUDE.md` says never to send someone to another repo's skill. It operates on a
+sibling checkout.
 
 Like `sales-demos-collections-sync`, this skill has **no playbook**, and that is
 deliberate. The "skill wraps a playbook" contract in `CLAUDE.md` exists so
@@ -18,7 +25,7 @@ call.
 
 The skill detects the mode from whether the directory exists:
 
-- **Scaffold** (`docs/demos/<use-case>/` does not exist) — copy `_template/`,
+- **Scaffold** (`docs/demos/<use-case>/` does not exist in the docs repo) — copy `_template/`,
   replace placeholders, remind the user of run-sheet-first ordering, add a Draft
   row to the hub document.
 - **Verify** (`docs/demos/<use-case>/` exists) — check structure, discover
@@ -33,25 +40,32 @@ writing.
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `USE_CASE` | *(none — ask the user)* | Directory name under `docs/demos/` (e.g. `openshift-virtualization`) |
+| `USE_CASE` | *(none — ask the user)* | Directory name under the docs repo's `docs/demos/` (e.g. `openshift-virtualization`) |
+| `SALES_DEMOS_DOCS` | `../sales.demos-docs` | Checkout of the docs repo. Everything below is relative to it. |
 
 ## Preflight Check
 
 ```bash
 USE_CASE="${USE_CASE:?provide the use-case directory name (e.g. openshift-virtualization)}"
+SALES_DEMOS_DOCS="${SALES_DEMOS_DOCS:-../sales.demos-docs}"
+
+# 0. The docs repo is a separate checkout and may simply not be here.
+test -d "$SALES_DEMOS_DOCS/docs/demos" \
+  && echo "✅ docs repo at $SALES_DEMOS_DOCS" \
+  || { echo "❌ no docs repo at $SALES_DEMOS_DOCS — git clone https://github.com/ericcames/sales.demos-docs.git beside this repo, or set SALES_DEMOS_DOCS"; exit 1; }
 
 # 1. Template directory has the five files
 for f in README.md run-sheet.md talk-track.md architecture.md objections.md; do
-  test -f "docs/demos/_template/$f" \
+  test -f "$SALES_DEMOS_DOCS/docs/demos/_template/$f" \
     && echo "✅ _template/$f" \
     || echo "❌ _template/$f missing"
 done
 
 # 2. Detect mode
-if [ -d "docs/demos/$USE_CASE" ]; then
-  echo "✅ docs/demos/$USE_CASE/ exists — VERIFY mode"
+if [ -d "$SALES_DEMOS_DOCS/docs/demos/$USE_CASE" ]; then
+  echo "✅ $SALES_DEMOS_DOCS/docs/demos/$USE_CASE/ exists — VERIFY mode"
 else
-  echo "ℹ️  docs/demos/$USE_CASE/ does not exist — SCAFFOLD mode"
+  echo "ℹ️  $SALES_DEMOS_DOCS/docs/demos/$USE_CASE/ does not exist — SCAFFOLD mode"
 fi
 
 # 3. jinja2 installed (only matters if this use case has renderable artifacts)
@@ -74,7 +88,7 @@ use case has renderable artifacts, which is discovered later.
 ## Scaffold (directory does not exist)
 
 ```bash
-cp -r docs/demos/_template "docs/demos/$USE_CASE"
+cp -r $SALES_DEMOS_DOCS/docs/demos/_template "$SALES_DEMOS_DOCS/docs/demos/$USE_CASE"
 ```
 
 Then:
@@ -84,12 +98,12 @@ Then:
 2. Replace `[the customer role]` in `talk-track.md` with the intended audience —
    ask the user.
 3. Show the user the new directory listing.
-4. Add a **Draft** row to the use case table in `docs/demos/README.md`.
+4. Add a **Draft** row to the use case table in `$SALES_DEMOS_DOCS/docs/demos/README.md`.
 5. Remind the user:
 
 > Write `run-sheet.md` first — it forces the arc into a shape that fits the
 > slot. Everything else is easier afterwards.
-> ([`docs/demos/README.md`](../../docs/demos/README.md) line 85)
+> ([`docs/demos/README.md`](https://github.com/ericcames/sales.demos-docs/blob/main/docs/demos/README.md) line 85)
 
 The "Where the words come from" table in `talk-track.md` has placeholder empty
 rows. They will fail the verify step until filled in — that is the point.
@@ -106,17 +120,17 @@ Run all checks below in order.
 
 ```bash
 for f in README.md run-sheet.md talk-track.md architecture.md objections.md; do
-  test -f "docs/demos/$USE_CASE/$f" \
+  test -f "$SALES_DEMOS_DOCS/docs/demos/$USE_CASE/$f" \
     && echo "✅ $f" \
     || echo "❌ $f missing"
 done
 
 # Extra files are allowed where earned — list without judging
 echo "--- all files ---"
-ls "docs/demos/$USE_CASE/"
+ls "$SALES_DEMOS_DOCS/docs/demos/$USE_CASE/"
 ```
 
-Check that `docs/demos/README.md` has a row for this use case in the use case
+Check that `$SALES_DEMOS_DOCS/docs/demos/README.md` has a row for this use case in the use case
 table.
 
 ### 2. Discover renderable artifacts
@@ -125,7 +139,7 @@ Two checks:
 
 ```bash
 # Rendered markers in the use case's markdown files
-grep -rn '<!-- rendered:' "docs/demos/$USE_CASE/" || echo "(none)"
+grep -rn '<!-- rendered:' "$SALES_DEMOS_DOCS/docs/demos/$USE_CASE/" || echo "(none)"
 
 # Whether render-demo-assets.py handles this use case
 grep -l "$USE_CASE\|linux_configure" utilities/render-demo-assets.py >/dev/null 2>&1 \
@@ -158,7 +172,7 @@ renderer; this skill runs it and checks the output.
 
 ### 4. Visual check (when a PNG was rendered)
 
-Read `docs/images/demo-page.png` with the Read tool.
+Read `$SALES_DEMOS_DOCS/docs/images/demo-page.png` with the Read tool.
 
 Check for:
 - The three product logos (RHEL, OpenShift, Ansible) are visible — not
@@ -171,7 +185,7 @@ this skill.
 
 ### 5. "Where the words come from" table
 
-Parse `docs/demos/$USE_CASE/talk-track.md` for the "Where the words come from"
+Parse `$SALES_DEMOS_DOCS/docs/demos/$USE_CASE/talk-track.md` for the "Where the words come from"
 section. For each row in the Markdown table:
 
 1. **No empty Claim cell.** Every row must have text in the first column.
@@ -187,7 +201,7 @@ python3 - <<'PY'
 import re, os, sys
 
 use_case = os.environ.get("USE_CASE", "")
-path = f"docs/demos/{use_case}/talk-track.md"
+path = f"$SALES_DEMOS_DOCS/docs/demos/{use_case}/talk-track.md"
 if not os.path.isfile(path):
     print(f"❌ {path} not found"); sys.exit(1)
 
