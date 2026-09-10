@@ -21,10 +21,19 @@ decision is deliberately still open.
 
 ## Getting started
 
-New machine, or a fresh clone? **Start here.** A clone passes CI and still
-cannot run a playbook until you have supplied three things that deliberately do
-not live in this repo: an Automation Hub token, a vault password, and a
-`secrets.yml` you build yourself.
+**Presenting a demo?** You do not need this repo. Talk tracks and run sheets are
+published as a site — pick your demo and read the **run sheet**, which is the
+page to hold while you present:
+
+**[ericcames.github.io/sales.demos-docs](https://ericcames.github.io/sales.demos-docs)**
+
+Nothing to clone, nothing to install. The rest of this section is for people
+changing the automation itself.
+
+**Running or changing the automation?** New machine, or a fresh clone?
+**Start here.** A clone passes CI and still cannot run a playbook until you have
+supplied three things that deliberately do not live in this repo: an Automation
+Hub token, a vault password, and a `secrets.yml` you build yourself.
 
 ```bash
 git clone https://github.com/ericcames/sales.demos.git
@@ -35,8 +44,9 @@ claude .
 
 [`.claude/skills/sales-demos-first-time/SKILL.md`](.claude/skills/sales-demos-first-time/SKILL.md)
 is the real onboarding document — it walks every prerequisite and validates each
-one. It is written to be *run* as a skill in Claude Code, but it reads perfectly
-well as a checklist if you would rather work through it by hand.
+one. It is written to be *run* as a skill in Claude Code, but it is almost
+entirely shell and reads as a plain checklist — work through it by hand if you
+do not have Claude Code, or would simply rather.
 
 | You need | Where it goes | Why it is not in the repo |
 |---|---|---|
@@ -44,6 +54,10 @@ well as a checklist if you would rather work through it by hand.
 | Vault password | `~/secrets/.vault_pass_sales_demos` | The one secret that cannot itself be vaulted |
 | `secrets.yml` | `playbooks/group_vars/all/` | Built from `secrets.yml.example`; shipping one person's encrypted credentials is what made this repo un-reusable (#130) |
 | Your cluster's hostnames | `connection.yml` **or** a `local.yml` overlay | Two legitimate paths — see below; which one depends on whether you run from a laptop or from AAP (#131) |
+
+[`CONTRIBUTING.md`](CONTRIBUTING.md) is the next thing to read if you intend to
+open a pull request — what must never be committed, where values live, the leak
+audit to run before every push, and the branch-and-PR workflow.
 
 ### Pointing it at your own environment
 
@@ -156,6 +170,36 @@ Both default to this repo's own values, so nothing changes if you ignore them.
 If your vault password lives somewhere other than the default path, export
 `SALES_DEMOS_VAULT_PASS`; both `utilities/make-kubeconfig.sh` and the AAP Vault
 credential in `inventory/group_vars/aap/main.yml` read that same variable.
+
+### Working across the factory and the platform
+
+The golden images are built in
+[image.builder.pipeline](https://github.com/ericcames/image.builder.pipeline)
+and consumed here, bound by a single containerdisk tag. Most work needs only one
+of the two repos — but some spans both, and the edge / SNO demo needs both by
+construction, since the installer ISO comes from there and Phase 3 runs here.
+
+When it does span both, clone both and **start the agent in this repo**:
+
+```bash
+git clone https://github.com/ericcames/sales.demos.git
+git clone https://github.com/ericcames/image.builder.pipeline.git
+cd sales.demos
+claude .
+```
+
+`.mcp.json` here is project-scoped, so the cluster servers load only in a session
+started in *this* directory, and the factory repo has no MCP servers at all.
+From here you can `cd ../image.builder.pipeline` and run its playbooks — the
+working directory does not restrict shell access. Better in one direction only,
+so start here.
+
+**Its skills are the exception, and this is the part that surprises people.**
+Skills are discovered from the directory the agent starts in, so
+`image.builder.pipeline`'s own skills — `first-time`, `dev-workflow`,
+`rhel9-containerdisk`, `windows-image-build` — are **not** reachable from a
+session started here. Typing `/first-time` in this session gets you nothing.
+Open a second session in that repo to use them.
 
 ## Documentation
 
