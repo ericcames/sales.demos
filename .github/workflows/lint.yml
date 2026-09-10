@@ -60,6 +60,11 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
+      - name: Check out the docs repo, which owns the talk tracks since #422
+        uses: actions/checkout@v5
+        with:
+          repository: ericcames/sales.demos-docs
+          path: sales.demos-docs
       - run: pip install jinja2
       - name: Committed banner blocks still match their templates
         # #85. The demo docs quote /etc/issue.net, /etc/motd and facts.json in
@@ -69,7 +74,21 @@ jobs:
         # banner has a presenter describing a machine that does not exist.
         #
         # Cheap because it renders text only: jinja2, no Chrome, seconds.
-        run: python3 utilities/check-docs-artifacts.py
+        #
+        # SINCE #422 THE DOCS ARE IN ANOTHER REPO, and this checks across the
+        # gap rather than giving up the gate. The script stays here, beside the
+        # renderer and the linux_configure role it reads templates from; only
+        # the markdown moved. One copy, invoked from both repos' workflows.
+        #
+        # This direction is the one #85 was opened for: edit motd.j2 and it
+        # fails HERE, at the moment the template changes. The consequence is
+        # that such a change needs its paired sales.demos-docs PR merged first,
+        # which is the honest cost of splitting coupled content across repos.
+        run: |
+          python3 utilities/check-docs-artifacts.py \
+            --docs-root sales.demos-docs/docs \
+          || { echo "::error::If you changed a template, merge the paired \
+          ericcames/sales.demos-docs PR first — this job reads that repo's main."; exit 1; }
 
   renderer-matches-role:
     runs-on: ubuntu-latest
@@ -122,6 +141,16 @@ jobs:
           python3 utilities/make-env-badge-config.py
           git diff --exit-code utilities/aap-env-badge/colors.json \
             || { echo "::error::colors.json is stale — run python3 utilities/make-env-badge-config.py and commit"; exit 1; }
+      - name: The env logo sidecars match their PNGs, and the lookups resolve
+        # #422. Same reasoning as the line above, for assets/aap-branding/:
+        # logo-<env>.png.b64 is a generated copy that gateway_settings.yml feeds
+        # to AAP as custom_logo at run time, and nothing verified either half.
+        #
+        # It does NOT regenerate the PNG to compare -- that needs ImageMagick,
+        # librsvg and a specific font, and font rasterisation is not
+        # byte-reproducible across machines. Base64 is, so the sidecar is
+        # verified exactly, with no dependencies.
+        run: python3 utilities/check-env-logos.py
 
   skills-frontmatter:
     runs-on: ubuntu-latest

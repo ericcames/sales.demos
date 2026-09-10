@@ -191,7 +191,7 @@
     # -------------------------------------------------------------------
     # THE CLICKOPS DEMO EDITS THESE REMOTES AS STOCK, SO CHECK THEY ARE (#170).
     #
-    # docs/demos/private-automation-hub/clickops.md opens on the stock hub UI and
+    # https://ericcames.github.io/sales.demos-docs/demos/private-automation-hub/clickops/ opens on the stock hub UI and
     # changes the `community` remote by hand, on the claim that `rh-certified`,
     # `validated` and `community` are all there on a fresh install. If an
     # environment ever ships without one, that half of the demo breaks in front
@@ -261,7 +261,7 @@
               This run WOULD have created it and succeeded -- ansible.hub creates
               a remote that is missing. It stops instead because this hub is no
               longer stock, and the ClickOps demo in
-              docs/demos/private-automation-hub/clickops.md opens by editing a
+              https://ericcames.github.io/sales.demos-docs/demos/private-automation-hub/clickops/ opens by editing a
               stock remote by hand. Recreate it in the hub UI under Automation
               Content > Remotes, or re-run with
               -e hub_require_stock_remotes=false to let this apply create it.

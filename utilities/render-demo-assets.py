@@ -2,7 +2,7 @@
 """Render the demo's guest-facing artifacts without a cluster.
 
 WHY THIS EXISTS
-    The talk track in docs/demos/openshift-virtualization/ has to work when the
+    The talk track in sales.demos-docs has to work when the
     presenter has no environment — an RHDP cluster expires, a demo slot lands
     before the morning's build finishes, a colleague reads the docs on a plane.
     Two of the three things a customer actually looks at are Jinja templates in
@@ -10,7 +10,7 @@ WHY THIS EXISTS
     laptop with nothing running.
 
     This is the same convention as utilities/make-env-logo.py: a generated
-    image committed under docs/images/, beside the script that regenerates it.
+    image committed in sales.demos-docs under docs/images/ (#422).
 
 WHAT IT IS NOT
     The screenshot is RENDERED FROM THE TEMPLATE, not photographed from a live
@@ -49,7 +49,14 @@ REPO = Path(__file__).resolve().parent.parent
 ROLE = REPO / "playbooks" / "roles" / "linux_configure"
 TEMPLATES = ROLE / "templates"
 LOGOS = ROLE / "files" / "logos"
-OUT_PNG = REPO / "docs" / "images" / "demo-page.png"
+# Since #422 the documentation images live in ericcames/sales.demos-docs; this
+# repo keeps only the AAP branding assets it reads at run time. Default to a
+# sibling checkout, overridable with --out. The banner rendering that
+# check-docs-artifacts.py depends on does not touch the PNG, so this script
+# stays useful with no docs checkout at all.
+DEFAULT_OUT_PNG = (
+    REPO.parent / "sales.demos-docs" / "docs" / "images" / "demo-page.png"
+)
 
 # The headless window, which IS the screenshot: --screenshot captures the
 # viewport, not the full scrollable page, so the height has to be sized to the
@@ -224,8 +231,8 @@ def find_chrome() -> str:
     )
 
 
-def screenshot(html: str) -> None:
-    """Write docs/images/demo-page.png from the rendered page.
+def screenshot(html: str, out_png: Path) -> None:
+    """Write the demo page screenshot to out_png.
 
     THE LOGOS MUST BE STAGED BESIDE THE HTML. index.html.j2 references
     `logos/rhel.svg` RELATIVELY, so rendering the file on its own produces a
@@ -238,7 +245,7 @@ def screenshot(html: str) -> None:
         (stage / "index.html").write_text(html, encoding="utf-8")
         shutil.copytree(LOGOS, stage / "logos")
 
-        OUT_PNG.parent.mkdir(parents=True, exist_ok=True)
+        out_png.parent.mkdir(parents=True, exist_ok=True)
         subprocess.run(  # noqa: S603 - fixed argv, no shell
             [
                 chrome,
@@ -252,7 +259,7 @@ def screenshot(html: str) -> None:
                 "--force-color-profile=srgb",
                 "--blink-settings=preferredColorScheme=1",
                 f"--window-size={VIEWPORT[0]},{VIEWPORT[1]}",
-                f"--screenshot={OUT_PNG}",
+                f"--screenshot={out_png}",
                 "--virtual-time-budget=2000",
                 (stage / "index.html").as_uri(),
             ],
@@ -261,8 +268,8 @@ def screenshot(html: str) -> None:
             cwd=stage,
         )
 
-    if not OUT_PNG.exists() or OUT_PNG.stat().st_size == 0:
-        sys.exit(f"Chrome exited cleanly but wrote nothing to {OUT_PNG}")
+    if not out_png.exists() or out_png.stat().st_size == 0:
+        sys.exit(f"Chrome exited cleanly but wrote nothing to {out_png}")
 
 
 def banner(title: str, body: str) -> None:
@@ -277,15 +284,35 @@ def main() -> None:
         action="store_true",
         help="skip the screenshot; print the text artifacts only",
     )
+    ap.add_argument(
+        "--out",
+        type=Path,
+        default=DEFAULT_OUT_PNG,
+        help=(
+            "where to write demo-page.png "
+            "(default: ../sales.demos-docs/docs/images/demo-page.png)"
+        ),
+    )
     args = ap.parse_args()
 
     html = render("index.html.j2")
 
     if not args.no_png:
-        screenshot(html)
-        rel = OUT_PNG.relative_to(REPO)
-        print(f"wrote {rel} ({OUT_PNG.stat().st_size:,} bytes)")
-        print("  -> open it and check the three product logos are NOT broken boxes")
+        out_png = args.out.resolve()
+        # The docs repo is a separate checkout and may simply not be here. Say so
+        # and carry on: the text artifacts below are what check-docs-artifacts.py
+        # verifies, and they need no docs checkout at all.
+        if not out_png.parent.parent.is_dir():
+            print(
+                f"SKIPPING the screenshot: {out_png.parent} does not exist.\n"
+                f"  demo-page.png lives in ericcames/sales.demos-docs since #422.\n"
+                f"  Clone it beside this repo, or pass --out <path>.\n"
+                f"  The text artifacts below are unaffected."
+            )
+        else:
+            screenshot(html, out_png)
+            print(f"wrote {out_png} ({out_png.stat().st_size:,} bytes)")
+            print("  -> open it and check the three product logos are NOT broken boxes")
 
     # The pre-auth notice renders with the URL forced empty, exactly as
     # linux_configure does: /etc/issue.net is shown before anyone has proved who

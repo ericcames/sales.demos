@@ -317,7 +317,7 @@ PY
 ```
 
 The instance-type shapes are checked because the t-shirt sizing tiers in
-`docs/plan/ocpvirt-demo-plan.md` depend on them. If they ever differ, Phase 1
+the [OCP Virt plan](https://ericcames.github.io/sales.demos-docs/plan/ocpvirt-demo-plan/) depends on them. If they ever differ, Phase 1
 sizing is wrong and the plan doc needs updating — say so rather than working
 around it.
 

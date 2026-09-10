@@ -53,7 +53,7 @@ aap_organization_name: "IT Service Automation"
 #                     community remote carries no credential at all.
 #
 # The full table, written for someone who has never run a PAH, is in
-# docs/demos/private-automation-hub/architecture.md.
+# https://ericcames.github.io/sales.demos-docs/demos/private-automation-hub/architecture/.
 #
 # IT EXPIRES after 30 days of non-use, and regenerating it on the portal
 # invalidates the old one. The failure mode is not an auth error: a sync

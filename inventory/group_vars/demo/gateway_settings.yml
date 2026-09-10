@@ -24,4 +24,4 @@
 # ===========================================================================
 
 gateway_settings_demo:
-  custom_logo: "data:image/png;base64,{{ lookup('ansible.builtin.file', inventory_dir + '/../docs/images/logo-demo.png.b64') }}"
+  custom_logo: "data:image/png;base64,{{ lookup('ansible.builtin.file', inventory_dir + '/../assets/aap-branding/logo-demo.png.b64') }}"

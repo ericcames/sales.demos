@@ -7,6 +7,79 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed -- docs move to sales.demos-docs; runtime branding gets its own home (#422)
+
+- **`docs/` is gone from this repo.** Talk tracks, run sheets, design plans and
+  documentation images now live only in
+  [sales.demos-docs](https://github.com/ericcames/sales.demos-docs), which
+  absorbed them in that repo's #12. They existed in both repos with nothing
+  keeping them in step, and 20 of the 35 shared files had drifted.
+- **Tracked content drops from 4933 KB to 1883 KB, a 62% cut.** The point is
+  that documentation churn no longer enters this repo's history at all, so AAP's
+  SCM project sync stops fetching image churn it never needed. **This speeds up
+  subsequent syncs, not the initial clone** -- git history keeps the blobs, and
+  `.git` is unchanged at 14 MB. Worth doing for the first reason, not the second.
+- **`assets/aap-branding/` is new, and it is not documentation.**
+  `inventory/group_vars/<env>/gateway_settings.yml` reads `logo-<env>.png.b64`
+  through a `file` lookup **at playbook run time, including from AAP's SCM
+  checkout**, and `make-env-logo.py` reads `aap-logo-white.svg` as its source
+  artwork. Six files, 92 KB, moved with `git mv` so history follows them.
+- **`aap-logo-white.svg` is why the directory exists.** It is byte-identical to
+  the copy in the docs repo, so a sweep of "images already duplicated over
+  there" would have deleted it and `make-env-logo.py` would have stopped working
+  with nothing to explain why. It only looks like a screenshot. Leaving six such
+  files behind in a directory named `docs/images/`, immediately after deleting
+  21 documentation images from it, is how that happens six months later.
+- Every reference repointed: `ROADMAP.md`, `CLAUDE.md`, `README.md`, three
+  skills, four playbooks, three `group_vars` files, `secrets.yml.example`, and
+  the 14 `utilities/notebooklm-sources.txt` entries -- which name a repo per
+  line and would have **failed the run**, not degraded it, since the collector
+  exits 1 on a manifest file that does not exist.
+
+### Added -- the generated env logos are verified for the first time (#422)
+
+- `utilities/check-env-logos.py`, wired into the `generated-files` CI job.
+  Asserts each `logo-<env>.png.b64` really is the base64 of the `.png` beside
+  it, and that every `gateway_settings.yml` lookup path resolves.
+- **Nothing checked either half before.** The `generated-files` job already
+  says why that matters, about `colors.json`: *"A committed generator output
+  that nothing verifies is a copy waiting to drift."* The logos were exactly
+  that. Replace the PNG, forget the sidecar, and AAP serves the old logo with
+  git looking correct and `config.yml` reporting `changed` as it always does.
+- **It deliberately does not regenerate the PNG to compare.** That needs Pillow,
+  ImageMagick with librsvg and the Red Hat Display font, and font rasterisation
+  is not byte-reproducible across machines -- a regenerate-and-diff check would
+  fail on a fontconfig change rather than on real drift. Same reason
+  `check-docs-artifacts.py` skips `demo-page.png`. Base64 is deterministic, so
+  the half that can be checked exactly, is.
+- Proven in both directions before merging: passes clean, and fails on a
+  one-character change to a sidecar.
+
+### Changed -- the docs gate now works across the repo boundary (#422)
+
+- `utilities/check-docs-artifacts.py` takes `--docs-root`, and CI checks out
+  `ericcames/sales.demos-docs` to point it there. **The script stays here**,
+  beside `render-demo-assets.py` and the `linux_configure` role it reads
+  templates from; only the markdown moved. One copy, invoked from both repos.
+- **This preserves the direction #85 was opened for**: edit `motd.j2` and it
+  fails *here*, at the moment the template changes. The honest cost is that such
+  a change now needs its paired docs PR merged first, and the job says so when
+  it fails.
+- The mirror job in the docs repo -- a talk-track edit failing on that side --
+  needs this flag to exist first, so it lands in a follow-up there.
+- `utilities/render-demo-assets.py` takes `--out`, defaulting to
+  `../sales.demos-docs/docs/images/demo-page.png`, and **skips the screenshot
+  with a clear message when that checkout is absent** rather than failing. The
+  text rendering `check-docs-artifacts.py` depends on never touches the PNG, so
+  the gate still works with no docs clone at all.
+- `.claude/skills/sales-demos-talk-track/SKILL.md` takes `SALES_DEMOS_DOCS`,
+  defaulting to `../sales.demos-docs`, and fails early with the `git clone`
+  command if it is missing. The skill **stays in this repo** -- `CLAUDE.md` says
+  never to send someone to another repo's skill, and the docs repo has none.
+- `renderer-matches-role` is untouched: it compares the script against
+  `playbooks/roles/linux_configure`, both local, and never read `docs/`.
+- Still 8 required checks, none renamed.
+
 ### Changed -- collections-sync is now sales-demos-collections-sync (#419)
 
 - **It was the one repo-wide skill without the `sales-demos-` prefix, and it

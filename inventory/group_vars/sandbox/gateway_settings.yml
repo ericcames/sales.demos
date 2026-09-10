@@ -48,4 +48,4 @@
 # ===========================================================================
 
 gateway_settings_sandbox:
-  custom_logo: "data:image/png;base64,{{ lookup('ansible.builtin.file', inventory_dir + '/../docs/images/logo-sandbox.png.b64') }}"
+  custom_logo: "data:image/png;base64,{{ lookup('ansible.builtin.file', inventory_dir + '/../assets/aap-branding/logo-sandbox.png.b64') }}"

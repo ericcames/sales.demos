@@ -38,7 +38,9 @@ Needs only jinja2 — no Chrome — so it runs in seconds in CI.
 
 from __future__ import annotations
 
+import argparse
 import difflib
+import pathlib
 import re
 import sys
 from pathlib import Path
@@ -77,7 +79,12 @@ SOURCES = {
     "facts.json": _renderer.facts_json,
 }
 
-DOCS_ROOT = REPO / "docs"
+# Default for a checkout that still carries its own docs. Since #422 the
+# talk tracks live in ericcames/sales.demos-docs, so CI passes --docs-root at a
+# checkout of that repo. The script stays HERE, beside render-demo-assets.py and
+# the linux_configure role it reads templates from -- one copy, invoked from
+# both repos' workflows, so the gate fires on whichever side moves.
+DEFAULT_DOCS_ROOT = REPO.parent / "sales.demos-docs" / "docs"
 
 MARKER = re.compile(
     r"<!--\s*rendered:\s*(?P<name>[\w.\-]+)\s*-->\s*\n"
@@ -88,7 +95,27 @@ MARKER = re.compile(
 )
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument(
+        "--docs-root",
+        type=pathlib.Path,
+        default=DEFAULT_DOCS_ROOT,
+        help=(
+            "directory of markdown to scan "
+            "(default: ../sales.demos-docs/docs)"
+        ),
+    )
+    args = ap.parse_args(argv)
+    docs_root = args.docs_root.resolve()
+    if not docs_root.is_dir():
+        print(
+            f"::error::--docs-root {docs_root} is not a directory. The talk "
+            f"tracks live in ericcames/sales.demos-docs since #422 -- clone it "
+            f"beside this repo, or pass --docs-root <path>."
+        )
+        return 2
+
     rendered = {}
     for name, fn in SOURCES.items():
         try:
@@ -101,11 +128,16 @@ def main() -> int:
     checked = 0
     seen: set[str] = set()
 
-    for doc in sorted(DOCS_ROOT.rglob("*.md")):
+    for doc in sorted(docs_root.rglob("*.md")):
         text = doc.read_text(encoding="utf-8")
         for m in MARKER.finditer(text):
             name = m.group("name")
-            rel = doc.relative_to(REPO)
+            # docs_root may sit outside this repo (a sibling checkout), so
+            # relative_to(REPO) cannot be assumed.
+            try:
+                rel = doc.relative_to(REPO)
+            except ValueError:
+                rel = doc.relative_to(docs_root.parent)
 
             if name not in rendered:
                 print(
@@ -143,8 +175,8 @@ def main() -> int:
     # report a cheerful zero.
     for name in sorted(set(rendered) - seen):
         print(
-            f"::error::no document carries '<!-- rendered: {name} -->' — "
-            f"the artifact is no longer verified anywhere"
+            f"::error::no document carries '<!-- rendered: {name} -->' in "
+            f"{docs_root} — the artifact is no longer verified anywhere"
         )
         failures += 1
 
@@ -157,7 +189,10 @@ def main() -> int:
         )
         return 1
 
-    print(f"Docs artifacts current: {checked} block(s) match their templates.")
+    print(
+        f"Docs artifacts current: {checked} block(s) in {docs_root} "
+        f"match their templates."
+    )
     return 0
 
 

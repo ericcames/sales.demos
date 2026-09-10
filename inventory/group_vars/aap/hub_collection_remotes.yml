@@ -67,7 +67,7 @@
 # THE TOKEN IS THE RED HAT OFFLINE TOKEN — an SSO refresh token, resolved in
 # main.yml from ~/.ansible.cfg and stored nowhere else. It is not a PAH API
 # token and not a galaxy.ansible.com token; see the three-token table in
-# docs/demos/private-automation-hub/architecture.md.
+# https://ericcames.github.io/sales.demos-docs/demos/private-automation-hub/architecture/.
 #
 # TWO WAYS IT GOES WRONG, AND NEITHER RAISES AN ERROR:
 #   - EXPIRED: authenticates, returns zero collections, leaves an empty
