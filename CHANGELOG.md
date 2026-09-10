@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed -- Getting started now segments by audience (#418)
+
+- **Getting started served one audience of three, and the largest one first hit
+  a clone command it does not need.** An SE presenting a demo needs a run sheet,
+  published at the docs site; they were landing on `git clone` and a
+  prerequisites table about vault passwords. `## Getting started` now opens with
+  three doors -- presenting a demo (no clone), running or changing the
+  automation (the previous content, commands unchanged), and working across both
+  repos. `sales.demos-docs` already had this shape and is the model.
+- **The cross-repo working shape existed only in `CLAUDE.md`.** A new reader
+  opening `README.md` had no way to learn that `.mcp.json` is project-scoped, so
+  a session spanning this repo and `image.builder.pipeline` must start here --
+  the factory repo has no MCP servers at all. Promoted to a
+  `### Working across the factory and the platform` subsection.
+- **"Clone all three and start an agent in sales.demos" was considered and
+  rejected: it does not work.** Skills are discovered from the directory the
+  agent starts in, so `image.builder.pipeline`'s skills -- `first-time`,
+  `dev-workflow`, `rhel9-containerdisk`, `windows-image-build` -- are not
+  reachable from a session started here, and typing `/first-time` would get
+  nothing. The new subsection says so explicitly rather than leaving it to be
+  discovered. It would also have contradicted *"These are links, not a workflow
+  dependency. This repo stays self-contained"* further down the same file.
+- **The by-hand path is now stated as the fallback it has to be**, since not
+  every reader has Claude Code. `sales-demos-first-time/SKILL.md` is almost
+  entirely runnable shell; the README says that plainly instead of the weaker
+  "reads perfectly well as a checklist". Claude Code stays named as the primary
+  path -- the wording deliberately does *not* become "your favorite AI agent",
+  which would be false: other agents do not discover `.claude/skills/`.
+- **`README.md` never linked to `CONTRIBUTING.md`.** A contributor who arrived
+  at the second door had no path to the branching and PR rules. Added.
+
 ### Changed -- Community Standards parity and a value-first README opening (#416)
 
 - **The Code of Conduct was not detected as the Contributor Covenant, and the
