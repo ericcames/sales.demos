@@ -26,6 +26,16 @@
 # Callers pass:
 #   tf_lock_result      the registered result of the failed terraform command
 #   tf_lock_operation   "apply" or "destroy", for the message
+#
+# Callers must also have set the fact:
+#   ocpvirt_state_suffix  the backend secret_suffix the failed command used
+#
+# THE SUFFIX IS NOT <env>, AND THE MESSAGE USED TO SAY IT WAS (#402). State
+# has been keyed <env>-<os>-<role> since #301 and #389, but every environment
+# still carries a legacy `lock-tfstate-default-<env>` Lease with an EMPTY
+# holder. Naming that one made the `oc get lease` check return nothing — which
+# the message then told you meant "no lock is held" — and aimed force-unlock
+# at the wrong state file. Both commands must use the caller's own suffix.
 # ===========================================================================
 
 - name: Look for a state lock in the Terraform error
@@ -74,7 +84,7 @@
       The backend locks with a Lease, so you can check without terraform —
       empty output means no lock is held and something else is wrong:
 
-        oc get lease lock-tfstate-default-{{ aap_env_name }} \
+        oc get lease lock-tfstate-default-{{ ocpvirt_state_suffix }} \
           -n {{ ocpvirt_state_namespace }} -o jsonpath='{.spec.holderIdentity}'
 
       Then, from a laptop, using this repo's kubeconfig for the environment
@@ -83,7 +93,7 @@
 
         cd terraform/ocpvirt
         terraform init -reconfigure \
-          -backend-config=secret_suffix={{ aap_env_name }} \
+          -backend-config=secret_suffix={{ ocpvirt_state_suffix }} \
           -backend-config=namespace={{ ocpvirt_state_namespace }} \
           -backend-config=config_path=../../.kube/{{ aap_env_name }}.kubeconfig \
           -backend-config=insecure=true
