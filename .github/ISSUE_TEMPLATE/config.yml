@@ -1,0 +1,18 @@
+---
+# Turn off the blank-issue escape hatch so every issue arrives shaped.
+blank_issues_enabled: false
+
+contact_links:
+  - name: Talk tracks, run sheets and architecture guides
+    url: https://ericcames.github.io/sales.demos-docs
+    about: >-
+      Demo documentation lives in a companion repo and is published as a site.
+      Open documentation issues there, not here.
+  - name: Report a committed credential or customer identifier
+    url: https://github.com/ericcames/sales.demos/blob/main/.github/SECURITY.md
+    about: >-
+      Read the security policy first. Open the issue without quoting the value.
+  - name: Contributing guide
+    url: https://github.com/ericcames/sales.demos/blob/main/CONTRIBUTING.md
+    about: >-
+      Conventions, secret handling, and the issue-before-code workflow.
