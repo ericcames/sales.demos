@@ -7,8 +7,9 @@ description: "Scaffold a new use-case directory under docs/demos/ from _template
 
 Scaffold or verify a use-case directory under `docs/demos/`.
 
-Like `collections-sync`, this skill has **no playbook**, and that is deliberate.
-The "skill wraps a playbook" contract in `CLAUDE.md` exists so anything touching
+Like `sales-demos-collections-sync`, this skill has **no playbook**, and that is
+deliberate. The "skill wraps a playbook" contract in `CLAUDE.md` exists so
+anything touching
 an environment is runnable from AAP too. This checks documentation on your
 laptop; it must never run from AAP, and there is nothing for a job template to
 call.

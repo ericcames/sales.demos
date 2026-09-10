@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed -- collections-sync is now sales-demos-collections-sync (#419)
+
+- **It was the one repo-wide skill without the `sales-demos-` prefix, and it
+  collided with `image.builder.pipeline`'s skill of the same name.** Renamed
+  `.claude/skills/collections-sync/` to `.claude/skills/sales-demos-collections-sync/`,
+  matching every other repo-wide maintenance skill here -- `sales-demos-ee-build`,
+  `sales-demos-mcp`, `sales-demos-verify-ee`, `sales-demos-first-time`.
+- **`sales-demos-first-time/SKILL.md` contradicted itself**, which is what made
+  this more than cosmetic. Line 15 states *"The `sales-demos-` prefix keeps
+  these unambiguous when other skills happen to be loaded on the same machine"*
+  -- and the same file then invoked `/collections-sync` without it, four times.
+- **The failure it prevents is the silent kind.** Skills are discovered from the
+  directory the agent starts in, so `/collections-sync` resolved to whichever
+  repo the session began in, and the two skills pin different dependency sets.
+  Nothing in the output said which one ran. Reachable in practice since #418
+  documented working across both repos.
+- **Nothing automated invoked it**, verified before the rename: no playbook, no
+  inventory or AAP config, no CI job, no `.claude/settings.json` entry. The 14
+  references were documentation, one Python error string, and a comment in
+  `collections/requirements.yml`. All updated; no unprefixed reference remains.
+- The factory's own `collections-sync` is deliberately left alone -- that repo
+  has no prefix convention, and after this rename the two names no longer
+  collide.
+
 ### Changed -- Getting started now segments by audience (#418)
 
 - **Getting started served one audience of three, and the largest one first hit

@@ -24,7 +24,7 @@ Setting up sales.demos on this machine. About 10 minutes, once.
 
   1. Automation Hub token          ~/.ansible.cfg
   2. Vault password                ~/secrets/.vault_pass_sales_demos
-  3. Pinned collections            via /collections-sync
+  3. Pinned collections            via /sales-demos-collections-sync
   4. Python kubernetes client
   5. Run-log directory             ~/ansible-logs/
   6. Your environment's values     local.yml OR connection.yml + the vault
@@ -185,7 +185,7 @@ Do not hand-install. Use the skill that already owns this, which pins, installs,
 and verifies that what is installed matches what is pinned:
 
 ```
-/collections-sync
+/sales-demos-collections-sync
 ```
 
 Collections install to `~/.ansible/collections` and are **never** vendored into
@@ -399,7 +399,8 @@ passed every preflight and then died there (#128). Get them from
 ## When it all passes
 
 Tell the user setup is complete and point them at `/ocpvirt-setup` to install
-OpenShift Virtualization, or `/collections-sync` if they only wanted collections.
+OpenShift Virtualization, or `/sales-demos-collections-sync` if they only wanted
+collections.
 
 ## If something fails
 
@@ -407,7 +408,7 @@ OpenShift Virtualization, or `/collections-sync` if they only wanted collections
 |---|---|---|
 | `Decryption failed` | Wrong vault password | Re-check with the verify command in step 2 |
 | `Attempting to decrypt but no vault secrets found` | `--vault-id` missing | Add it to the command |
-| `couldn't resolve module/action` | Collections not installed | `/collections-sync` |
+| `couldn't resolve module/action` | Collections not installed | `/sales-demos-collections-sync` |
 | `Failed to import the required Python library (kubernetes)` | Wrong interpreter or missing client | Step 4 |
 | Certified collection install 401s | Hub token missing or stale | Step 1 |
 | `env=` is not what you asked for | Wrong `--limit` | Use `--limit sandbox` or `--limit demo` |

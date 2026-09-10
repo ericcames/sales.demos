@@ -506,7 +506,7 @@ def dependency_closure(pins: dict[str, str]) -> tuple[dict[str, str], dict[str, 
         if declared is None:
             problems.append(
                 f"{name}: not installed locally, so its dependencies cannot be read. "
-                "Run the collections-sync skill first."
+                "Run the sales-demos-collections-sync skill first."
             )
             continue
         for dependency, spec in sorted(declared.items()):

@@ -466,7 +466,7 @@ never a demo environment, so they must never run from AAP:
 | Skill | Does |
 |---|---|
 | `sales-demos-first-time` | One-time setup on a new machine — start here |
-| `collections-sync` | Pin, install, and verify `collections/requirements.yml` |
+| `sales-demos-collections-sync` | Pin, install, and verify `collections/requirements.yml` |
 | `sales-demos-ee-build` | Build, verify, and publish the execution environment |
 | `sales-demos-mcp` | Connect Claude Code to the clusters over MCP — per-environment kubeconfigs |
 | `sales-demos-verify-ee` | Run a playbook *inside* the EE AAP uses, and diff it against a laptop run |
@@ -500,10 +500,11 @@ are never vendored into this repo** — both `collections/ansible_collections/`
 and `.ansible/` (ansible-lint's generated module mocks) are gitignored build
 artifacts.
 
-Run the `collections-sync` skill to pin, install, and verify in one pass. The
-verify step is the point: `ansible-galaxy` reports success without installing
-anything when it believes a collection is already present, and it silently
-refuses to downgrade, so its exit code does not tell you what you actually have.
+Run the `sales-demos-collections-sync` skill to pin, install, and verify in one
+pass. The verify step is the point: `ansible-galaxy` reports success without
+installing anything when it believes a collection is already present, and it
+silently refuses to downgrade, so its exit code does not tell you what you
+actually have.
 
 ## Running from AAP
 

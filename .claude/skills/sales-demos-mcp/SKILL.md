@@ -12,7 +12,7 @@ vault read and a JSON parse; after it, `namespaces_list` or
 
 **No playbook, by design.** This touches the laptop — it writes kubeconfigs,
 creates tokens, and configures your MCP client. It must never run from AAP,
-which is the same reasoning that keeps `collections-sync`,
+which is the same reasoning that keeps `sales-demos-collections-sync`,
 `sales-demos-first-time` and `sales-demos-ee-build` playbook-free.
 
 ## What it sets up

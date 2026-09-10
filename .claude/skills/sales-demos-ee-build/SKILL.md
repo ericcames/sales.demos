@@ -1,6 +1,6 @@
 ---
 name: sales-demos-ee-build
-description: "Build, verify, and publish the custom execution environment this repo's AAP job templates run on — the image that carries the terraform CLI plus the pinned collections. Wraps utilities/build-ee.sh, then registers the new tag in AAP config-as-code. TRIGGER when: the user asks to build, rebuild, bump, or publish the EE, add a collection to the EE, change the terraform version, re-pin the base image, or hits EE errors (ImagePullBackOff on a job template, 'terraform: command not found' in a job, 'couldn't resolve module/action' at runtime but not locally, or an ansible-builder assemble failure). SKIP: if the user only wants collections installed on their laptop — that is collections-sync — or is registering an EE that already exists in quay."
+description: "Build, verify, and publish the custom execution environment this repo's AAP job templates run on — the image that carries the terraform CLI plus the pinned collections. Wraps utilities/build-ee.sh, then registers the new tag in AAP config-as-code. TRIGGER when: the user asks to build, rebuild, bump, or publish the EE, add a collection to the EE, change the terraform version, re-pin the base image, or hits EE errors (ImagePullBackOff on a job template, 'terraform: command not found' in a job, 'couldn't resolve module/action' at runtime but not locally, or an ansible-builder assemble failure). SKIP: if the user only wants collections installed on their laptop — that is sales-demos-collections-sync — or is registering an EE that already exists in quay."
 ---
 
 # sales-demos-ee-build
@@ -14,8 +14,9 @@ the terraform CLI. No stock execution environment ships that binary. That is the
 entire reason for a custom image — everything else in it could have come from
 `ee-supported-rhel9` unchanged.
 
-Like `collections-sync`, this skill has **no playbook**, and that is deliberate.
-The "skill wraps a playbook" contract in `CLAUDE.md` exists so anything touching
+Like `sales-demos-collections-sync`, this skill has **no playbook**, and that is
+deliberate. The "skill wraps a playbook" contract in `CLAUDE.md` exists so
+anything touching
 a demo environment is runnable from AAP too. This builds a container on your
 laptop and pushes it to a registry; it must never run from AAP, and there is
 nothing for a job template to call.
@@ -141,9 +142,9 @@ see what is in the image.
 ## Changing what goes in
 
 - **A collection** — add it to `collections/requirements.yml` (pinned, via
-  `collections-sync`), not to the EE definition. One pinned list feeds both the
-  laptop and the image; that equality is what makes the skill path and the job
-  template path agree.
+  `sales-demos-collections-sync`), not to the EE definition. One pinned list
+  feeds both the laptop and the image; that equality is what makes the skill
+  path and the job template path agree.
 - **Terraform version** — change the version *and* the sha256 together in
   `execution-environment.yml`, from
   `https://releases.hashicorp.com/terraform/<version>/terraform_<version>_SHA256SUMS`.
