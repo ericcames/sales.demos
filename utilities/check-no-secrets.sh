@@ -150,6 +150,28 @@ while IFS= read -r f; do
   esac
 done < <(printf '%s\n' "$tracked_secrets")
 
+# ---------------------------------------------------------------------------
+# env-urls.yml MUST NOT BE TRACKED (#429). With --with-creds it holds plaintext
+# vault credentials. Same two checks as secrets.yml: not tracked, and ignored.
+# No encryption check — env-urls.yml is plaintext by design; the protection is
+# that it must never reach the remote.
+# ---------------------------------------------------------------------------
+ENV_URLS_FILE="inventory/env-urls.yml"
+
+tracked_env_urls=$(git ls-files "$ENV_URLS_FILE")
+if [ -n "$tracked_env_urls" ]; then
+  echo "::error::$ENV_URLS_FILE is TRACKED — it may contain vault credentials"
+  echo "    Untrack it: git rm --cached $ENV_URLS_FILE"
+  fail=1
+fi
+
+if [ -z "$tracked_env_urls" ] && ! git check-ignore -q "$ENV_URLS_FILE"; then
+  echo "::error::$ENV_URLS_FILE is NOT covered by .gitignore"
+  echo "    With --with-creds it holds plaintext passwords from the vault."
+  echo "    Restore the rule in .gitignore before pushing."
+  fail=1
+fi
+
 if [ "$fail" -ne 0 ]; then
   echo
   echo "Secret-hygiene check failed. See CONTRIBUTING.md -> 'Audit before every push'."
