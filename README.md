@@ -1,13 +1,23 @@
 # sales.demos
 
-Sales demo automation, built as code. Each demo can be run two ways — as a
-Claude Code skill from your laptop, or as a job template inside Ansible
-Automation Platform — driving the same playbooks either way.
+Sales demo automation, built as code. Every demo runs two ways from the same
+playbooks — as a Claude Code skill on your laptop, or as a job template inside
+Ansible Automation Platform — so what you rehearse is literally what you
+present. The environments are disposable and the configuration is not: when a
+Red Hat Demo Platform cluster expires, you repoint three variables at a new one
+and the demo comes back exactly as it was.
 
-> **Status:** early. Two use cases: OpenShift Virtualization, and Private
-> Automation Hub as code (#68). The layout admits more demos later; nothing from
-> the other daily-demo repos has been migrated and that decision is
-> deliberately open.
+| | |
+|---|---|
+| **For** | Red Hat pre-sales engineers running customer demos |
+| **Produces** | Four repeatable demos — OpenShift Virtualization, Private Automation Hub, MCP servers, and edge / single-node OpenShift |
+| **Run it** | `/sales-demos-first-time` in Claude Code, or an AAP job template |
+| **Status** | Four use cases live across three environments — `sandbox`, `demo`, `edge` |
+
+Talk tracks, run sheets and architecture guides are published separately at
+**[ericcames.github.io/sales.demos-docs](https://ericcames.github.io/sales.demos-docs)**.
+Nothing from the other daily-demo repos has been migrated here, and that
+decision is deliberately still open.
 
 ## Getting started
 
@@ -164,6 +174,7 @@ lives in [Google Drive](https://drive.google.com/drive/folders/1Me_blEFV-xHUyZeL
 | **OpenShift Virtualization** | Linux / platform sysadmins | [`docs/plan/ocpvirt-demo-plan.md`](docs/plan/ocpvirt-demo-plan.md) | [docs site](https://ericcames.github.io/sales.demos-docs/demos/openshift-virtualization/) |
 | **Private Automation Hub — ClickOps vs. config-as-code** | Sysadmins and automation leads | [`docs/plan/pah-plan.md`](docs/plan/pah-plan.md) | [docs site](https://ericcames.github.io/sales.demos-docs/demos/private-automation-hub/) |
 | **MCP Servers — Agentic Automation** | Platform engineers and automation leads | [`docs/plan/platform-addons-plan.md`](docs/plan/platform-addons-plan.md) | [docs site](https://ericcames.github.io/sales.demos-docs/demos/mcp-servers/) |
+| **Edge / Single Node OpenShift** | Infrastructure and edge architects | [`ROADMAP.md`](ROADMAP.md) | [docs site](https://ericcames.github.io/sales.demos-docs/demos/edge-sno/) |
 
 ## The demo: OpenShift Virtualization on the RHDP "Ansible Product Demo"
 
@@ -209,6 +220,10 @@ by inventory group.
 
 - **`sandbox`** — the RHDP env you are actively building against and breaking.
 - **`demo`** — the RHDP env you show customers.
+- **`edge`** — a persistent bare-metal single-node OpenShift cluster on a NUC,
+  for the on-prem / edge story. Not an RHDP provisioning: it does not expire,
+  and DNS is local (dnsmasq) rather than a public domain. The same playbooks
+  target it with `--limit edge`.
 
 There is deliberately **no `golden` environment**. "This config is proven good"
 is a state of the config, not a connection target — git already models that with

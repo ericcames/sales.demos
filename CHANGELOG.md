@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed -- Community Standards parity and a value-first README opening (#416)
+
+- **The Code of Conduct was not detected as the Contributor Covenant, and the
+  reason was a missing contact.** `CODE_OF_CONDUCT.md` was a 41-line trim of
+  Contributor Covenant 2.1 with the Enforcement Guidelines ladder removed and
+  no enforcement contact -- it said reports "may be reported to the community
+  leaders responsible for enforcement" without saying how. GitHub's community
+  profile returned `"code_of_conduct": {"key": "other"}` as a result. Replaced
+  with the full 128-line CC 2.1 already carried by `image.builder.pipeline`,
+  contact `ames@redhat.com`, so all three repos are byte-identical here.
+- **Blank issues bypassed the templates.** Added
+  `.github/ISSUE_TEMPLATE/config.yml` with `blank_issues_enabled: false` and
+  contact links to the docs site, the security policy, and the contributing
+  guide. `bug_report.md` and `feature_request.md` existed but GitHub offered
+  "Open a blank issue" beside them.
+- **The README opened with a stale status line.** The blockquote said *"Two use
+  cases: OpenShift Virtualization, and Private Automation Hub as code"* while
+  the README's own `## Use cases` table listed three and the docs site
+  published four. Replaced with a value-first executive summary and an
+  at-a-glance table (For / Produces / Run it / Status). `## Getting started`
+  keeps its position immediately below.
+- **Two enumerations in the body would have contradicted the new summary.**
+  `## Use cases` was missing Edge / Single Node OpenShift, and `## Environments`
+  still offered `sandbox` and `demo` only -- the same recurring class as #405
+  and #414, in the file a first-time reader opens first. `edge` is now
+  described there as what it is: persistent bare-metal SNO, local DNS, no
+  expiry, reached with `--limit edge`.
+- Set repository topics, which were unset.
+
 ### Fixed -- MCP server enumerations still said five, and omitted `openshift-edge` (#414)
 
 - **`openshift-edge` has been a committed server since #375, but nothing that
