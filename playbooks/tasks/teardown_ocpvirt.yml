@@ -85,6 +85,15 @@
     # state, destroy reports "0 destroyed", and the play goes green. The
     # "Report what was found in state" task below prints "(none -- nothing to
     # destroy)" for exactly this case; read it before believing a teardown.
+    #
+    # A FACT, NOT AN INLINE STRING (#402), and the same fact name
+    # terraform_ocpvirt.yml sets. tasks/terraform_lock_check.yml prints it in
+    # its remediation commands; when this was built inline, that task had
+    # nothing to reference and printed the pre-#301 `<env>` state instead.
+    - name: Key the Terraform state by environment, OS and role
+      ansible.builtin.set_fact:
+        ocpvirt_state_suffix: "{{ aap_env_name }}-{{ provision_os_type }}-{{ provision_vm_role }}"
+
     - name: Initialize Terraform against the kubernetes backend
       ansible.builtin.command:
         argv:
@@ -93,7 +102,7 @@
           - -input=false
           - -no-color
           - -reconfigure
-          - "-backend-config=secret_suffix={{ aap_env_name }}-{{ provision_os_type }}-{{ provision_vm_role }}"
+          - "-backend-config=secret_suffix={{ ocpvirt_state_suffix }}"
           - "-backend-config=namespace={{ ocpvirt_state_namespace }}"
           - "-backend-config=config_path={{ ocpvirt_kubeconfig.path }}"
           - "-backend-config=insecure={{ (not (openshift_validate_certs | default(false) | bool)) | lower }}"
