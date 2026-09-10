@@ -556,9 +556,20 @@ Environment secrets.
   repository setting and invisible in the tree.
 
   - **A pull request is required**, with **0 required approvals**. Zero is
-    deliberate, not laziness: there is one collaborator, GitHub does not let you
-    approve your own PR, and requiring one approval would deadlock every PR.
-    Zero still forces the branch-and-PR flow, which is the part that matters.
+    deliberate, not laziness: a PR should not block on a second person being
+    around. Zero still forces the branch-and-PR flow, which is the part that
+    matters.
+
+    **This used to be justified by "there is one collaborator", and that stopped
+    being true** (#435). @mlowcher61 has `write` on all three repos and now
+    co-owns every path in `.github/CODEOWNERS`, so requiring an approval is
+    possible where it once would have deadlocked. It is still not wanted, for
+    the reason above — the decision outlived its original argument, which is
+    exactly the kind of thing worth re-reading rather than inheriting.
+
+    **CODEOWNERS here requests review; it does not gate.**
+    `require_code_owner_reviews` is `false`, so a listed owner is auto-requested
+    and nothing waits on them. Do not read co-ownership as enforcement.
   - **All 8 lint checks are required** — `yamllint`, `ansible-lint`,
     `secret-guard`, `secrets-example-sync`, `generated-files`,
     `skills-frontmatter`, `docs-artifacts-current`, `renderer-matches-role`.
