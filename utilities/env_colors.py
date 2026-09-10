@@ -10,6 +10,7 @@ learn:
 
     sandbox — the environment you are actively building against and breaking
     demo    — the environment you show customers
+    edge    — the persistent bare-metal SNO on a home network
 
 Kept dependency-free on purpose. make-env-logo.py needs Pillow and ImageMagick;
 make-env-badge-config.py needs neither, and should not inherit them just to read
@@ -20,6 +21,7 @@ two hex values.
 COLORS = {
     "sandbox": ("#3E8635", "#FFFFFF"),
     "demo": ("#EE0000", "#FFFFFF"),
+    "edge": ("#6753AC", "#FFFFFF"),
 }
 
 # Shown when AAP answers but does not say which environment it is -- its config

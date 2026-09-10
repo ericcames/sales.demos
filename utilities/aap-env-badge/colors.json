@@ -8,6 +8,10 @@
     "demo": {
       "fill": "#EE0000",
       "text": "#FFFFFF"
+    },
+    "edge": {
+      "fill": "#6753AC",
+      "text": "#FFFFFF"
     }
   },
   "unknown": {

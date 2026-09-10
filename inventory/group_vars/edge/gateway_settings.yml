@@ -1,0 +1,17 @@
+---
+# ===========================================================================
+# group_vars/edge/gateway_settings.yml — edge-only gateway settings
+# ===========================================================================
+# Follows the same suffix convention as sandbox and demo: gateway_settings_all
+# (in group_vars/aap/) holds the pre-login banner every environment shares,
+# and this file adds the custom_logo only edge gets.
+#
+# Purple for edge: the persistent bare-metal SNO on a home network, distinct
+# from sandbox (green, the environment you break) and demo (red, the one you
+# show customers). Regenerate with:
+#
+#   python3 utilities/make-env-logo.py --env edge
+# ===========================================================================
+
+gateway_settings_edge:
+  custom_logo: "data:image/png;base64,{{ lookup('ansible.builtin.file', inventory_dir + '/../assets/aap-branding/logo-edge.png.b64') }}"
