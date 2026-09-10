@@ -168,8 +168,18 @@ ansible-vault edit playbooks/group_vars/all/secrets.yml \
 - The vault password is at `~/secrets/.vault_pass_sales_demos` (`600`, in a
   `700` directory), outside this repo, following the same convention as
   `aap_config`'s `.vault_pass_<env>` files.
-- `secrets.yml.example` is the **only** `.example` file in the repo. Do not
-  create `connection.yml.example` or any other `.example` twin.
+- **Do not create `connection.yml.example` or any other `.example` twin.** This
+  rule used to claim `secrets.yml.example` was the *only* `.example` file here,
+  and that has been untrue since 2026-08-09:
+  `terraform/ocpvirt/terraform.tfvars.example` shipped with the Terraform module
+  in #28 and is tracked. It is legitimate — `terraform.tfvars` is gitignored, so
+  the example is the only committed record of the module's inputs, the same
+  argument that justifies `secrets.yml.example`.
+
+  The rule is about not *proliferating* them, and it stands. Two exist; adding a
+  third needs the same justification these two have — a gitignored file whose
+  shape nothing else documents. A count stated as a fact goes stale silently,
+  which is what happened here.
 - Do **not** introduce a second sourceable secrets file. `docs/dev-environment.sh`
   is retired and must not come back.
 - **Never weaken the guard** in `utilities/check-no-secrets.sh`. It is the only

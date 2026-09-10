@@ -6,10 +6,14 @@
 # select it. Applied by playbooks/config.yml via infra.aap_configuration.dispatch,
 # like every other object here — there is no separate step to run.
 #
-# WHY THIS DIRECTORY AND NOT demos/ocpvirt/. The plan puts job templates under
-# demos/ocpvirt/, but nothing loads that directory yet: dispatch reads
-# group_vars implicitly, and this object has to be applied to be worth
-# committing. When demos/ocpvirt/ gains a loader in #4, this can move with it.
+# WHY THIS DIRECTORY AND NOT demos/ocpvirt/. The original plan put job templates
+# under demos/ocpvirt/, and this comment used to say the object would move there
+# "when demos/ocpvirt/ gains a loader in #4". #4 shipped and it never did:
+# dispatch reads group_vars implicitly, so every AAP object landed in
+# group_vars/aap/ instead -- job templates in controller_templates.yml,
+# workflows in controller_workflows.yml. demos/ocpvirt/ stayed an empty
+# directory holding a .gitkeep for a month, and was removed in #423. There is
+# nowhere else for this to move to; this IS the convention.
 #
 # NOTE THE VARIABLE NAME, as in aap_organizations.yml. The dispatch role reads
 # this object type from `controller_execution_environments`, plus the

@@ -7,6 +7,76 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed -- README is a front door again, 944 lines to 236 (#423)
+
+- **It described a repo that no longer existed in six places.** Each was
+  checkable against the tree, and each was wrong:
+    - `demos/ocpvirt/` was documented as holding "job templates, surveys", and
+      the skill/playbook contract table cited
+      `demos/ocpvirt/controller_job_templates.yml`. **That file has never
+      existed.** The directory held a lone `.gitkeep`; job templates live in
+      `inventory/group_vars/aap/controller_templates.yml`. Directory removed.
+    - The execution environment was given as `v1.1.0` in three places and
+      `v1.0.0` in a fourth. It is **`v1.2.0`**, since #324 added the helm binary
+      `playbooks/portal.yml` cannot run without.
+    - The Windows golden image was described as unbuilt -- *"until it lands,
+      `quay_windows_image` is a placeholder and the link refuses to run"*. All
+      three environments carry a real published tag, proven end to end on
+      2026-09-06 (#257).
+    - *"Phase 3 will drive this same module from AAP; until then it is run by
+      hand"* -- contradicted by the README's own table three sections earlier,
+      and by `Linux Day 1 - 1 Provision` existing.
+    - "verified on AAP 2.6", where the platform is **2.7** (#101).
+    - `edge` was missing from six enumerations that said "both environments".
+- **Windows was effectively invisible.** The AAP section listed 2 Linux job
+  templates. The automation defines **32 live job templates and 4 live
+  workflows**, including the entire `Windows Day 1` and `Windows Day 2` stories.
+  That is now
+  [Running from AAP](https://ericcames.github.io/sales.demos-docs/reference/running-from-aap/).
+- **About four sections restated `CONTRIBUTING.md` at greater length** --
+  secrets, the leak audit, the skill/playbook contract, verify-in-EE. Deleted
+  rather than moved: two copies of a rule is how one of them goes stale, which
+  is the whole lesson of the six defects above.
+- The skills tables stay in full. CI enforces that every skill appears there,
+  and it is the repo's real index -- verified at 20 of 20.
+
+### Added -- `terraform/ocpvirt/README.md` (#423)
+
+- The 145 lines of module reference the README carried: sizing, running it by
+  hand, SSH, HTTP, Cockpit, Windows. Module docs belong with the module.
+- **Three more stale facts surfaced while writing it**, all from #348 and #389:
+    - Tier sizes. The README said `large` is "6 GiB rather than 8". `tiers.yaml`
+      says **4 CPU / 16 GiB**. `small` is 2/4 and `medium` is 2/8.
+    - `available_memory_gb` was given as 67; the default is **63**, measured on
+      sandbox with Automation Orchestrator installed (#118, #141).
+    - Outputs were named `web_url`, `cockpit_url`, `ssh_command`. They are
+      **plural** -- `web_urls`, `cockpit_urls`, `ssh_commands` -- since VMs come
+      in counts (#389).
+- **The `*-1cpu-2gb` tier names are retained aliases and no longer describe the
+  shape.** `large-2cpu-6gb` provisions 4 CPU and 16 GiB. Said once, explicitly,
+  so nobody "helpfully" restores the old numbers. The same tables in the docs
+  repo are ericcames/sales.demos-docs#14.
+
+### Fixed -- three documentation claims that had gone stale (#423)
+
+- **`secrets.yml.example` is not "the only `.example` file in the repo"**, and
+  has not been since 2026-08-09 -- `terraform/ocpvirt/terraform.tfvars.example`
+  shipped with the module in #28 and is tracked. It is legitimate for the same
+  reason the other one is. The rule against *proliferating* them stands; the
+  count stated as a fact is what went stale, silently.
+- **`controller_execution_environments.yml` said this object would move to
+  `demos/ocpvirt/` "when it gains a loader in #4".** #4 shipped and it never
+  did -- dispatch reads `group_vars` implicitly, so every AAP object landed in
+  `group_vars/aap/`. The comment now records what happened rather than a
+  prediction that expired.
+- **`assets/aap-branding/README.md` said `edge` had no badged logo**, which was
+  true when it was written and stopped being true four commits later: #428 added
+  the purple one. Corrected to name all three colours and to say what must move
+  together when a fourth environment appears -- a colour in `env_colors.py`, a
+  generated pair in `assets/aap-branding/`, and a `gateway_settings.yml`.
+  `check-env-logos.py` catches the last two automatically and already validates
+  the edge pair #428 added; it cannot catch a missing colour.
+
 ### Added -- env-urls.yml credentials and secrets guard (#429)
 
 - **`generate-env-urls.py --with-creds`** decrypts the vault and includes

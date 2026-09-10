@@ -11,7 +11,8 @@
 # directly. The script stages ~/.ansible.cfg into the build context, which this
 # file expects to already be there (see additional_build_files below).
 #
-# Register the built image in AAP via demos/ocpvirt/controller_execution_environments.yml.
+# Register the built image in AAP via
+# inventory/group_vars/aap/controller_execution_environments.yml.
 version: 3
 
 images:

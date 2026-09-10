@@ -18,6 +18,7 @@ a directory whose name says what these are.
 |---|---|---|
 | `logo-sandbox.png.b64` | `inventory/group_vars/sandbox/gateway_settings.yml` | **Playbook run time**, including from AAP's SCM checkout |
 | `logo-demo.png.b64` | `inventory/group_vars/demo/gateway_settings.yml` | Same |
+| `logo-edge.png.b64` | `inventory/group_vars/edge/gateway_settings.yml` | Same |
 | `logo-<env>.png` | `utilities/make-env-logo.py` | Build time — the source of the `.b64` beside it |
 | `aap-logo-white.svg` | `utilities/make-env-logo.py` (`SOURCE_SVG`) | Build time — the artwork the badge is composed onto |
 
@@ -57,8 +58,15 @@ bundled UI asset, not a setting — re-measured in
 applied, and none of the 44 gateway settings marks the environment after login.
 Marking it post-login is `utilities/aap-env-badge/`, a browser extension.
 
-**`edge` has no logo here**, because `inventory/group_vars/edge/` has no
-`gateway_settings.yml`. Nothing sets `custom_logo` on that cluster.
+**All three environments are badged**: green for `sandbox`, red for `demo`,
+purple (`#6753AC`) for `edge` (#426). The colours come from
+`utilities/env_colors.py`, which the browser extension's `colors.json` is
+generated from, so the sign-in page and the post-login pill cannot disagree.
+
+This note used to say `edge` had no logo, which was true until #428 added one.
+If you add a fourth environment, the three things that must move together are a
+colour in `env_colors.py`, a generated pair here, and a `gateway_settings.yml`
+for it -- `check-env-logos.py` catches the second and third, not the first.
 
 ## Verifying a change
 
