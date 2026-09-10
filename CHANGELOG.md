@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added -- edge AAP environment-badged logo (#426)
+
+- **Edge gets a purple sign-in logo** (`#6753AC`), matching the green (sandbox)
+  and red (demo) convention. `gateway_settings_edge` sets `custom_logo` via the
+  same `file` lookup pattern.
+- `env_colors.py` now includes all three environments.
+- Browser extension `colors.json` regenerated to include edge.
+
 ### Added -- gitignored environment URL reference file (#426)
 
 - **`utilities/generate-env-urls.py`** reads `openshift_apps_domain` from each
