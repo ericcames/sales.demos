@@ -28,7 +28,7 @@ Nothing to clone, nothing to install.
 
 **Running or changing the automation?** A clone passes CI and still cannot run a
 playbook until you have supplied three things that deliberately do not live
-here.
+here — plus a fourth if you are pointing it at your own cluster.
 
 ```bash
 git clone https://github.com/ericcames/sales.demos.git
@@ -114,10 +114,18 @@ environment too, before its PR merges.
 assets/aap-branding/             AAP gateway config inputs — NOT documentation
 collections/requirements.yml     what your laptop and the EE install
 hub/                             what Private Automation Hub SYNCS (generated)
-inventory/group_vars/
-  aap/                             shared config: job templates, workflows, credentials
-  sandbox/  demo/  edge/           per-environment connection settings
+inventory/
+  hosts.yml                        one host per environment — never share one
+  env-urls.yml                     GITIGNORED, generated — product URLs per env
+  group_vars/
+    aap/                             shared config: job templates, workflows, credentials
+    sandbox/  demo/  edge/           per-environment connection settings:
+      connection.yml                   committed — hostnames, API URLs, namespaces
+      local.yml                        GITIGNORED laptop-only overlay (#166)
 playbooks/                       the work: one playbook per phase
+  group_vars/all/
+    secrets.yml                      GITIGNORED, vault-encrypted — the ONLY secrets file
+    secrets.yml.example              the contract you build it from
 terraform/ocpvirt/               keyed by PLATFORM, not demo — demos reuse platforms
 utilities/                       build, check and generate scripts
 ```
@@ -134,6 +142,22 @@ templates and 4 workflows, applied by `playbooks/config.yml`.
 **`assets/aap-branding/` is not documentation**, however much it looks like
 screenshots. `gateway_settings.yml` reads `logo-<env>.png.b64` from there at
 playbook run time. See [its README](assets/aap-branding/README.md).
+
+**Two files are not where you would guess, and both placements are load-bearing.**
+
+- **`secrets.yml` sits beside the *playbooks*, not the inventory.** AAP's SCM
+  inventory sync runs `ansible-inventory`, which parses every `group_vars` file
+  next to the inventory — a vaulted file there fails the sync with
+  `ERROR! Attempting to decrypt but no vault secrets found`.
+- **The overlay is `local.yml`, not `connection.local.yml`.** Ansible loads a
+  `group_vars/<group>/` directory in sorted order and the *last* file wins.
+  `connection.local.yml` sorts **before** `connection.yml` and loses silently —
+  you would run against the committed cluster believing you had repointed.
+
+`local.yml` is the laptop path only. A job template reads the SCM checkout, and a
+gitignored file is not in it, so repointing AAP means committing to
+`connection.yml` (#166). Both routes are written up in
+[Reusing this repo](https://ericcames.github.io/sales.demos-docs/reference/reusing-this-repo/).
 
 **There is no `docs/` directory.** Documentation lives in
 [sales.demos-docs](https://github.com/ericcames/sales.demos-docs).
