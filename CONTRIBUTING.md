@@ -4,8 +4,7 @@
 
 - AAP tokens, passwords, OAuth tokens, bearer tokens, or vault passwords
 - Customer or company names, or any hostname that identifies a customer's estate
-- Real values in any tracked file, commit message, PR title or body, issue, or
-  CHANGELOG entry
+- Real values in any tracked file, commit message, PR title or body, or issue
 
 Use generic placeholders in committed docs and examples:
 `api.cluster-<id>.dyn.redhatworkshops.io`.
@@ -142,13 +141,16 @@ Add `--with-hub-token` for `config.yml`, `validate.yml`, `setup.yml`,
 3. Make one focused change. One concern per PR — group by shared root cause, not
    item count. The test: would you revert these together? Then ship them
    together. Behavior changes and anything risky stay isolated regardless.
-4. Update [`CHANGELOG.md`](CHANGELOG.md) under `[Unreleased]`.
-5. Update [`ROADMAP.md`](ROADMAP.md) if the plan changes, and
+4. Update [`ROADMAP.md`](ROADMAP.md) if the plan changes, and
    [`CLAUDE.md`](CLAUDE.md) if a convention changes.
-6. Run the phase against `sandbox` — and run it in the EE too, per
+5. Run the phase against `sandbox` — and run it in the EE too, per
    *Skills and playbooks* above. A green CI run proves neither.
-7. Run the leak audit above.
-8. Open a PR with a summary, a test plan, and a rollback note.
+6. Run the leak audit above.
+7. Open a PR with a summary, a test plan, and a rollback note.
+
+**There is no changelog to update.** The per-PR obligation was retired in #432.
+What changed lives in `git log` and the closed issue; the accumulated history is
+archived at <https://ericcames.github.io/sales.demos-docs/reference/history/>.
 
 **Additive only** — do not remove a working capability until its replacement is
 proven.

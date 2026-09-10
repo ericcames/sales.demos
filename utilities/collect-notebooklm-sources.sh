@@ -5,7 +5,7 @@
 # WHY THIS EXISTS
 #     NotebookLM takes files, not repositories, and it answers only from the
 #     sources it is given. That makes source selection the whole game: too few
-#     and it cannot answer, too many and a 900-line changelog becomes the
+#     and it cannot answer, too many and one long low-signal file becomes the
 #     citation for a question it has no business answering.
 #
 #     So the corpus is an explicit allowlist in notebooklm-sources.txt, and

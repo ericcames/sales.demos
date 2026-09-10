@@ -173,6 +173,7 @@ A version bump is a behavior change, not housekeeping. Per `CLAUDE.md`:
 - Open an issue first, labeled (`gh label list --repo ericcames/sales.demos`).
 - Re-run the affected phase against `sandbox` and verify against the cluster —
   the CI lint gate cannot tell you a collection bump broke a playbook.
-- Note the bump in `CHANGELOG.md`.
+- Say what moved and why in the issue and the PR body. There is no changelog
+  (#432).
 - Keep it to one concern per PR. A bump that fixes a specific bug ships on its
   own, not bundled with unrelated pins.

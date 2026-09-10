@@ -14,7 +14,7 @@ This repository is **public**.
 - AAP tokens, passwords, OAuth tokens, OpenShift bearer tokens, or vault passwords
   **in plaintext** — they belong in the vault-encrypted secrets file below
 - **Customer or company names** — never, in any form, in any file, commit
-  message, PR title or body, issue, or CHANGELOG
+  message, PR title or body, or issue
 - Terraform state or `*.tfvars` — both are gitignored and can contain secrets in
   plaintext
 - Kubeconfigs
