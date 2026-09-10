@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added -- env-urls.yml credentials and secrets guard (#429)
+
+- **`generate-env-urls.py --with-creds`** decrypts the vault and includes
+  usernames (from `connection.yml`) and passwords (from `secrets.yml`) in the
+  gitignored `inventory/env-urls.yml`. Full cheat sheet: AAP, OCP, Linux VM,
+  and Windows VM credentials per environment.
+- **`check-no-secrets.sh`** now verifies `inventory/env-urls.yml` is not
+  tracked and is covered by `.gitignore`, the same two checks that protect
+  `secrets.yml`. With `--with-creds` the file holds plaintext vault
+  credentials, so the guard must cover it.
+
 ### Added -- edge AAP environment-badged logo (#426)
 
 - **Edge gets a purple sign-in logo** (`#6753AC`), matching the green (sandbox)
