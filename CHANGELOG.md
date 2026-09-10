@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added -- gitignored environment URL reference file (#426)
+
+- **`utilities/generate-env-urls.py`** reads `openshift_apps_domain` from each
+  environment's `connection.yml` and writes `inventory/env-urls.yml` with every
+  product URL (AAP, OCP Console, OAuth, AO, Portal) per environment. Avoids
+  burning MCP tokens rediscovering Route hostnames every Claude session.
+- **`inventory/env-urls.yml`** is gitignored. Regenerate after repointing an
+  environment: `python3 utilities/generate-env-urls.py`.
+- `--check` mode exits non-zero if the file is missing or stale, suitable for
+  a preflight check in skills.
+
 ### Changed -- docs move to sales.demos-docs; runtime branding gets its own home (#422)
 
 - **`docs/` is gone from this repo.** Talk tracks, run sheets, design plans and
