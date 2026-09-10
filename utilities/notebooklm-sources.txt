@@ -25,9 +25,13 @@
 #
 # WHAT IS LEFT OUT, ON PURPOSE
 #     Retrieval quality degrades with noise: a long low-signal file becomes the
-#     citation for questions it cannot actually answer. CHANGELOG.md (900+
-#     lines of per-PR detail), CONTRIBUTING.md and CODE_OF_CONDUCT.md are
-#     commented out below rather than deleted, so turning one on is one edit.
+#     citation for questions it cannot actually answer. CONTRIBUTING.md and
+#     CODE_OF_CONDUCT.md are commented out below rather than deleted, so
+#     turning one on is one edit.
+#
+#     CHANGELOG.md used to head that list, at "900+ lines" -- it was 5,394 by
+#     the time anyone re-read the note, which is its own argument. The per-PR
+#     changelog was retired in #432 and the file is gone.
 # ===========================================================================
 
 # --- The demo documentation ------------------------------------------------
@@ -65,5 +69,4 @@ sales.demos-docs   docs/plan/pah-plan.md
 sales.demos   CLAUDE.md
 
 # --- Off by default --------------------------------------------------------
-# sales.demos   CHANGELOG.md
 # sales.demos   CONTRIBUTING.md

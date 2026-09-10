@@ -22,7 +22,6 @@
 - [ ] Any new skill uses only `name` / `description` / `license` frontmatter and is listed in `README.md`
 - [ ] Survey vars, skill prompts, and playbook `extra_vars` use matching names
 - [ ] Any playbook creating a token deletes it in an `always:` block
-- [ ] `CHANGELOG.md` updated under `[Unreleased]`
 - [ ] `CLAUDE.md` updated if a convention changed
 
 ## Related issues

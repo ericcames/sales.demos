@@ -57,7 +57,7 @@ across machines, the same reason `check-docs-artifacts.py` skips
 ## This repo is public
 
 No customer information, ever. No customer name, password, or API token in any
-tracked file, commit message, PR title or body, issue, or CHANGELOG.
+tracked file, commit message, PR title or body, or issue.
 
 **RHDP URLs are the documented exception.** `*.dyn.redhatworkshops.io`
 hostnames and cluster IDs are ephemeral demo-platform addresses, not
@@ -461,7 +461,24 @@ Environment secrets.
   together? Then ship them together.
 - **Additive only** — do not remove working capability until the replacement is
   proven.
-- **Maintain `CHANGELOG.md`.**
+- **There is no `CHANGELOG.md`, and adding one back is not the fix** (#432).
+  It never had a release to anchor it — 5,386 of its 5,394 lines sat under a
+  single `[Unreleased]` heading in a file that also claimed to follow Semantic
+  Versioning, 60 of the last 60 commits touched it, and nothing was ever
+  deleted from it. The same prose was written three times: issue, commit
+  message, entry. A one-line-per-PR version would have transcribed
+  `git log --oneline`, because the commit subjects here already read that way.
+
+  | Question | Where the answer lives |
+  |---|---|
+  | What changed, and when | `git log`, plus the closed issue and merged PR |
+  | Why a convention exists | this file |
+  | What is planned | `ROADMAP.md` |
+  | What happened before 2026-09-10 | the [archive](https://ericcames.github.io/sales.demos-docs/reference/history/) in `sales.demos-docs` |
+
+  **No per-PR artifact replaced it.** Writing a decision record every merge
+  would rename the work rather than retire it. Durable conventions come here,
+  deliberately and rarely, which is what this file already is.
 - **Branch from `main`; never commit to it directly.** Name the branch
   `<type>-<issue>-<slug>` — `fix-86-preflight-vault-lookup`,
   `docs-94-network-mcp-plan`. `<type>` is `fix`, `docs`, or the area being

@@ -189,6 +189,7 @@ runner (#7).
 | The workflows and job templates AAP has | [Running from AAP](https://ericcames.github.io/sales.demos-docs/reference/running-from-aap/) |
 | The execution environment | [Execution environment](https://ericcames.github.io/sales.demos-docs/reference/execution-environment/) |
 | Pointing this at your own cluster, or forking | [Reusing this repo](https://ericcames.github.io/sales.demos-docs/reference/reusing-this-repo/) |
+| What changed and when | `git log` and the [closed issues](https://github.com/ericcames/sales.demos/issues?q=is%3Aissue+is%3Aclosed) — the per-PR changelog was retired in [#432](https://github.com/ericcames/sales.demos/issues/432) and is [archived here](https://ericcames.github.io/sales.demos-docs/reference/history/) |
 | Secrets, the leak audit, the PR workflow | [`CONTRIBUTING.md`](CONTRIBUTING.md) |
 | The Terraform module — sizing, SSH, HTTP, Cockpit | [`terraform/ocpvirt/README.md`](terraform/ocpvirt/README.md) |
 | The post-login environment badge | [`utilities/aap-env-badge/README.md`](utilities/aap-env-badge/README.md) |
