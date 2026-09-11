@@ -155,24 +155,22 @@ Reading the message:
 - **Nothing was changed.** The lock is taken before any work starts, so a locked
   run created and destroyed nothing.
 
-**Check whether a lock is really held, without terraform.** The backend locks
-with a Kubernetes Lease, so the truth is one command away — and unlike `Who:`,
-it is current:
+**The playbook's failure message prints the exact commands.** Use them verbatim —
+they already carry the correct `ocpvirt_state_suffix` for the run that failed.
+
+If you need to check manually, the Lease name is
+`lock-tfstate-default-<env>-<os>-<role>` (e.g. `lock-tfstate-default-sandbox-linux-web`).
+Legacy `lock-tfstate-default-<env>` Leases still exist with an empty holder —
+checking those returns nothing and falsely confirms "no lock is held" (#402).
 
 ```bash
-oc get lease lock-tfstate-default-sandbox -n sales-demos-tfstate \
+# Replace <env>-<os>-<role> with the suffix from the failed run
+oc get lease lock-tfstate-default-<env>-<os>-<role> -n sales-demos-tfstate \
   -o jsonpath='{.spec.holderIdentity}{"\n"}'
 ```
 
-Empty output means no lock is held, and the failure is something else. A held
-lock shows the same value as the `ID:` line in the error. The full record —
-operation, who, terraform version, when it was taken — is on the Lease as an
-annotation:
-
-```bash
-oc get lease lock-tfstate-default-sandbox -n sales-demos-tfstate \
-  -o jsonpath='{.metadata.annotations.app\.terraform\.io/lock-info}{"\n"}'
-```
+A held lock shows the same value as the `ID:` line in the error. Empty output on
+the **correct** Lease means no lock is held and the failure is something else.
 
 To clear it, first confirm in AAP that no Provision or Teardown job is genuinely
 running — force-unlocking a live apply corrupts state. Then:
@@ -180,7 +178,7 @@ running — force-unlocking a live apply corrupts state. Then:
 ```bash
 cd terraform/ocpvirt
 terraform init -reconfigure \
-  -backend-config=secret_suffix=sandbox \
+  -backend-config=secret_suffix=<env>-<os>-<role> \
   -backend-config=namespace=sales-demos-tfstate \
   -backend-config=config_path=../../.kube/<env>.kubeconfig \
   -backend-config=insecure=true
