@@ -33,19 +33,11 @@ everything.
 ## Preflight Check
 
 ```bash
-# 1. Which environment, and is it the one you mean? This playbook destroys.
-grep -h '^aap_env_name' inventory/group_vars/sandbox/connection.yml inventory/group_vars/demo/connection.yml
+./utilities/preflight.sh "${ENV:-sandbox}" --terraform
 
-# 2. What is actually running right now
+# What is actually running right now
 #    mcp__openshift-<env>__resources_list  kubevirt.io/v1 VirtualMachine  namespace: sales-demos-<env>
 #    mcp__openshift-<env>__resources_list  kubevirt.io/v1 VirtualMachineInstance  namespace: sales-demos-<env>
-
-# 3. The vault password must be present or nothing decrypts
-test -r ~/secrets/.vault_pass_sales_demos \
-  && echo "✅ vault password present" || echo "❌ ~/secrets/.vault_pass_sales_demos missing"
-
-# 4. terraform must be on PATH for a laptop run (the EE has it for AAP runs)
-command -v terraform >/dev/null && echo "✅ $(terraform version | head -1)" || echo "❌ terraform not installed"
 ```
 
 ## Confirm before running
@@ -84,21 +76,13 @@ with, or Terraform plans against a different shape:
 
 ## Verify it in the EE before merging a change
 
-The `ansible-playbook` command above runs on your laptop, against
-`~/.ansible/collections` and your system python. An AAP job template runs this
-same playbook inside `sales-demos-ee`. **Those are two dependency sets and CI
-can see neither** — the lint gate executes nothing. Run it in the image as well:
+See `/sales-demos-verify-ee` for why and how. The one command:
 
 ```bash
 utilities/run-in-ee.sh playbooks/teardown.yml \
   -i inventory --limit sandbox -e target_env=sandbox \
   --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
 ```
-
-Everything after the playbook is unchanged from the command above — the wrapper
-adds the image and two read-only mounts and nothing else.
-
-Full detail, including how to diff the two runs: `/sales-demos-verify-ee`.
 
 ## Verify against the cluster, not the recap
 

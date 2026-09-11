@@ -60,21 +60,7 @@ ceph-rbd one; **noobaa reports `copy`** and will make every build slow.
 ## Preflight Check
 
 ```bash
-# 1. Which environment, and is it the one you mean?
-grep -h '^aap_env_name\|^openshift_api_url' \
-  inventory/group_vars/sandbox/connection.yml inventory/group_vars/demo/connection.yml \
-  inventory/group_vars/edge/connection.yml
-
-# 2. The vault password, or nothing decrypts
-test -r ~/secrets/.vault_pass_sales_demos \
-  && echo "✅ vault password present" || echo "❌ ~/secrets/.vault_pass_sales_demos missing"
-
-# 3. Is the environment even up? (RHDP environments expire)
-curl -sk -o /dev/null -w "API: %{http_code}\n" \
-  "$(grep '^openshift_api_url' inventory/group_vars/sandbox/connection.yml | cut -d'"' -f2)/version"
-
-# 4. CNV present? If this is empty, run ocpvirt-setup first — that is Phase 0.
-echo "(the playbook asserts this and tells you, so this is only a shortcut)"
+./utilities/preflight.sh "${ENV:-sandbox}"
 ```
 
 ## Run
@@ -91,21 +77,13 @@ or slow run does not leave a VM eating the memory budget the real demo needs.
 
 ## Verify it in the EE before merging a change
 
-The `ansible-playbook` command above runs on your laptop, against
-`~/.ansible/collections` and your system python. An AAP job template runs this
-same playbook inside `sales-demos-ee`. **Those are two dependency sets and CI
-can see neither** — the lint gate executes nothing. Run it in the image as well:
+See `/sales-demos-verify-ee` for why and how. The one command:
 
 ```bash
 utilities/run-in-ee.sh playbooks/prepare_env.yml \
   -i inventory --limit sandbox -e target_env=sandbox \
   --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
 ```
-
-Everything after the playbook is unchanged from the command above — the wrapper
-adds the image and two read-only mounts and nothing else.
-
-Full detail, including how to diff the two runs: `/sales-demos-verify-ee`.
 
 ## Reading the result
 

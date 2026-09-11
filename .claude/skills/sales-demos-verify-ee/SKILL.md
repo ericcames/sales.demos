@@ -206,4 +206,4 @@ differ** and that is a finding, not noise. Start with the core versions.
 | `Invalid filename: 'None'` | `~/.ansible.cfg` not mounted | add `--with-hub-token` |
 | `Attempting to decrypt but no vault secrets found` | `--vault-id` missing | it is passed through, not supplied — add it to your command |
 | Base64-looking noise in a redirected log | ansible-runner event markers; invisible in a terminal | harmless — strip with `sed 's/\x1b\[[0-9;]*[A-Za-z]//g'` when diffing |
-| Testing an image you built but have not registered | — | `EE_IMAGE=quay.io/zigfreed/sales-demos-ee:v1.2.0 utilities/run-in-ee.sh ...` |
+| Testing an image you built but have not registered | — | `EE_IMAGE=quay.io/zigfreed/sales-demos-ee:<your-tag> utilities/run-in-ee.sh ...` |

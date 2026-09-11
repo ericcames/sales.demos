@@ -54,20 +54,7 @@ minute later fixes the Windows half without re-provisioning.
 ## Preflight Check
 
 ```bash
-# 1. Which environment, and is it the one you mean?
-grep -h '^aap_env_name\|^openshift_api_url' \
-  inventory/group_vars/sandbox/connection.yml inventory/group_vars/demo/connection.yml
-
-# 2. terraform on PATH — the playbook shells out to it
-command -v terraform >/dev/null && echo "✅ $(terraform version | head -1)" || echo "❌ terraform not installed"
-
-# 3. The vault password, or nothing decrypts
-test -r ~/secrets/.vault_pass_sales_demos \
-  && echo "✅ vault password present" || echo "❌ ~/secrets/.vault_pass_sales_demos missing"
-
-# 4. Is the environment warm? A cold boot source makes this slow, not broken.
-#    ocpvirt-new-env answers this properly in about a minute.
-echo "run /ocpvirt-new-env if this environment has been idle or is new"
+./utilities/preflight.sh "${ENV:-sandbox}" --terraform
 ```
 
 ## Run
@@ -83,21 +70,13 @@ Idempotent — re-running converges rather than rebuilding. A second run reports
 
 ## Verify it in the EE before merging a change
 
-The `ansible-playbook` command above runs on your laptop, against
-`~/.ansible/collections` and your system python. An AAP job template runs this
-same playbook inside `sales-demos-ee`. **Those are two dependency sets and CI
-can see neither** — the lint gate executes nothing. Run it in the image as well:
+See `/sales-demos-verify-ee` for why and how. The one command:
 
 ```bash
 utilities/run-in-ee.sh playbooks/provision_vm.yml \
   -i inventory --limit sandbox -e target_env=sandbox \
   --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
 ```
-
-Everything after the playbook is unchanged from the command above — the wrapper
-adds the image and two read-only mounts and nothing else.
-
-Full detail, including how to diff the two runs: `/sales-demos-verify-ee`.
 
 ## What it does
 

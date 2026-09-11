@@ -93,44 +93,8 @@ above, or the substitution silently uses your Unix uid and the PATCH 422s.
 
 ## Preflight Check
 
-Run these before doing anything else. Every one must pass.
-
 ```bash
-ENV=${ENV:-sandbox}
-VAULT_ID="sales.demos@$HOME/secrets/.vault_pass_sales_demos"
-
-# 1. The vault password file exists.
-test -s "$HOME/secrets/.vault_pass_sales_demos" \
-  && echo "✅ vault password file" \
-  || echo "❌ ~/secrets/.vault_pass_sales_demos missing — without it secrets.yml cannot be decrypted"
-
-# 2. secrets.yml exists locally and is vault-encrypted, not plaintext.
-#    It is gitignored (#130); a fresh clone will not have it.
-head -c 15 playbooks/group_vars/all/secrets.yml 2>/dev/null | grep -q '^\$ANSIBLE_VAULT' \
-  && echo "✅ secrets.yml is vault-encrypted" \
-  || echo "❌ secrets.yml missing or NOT encrypted — see /sales-demos-first-time"
-
-# 3. This environment's credentials are real, not placeholders.
-ansible-vault view playbooks/group_vars/all/secrets.yml --vault-id "$VAULT_ID" 2>/dev/null \
-  | ENV="$ENV" python3 -c "
-import sys, yaml, os
-env = os.environ.get('ENV', 'sandbox')
-d = yaml.safe_load(sys.stdin) or {}
-e = (d.get('env_secrets') or {}).get(env, {})
-bad = [k for k, v in e.items() if 'CHANGEME' in str(v)]
-print(('❌ ' + env + ' still has placeholders: ' + ', '.join(bad)) if bad
-      else ('✅ ' + env + ' credentials filled in'))
-"
-
-# 4. kubernetes.core is installed
-ansible-galaxy collection list kubernetes.core 2>/dev/null | grep -q kubernetes.core \
-  && echo "✅ kubernetes.core" \
-  || echo "❌ kubernetes.core — ansible-galaxy collection install -r collections/requirements.yml"
-
-# 5. No project-local ansible.cfg shadowing ~/.ansible.cfg
-test -f ansible.cfg \
-  && echo "❌ project-local ansible.cfg present — it shadows ~/.ansible.cfg and breaks certified installs" \
-  || echo "✅ no project-local ansible.cfg"
+./utilities/preflight.sh "${ENV:-sandbox}" --k8s
 ```
 
 If any check fails, stop and tell the user exactly which one and the fix shown
@@ -183,21 +147,13 @@ Tell the user this takes about 5 minutes and stream the output.
 
 ## Verify it in the EE before merging a change
 
-The `ansible-playbook` command above runs on your laptop, against
-`~/.ansible/collections` and your system python. An AAP job template runs this
-same playbook inside `sales-demos-ee`. **Those are two dependency sets and CI
-can see neither** — the lint gate executes nothing. Run it in the image as well:
+See `/sales-demos-verify-ee` for why and how. The one command:
 
 ```bash
 utilities/run-in-ee.sh playbooks/install_ao.yml \
   -i inventory --limit sandbox -e target_env=sandbox \
   --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
 ```
-
-Everything after the playbook is unchanged from the command above — the wrapper
-adds the image and two read-only mounts and nothing else.
-
-Full detail, including how to diff the two runs: `/sales-demos-verify-ee`.
 
 ## Verify on the cluster
 
