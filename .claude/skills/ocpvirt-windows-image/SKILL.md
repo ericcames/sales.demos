@@ -29,9 +29,10 @@ This skill fills it, the same way CNV fills `rhel9`.
 | The producer (`ericcames/image.builder.pipeline`) | Building and publishing the containerdisk |
 
 The contract between them is one string: `quay_windows_image` in
-`inventory/group_vars/<env>/connection.yml`. Both environments currently point at
-`quay.io/zigfreed/win2k22-cis-l1-golden` (private, CIS L1 hardened). The
-playbook asserts the image reference is non-empty and rejects placeholder values.
+`inventory/group_vars/<env>/connection.yml`. All three environments currently
+point at `quay.io/zigfreed/win2k22-cis-l1-golden` (private, CIS L1 hardened).
+The playbook asserts the image reference is non-empty and rejects placeholder
+values.
 
 ## Why a DataImportCron and not a PVC
 
@@ -65,7 +66,8 @@ flagged `commonTemplate: true`. Custom entries coexist.
 ```bash
 # 1. Which environment, and is it the one you mean?
 grep -h '^aap_env_name\|^openshift_api_url' \
-  inventory/group_vars/sandbox/connection.yml inventory/group_vars/demo/connection.yml
+  inventory/group_vars/sandbox/connection.yml inventory/group_vars/demo/connection.yml \
+  inventory/group_vars/edge/connection.yml
 
 # 2. The vault password, or nothing decrypts
 test -r ~/secrets/.vault_pass_sales_demos \
@@ -194,7 +196,9 @@ statement — this is how to confirm it by hand.
 
 ## Where this sits
 
-1. `ocpvirt-setup` — installs OpenShift Virtualization.
-2. `ocpvirt-new-env` — confirms the Linux boot source imported and times a build.
-3. **This skill** — fills the Windows boot source from the published CIS L1 image.
-4. `ocpvirt-provision` — build the demo VMs, now including `os_type=windows`.
+1. `ocpvirt-setup` — runs `setup.yml`, which installs CNV, links the RHEL 9
+   golden image, applies the AAP config, and verifies the environment.
+2. **This skill** — fills the Windows boot source from the published CIS L1 image.
+   Not part of `setup.yml` — run it separately, or through the
+   `Cluster Day 0` AAP workflow which includes it.
+3. `ocpvirt-provision` — build the demo VMs, now including `os_type=windows`.

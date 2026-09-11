@@ -118,13 +118,16 @@ All five nodes are idempotent. A second run converges rather than rebuilding.
 
 Do not report success on the workflow recap alone — ask the target:
 
-```bash
-cd terraform/ocpvirt
-for u in $(terraform output -json web_urls | jq -r '.[]'); do curl -sI "$u" | head -1; done
-# Expect: HTTP/1.1 200 OK
+```
+mcp__openshift-<env>__resources_list  route.openshift.io/v1 Route
+  namespace: sales-demos
+```
 
-for u in $(terraform output -json cockpit_urls | jq -r '.[]'); do curl -sI "$u" | head -1; done
-# Expect: HTTP/1.1 200 OK
+Then curl each Route host:
+
+```bash
+curl -sI "https://<route-host>" | head -1
+# Expect: HTTP/1.1 200 OK for each Route
 ```
 
 SSH into the guest and check the MOTD renders with both URLs.
