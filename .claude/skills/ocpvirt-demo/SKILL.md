@@ -101,8 +101,9 @@ httpd, firewalld, Cockpit, chrony, the demo page, and security patching.
 ## Preflight Check
 
 ```bash
-# 1. Are there VMs to configure? They must already be registered in AAP.
-echo "check the Sales Demo VMs inventory in AAP, group linuxweb"
+# 1. Are there Linux VMs on the cluster?
+#    mcp__openshift-<env>__resources_list  kubevirt.io/v1 VirtualMachine
+#    Look for *-lnx-* names. If none exist, this is ocpvirt-provision, not here.
 
 # 2. Registration credentials present in the vault
 ansible-vault view playbooks/group_vars/all/secrets.yml \
@@ -111,8 +112,9 @@ ansible-vault view playbooks/group_vars/all/secrets.yml \
   && echo "✅ rhsm_activation_key present" \
   || echo "❌ no rhsm_activation_key — registration will fail, and so will everything after it"
 
-# 3. The job template exists
-echo "expect: Linux Day 1 - Repair, inventory 'Sales Demo VMs', limit linuxweb"
+# 3. The job template exists in AAP
+#    mcp__aap-<env>__job_templates_list  search="Linux Day 1 - Repair"
+#    Expect inventory 'Sales Demo VMs', limit linuxweb.
 ```
 
 ## Run
@@ -125,9 +127,9 @@ does. It needs two credentials, and both matter:
 | Credential | Why |
 |---|---|
 | `Sales Demos - Linux Machine` | SSH into the guest |
-| `Sales Demos - Vault` | Decrypt the registration credentials |
+| `Sales Demos - Env Secrets` | Registration credentials (`rhsm_activation_key`, `rhsm_org_id`) since #129 |
 
-Missing the Vault credential is the likelier mistake, and it fails in the
+Missing the Env Secrets credential is the likelier mistake, and it fails in the
 registration assert with a message saying so.
 
 ## Useful knobs
@@ -207,8 +209,9 @@ reads, so it is safe to re-run mid-demo.
 ## Preflight Check
 
 ```bash
-# 1. Is there a Windows VM to configure, and is it registered in AAP?
-echo "check the Sales Demo VMs inventory in AAP, group windemo"
+# 1. Is there a Windows VM on the cluster?
+#    mcp__openshift-<env>__resources_list  kubevirt.io/v1 VirtualMachine
+#    Look for *-win-* names. If none exist, this is ocpvirt-provision, not here.
 
 # 2. The Windows admin password must be in the vault — the credential carries
 #    it, and it is NOT the Linux one (#338). CIS L1 needs 14 characters and
@@ -219,8 +222,9 @@ ansible-vault view playbooks/group_vars/all/secrets.yml \
   && echo "✅ windows_admin_password present" \
   || echo "❌ no windows_admin_password — WinRM auth will fail and read like a listener problem"
 
-# 3. The job template exists
-echo "expect: Windows Day 1 - Repair, inventory 'Sales Demo VMs', limit windemo"
+# 3. The job template exists in AAP
+#    mcp__aap-<env>__job_templates_list  search="Windows Day 1 - Repair"
+#    Expect inventory 'Sales Demo VMs', limit windemo.
 ```
 
 ## Run
@@ -232,7 +236,7 @@ runs as nodes 2, 3 and 4.
 | Credential | Why |
 |---|---|
 | `Sales Demos - Windows Machine` | WinRM into the guest, as `demoadmin` |
-| `Sales Demos - Vault` | `group_vars/all/secrets.yml` is parsed for every play |
+| `Sales Demos - Env Secrets` | Guest credentials (`windows_admin_password`) since #129 |
 
 **Attaching the Linux Machine credential by mistake fails as an authentication
 error**, which reads like a listener or firewall problem rather than a wrong
@@ -277,17 +281,24 @@ credential. Check the credential before debugging the network.
 
 ## The check that matters, either OS
 
+Ask the cluster for the demo Routes and curl each one:
+
+```
+mcp__openshift-<env>__resources_list  route.openshift.io/v1 Route
+  namespace: sales-demos
+```
+
+Then for each Route host:
+
 ```bash
-cd terraform/ocpvirt && for u in $(terraform output -json web_urls | jq -r '.[]'); do
-  echo "$u"; curl -sI "$u" | head -1
-done
+curl -sI "https://<route-host>" | head -1
 ```
 
 **Before:** `HTTP/1.1 503 Service Unavailable`
 **After:** `HTTP/1.1 200 OK`
 
-`web_url` resolves per-OS (#340), so this is one command for both families
-rather than two outputs to remember.
+Routes are named per-VM (#29, #340), so this covers both Linux and Windows in
+one query.
 
 That is the whole point of the phase. A green job recap is not the same thing —
 the Route, the Service, the guest's own firewall and the web server all have to

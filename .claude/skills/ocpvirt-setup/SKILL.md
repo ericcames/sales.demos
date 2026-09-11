@@ -137,7 +137,7 @@ beside it. Do not attempt the run with a failing prerequisite.
 ## Confirm the cluster actually needs this
 
 CNV may already be installed. Check before running — the playbook is
-idempotent, but 20 minutes of waiting is not worth spending on a no-op.
+idempotent, but 10 minutes of waiting is not worth spending on a no-op.
 
 **Each value comes from where it actually lives, and they are two different
 places.** `openshift_api_url` is plaintext in `inventory/group_vars/<env>/`, so
@@ -197,7 +197,7 @@ Only one input, and it has a default. Ask the user only if it is ambiguous:
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `ENV` (inventory limit) | `sandbox` | Which environment to target — `sandbox` or `demo` |
+| `ENV` (inventory limit) | `sandbox` | Which environment to target — `sandbox`, `demo`, or `edge` |
 
 Everything else is resolved for you: hostname and API URL from that
 environment's committed `connection.yml`, credentials from the environment's
@@ -324,9 +324,8 @@ around it.
 ## When it finishes
 
 Report the summary the playbook prints **and** the verification result above,
-then tell the user the cluster is ready for **Phase 1** — the Terraform module
-for t-shirt-sized VMs
-([issue #2](https://github.com/ericcames/sales.demos/issues/2)).
+then tell the user the cluster is ready for provisioning — `/ocpvirt-provision`
+builds t-shirt-sized VMs, or run the `Cluster Day 0` workflow from AAP.
 
 ## If it fails
 

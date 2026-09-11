@@ -62,7 +62,8 @@ ceph-rbd one; **noobaa reports `copy`** and will make every build slow.
 ```bash
 # 1. Which environment, and is it the one you mean?
 grep -h '^aap_env_name\|^openshift_api_url' \
-  inventory/group_vars/sandbox/connection.yml inventory/group_vars/demo/connection.yml
+  inventory/group_vars/sandbox/connection.yml inventory/group_vars/demo/connection.yml \
+  inventory/group_vars/edge/connection.yml
 
 # 2. The vault password, or nothing decrypts
 test -r ~/secrets/.vault_pass_sales_demos \
@@ -137,7 +138,9 @@ oc get ns sales-demos-smoke   # should NOT exist — it is cleaned up
 1. Paste the new URLs into that environment's `connection.yml` (RHDP URLs are
    committed in the clear on purpose) and put the token and password in the
    vault under `env_secrets.<env>`.
-2. `ocpvirt-setup` — installs OpenShift Virtualization.
-3. **This skill** — confirms the boot source really imported and times a build.
-4. `playbooks/config.yml` — applies the AAP objects for that environment.
-5. `ocpvirt-provision` — build the demo VMs.
+2. `ocpvirt-setup` — runs `setup.yml`, which installs CNV, links the RHEL 9
+   golden image, applies the AAP config, deploys the MCP server, installs AO,
+   and **runs this skill's playbook** (`prepare_env.yml`) as its final stage.
+   After this, the environment is demo-ready for Linux.
+3. `playbooks/link_windows_image.yml` — if the environment needs Windows demos.
+4. `ocpvirt-provision` — build the demo VMs.
