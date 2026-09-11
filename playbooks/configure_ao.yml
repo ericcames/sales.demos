@@ -1,0 +1,419 @@
+---
+# ===========================================================================
+# configure_ao.yml — connect a running Automation Orchestrator to AAP.
+# Issue #457, following the install_ao.yml install.
+#
+#   ansible-playbook playbooks/configure_ao.yml -i inventory --limit sandbox \
+#     -e target_env=sandbox \
+#     --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
+#
+# Idempotent, no prompts. Every step checks-before-creates.
+# Creates no AAP token, so there is nothing to clean up in an `always:`.
+#
+# WHAT THIS DOES. Automation Orchestrator ships installed but unconnected —
+# it cannot see AAP's job templates, and users can only log in with a local
+# admin account. This playbook fixes both by:
+#
+#   1. Allowing AO to reach AAP (SSRF allowlist)
+#   2. Setting up AAP as an OIDC identity provider (SSO)
+#   3. Creating an AAP credential in AO
+#   4. Creating an AAP integration so AO can see JTs, WFJTs, inventories
+#
+# WHY THE SSRF ALLOWLIST. AO uses langchain_core's SSRF protection to block
+# private IP addresses on integration URLs. The AAP hostname resolves to a
+# private IP from inside the cluster. The AutomationOrchestrator CR's
+# `workflowHttpRequestAllowedHosts` only affects ao-worker (workflow HTTP
+# request steps), NOT ao-backend (integrations). The backend reads
+# APP_INTEGRATION_URL_ALLOWED_HOSTS from its environment.
+#
+# WHY OIDC SETUP IS NOT IDEMPOTENT. `POST setup_aap_oidc` returns 502 if
+# an OAuth2 application named "Syntara" already exists on AAP. The playbook
+# checks GET /identity_providers first and skips the call if one exists.
+# ===========================================================================
+
+- name: Configure Automation Orchestrator — connect to AAP
+  hosts: aap
+  gather_facts: false
+
+  environment:
+    K8S_AUTH_HOST: "{{ openshift_api_url }}"
+    K8S_AUTH_API_KEY: "{{ openshift_api_token }}"
+    K8S_AUTH_VERIFY_SSL: "{{ openshift_validate_certs | default(false) | bool }}"
+
+  vars:
+    ao_namespace: "automation-orchestrator"
+    ao_name: "ao"
+    ao_route_name: "ao"
+    ao_backend_deployment: "ao-backend"
+    ao_api_retries: 30
+    ao_api_delay: 10
+
+  tasks:
+    - name: Assert the environment is unambiguous
+      ansible.builtin.include_tasks: tasks/assert_target_environment.yml
+
+    - name: Assert the required connection variables are set
+      ansible.builtin.assert:
+        that:
+          - openshift_api_url is defined
+          - openshift_api_url | length > 0
+          - openshift_api_token is defined
+          - openshift_api_token | length > 0
+        fail_msg: >-
+          openshift_api_url and openshift_api_token are required. They live in
+          playbooks/group_vars/all/secrets.yml (gitignored, vault-encrypted).
+        quiet: true
+
+    - name: Assert AAP credentials are available
+      ansible.builtin.assert:
+        that:
+          - aap_password | default('') | length > 0
+          - aap_hostname | default('') | length > 0
+          - aap_username | default('') | length > 0
+        fail_msg: >-
+          aap_password, aap_hostname, and aap_username are required.
+          On a laptop they resolve from playbooks/group_vars/all/secrets.yml
+          and inventory/group_vars/<env>/connection.yml; from a job template
+          they come from the "Sales Demos - Env Secrets" credential.
+        quiet: true
+
+    # -----------------------------------------------------------------
+    # 1. Get the AO Route URL
+    # -----------------------------------------------------------------
+    - name: Read the Automation Orchestrator Route
+      kubernetes.core.k8s_info:
+        api_version: route.openshift.io/v1
+        kind: Route
+        namespace: "{{ ao_namespace }}"
+        name: "{{ ao_route_name }}"
+      register: ao_route_result
+
+    - name: Assert the AO Route exists
+      ansible.builtin.assert:
+        that:
+          - ao_route_result.resources | length > 0
+        fail_msg: >-
+          No Route named '{{ ao_route_name }}' in {{ ao_namespace }}.
+          Is Automation Orchestrator installed? Run /sales-demos-orchestrator first.
+        quiet: true
+
+    - name: Set AO base URL
+      ansible.builtin.set_fact:
+        ao_url: "https://{{ ao_route_result.resources[0].spec.host }}"
+        aap_url: "https://{{ aap_hostname }}"
+
+    - name: Show what we are connecting
+      ansible.builtin.debug:
+        msg: "Connecting AO ({{ ao_url }}) to AAP ({{ aap_url }})"
+
+    # -----------------------------------------------------------------
+    # 2. Patch the SSRF allowlist on ao-backend
+    # -----------------------------------------------------------------
+    - name: Read current ao-backend deployment
+      kubernetes.core.k8s_info:
+        api_version: apps/v1
+        kind: Deployment
+        namespace: "{{ ao_namespace }}"
+        name: "{{ ao_backend_deployment }}"
+      register: ao_backend_current
+
+    - name: Check if SSRF allowlist already includes AAP hostname
+      ansible.builtin.set_fact:
+        ao_ssrf_already_set: >-
+          {{
+            ao_backend_current.resources[0].spec.template.spec.containers
+            | selectattr('name', 'equalto', 'backend')
+            | map(attribute='env')
+            | flatten
+            | selectattr('name', 'equalto', 'APP_INTEGRATION_URL_ALLOWED_HOSTS')
+            | selectattr('value', 'defined')
+            | selectattr('value', 'search', aap_hostname)
+            | list | length > 0
+          }}
+
+    - name: Patch ao-backend with SSRF allowlist for AAP hostname
+      when: not ao_ssrf_already_set | bool
+      ansible.builtin.command:
+        argv:
+          - oc
+          - set
+          - env
+          - "deployment/{{ ao_backend_deployment }}"
+          - "-n"
+          - "{{ ao_namespace }}"
+          - "--server={{ openshift_api_url }}"
+          - "--token={{ openshift_api_token }}"
+          - "--insecure-skip-tls-verify={{ not (openshift_validate_certs | default(false) | bool) }}"
+          - "APP_INTEGRATION_URL_ALLOWED_HOSTS={{ [aap_hostname] | to_json }}"
+      changed_when: true
+      no_log: true
+
+    - name: Wait for ao-backend rollout after SSRF patch
+      when: not ao_ssrf_already_set | bool
+      kubernetes.core.k8s_info:
+        api_version: apps/v1
+        kind: Deployment
+        namespace: "{{ ao_namespace }}"
+        name: "{{ ao_backend_deployment }}"
+      register: ao_backend_rollout
+      retries: "{{ ao_api_retries }}"
+      delay: "{{ ao_api_delay }}"
+      until:
+        - ao_backend_rollout.resources[0].status.readyReplicas | default(0) | int
+          == ao_backend_rollout.resources[0].spec.replicas | default(1) | int
+        - ao_backend_rollout.resources[0].status.updatedReplicas | default(0) | int
+          == ao_backend_rollout.resources[0].spec.replicas | default(1) | int
+
+    # -----------------------------------------------------------------
+    # 3. Login to AO
+    # -----------------------------------------------------------------
+    - name: Login to Automation Orchestrator
+      ansible.builtin.uri:
+        url: "{{ ao_url }}/api/v1/auth/login"
+        method: POST
+        body_format: json
+        body:
+          username: admin
+          password: "{{ aap_password }}"
+        validate_certs: false
+        status_code: 200
+      register: ao_login
+      retries: "{{ ao_api_retries }}"
+      delay: "{{ ao_api_delay }}"
+      until: ao_login.status == 200
+      no_log: true
+
+    - name: Set AO auth header
+      ansible.builtin.set_fact:
+        ao_auth_header:
+          Authorization: "Bearer {{ ao_login.json.access_token }}"
+      no_log: true
+
+    # -----------------------------------------------------------------
+    # 4. AAP OIDC identity provider (SSO)
+    # -----------------------------------------------------------------
+    - name: Check for existing AAP identity provider
+      ansible.builtin.uri:
+        url: "{{ ao_url }}/api/v1/identity_providers"
+        method: GET
+        headers: "{{ ao_auth_header }}"
+        validate_certs: false
+        status_code: 200
+      register: ao_idps
+
+    - name: Set whether AAP OIDC already configured
+      ansible.builtin.set_fact:
+        ao_oidc_exists: >-
+          {{
+            ao_idps.json.resources
+            | selectattr('configuration.idp_type', 'defined')
+            | selectattr('configuration.idp_type', 'equalto', 'aap')
+            | list | length > 0
+          }}
+
+    - name: Setup AAP as OIDC identity provider
+      when: not ao_oidc_exists | bool
+      ansible.builtin.uri:
+        url: "{{ ao_url }}/api/v1/identity_providers/setup_aap_oidc"
+        method: POST
+        body_format: json
+        body:
+          aap_url: "{{ aap_url }}"
+          admin_username: "{{ aap_username }}"
+          admin_password: "{{ aap_password }}"
+          insecure_skip_tls_verify: true
+        headers: "{{ ao_auth_header }}"
+        validate_certs: false
+        status_code: [200, 201]
+      register: ao_oidc_result
+      no_log: true
+
+    - name: Report OIDC status
+      ansible.builtin.debug:
+        msg: >-
+          OIDC identity provider:
+          {{ 'already configured — skipped' if (ao_oidc_exists | bool) else 'created' }}
+
+    # -----------------------------------------------------------------
+    # 5. Look up AAP credential type and default project
+    # -----------------------------------------------------------------
+    - name: Get credential types
+      ansible.builtin.uri:
+        url: "{{ ao_url }}/api/v1/credential_types"
+        method: GET
+        headers: "{{ ao_auth_header }}"
+        validate_certs: false
+        status_code: 200
+      register: ao_cred_types
+
+    - name: Find AAP credential type ID
+      ansible.builtin.set_fact:
+        ao_aap_cred_type_id: >-
+          {{
+            ao_cred_types.json.resources
+            | selectattr('name', 'equalto', 'Ansible Automation Platform')
+            | map(attribute='id') | first
+          }}
+
+    - name: Get projects
+      ansible.builtin.uri:
+        url: "{{ ao_url }}/api/v1/projects"
+        method: GET
+        headers: "{{ ao_auth_header }}"
+        validate_certs: false
+        status_code: 200
+      register: ao_projects
+
+    - name: Find default project ID
+      ansible.builtin.set_fact:
+        ao_default_project_id: >-
+          {{
+            ao_projects.json.resources
+            | selectattr('name', 'equalto', 'default')
+            | map(attribute='id') | first
+          }}
+
+    # -----------------------------------------------------------------
+    # 6. AAP credential
+    # -----------------------------------------------------------------
+    - name: Check for existing AAP credential
+      ansible.builtin.uri:
+        url: "{{ ao_url }}/api/v1/credentials"
+        method: GET
+        headers: "{{ ao_auth_header }}"
+        validate_certs: false
+        status_code: 200
+      register: ao_credentials
+
+    - name: Set whether AAP credential exists
+      ansible.builtin.set_fact:
+        ao_aap_cred_exists: >-
+          {{
+            ao_credentials.json.resources
+            | selectattr('credential_type_id', 'equalto', ao_aap_cred_type_id | trim)
+            | list | length > 0
+          }}
+
+    - name: Create AAP credential
+      when: not ao_aap_cred_exists | bool
+      ansible.builtin.uri:
+        url: "{{ ao_url }}/api/v1/credentials"
+        method: POST
+        body_format: json
+        body:
+          name: "AAP Admin"
+          description: "AAP admin credentials for integration"
+          credential_type_id: "{{ ao_aap_cred_type_id | trim }}"
+          project_id: "{{ ao_default_project_id | trim }}"
+          inputs:
+            username: "{{ aap_username }}"
+            password: "{{ aap_password }}"
+            oauth_token: ""
+        headers: "{{ ao_auth_header }}"
+        validate_certs: false
+        status_code: [200, 201]
+      register: ao_cred_result
+      no_log: true
+
+    - name: Set AAP credential ID
+      ansible.builtin.set_fact:
+        ao_aap_cred_id: >-
+          {{
+            ao_cred_result.json.id | default(
+              ao_credentials.json.resources
+              | selectattr('credential_type_id', 'equalto', ao_aap_cred_type_id | trim)
+              | map(attribute='id') | first
+            )
+          }}
+
+    - name: Report credential status
+      ansible.builtin.debug:
+        msg: >-
+          AAP credential:
+          {{ 'already exists — skipped' if (ao_aap_cred_exists | bool) else 'created' }}
+          ({{ ao_aap_cred_id | trim }})
+
+    # -----------------------------------------------------------------
+    # 7. AAP integration
+    # -----------------------------------------------------------------
+    - name: Check for existing AAP integration
+      ansible.builtin.uri:
+        url: "{{ ao_url }}/api/v1/integrations"
+        method: GET
+        headers: "{{ ao_auth_header }}"
+        validate_certs: false
+        status_code: 200
+      register: ao_integrations
+
+    - name: Set whether AAP integration exists
+      ansible.builtin.set_fact:
+        ao_aap_integration_exists: >-
+          {{
+            ao_integrations.json.resources
+            | selectattr('integration_type', 'equalto', 'ansible_automation_platform')
+            | list | length > 0
+          }}
+
+    - name: Create AAP integration
+      when: not ao_aap_integration_exists | bool
+      ansible.builtin.uri:
+        url: "{{ ao_url }}/api/v1/integrations"
+        method: POST
+        body_format: json
+        body:
+          name: "Ansible Automation Platform"
+          description: "AAP integration for this environment"
+          integration_type: ansible_automation_platform
+          configuration:
+            integration_type: ansible_automation_platform
+            base_url: "{{ aap_url }}"
+            insecure_skip_tls_verify: true
+          management_credential_id: "{{ ao_aap_cred_id | trim }}"
+        headers: "{{ ao_auth_header }}"
+        validate_certs: false
+        status_code: [200, 201]
+      register: ao_integration_result
+
+    - name: Report integration status
+      ansible.builtin.debug:
+        msg: >-
+          AAP integration:
+          {{ 'already exists — skipped' if (ao_aap_integration_exists | bool) else 'created' }}
+
+    # -----------------------------------------------------------------
+    # 8. Validate — can AO see AAP's job templates?
+    # -----------------------------------------------------------------
+    - name: Verify AO can reach AAP job templates via proxy
+      ansible.builtin.uri:
+        url: "{{ ao_url }}/api/v1/proxies/aap/job_templates"
+        method: GET
+        headers: "{{ ao_auth_header }}"
+        validate_certs: false
+        status_code: 200
+      register: ao_proxy_jts
+      retries: 5
+      delay: 10
+      until: ao_proxy_jts.status == 200
+
+    - name: Assert AO sees job templates from AAP
+      ansible.builtin.assert:
+        that:
+          - ao_proxy_jts.json.results | default([]) | length > 0
+        fail_msg: >-
+          AO connected to AAP but sees 0 job templates. Check the integration
+          credential and AAP's job template permissions.
+        quiet: true
+
+    # -----------------------------------------------------------------
+    # 9. Report
+    # -----------------------------------------------------------------
+    - name: Configuration complete
+      ansible.builtin.debug:
+        msg: |
+          Automation Orchestrator configured successfully.
+            AO URL:          {{ ao_url }}
+            AAP URL:         {{ aap_url }}
+            OIDC provider:   {{ 'already configured' if (ao_oidc_exists | bool) else 'created' }}
+            AAP credential:  {{ 'already exists' if (ao_aap_cred_exists | bool) else 'created' }}
+            AAP integration: {{ 'already exists' if (ao_aap_integration_exists | bool) else 'created' }}
+            Job templates:   {{ ao_proxy_jts.json.results | default([]) | length }} visible

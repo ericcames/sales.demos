@@ -7,7 +7,7 @@
 #     -e target_env=sandbox \
 #     --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
 #
-# Six stages, in this order:
+# Seven stages, in this order:
 #
 #   1. install_cnv.yml        Install OpenShift Virtualization on the cluster and
 #                             wait until the rhel9 boot source is genuinely ready.
@@ -28,7 +28,10 @@
 #   5. install_ao.yml         Install Automation Orchestrator and the PostgreSQL it
 #                             cannot run without, via CloudNativePG. Default on,
 #                             skipped with `-e install_ao=false` (#141).
-#   6. prepare_env.yml        Prove it. Checks the boot source, the storage clone
+#   6. configure_ao.yml       Connect AO to AAP — OIDC SSO and the AAP integration
+#                             so AO can see job templates. Gated on install_ao
+#                             (#457).
+#   7. prepare_env.yml        Prove it. Checks the boot source, the storage clone
 #                             strategy and ingress, then builds one real VM, times
 #                             it, and destroys it.
 #
@@ -86,18 +89,18 @@
 # CNV, config.yml when only AAP objects changed, prepare_env.yml to re-check an
 # environment that has been sitting idle.
 #
-# EXPECT ROUGHLY 17 MINUTES: about 4 for CNV, 1–2 for the RHEL 9 golden image
+# EXPECT ROUGHLY 19 MINUTES: about 4 for CNV, 1–2 for the RHEL 9 golden image
 # import, a few for the AAP objects and the first Hub image mirror, about 5 for
-# Automation Orchestrator and its database, and about 1 to verify. That is on
-# top of RHDP provisioning the environment itself.
-# Pass `-e install_ao=false` to drop back to roughly 12.
+# Automation Orchestrator and its database, about 2 to configure AO, and about
+# 1 to verify. That is on top of RHDP provisioning the environment itself.
+# Pass `-e install_ao=false` to drop back to roughly 12 (skips both AO stages).
 # Pass `-e link_rhel9_image=false` to skip the golden image import.
 # ===========================================================================
 
-- name: Phase 0 (1/6) — install OpenShift Virtualization
+- name: Phase 0 (1/7) — install OpenShift Virtualization
   ansible.builtin.import_playbook: install_cnv.yml
 
-- name: Phase 0 (2/6) — link the RHEL 9 CIS L1 golden image
+- name: Phase 0 (2/7) — link the RHEL 9 CIS L1 golden image
   # DEFAULT ON, AND SKIPPABLE. Needs the HyperConverged CR from stage 1 and the
   # quay credentials in the vault. `-e link_rhel9_image=false` skips it for
   # environments where the quay creds are not configured yet; the stock rhel9
@@ -105,13 +108,13 @@
   ansible.builtin.import_playbook: link_rhel9_image.yml
   when: link_rhel9_image | default(true) | bool
 
-- name: Phase 0 (3/6) — apply the AAP configuration
+- name: Phase 0 (3/7) — apply the AAP configuration
   ansible.builtin.import_playbook: config.yml
 
-- name: Phase 0 (4/6) — deploy the AAP MCP server
+- name: Phase 0 (4/7) — deploy the AAP MCP server
   ansible.builtin.import_playbook: mcp_server.yml
 
-- name: Phase 0 (5/6) — install Automation Orchestrator and its database
+- name: Phase 0 (5/7) — install Automation Orchestrator and its database
   # DEFAULT ON, AND SKIPPABLE. #141 wants AO in every build, so the default is
   # true rather than an opt-in nobody remembers. The flag exists because this
   # stage installs two operators and a database and is the longest-running
@@ -121,5 +124,13 @@
   ansible.builtin.import_playbook: install_ao.yml
   when: install_ao | default(true) | bool
 
-- name: Phase 0 (6/6) — prove the environment is demo-ready
+- name: Phase 0 (6/7) — configure Automation Orchestrator
+  # Gated on the same flag as install. If AO was not installed, there is nothing
+  # to configure — and configure_ao.yml asserts the Route exists, so it would
+  # fail cleanly anyway. A separate `configure_ao` flag is not needed unless
+  # someone wants AO installed but unconfigured, and that is not a use case yet.
+  ansible.builtin.import_playbook: configure_ao.yml
+  when: install_ao | default(true) | bool
+
+- name: Phase 0 (7/7) — prove the environment is demo-ready
   ansible.builtin.import_playbook: prepare_env.yml
