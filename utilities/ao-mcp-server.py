@@ -27,7 +27,6 @@ import urllib.request
 from typing import Any
 
 from mcp.server import MCPServer
-from mcp.server.stdio import stdio_server
 from mcp.types import TextContent
 
 AO_URL = os.environ.get("AO_URL", "")
@@ -334,26 +333,15 @@ def approvals_list(limit: int = 20, offset: int = 0) -> list[TextContent]:
     )
 
 
-async def main():
-    async with stdio_server() as (read_stream, write_stream):
-        await server.run(
-            read_stream,
-            write_stream,
-            server.create_initialization_options(),
-        )
-
-
 if __name__ == "__main__":
     import asyncio
+    import sys
 
     if not AO_URL:
-        print("AO_URL environment variable is required", file=__import__("sys").stderr)
+        print("AO_URL environment variable is required", file=sys.stderr)
         raise SystemExit(1)
     if not AO_PASSWORD:
-        print(
-            "AO_PASSWORD environment variable is required",
-            file=__import__("sys").stderr,
-        )
+        print("AO_PASSWORD environment variable is required", file=sys.stderr)
         raise SystemExit(1)
 
-    asyncio.run(main())
+    asyncio.run(server.run_stdio_async())
