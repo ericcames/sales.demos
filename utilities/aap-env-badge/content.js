@@ -31,8 +31,9 @@
 //    never gives the AAP content script a chance to fetch while
 //    authenticated, and local-account login never touches AAP at all),
 //    the AO content script reads AAP's job templates through AO's own
-//    /api/v1/proxies/aap/job_templates endpoint. Same-origin, same
-//    session cookie — no cross-origin policy to worry about.
+//    /api/v1/proxies/aap/job_templates endpoint. AO's API requires a
+//    Bearer JWT, obtained via the same cookie-based bootstrap the SPA
+//    uses after SSO: csrf_token → refresh → Bearer.
 //
 // A storage.onChanged listener picks up a cache write from any other tab
 // the moment it happens.
@@ -267,30 +268,69 @@
   const onAO = AO_HOST.test(location.hostname);
 
   // On AO, if the cache is empty, ask AO's own proxy for AAP's job
-  // templates. Same-origin, same session cookie — works after SSO login,
-  // local-account login, or any other auth path.
+  // templates. AO's API requires a Bearer JWT — cookies alone return
+  // 401. The content script obtains one via the same cookie-based
+  // bootstrap the SPA uses after an SSO redirect:
+  //
+  //   1. POST /api/v1/auth/csrf_token  (httpOnly cookie sent automatically)
+  //   2. POST /api/v1/auth/refresh     + X-CSRF-Token header
+  //   3. GET  /api/v1/proxies/...      + Authorization: Bearer
   //
   // The list endpoint returns only id/name/description — no extra_vars.
   // So: fetch the list for a template ID, then fetch that template's
   // detail to get extra_vars.target_env.
   let proxyAttempted = false;
+  let aoToken = null;
+
+  async function aoGetToken() {
+    if (aoToken) return aoToken;
+    const csrfResp = await fetch("/api/v1/auth/csrf_token", {
+      method: "POST",
+      credentials: "same-origin",
+      cache: "no-store",
+      headers: { "Content-Type": "application/json" },
+    });
+    if (!csrfResp.ok) return null;
+    const { csrf_token } = await csrfResp.json();
+
+    const refreshResp = await fetch("/api/v1/auth/refresh", {
+      method: "POST",
+      credentials: "same-origin",
+      cache: "no-store",
+      headers: {
+        "Content-Type": "application/json",
+        "X-CSRF-Token": csrf_token,
+      },
+    });
+    if (!refreshResp.ok) return null;
+    const { access_token } = await refreshResp.json();
+    aoToken = access_token;
+    return aoToken;
+  }
+
   async function fetchEnvViaAOProxy() {
-    const listData = await aoProxyGet("/api/v1/proxies/aap/job_templates");
+    const token = await aoGetToken();
+    if (!token) return null;
+
+    const listData = await aoProxyGet(
+      "/api/v1/proxies/aap/job_templates",
+      token
+    );
     if (!listData) return null;
 
     const templates = listData.results || [];
     if (templates.length === 0) return null;
 
-    // Fetch a few template details in parallel until we find target_env.
-    // Every template on a configured AAP carries target_env, so the first
-    // batch is almost certain to hit — but scan a handful to be safe.
     const BATCH = 5;
     const found = new Set();
     for (let i = 0; i < templates.length && found.size === 0; i += BATCH) {
       const batch = templates.slice(i, i + BATCH);
       const details = await Promise.allSettled(
         batch.map((t) =>
-          aoProxyGet(`/api/v1/proxies/aap/job_templates/${t.id}`)
+          aoProxyGet(
+            `/api/v1/proxies/aap/job_templates/${t.id}`,
+            token
+          )
         )
       );
       for (const result of details) {
@@ -319,14 +359,16 @@
     return { label: name.toUpperCase(), ...colors.environments[name] };
   }
 
-  async function aoProxyGet(path) {
+  async function aoProxyGet(path, token) {
     const abort = new AbortController();
     const timer = setTimeout(() => abort.abort(), TIMEOUT_MS);
     try {
+      const headers = { Accept: "application/json" };
+      if (token) headers["Authorization"] = `Bearer ${token}`;
       const response = await fetch(path, {
         credentials: "same-origin",
         cache: "no-store",
-        headers: { Accept: "application/json" },
+        headers,
         signal: abort.signal,
       });
       if (response.status === 401 || response.status === 403) return null;
