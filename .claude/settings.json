@@ -12,5 +12,21 @@
       "mcp__ao-edge__*",
       "mcp__grafana__*"
     ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "if": "Bash(gh pr merge *)",
+            "command": "jq -r '.tool_input.command' | grep -q 'gh pr merge' && { main_wt=$(git worktree list --porcelain | head -1 | sed 's/^worktree //'); git -C \"$main_wt\" pull --ff-only 2>&1; echo \"{\\\"systemMessage\\\":\\\"Post-merge: pulled latest into $main_wt\\\"}\"; } || true",
+            "timeout": 30,
+            "statusMessage": "Pulling latest into main checkout..."
+          }
+        ]
+      }
+    ]
   }
 }
