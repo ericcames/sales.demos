@@ -21,11 +21,22 @@
 // closed if it ever disagrees with the template's limit. So there is no map to
 // keep in step and a new RHDP environment is back to being two edits.
 //
-// ON AO, the environment is read from chrome.storage.local, where the AAP
-// content script caches it. AAP and AO share the same cluster domain
-// (everything after `.apps.`), so the cache key is identical. A
-// storage.onChanged listener on AO picks it up the moment AAP resolves in
-// any tab — no background worker, no cross-origin request.
+// ON AO, the environment comes from two paths, tried in order:
+//
+// 1. chrome.storage.local — the AAP content script caches it when it
+//    resolves. AAP and AO share the same cluster domain (everything after
+//    `.apps.`), so the cache key is identical.
+//
+// 2. Cross-origin fetch to AAP — if the cache is empty (common after SSO
+//    login, where the redirect never gives the AAP content script a chance
+//    to fetch templates while authenticated), the AO content script asks
+//    AAP directly. host_permissions covers the domain, and AAP's session
+//    cookie (SameSite=None on the OpenShift Route) carries authentication.
+//    If the cookie does not carry (SameSite policy, third-party cookie
+//    blocking), this returns 401 and the cache-polling fallback continues.
+//
+// A storage.onChanged listener picks up a cache write from any other tab
+// the moment it happens.
 
 (() => {
   "use strict";
@@ -51,9 +62,8 @@
   // especially on a shared screen.
   const MIN_WIDTH = 1100;
 
-  // Same-origin: the content script runs ON the AAP page, so this needs no
-  // host_permissions and raises no CORS question. page_size is generous enough
-  // to hold every template this repo creates in one request.
+  // On AAP this is same-origin. On AO it is used cross-origin (prefixed
+  // with the AAP hostname); host_permissions covers the domain.
   const TEMPLATES_URL = "/api/controller/v2/job_templates/?page_size=200";
 
   // How long to wait between resolve attempts while the environment is still
@@ -89,13 +99,16 @@
     return box;
   }
 
-  // AO uses a PatternFly v6 compact masthead (pf-v6-c-masthead,
-  // pf-m-display-inline, id=mobile-masthead) that may be narrower or
-  // positioned differently than AAP's. Accept any visible header.
+  // AO's post-login app shell uses PatternFly v6's Compass layout. The
+  // Compass main-header renders as a <div>, not a <header> — so
+  // querySelector("header") misses it entirely. The login page still uses
+  // <header> (via PF's LoginHeader), so try both.
   function aoMastheadBox() {
-    const header = document.querySelector("header");
-    if (!header) return null;
-    const box = header.getBoundingClientRect();
+    const el =
+      document.querySelector("header") ||
+      document.querySelector("[class*='compass__main-header']");
+    if (!el) return null;
+    const box = el.getBoundingClientRect();
     if (box.height === 0) return null;
     return box;
   }
@@ -255,10 +268,75 @@
 
   const onAO = AO_HOST.test(location.hostname);
 
+  // On AO, if the cache is empty, try the AAP templates API directly.
+  // The SSO login flow (AO → AAP login → redirect back to AO) never
+  // gives the AAP content script a chance to fetch while authenticated,
+  // so the cache stays empty. This cross-origin fetch fills the gap.
+  let aapFetchAttempted = false;
+  async function fetchEnvFromAAP() {
+    const domain = clusterDomain();
+    if (!domain) return null;
+    const url =
+      `https://aap-aap.apps.${domain}${TEMPLATES_URL}`;
+    const abort = new AbortController();
+    const timer = setTimeout(() => abort.abort(), TIMEOUT_MS);
+    let response;
+    try {
+      response = await fetch(url, {
+        credentials: "include",
+        cache: "no-store",
+        headers: { Accept: "application/json" },
+        signal: abort.signal,
+      });
+    } catch {
+      return null;
+    } finally {
+      clearTimeout(timer);
+    }
+
+    if (response.status === 401 || response.status === 403) return null;
+    if (!response.ok) return null;
+
+    const data = await response.json();
+    const found = new Set();
+    for (const template of data.results || []) {
+      let vars = template.extra_vars;
+      if (typeof vars === "string") {
+        if (!vars.trim()) continue;
+        try {
+          vars = JSON.parse(vars);
+        } catch {
+          continue;
+        }
+      }
+      const name = vars && vars.target_env;
+      if (typeof name === "string" && name) found.add(name);
+    }
+    if (found.size !== 1) return null;
+    const name = [...found][0];
+    if (!colors.environments[name]) return null;
+
+    status = "resolved";
+    if (domain) chrome.storage.local.set({ ["env:" + domain]: name });
+    return { label: name.toUpperCase(), ...colors.environments[name] };
+  }
+
+  async function fetchEnvForAO() {
+    const cached = await fetchEnvFromCache();
+    if (cached) return cached;
+    if (aapFetchAttempted) return null;
+    aapFetchAttempted = true;
+    try {
+      return await fetchEnvFromAAP();
+    } catch {
+      return null;
+    }
+  }
+
   function ensureEnv(onResolved) {
     if (resolved || inFlight) return;
     inFlight = true;
-    const resolver = onAO ? fetchEnvFromCache : fetchEnv;
+    const resolver = onAO ? fetchEnvForAO : fetchEnv;
     resolver()
       .then((env) => {
         if (env) {

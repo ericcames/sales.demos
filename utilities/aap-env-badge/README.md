@@ -60,11 +60,18 @@ the answer AAP already gave — same cluster, same environment.
 When the content script resolves the environment on an AAP page, it caches
 `envName` in `chrome.storage.local` keyed by the cluster domain (everything
 after `.apps.` in the hostname). On AO, the content script reads that cache
-with the same key — AAP and AO share the cluster domain, so the lookup is
-immediate. A `storage.onChanged` listener on AO picks it up the moment AAP
-resolves in any tab, so the pill appears without waiting for the next poll tick.
+first. If the cache is empty — which is normal after SSO login, because the
+redirect from AAP back to AO never gives the AAP content script a chance to
+fetch templates while authenticated — AO falls back to a **cross-origin fetch**
+to `https://aap-aap.apps.<cluster>/api/controller/v2/job_templates/`. The
+`host_permissions` already cover the domain, and the SSO session cookie carries
+authentication. If the cookie does not carry (third-party cookie policy,
+SameSite restrictions), the fetch returns 401 and the cache-polling fallback
+continues — no worse than before.
 
-No background worker, no cross-origin request, no hostname map to keep in step.
+A `storage.onChanged` listener on AO picks up a cache write from any other tab
+the moment it happens, so the pill appears without waiting for the next poll
+tick. No background worker, no hostname map to keep in step.
 
 `playbooks/tasks/assert_target_environment.yml` fails a run closed if
 `target_env` ever disagrees with the template's `limit`, so the value the badge
@@ -171,10 +178,11 @@ copy differs.
 - **It is an overlay, not DOM surgery.** One `position: fixed` element appended
   to `<body>`; AAP's own markup is never modified. The masthead is PatternFly
   with version-prefixed class names (`pf-v5-c-masthead__*`), so anchoring inside
-  it would break on a gateway upgrade. All this depends on is a `<header>`
-  existing somewhere on the page — the badge's vertical position is capped at
-  24 px from the viewport top, so a `<header>` placed lower (as on the AO login
-  page) still gets the pill in the right spot.
+  it would break on a gateway upgrade. On AAP pages it needs a `<header>`; on
+  AO's post-login pages it falls back to the PF v6 Compass `__main-header`
+  (`<div>`, not `<header>`) when no `<header>` exists. The badge's vertical
+  position is capped at 24 px from the viewport top, so a `<header>` placed
+  lower (as on the AO login page) still gets the pill in the right spot.
 - **It hides below 1100px** rather than overlapping the nav toggle or the
   right-hand icons. A badge sitting on top of the controls is worse than none,
   particularly on a shared screen.
