@@ -1,9 +1,11 @@
-// AAP environment badge — issue #54, reworked in #87.
+// AAP environment badge — issue #54, reworked in #87, extended to AO in #477.
 //
 // The AAP sign-in page says which environment you are entering (custom_logo,
 // badged by utilities/make-env-logo.py). After login that marker is gone: the
 // masthead is the stock Red Hat lockup and a wide empty black bar, identical on
 // both environments — and after login is when you are actually clicking things.
+// AO has no branding at all (#426), so this is the only environment indicator
+// on every AO page.
 //
 // No gateway setting fixes this. Measured on live AAP 2.6: 44 settings, only
 // custom_login_info and custom_logo are branding-related, and custom_logo was
@@ -18,6 +20,12 @@
 // templates this repo creates, and assert_target_environment.yml fails a run
 // closed if it ever disagrees with the template's limit. So there is no map to
 // keep in step and a new RHDP environment is back to being two edits.
+//
+// ON AO, the same question is asked via the background service worker, which
+// has host_permissions for the AAP origin. AO and AAP share SSO, so the AAP
+// session cookie is valid. The AAP hostname is derived from the AO hostname —
+// both are Routes on the same cluster, differing only in the prefix before
+// `.apps.<cluster-domain>`.
 
 (() => {
   "use strict";
@@ -36,6 +44,7 @@
   // anything else — the OpenShift console, Cockpit, a demo web server — bails
   // before touching the page.
   const AAP_HOST = /^aap-/;
+  const AO_HOST = /^ao-automation-orchestrator\b/;
 
   // Below this width the masthead's own controls crowd the middle. Hide rather
   // than overlap: a badge sitting on top of the nav toggle is worse than none,
@@ -197,10 +206,59 @@
     return { label: name.toUpperCase(), ...colors.environments[name] };
   }
 
+  // AO is a different Route on the same cluster. The AAP origin is the same
+  // cluster domain with the `aap-aap` prefix that the RHDP catalog item always
+  // produces. This is the same naming convention AAP_HOST already depends on.
+  function deriveAapOrigin() {
+    const dot = location.hostname.indexOf(".apps.");
+    if (dot < 0) return null;
+    return `https://aap-aap${location.hostname.slice(dot)}`;
+  }
+
+  // Delegates environment resolution to the background service worker, which
+  // has host_permissions and can reach AAP cross-origin with the SSO cookie.
+  async function fetchEnvFromBackground() {
+    const aapOrigin = deriveAapOrigin();
+    if (!aapOrigin) {
+      status = "unknown";
+      return null;
+    }
+
+    const reply = await chrome.runtime.sendMessage({
+      type: "resolve-env",
+      aapOrigin,
+    });
+
+    if (!reply || reply.status === "error") {
+      status = "unknown";
+      return null;
+    }
+    if (reply.status === "logged-out") {
+      status = "logged-out";
+      return null;
+    }
+    if (reply.status !== "resolved" || !reply.env) {
+      status = "unknown";
+      return null;
+    }
+
+    const name = reply.env;
+    if (!colors.environments[name]) {
+      status = "unknown";
+      return null;
+    }
+
+    status = "resolved";
+    return { label: name.toUpperCase(), ...colors.environments[name] };
+  }
+
+  const onAO = AO_HOST.test(location.hostname);
+
   function ensureEnv(onResolved) {
     if (resolved || inFlight) return;
     inFlight = true;
-    fetchEnv()
+    const resolver = onAO ? fetchEnvFromBackground : fetchEnv;
+    resolver()
       .then((env) => {
         if (env) {
           resolved = env;
@@ -250,7 +308,7 @@
     render(colors.unknown, box);
   }
 
-  if (!AAP_HOST.test(location.hostname)) return;
+  if (!AAP_HOST.test(location.hostname) && !onAO) return;
 
   fetch(chrome.runtime.getURL("colors.json"))
     .then((r) => r.json())
