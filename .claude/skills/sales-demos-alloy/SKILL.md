@@ -178,12 +178,16 @@ utilities/run-in-ee.sh playbooks/deploy_alloy.yml \
 
 **A green playbook run is not proof.** Ask the cluster.
 
-```bash
+```
 # Alloy pods running?
-oc --kubeconfig .kube/sandbox.kubeconfig get daemonset alloy -n grafana-alloy
+mcp__openshift-<env>__resources_get  apps/v1 DaemonSet alloy
+  namespace: grafana-alloy
 
 # Alloy logs — look for "metrics sent" / errors
-oc --kubeconfig .kube/sandbox.kubeconfig logs -n grafana-alloy -l app.kubernetes.io/name=alloy --tail=50
+mcp__openshift-<env>__pods_log
+  namespace: grafana-alloy
+  labelSelector: app.kubernetes.io/name=alloy
+  tailLines: 50
 ```
 
 ## Verify via Grafana MCP
@@ -213,7 +217,7 @@ tell the user the cluster is now pushing metrics and logs to Grafana Cloud.
 | `401` / `Unauthorized` on the first task | RHDP bearer token expired | Refresh `openshift_api_token` in the vault |
 | `Attempting to decrypt but no vault secrets found` | `--vault-id` missing | Add `--vault-id sales.demos@~/secrets/.vault_pass_sales_demos` |
 | Grafana Cloud push credentials assertion fails | Push keys not set in vault | `ansible-vault edit` and fill in the 5 `grafana_cloud_*` push keys |
-| Alloy pods `CrashLoopBackOff` | Config syntax error or bad credentials | Check logs: `oc logs -n grafana-alloy -l app.kubernetes.io/name=alloy` |
+| Alloy pods `CrashLoopBackOff` | Config syntax error or bad credentials | Check logs: `mcp__openshift-<env>__pods_log` in `grafana-alloy` namespace |
 | Federation returns 403 | SA missing `cluster-monitoring-view` | The playbook creates the CRB — re-run it |
 | AAP metrics scrape fails | Gateway auth or TLS issue | Check Alloy logs; verify `aap_username`/`aap_password` in vault |
 | Docker Hub rate limit on `grafana/alloy` pull | Too many pulls from this IP | Wait, or mirror the image to quay.io |

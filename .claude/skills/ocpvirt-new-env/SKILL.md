@@ -126,11 +126,19 @@ Raise the bar only deliberately:
 
 ## Verify against the cluster, not the recap
 
-```bash
-oc get datasource rhel9 -n openshift-virtualization-os-images
-oc get volumesnapshot -n openshift-virtualization-os-images
-oc get storageprofile <default-storageclass> -o jsonpath='{.status.cloneStrategy}{"\n"}'
-oc get ns sales-demos-smoke   # should NOT exist — it is cleaned up
+```
+mcp__openshift-<env>__resources_get  cdi.kubevirt.io/v1beta1 DataSource rhel9
+  namespace: openshift-virtualization-os-images
+
+mcp__openshift-<env>__resources_list  snapshot.storage.k8s.io/v1 VolumeSnapshot
+  namespace: openshift-virtualization-os-images
+
+mcp__openshift-<env>__resources_get  storage.k8s.io/v1 StorageProfile <default-storageclass>
+# Check status.cloneStrategy — must be csi-clone, not copy
+
+mcp__openshift-<env>__resources_list  v1 Namespace
+  fieldSelector: metadata.name=sales-demos-smoke
+# Should return empty — the smoke namespace is cleaned up
 ```
 
 ## A fresh environment, start to finish

@@ -136,10 +136,17 @@ Full detail, including how to diff the two runs: `/sales-demos-verify-ee`.
 The acceptance test is agreement with the node's own accounting. If the probe
 disagrees with these, **the playbook is wrong, not the cluster**:
 
-```bash
-oc describe node <node> | grep -A8 'Allocated resources'   # must match REQUESTED
-oc adm top node                                            # must match LIVE USE
-oc get packagemanifest -n openshift-marketplace | grep -E 'mcp-gateway|orchestrator'
+```
+# Must match REQUESTED
+mcp__openshift-<env>__nodes_stats_summary
+
+# Must match LIVE USE
+mcp__openshift-<env>__nodes_top
+
+# Operator catalog entries present
+mcp__openshift-<env>__resources_list  packages.operators.coreos.com/v1 PackageManifest
+  namespace: openshift-marketplace
+# Look for mcp-gateway, orchestrator
 ```
 
 Verified 2026-09-03 on sandbox: probe reported `14.5 vCPU / 49.05 GiB`

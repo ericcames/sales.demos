@@ -239,18 +239,10 @@ on this repository being complete.
 **A green playbook run is not proof.** The playbook already asserts all of this
 when it waits, but run it by hand if you are debugging:
 
-```bash
-HOST=$(grep -oP '(?<=^aap_hostname: ")[^"]+' inventory/group_vars/sandbox/connection.yml)
-PW=$(ansible-vault view playbooks/group_vars/all/secrets.yml \
-       --vault-id sales.demos@~/secrets/.vault_pass_sales_demos \
-     | python3 -c 'import sys,yaml; print(yaml.safe_load(sys.stdin)["env_secrets"]["sandbox"]["aap_password"])')
-
-for repo in rh-certified validated community; do
-  n=$(curl -sk -u "admin:$PW" \
-    "https://$HOST/api/galaxy/v3/plugin/ansible/content/$repo/collections/index/?limit=1" \
-    | python3 -c 'import sys,json; print(json.load(sys.stdin)["meta"]["count"])')
-  echo "$repo: $n collections"
-done
+```
+mcp__aap-<env>__ansible_content_collections_index
+# Returns the collection index for each content repository.
+# Check rh-certified (~214), validated (~47), community (15).
 ```
 
 Three things must hold, and the third is the one people skip:

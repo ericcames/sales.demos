@@ -110,8 +110,12 @@ Full detail, including how to diff the two runs: `/sales-demos-verify-ee`.
 
 ## Verify against the cluster, not the recap
 
-```bash
-oc get vm,vmi -n sales-demos-sandbox
+```
+mcp__openshift-<env>__resources_list  kubevirt.io/v1 VirtualMachine
+  namespace: sales-demos-<env>
+
+mcp__openshift-<env>__resources_list  kubevirt.io/v1 VirtualMachineInstance
+  namespace: sales-demos-<env>
 ```
 
 `apply` returning does **not** mean the guest is up: the default StorageClass is
@@ -163,10 +167,10 @@ If you need to check manually, the Lease name is
 Legacy `lock-tfstate-default-<env>` Leases still exist with an empty holder —
 checking those returns nothing and falsely confirms "no lock is held" (#402).
 
-```bash
-# Replace <env>-<os>-<role> with the suffix from the failed run
-oc get lease lock-tfstate-default-<env>-<os>-<role> -n sales-demos-tfstate \
-  -o jsonpath='{.spec.holderIdentity}{"\n"}'
+```
+mcp__openshift-<env>__resources_get  coordination.k8s.io/v1 Lease lock-tfstate-default-<env>-<os>-<role>
+  namespace: sales-demos-tfstate
+# Check spec.holderIdentity — empty means no lock is held
 ```
 
 A held lock shows the same value as the `ID:` line in the error. Empty output on
