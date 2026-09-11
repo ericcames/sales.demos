@@ -49,9 +49,15 @@ command -v terraform >/dev/null && echo "✅ $(terraform version | head -1)" || 
 
 ## Confirm before running
 
-Say which environment is about to be torn down and what is in it, and get an
-explicit yes. A teardown is not reversible — the VMs are gone and a rebuild is
-a fresh boot, roughly six minutes cold.
+Say which environment is about to be torn down, which `vm_role` is being
+destroyed, and what is in it, and get an explicit yes. A teardown is not
+reversible — the VMs are gone and a rebuild is a fresh boot, roughly six minutes
+cold.
+
+**`vm_role` must match the role the VMs were provisioned with.** Each role has
+its own Terraform state (`secret_suffix=<env>-<os>-<role>`), so a teardown
+without the correct role inits an empty state, destroys nothing, and still
+reports success. The default is `web`.
 
 Be especially careful with `demo`: it is the environment customers are shown.
 
@@ -68,11 +74,11 @@ environment guard only compares it against the inventory when it is supplied, so
 omitting it lets a mistyped `--limit` through — an acceptable risk for an apply
 and not for a destroy.
 
-If the VMs were provisioned with a non-default tier, pass the same values that
-built them, or Terraform plans against a different shape:
+Pass the same `vm_role`, `os_type` and `vm_size_tier` the VMs were provisioned
+with, or Terraform plans against a different shape:
 
 ```bash
-  -e os_type=both -e vm_size_tier=large
+  -e vm_role=db -e os_type=both -e vm_size_tier=large
 ```
 
 ## Verify it in the EE before merging a change
@@ -126,8 +132,11 @@ running job is using.
 - **Destroy fails partway** — hosts are deliberately left registered in AAP.
   Deregistering them while the VMs still exist would leave the cluster holding
   resources nothing points at. Fix the cause and re-run; it is idempotent.
-- **`0 destroyed` and VMs still visible** — almost always the wrong environment
-  or the wrong `secret_suffix`. Check `aap_env_name` resolved to what you meant.
+- **`0 destroyed` and VMs still visible** — almost always the wrong `vm_role`,
+  wrong environment, or wrong `secret_suffix`. Each role has its own state, so a
+  teardown without `-e vm_role=<role>` defaults to `web` and inits an empty state
+  for the role that was actually provisioned. Check `vm_role` first, then
+  `aap_env_name`.
 - **`Error acquiring the state lock`** — a previous run was cancelled, timed
   out, or had its pod evicted, and never released the lock. Teardown is the
   likelier victim of the two playbooks, because the nightly schedule can start
