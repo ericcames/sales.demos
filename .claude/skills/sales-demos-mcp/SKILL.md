@@ -1,6 +1,6 @@
 ---
 name: sales-demos-mcp
-description: "Connect Claude Code to this repo's OpenShift clusters, AAP instances, Automation Orchestrator, and Grafana Cloud over MCP — up to nine servers, one skill. Generates per-environment kubeconfigs for OpenShift, auto-creates bearer tokens for AAP, registers the AO and Grafana Cloud MCP servers, then verifies every server answers. TRIGGER when: the user asks to set up, connect, refresh or fix the MCP servers, says an openshift-sandbox, openshift-demo, openshift-edge, aap-sandbox, aap-demo, ao-sandbox, ao-demo, or grafana MCP server is failing or shows no tools, or has just repointed an environment or rotated a token. SKIP: if the user wants to install OpenShift Virtualization or apply AAP configuration — that is ocpvirt-setup — or wants to deploy the AAP MCP server into a cluster, which is playbooks/mcp_server.yml run by ocpvirt-setup."
+description: "Connect Claude Code to this repo's OpenShift clusters, AAP instances, Automation Orchestrator, and Grafana Cloud over MCP — up to eight servers, one skill. Generates per-environment kubeconfigs for OpenShift, auto-creates bearer tokens for AAP, registers the AO and Grafana Cloud MCP servers, then verifies every server answers. TRIGGER when: the user asks to set up, connect, refresh or fix the MCP servers, says an openshift-sandbox, openshift-demo, openshift-edge, aap-sandbox, aap-demo, ao-sandbox, ao-demo, or grafana MCP server is failing or shows no tools, or has just repointed an environment or rotated a token. SKIP: if the user wants to install OpenShift Virtualization or apply AAP configuration — that is ocpvirt-setup — or wants to deploy the AAP MCP server into a cluster, which is playbooks/mcp_server.yml run by ocpvirt-setup."
 ---
 
 # sales-demos-mcp
@@ -17,7 +17,7 @@ which is the same reasoning that keeps `sales-demos-collections-sync`,
 
 ## What it sets up
 
-**Up to nine servers — seven per-environment, two global/external:**
+**Up to eight servers — seven per-environment, one global/external:**
 
 | Server | Auth | Access | Source |
 |---|---|---|---|
@@ -35,6 +35,15 @@ which is the same reasoning that keeps `sales-demos-collections-sync`,
 `sandbox` and `demo` and defaults anything that is not `demo` to **write**
 scope. Adding `edge` is a posture decision, not a usage-line fix — the same
 call #405 made about that script.
+
+**There is no `ao-edge` either, for a different reason: AO is not installed on
+`edge`.** Measured 2026-09-11 — `openshift-edge` has no Route in the
+`automation-orchestrator` namespace. Posture is not the blocker here: the AO
+server is read-only everywhere, and `make-ao-mcp.sh` accepts any environment
+name. `.claude/settings.json` already allowlists `mcp__ao-edge__*` (added with
+the server in #465), so once `/sales-demos-orchestrator` has run against `edge`,
+`bash utilities/make-ao-mcp.sh edge` is the whole job. Until then the script
+stops at the Route lookup, which is the correct failure.
 
 **One server per environment, named after it, is the whole design.** #16 is the
 precedent: when two environments were not kept distinct, `--limit demo`
@@ -288,6 +297,27 @@ the Route is admitted but the pod is not serving yet** — wait and retry rather
 than assuming a misconfiguration. Measured on a working sandbox: **140 tools**,
 including `job_templates_launch_create`, `workflow_job_templates_launch_create`
 and `jobs_stdout_retrieve`.
+
+### Automation Orchestrator
+
+`claude mcp add` registers the server, but its tools only load when Claude Code
+starts — **restart first**, then ask the server rather than re-reading the
+config. Two calls, in this order:
+
+1. **`mcp__ao-<env>__version`** — proves the server started, logged in and
+   reached the API. The pass is `"api_version": "v1"`. Measured on sandbox
+   2026-09-11: `info_version` `1.1.0`.
+2. **`mcp__ao-<env>__proxies_aap_job_templates`** — proves AO's AAP integration
+   works, which is what makes AO useful. The pass is `count` greater than 0;
+   measured on sandbox: **33**. A `count` of 0 or an error with `version`
+   passing means the MCP server is fine and AO is not connected to AAP — that
+   is `/sales-demos-orchestrator-config`, not this skill.
+
+Measured on a working sandbox: **32 tools**, all read-only. A tool whose name is
+missing after a restart is the server failing to start. The usual cause is the
+SDK: `python3 -c 'import mcp'` fails, and `pip install mcp` fixes it. Otherwise
+re-run `make-ao-mcp.sh <env>`, which tests the AO login before it registers
+anything.
 
 ### Grafana Cloud
 

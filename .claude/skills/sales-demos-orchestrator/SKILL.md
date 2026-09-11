@@ -56,8 +56,13 @@ on trades a working AAP for a working AO.
 ## Logging in
 
 **Username `admin`, password = this environment's AAP admin password.** The
-playbook seeds it from `env_secrets[<env>].aap_password` so AO and AAP are one
-credential rather than two (#143).
+playbook seeds it from `aap_password` so AO and AAP are one credential rather
+than two (#143). It reads `aap_password`, never `env_secrets[<env>]` directly: on
+a laptop `connection.yml` resolves that variable from the vault, and from AAP the
+"Sales Demos - Env Secrets" credential type injects it, because a job template
+has no vaulted file to read. Reaching for `env_secrets` worked from a laptop and
+failed from AAP — the comment above the assert in `playbooks/install_ao.yml` has
+the detail.
 
 That is **seed-time only**. The CRD is explicit: the secret "is used only during
 initial database seeding to create the admin user. Once the admin user exists,
