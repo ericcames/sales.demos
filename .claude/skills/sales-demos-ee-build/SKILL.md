@@ -131,7 +131,7 @@ Bump rule, following the convention already used for `quay.io/zigfreed` images:
 Override the tag per build with `EE_IMAGE`:
 
 ```bash
-EE_IMAGE=quay.io/zigfreed/sales-demos-ee:v1.1.0 ./utilities/build-ee.sh --push
+EE_IMAGE=quay.io/zigfreed/sales-demos-ee:<your-tag> ./utilities/build-ee.sh --push
 ```
 
 The `description:` in `controller_execution_environments.yml` enumerates base
