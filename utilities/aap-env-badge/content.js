@@ -89,6 +89,17 @@
     return box;
   }
 
+  // AO uses a PatternFly v6 compact masthead (pf-v6-c-masthead,
+  // pf-m-display-inline, id=mobile-masthead) that may be narrower or
+  // positioned differently than AAP's. Accept any visible header.
+  function aoMastheadBox() {
+    const header = document.querySelector("header");
+    if (!header) return null;
+    const box = header.getBoundingClientRect();
+    if (box.height === 0) return null;
+    return box;
+  }
+
   function render(env, box) {
     let badge = document.getElementById(BADGE_ID);
     if (!badge) {
@@ -269,7 +280,9 @@
       remove();
       return;
     }
-    const box = mastheadBox();
+    // mastheadBox has strict dimension checks for AAP's wide masthead.
+    // AO's compact header may fail those — fall back to aoMastheadBox.
+    const box = mastheadBox() || (onAO ? aoMastheadBox() : null);
     if (!box) {
       // The SPA has not rendered a header yet. Nothing to anchor to.
       remove();
