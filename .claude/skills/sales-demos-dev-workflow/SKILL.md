@@ -50,9 +50,8 @@ why your change had no effect.
    without asking. `main` is protected — a PR is always required, even for the
    repo owner.
 
-6. **Clean up the worktree and local branch after merge:**
+6. **Clean up the worktree and local branch after merge** (from the main checkout):
    ```bash
-   cd /home/eames/git-repos/sales.demos
    git worktree remove ../sales.demos-<slug>
    git pull && git branch -d <branch>
    ```
