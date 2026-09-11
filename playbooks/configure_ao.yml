@@ -122,7 +122,7 @@
         ao_ssrf_already_set: >-
           {{
             ao_backend_current.resources[0].spec.template.spec.containers
-            | selectattr('name', 'equalto', 'manager')
+            | selectattr('name', 'equalto', 'backend')
             | map(attribute='env')
             | flatten
             | selectattr('name', 'equalto', 'APP_INTEGRATION_URL_ALLOWED_HOSTS')
@@ -133,23 +133,20 @@
 
     - name: Patch ao-backend with SSRF allowlist for AAP hostname
       when: not ao_ssrf_already_set | bool
-      kubernetes.core.k8s:
-        state: present
-        namespace: "{{ ao_namespace }}"
-        merge_type: strategic-merge
-        definition:
-          apiVersion: apps/v1
-          kind: Deployment
-          metadata:
-            name: "{{ ao_backend_deployment }}"
-          spec:
-            template:
-              spec:
-                containers:
-                  - name: manager
-                    env:
-                      - name: APP_INTEGRATION_URL_ALLOWED_HOSTS
-                        value: '["{{ aap_hostname }}"]'
+      ansible.builtin.command:
+        argv:
+          - oc
+          - set
+          - env
+          - "deployment/{{ ao_backend_deployment }}"
+          - "-n"
+          - "{{ ao_namespace }}"
+          - "--server={{ openshift_api_url }}"
+          - "--token={{ openshift_api_token }}"
+          - "--insecure-skip-tls-verify={{ not (openshift_validate_certs | default(false) | bool) }}"
+          - "APP_INTEGRATION_URL_ALLOWED_HOSTS={{ [aap_hostname] | to_json }}"
+      changed_when: true
+      no_log: true
 
     - name: Wait for ao-backend rollout after SSRF patch
       when: not ao_ssrf_already_set | bool
