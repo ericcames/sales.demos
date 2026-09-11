@@ -599,6 +599,47 @@ controller_workflows_all:
               name: "IT Service Automation"
 
   # -------------------------------------------------------------------
+  # AAP ECOSYSTEM — DEPLOY AUTOMATION ORCHESTRATOR (#468)
+  #
+  # Two nodes, chained on success: install the AO instance, then connect
+  # it to AAP (OIDC SSO + the AAP integration). No survey — both
+  # templates pin target_env and limit to the environment.
+  #
+  # `Deploy` sorts before both `Configure` and `Install`, so it heads
+  # the family without a numeric prefix.
+  # -------------------------------------------------------------------
+  - name: "AAP Ecosystem - Deploy Automation Orchestrator"
+    description: >-
+      Install Automation Orchestrator and connect it to AAP — OIDC SSO
+      and the AAP integration for job template visibility, one button.
+    organization: "IT Service Automation"
+    labels:
+      - aap-ecosystem
+      - install
+    destroy_current_nodes: true
+    inventory: "Sales Demo VMs"
+    survey_enabled: false
+
+    related:
+      workflow_nodes:
+        - identifier: install
+          unified_job_template:
+            name: "AAP Ecosystem - Install Automation Orchestrator"
+            type: job_template
+            organization:
+              name: "IT Service Automation"
+          related:
+            success_nodes:
+              - identifier: configure
+
+        - identifier: configure
+          unified_job_template:
+            name: "AAP Ecosystem - Configure Automation Orchestrator"
+            type: job_template
+            organization:
+              name: "IT Service Automation"
+
+  # -------------------------------------------------------------------
   # Retired name — #300 moved every template and workflow into a family
   # prefix. The module does not rename in place: it creates the new name
   # and leaves the old one behind, so without this the two would sit side
