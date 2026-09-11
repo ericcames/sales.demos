@@ -23,6 +23,7 @@ import os
 import ssl
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from typing import Any
 
@@ -63,7 +64,11 @@ def _api_get(path: str, params: dict[str, Any] | None = None) -> Any:
     token = _login()
     url = f"{AO_URL}{path}"
     if params:
-        qs = "&".join(f"{k}={v}" for k, v in params.items() if v is not None)
+        # urlencode, not an f-string join: list cursors are opaque tokens
+        # and may carry characters that are not safe in a query string.
+        qs = urllib.parse.urlencode(
+            {k: v for k, v in params.items() if v is not None}
+        )
         if qs:
             url = f"{url}?{qs}"
     req = urllib.request.Request(
@@ -118,11 +123,12 @@ def me() -> list[TextContent]:
 
 @server.tool(
     description="List workflows in Automation Orchestrator. "
-    "Returns name, id, status, and version info."
+    "Returns name, id, status, and version info. "
+    "To page, pass the previous response's `next` value as cursor."
 )
-def workflows_list(limit: int = 20, offset: int = 0) -> list[TextContent]:
+def workflows_list(limit: int = 20, cursor: str | None = None) -> list[TextContent]:
     return _text(
-        _api_get("/api/v1/workflows", {"limit": limit, "offset": offset})
+        _api_get("/api/v1/workflows", {"limit": limit, "cursor": cursor})
     )
 
 
@@ -140,11 +146,12 @@ def workflow_versions(workflow_id: str) -> list[TextContent]:
 
 @server.tool(
     description="List workflow executions. "
-    "Shows run history with status, start/end times, and workflow reference."
+    "Shows run history with status, start/end times, and workflow reference. "
+    "To page, pass the previous response's `next` value as cursor."
 )
-def executions_list(limit: int = 20, offset: int = 0) -> list[TextContent]:
+def executions_list(limit: int = 20, cursor: str | None = None) -> list[TextContent]:
     return _text(
-        _api_get("/api/v1/executions", {"limit": limit, "offset": offset})
+        _api_get("/api/v1/executions", {"limit": limit, "cursor": cursor})
     )
 
 
@@ -223,10 +230,13 @@ def project_get(project_id: str) -> list[TextContent]:
 
 # ── Users & groups ────────────────────────────────────────────────────
 
-@server.tool(description="List users in Automation Orchestrator")
-def users_list(limit: int = 20, offset: int = 0) -> list[TextContent]:
+@server.tool(
+    description="List users in Automation Orchestrator. "
+    "To page, pass the previous response's `next` value as cursor."
+)
+def users_list(limit: int = 20, cursor: str | None = None) -> list[TextContent]:
     return _text(
-        _api_get("/api/v1/users", {"limit": limit, "offset": offset})
+        _api_get("/api/v1/users", {"limit": limit, "cursor": cursor})
     )
 
 
@@ -325,11 +335,12 @@ def policies_list() -> list[TextContent]:
 # ── Approvals ─────────────────────────────────────────────────────────
 
 @server.tool(
-    description="List pending and completed approvals in AO"
+    description="List pending and completed approvals in AO. "
+    "To page, pass the previous response's `next` value as cursor."
 )
-def approvals_list(limit: int = 20, offset: int = 0) -> list[TextContent]:
+def approvals_list(limit: int = 20, cursor: str | None = None) -> list[TextContent]:
     return _text(
-        _api_get("/api/v1/approvals", {"limit": limit, "offset": offset})
+        _api_get("/api/v1/approvals", {"limit": limit, "cursor": cursor})
     )
 
 
