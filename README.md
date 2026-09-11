@@ -97,6 +97,7 @@ variable names are the contract. Skills are discovered natively from
 | `sales-demos-portal` | `portal.yml` | Deploy the AAP self-service portal (RHDH + AAP plugin) |
 | `sales-demos-orchestrator` | `install_ao.yml` | Install Automation Orchestrator and its CloudNativePG database |
 | `sales-demos-alloy` | `deploy_alloy.yml` | Deploy Grafana Alloy for metrics and logs to Grafana Cloud |
+| `sales-demos-config` | `config.yml` | Apply AAP config-as-code — templates, credentials, gateway branding |
 | `sales-demos-dashboard` | `deploy_dashboard.yml` | Push Grafana Cloud dashboards (dashboard-as-code) |
 
 ### Repo maintenance skills
