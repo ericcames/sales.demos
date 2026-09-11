@@ -51,33 +51,9 @@ green run.
 ## Preflight Check
 
 ```bash
-ENV=${ENV:-sandbox}
-VAULT_ID="sales.demos@$HOME/secrets/.vault_pass_sales_demos"
+./utilities/preflight.sh "${ENV:-sandbox}" --hub-token
 
-# 1. The vault password file exists. Without it secrets.yml cannot be
-#    decrypted and aap_password will look simply undefined.
-test -s "$HOME/secrets/.vault_pass_sales_demos" \
-  && echo "✅ vault password file" \
-  || echo "❌ ~/secrets/.vault_pass_sales_demos missing"
-
-# 2. secrets.yml exists locally and is vault-encrypted, not plaintext.
-#    It is gitignored (#130); a fresh clone will not have it.
-head -c 15 playbooks/group_vars/all/secrets.yml 2>/dev/null | grep -q '^\$ANSIBLE_VAULT' \
-  && echo "✅ secrets.yml is vault-encrypted" \
-  || echo "❌ secrets.yml missing or NOT encrypted — see /sales-demos-first-time"
-
-# 3. The Red Hat OFFLINE token resolves. This is the one that matters: an empty
-#    token does not fail the sync, it just syncs nothing.
-python3 - <<'PY'
-import configparser, os
-c = configparser.ConfigParser(); c.read(os.path.expanduser("~/.ansible.cfg"))
-t = c.get("galaxy_server.rh_certified", "token", fallback="")
-print("✅ offline token present ({} chars)".format(len(t))) if len(t) > 100 else \
-  print("❌ no offline token in ~/.ansible.cfg [galaxy_server.rh_certified] —"
-        " get one at https://console.redhat.com/ansible/automation-hub/token")
-PY
-
-# 4. The three generated lists exist and parse.
+# The three generated lists exist and parse
 python3 - <<'PY'
 import yaml, pathlib
 for k in ("certified", "validated", "community"):
@@ -88,11 +64,6 @@ for k in ("certified", "validated", "community"):
     except Exception as e:
         print(f"❌ {p} — {e}; run utilities/refresh-hub-requirements.py")
 PY
-
-# 5. No project-local ansible.cfg. It would shadow ~/.ansible.cfg — which is
-#    where the offline token lives — and break this entirely.
-test -f ansible.cfg && echo "❌ project-local ansible.cfg present — delete it" \
-  || echo "✅ no project-local ansible.cfg"
 ```
 
 If any check fails, stop and tell the user which one and the fix shown beside
@@ -182,24 +153,13 @@ Note also that **check mode cannot validate content**: `uri` does not run under
 
 ## Verify it in the EE before merging a change
 
-The `ansible-playbook` command above runs on your laptop, against
-`~/.ansible/collections` and your system python. An AAP job template runs this
-same playbook inside `sales-demos-ee`. **Those are two dependency sets and CI
-can see neither** — the lint gate executes nothing. Run it in the image as well:
+See `/sales-demos-verify-ee` for why and how. The one command:
 
 ```bash
 utilities/run-in-ee.sh --with-hub-token playbooks/sync_hub.yml \
   -i inventory --limit sandbox -e target_env=sandbox \
   --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
 ```
-
-Everything after the playbook is unchanged from the command above — the wrapper
-adds the image and two read-only mounts and nothing else.
-`--with-hub-token` mounts `~/.ansible.cfg` read-only for the run. The wrapper
-refuses to start this playbook without it: the token lookup **raises** on a
-missing file rather than returning empty.
-
-Full detail, including how to diff the two runs: `/sales-demos-verify-ee`.
 
 ## Curating the `approved` repository
 

@@ -78,33 +78,17 @@ should ever exist. The unlink deletes it.
 
 ```bash
 ENV=${ENV:-sandbox}
+./utilities/preflight.sh "$ENV"
 
-# 1. The vault password file exists.
-test -s "$HOME/secrets/.vault_pass_sales_demos" \
-  && echo "✅ vault password file" \
-  || echo "❌ ~/secrets/.vault_pass_sales_demos missing — see /sales-demos-first-time"
-
-# 2. secrets.yml exists locally and is vault-encrypted. It is gitignored (#130).
-head -c 15 playbooks/group_vars/all/secrets.yml 2>/dev/null | grep -q '^\$ANSIBLE_VAULT' \
-  && echo "✅ secrets.yml is vault-encrypted" \
-  || echo "❌ secrets.yml missing or NOT encrypted — see /sales-demos-first-time"
-
-# 3. The environment answers at all. An expired RHDP environment fails here
-#    rather than three minutes into a run (#RHDP envs expire silently).
+# The environment answers at all (RHDP envs expire silently)
 HOST=$(grep -oP '(?<=^aap_hostname: ")[^"]+' inventory/group_vars/$ENV/connection.yml)
 curl -sk --max-time 15 "https://$HOST/api/gateway/v1/ping/" \
   | grep -q '"status":"good"' \
   && echo "✅ $ENV reachable ($HOST)" \
   || echo "❌ $ENV is not answering — check the environment is still alive"
 
-# 4. The curated list is complete. --write-approved refuses to write a set
-#    missing a transitive dependency, so a clean run here means the file is
-#    the full closure rather than just the nine pins.
+# The curated list is complete (--write-approved computes the transitive closure)
 python3 utilities/refresh-hub-requirements.py --write-approved
-
-# 5. No project-local ansible.cfg.
-test -f ansible.cfg && echo "❌ project-local ansible.cfg present — delete it" \
-  || echo "✅ no project-local ansible.cfg"
 ```
 
 If any check fails, stop and tell the user which one and the fix beside it.

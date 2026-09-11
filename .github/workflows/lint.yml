@@ -206,3 +206,37 @@ jobs:
             exit 1
           fi
           echo "All skills are portable and listed in README.md."
+
+          # ── Skill content checks (#456) ──────────────────────────────
+          # These catch bugs that already shipped: B (| tee), D (hardcoded
+          # EE tag), and J (syntax error in a fenced block).
+
+          for f in .claude/skills/*/SKILL.md; do
+            dir=$(basename "$(dirname "$f")")
+
+            # bash -n every fenced bash block
+            if ! awk '/^```bash$/{ p=1; next } /^```$/{ p=0 } p{ print }' "$f" \
+              | bash -n 2>/tmp/bash-n-err; then
+              echo "::error::$f contains a bash block with syntax errors:"
+              cat /tmp/bash-n-err
+              bad=1
+            fi
+
+            # No ansible-playbook … | tee — exit status comes from tee, not ansible
+            if grep -Pn 'ansible-playbook\b.*\|\s*tee\b' "$f" >/dev/null; then
+              echo "::error::$f pipes ansible-playbook through tee — exit status comes from tee, not ansible-playbook"
+              bad=1
+            fi
+
+            # No hardcoded EE tags — use the dynamic lookup instead
+            if grep -Pn 'sales-demos-ee:v[0-9]' "$f" >/dev/null; then
+              echo "::error::$f hardcodes a sales-demos-ee:v tag — use the dynamic EE_TAG lookup from controller_execution_environments.yml"
+              bad=1
+            fi
+          done
+
+          if [ "$bad" -ne 0 ]; then
+            echo "Skill content checks failed."
+            exit 1
+          fi
+          echo "Skill content checks passed."

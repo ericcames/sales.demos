@@ -51,88 +51,12 @@ RBAC resources.
 
 ## Preflight Check
 
-Run these before doing anything else. Every one must pass.
-
 ```bash
-ENV=${ENV:-sandbox}
-VAULT_ID="sales.demos@$HOME/secrets/.vault_pass_sales_demos"
-
-# 1. Vault password file exists
-test -s "$HOME/secrets/.vault_pass_sales_demos" \
-  && echo "✅ vault password file" \
-  || echo "❌ ~/secrets/.vault_pass_sales_demos missing"
-
-# 2. secrets.yml exists and is vault-encrypted
-head -c 15 playbooks/group_vars/all/secrets.yml 2>/dev/null | grep -q '^\$ANSIBLE_VAULT' \
-  && echo "✅ secrets.yml is vault-encrypted" \
-  || echo "❌ secrets.yml missing or NOT encrypted — see /sales-demos-first-time"
-
-# 3. This environment's credentials are filled in
-ansible-vault view playbooks/group_vars/all/secrets.yml --vault-id "$VAULT_ID" 2>/dev/null \
-  | python3 -c "
-import sys, yaml, os
-env = os.environ.get('ENV', 'sandbox')
-d = yaml.safe_load(sys.stdin) or {}
-e = (d.get('env_secrets') or {}).get(env, {})
-bad = [k for k, v in e.items() if 'CHANGEME' in str(v)]
-print(('❌ ' + env + ' still has placeholders: ' + ', '.join(bad)) if bad
-      else ('✅ ' + env + ' credentials filled in'))
-"
-
-# 4. Grafana Cloud push credentials are filled in
-ansible-vault view playbooks/group_vars/all/secrets.yml --vault-id "$VAULT_ID" 2>/dev/null \
-  | python3 -c "
-import sys, yaml
-d = yaml.safe_load(sys.stdin) or {}
-keys = ['grafana_cloud_prom_push_url', 'grafana_cloud_prom_username',
-        'grafana_cloud_loki_push_url', 'grafana_cloud_loki_username',
-        'grafana_cloud_push_api_key']
-bad = [k for k in keys if d.get(k, 'CHANGEME') == 'CHANGEME' or k not in d]
-print(('❌ Grafana push credentials missing or CHANGEME: ' + ', '.join(bad)) if bad
-      else '✅ Grafana Cloud push credentials filled in')
-"
-
-# 5. kubernetes.core and its python client are installed
-ansible-galaxy collection list kubernetes.core 2>/dev/null | grep -q kubernetes.core \
-  && echo "✅ kubernetes.core" \
-  || echo "❌ kubernetes.core — ansible-galaxy collection install -r collections/requirements.yml"
-python3 -c "import kubernetes" 2>/dev/null \
-  && echo "✅ python kubernetes client" \
-  || echo "❌ python kubernetes client — pip install kubernetes"
-
-# 6. No project-local ansible.cfg
-test -f ansible.cfg \
-  && echo "❌ project-local ansible.cfg present — it shadows ~/.ansible.cfg" \
-  || echo "✅ no project-local ansible.cfg"
+./utilities/preflight.sh "${ENV:-sandbox}" --k8s --grafana
 ```
 
 If any check fails, stop and tell the user exactly which one and the fix shown
 beside it. Do not attempt the run with a failing prerequisite.
-
-## Confirm the cluster is reachable
-
-Reuses the same credential-resolution pattern as `ocpvirt-setup`.
-
-```bash
-ENV=${ENV:-sandbox}
-VAULT_ID="sales.demos@$HOME/secrets/.vault_pass_sales_demos"
-
-OCP_URL=$(ansible -i inventory --limit "$ENV" aap -m debug --vault-id "$VAULT_ID" \
-  -a 'msg={{ openshift_api_url }}' 2>/dev/null \
-  | sed -n 's/.*"msg": "\(.*\)"/\1/p')
-
-OCP_TOKEN=$(ansible-vault view playbooks/group_vars/all/secrets.yml \
-  --vault-id "$VAULT_ID" 2>/dev/null \
-  | ENV="$ENV" python3 -c \
-    'import sys,yaml,os; print(yaml.safe_load(sys.stdin)["env_secrets"][os.environ["ENV"]]["openshift_api_token"])')
-
-case "$OCP_URL" in https://*) ;; *) echo "❌ could not resolve $ENV API URL"; esac
-case "$OCP_TOKEN" in
-  sha256~*) echo "✅ resolved $ENV credentials (OAuth token)" ;;
-  eyJ*.*.*)  echo "✅ resolved $ENV credentials (ServiceAccount token)" ;;
-  *) echo "❌ could not resolve $ENV token" ;;
-esac
-```
 
 ## Collect inputs
 
@@ -167,6 +91,8 @@ ansible-playbook playbooks/deploy_alloy.yml -i inventory --limit sandbox \
 This takes about 2 minutes. The playbook is idempotent — a re-run converges.
 
 ## Verify it in the EE before merging a change
+
+See `/sales-demos-verify-ee` for why and how. The one command:
 
 ```bash
 utilities/run-in-ee.sh playbooks/deploy_alloy.yml \

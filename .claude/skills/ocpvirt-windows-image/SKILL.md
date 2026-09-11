@@ -64,21 +64,10 @@ flagged `commonTemplate: true`. Custom entries coexist.
 ## Preflight Check
 
 ```bash
-# 1. Which environment, and is it the one you mean?
-grep -h '^aap_env_name\|^openshift_api_url' \
-  inventory/group_vars/sandbox/connection.yml inventory/group_vars/demo/connection.yml \
-  inventory/group_vars/edge/connection.yml
+./utilities/preflight.sh "${ENV:-sandbox}"
 
-# 2. The vault password, or nothing decrypts
-test -r ~/secrets/.vault_pass_sales_demos \
-  && echo "✅ vault password present" || echo "❌ ~/secrets/.vault_pass_sales_demos missing"
-
-# 3. Confirm the image reference is set (should point at win2k22-cis-l1-golden)
+# Confirm the image reference is set (should point at win2k22-cis-l1-golden)
 grep -h '^quay_windows_image' inventory/group_vars/*/connection.yml
-
-# 4. Is the environment up? (RHDP environments expire)
-curl -sk -o /dev/null -w "API: %{http_code}\n" \
-  "$(grep '^openshift_api_url' inventory/group_vars/sandbox/connection.yml | cut -d'"' -f2)/version"
 ```
 
 `quay_username` and `quay_password` come from the vaulted
@@ -140,19 +129,13 @@ empty SSP placeholder state.
 
 ## Verify it in the EE before merging a change
 
-The command above runs on your laptop, against `~/.ansible/collections` and your
-system python. An AAP job template runs the same playbook inside
-`sales-demos-ee`. **Those are two dependency sets and CI can see neither** — the
-lint gate executes nothing. Run it in the image as well:
+See `/sales-demos-verify-ee` for why and how. The one command:
 
 ```bash
 utilities/run-in-ee.sh playbooks/link_windows_image.yml \
   -i inventory --limit sandbox -e target_env=sandbox \
   --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
 ```
-
-Everything after the playbook is unchanged — the wrapper adds the image and two
-read-only mounts and nothing else. Full detail: `/sales-demos-verify-ee`.
 
 ## Reading the result
 
