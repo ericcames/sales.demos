@@ -27,13 +27,12 @@
 //    resolves. AAP and AO share the same cluster domain (everything after
 //    `.apps.`), so the cache key is identical.
 //
-// 2. Cross-origin fetch to AAP — if the cache is empty (common after SSO
-//    login, where the redirect never gives the AAP content script a chance
-//    to fetch templates while authenticated), the AO content script asks
-//    AAP directly. host_permissions covers the domain, and AAP's session
-//    cookie (SameSite=None on the OpenShift Route) carries authentication.
-//    If the cookie does not carry (SameSite policy, third-party cookie
-//    blocking), this returns 401 and the cache-polling fallback continues.
+// 2. AO's proxy API — if the cache is empty (common: the SSO redirect
+//    never gives the AAP content script a chance to fetch while
+//    authenticated, and local-account login never touches AAP at all),
+//    the AO content script reads AAP's job templates through AO's own
+//    /api/v1/proxies/aap/job_templates endpoint. Same-origin, same
+//    session cookie — no cross-origin policy to worry about.
 //
 // A storage.onChanged listener picks up a cache write from any other tab
 // the moment it happens.
@@ -62,8 +61,7 @@
   // especially on a shared screen.
   const MIN_WIDTH = 1100;
 
-  // On AAP this is same-origin. On AO it is used cross-origin (prefixed
-  // with the AAP hostname); host_permissions covers the domain.
+  // Same-origin on AAP. On AO a different endpoint is used (the AO proxy).
   const TEMPLATES_URL = "/api/controller/v2/job_templates/?page_size=200";
 
   // How long to wait between resolve attempts while the environment is still
@@ -268,66 +266,86 @@
 
   const onAO = AO_HOST.test(location.hostname);
 
-  // On AO, if the cache is empty, try the AAP templates API directly.
-  // The SSO login flow (AO → AAP login → redirect back to AO) never
-  // gives the AAP content script a chance to fetch while authenticated,
-  // so the cache stays empty. This cross-origin fetch fills the gap.
-  let aapFetchAttempted = false;
-  async function fetchEnvFromAAP() {
-    const domain = clusterDomain();
-    if (!domain) return null;
-    const url =
-      `https://aap-aap.apps.${domain}${TEMPLATES_URL}`;
-    const abort = new AbortController();
-    const timer = setTimeout(() => abort.abort(), TIMEOUT_MS);
-    let response;
-    try {
-      response = await fetch(url, {
-        credentials: "include",
-        cache: "no-store",
-        headers: { Accept: "application/json" },
-        signal: abort.signal,
-      });
-    } catch {
-      return null;
-    } finally {
-      clearTimeout(timer);
-    }
+  // On AO, if the cache is empty, ask AO's own proxy for AAP's job
+  // templates. Same-origin, same session cookie — works after SSO login,
+  // local-account login, or any other auth path.
+  //
+  // The list endpoint returns only id/name/description — no extra_vars.
+  // So: fetch the list for a template ID, then fetch that template's
+  // detail to get extra_vars.target_env.
+  let proxyAttempted = false;
+  async function fetchEnvViaAOProxy() {
+    const listData = await aoProxyGet("/api/v1/proxies/aap/job_templates");
+    if (!listData) return null;
 
-    if (response.status === 401 || response.status === 403) return null;
-    if (!response.ok) return null;
+    const templates = listData.results || [];
+    if (templates.length === 0) return null;
 
-    const data = await response.json();
+    // Fetch a few template details in parallel until we find target_env.
+    // Every template on a configured AAP carries target_env, so the first
+    // batch is almost certain to hit — but scan a handful to be safe.
+    const BATCH = 5;
     const found = new Set();
-    for (const template of data.results || []) {
-      let vars = template.extra_vars;
-      if (typeof vars === "string") {
-        if (!vars.trim()) continue;
-        try {
-          vars = JSON.parse(vars);
-        } catch {
-          continue;
+    for (let i = 0; i < templates.length && found.size === 0; i += BATCH) {
+      const batch = templates.slice(i, i + BATCH);
+      const details = await Promise.allSettled(
+        batch.map((t) =>
+          aoProxyGet(`/api/v1/proxies/aap/job_templates/${t.id}`)
+        )
+      );
+      for (const result of details) {
+        if (result.status !== "fulfilled" || !result.value) continue;
+        let vars = result.value.extra_vars;
+        if (typeof vars === "string") {
+          if (!vars.trim()) continue;
+          try {
+            vars = JSON.parse(vars);
+          } catch {
+            continue;
+          }
         }
+        const name = vars && vars.target_env;
+        if (typeof name === "string" && name) found.add(name);
       }
-      const name = vars && vars.target_env;
-      if (typeof name === "string" && name) found.add(name);
     }
+
     if (found.size !== 1) return null;
     const name = [...found][0];
     if (!colors.environments[name]) return null;
 
     status = "resolved";
+    const domain = clusterDomain();
     if (domain) chrome.storage.local.set({ ["env:" + domain]: name });
     return { label: name.toUpperCase(), ...colors.environments[name] };
+  }
+
+  async function aoProxyGet(path) {
+    const abort = new AbortController();
+    const timer = setTimeout(() => abort.abort(), TIMEOUT_MS);
+    try {
+      const response = await fetch(path, {
+        credentials: "same-origin",
+        cache: "no-store",
+        headers: { Accept: "application/json" },
+        signal: abort.signal,
+      });
+      if (response.status === 401 || response.status === 403) return null;
+      if (!response.ok) return null;
+      return await response.json();
+    } catch {
+      return null;
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   async function fetchEnvForAO() {
     const cached = await fetchEnvFromCache();
     if (cached) return cached;
-    if (aapFetchAttempted) return null;
-    aapFetchAttempted = true;
+    if (proxyAttempted) return null;
+    proxyAttempted = true;
     try {
-      return await fetchEnvFromAAP();
+      return await fetchEnvViaAOProxy();
     } catch {
       return null;
     }
