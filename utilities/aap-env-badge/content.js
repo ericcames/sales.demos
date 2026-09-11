@@ -290,8 +290,12 @@
       cache: "no-store",
       headers: { "Content-Type": "application/json" },
     });
-    if (!csrfResp.ok) return null;
-    const { csrf_token } = await csrfResp.json();
+    if (!csrfResp.ok) {
+      console.error("[env-badge] csrf_token:", csrfResp.status);
+      return null;
+    }
+    const csrfData = await csrfResp.json();
+    const csrf_token = csrfData.csrf_token;
 
     const refreshResp = await fetch("/api/v1/auth/refresh", {
       method: "POST",
@@ -302,21 +306,30 @@
         "X-CSRF-Token": csrf_token,
       },
     });
-    if (!refreshResp.ok) return null;
-    const { access_token } = await refreshResp.json();
-    aoToken = access_token;
+    if (!refreshResp.ok) {
+      console.error("[env-badge] refresh:", refreshResp.status);
+      return null;
+    }
+    const refreshData = await refreshResp.json();
+    aoToken = refreshData.access_token;
     return aoToken;
   }
 
   async function fetchEnvViaAOProxy() {
     const token = await aoGetToken();
-    if (!token) return null;
+    if (!token) {
+      console.error("[env-badge] no token");
+      return null;
+    }
 
     const listData = await aoProxyGet(
       "/api/v1/proxies/aap/job_templates",
       token
     );
-    if (!listData) return null;
+    if (!listData) {
+      console.error("[env-badge] proxy list failed");
+      return null;
+    }
 
     const templates = listData.results || [];
     if (templates.length === 0) return null;
@@ -371,7 +384,10 @@
         headers,
         signal: abort.signal,
       });
-      if (response.status === 401 || response.status === 403) return null;
+      if (response.status === 401 || response.status === 403) {
+        console.error("[env-badge] proxy", path, response.status);
+        return null;
+      }
       if (!response.ok) return null;
       return await response.json();
     } catch {
@@ -381,14 +397,23 @@
     }
   }
 
+  let proxyFailCount = 0;
   async function fetchEnvForAO() {
     const cached = await fetchEnvFromCache();
     if (cached) return cached;
-    if (proxyAttempted) return null;
+    if (proxyAttempted && proxyFailCount >= 3) return null;
     proxyAttempted = true;
     try {
-      return await fetchEnvViaAOProxy();
-    } catch {
+      const result = await fetchEnvViaAOProxy();
+      if (!result) {
+        proxyFailCount++;
+        proxyAttempted = false;
+      }
+      return result;
+    } catch (e) {
+      console.error("[env-badge] proxy error:", e);
+      proxyFailCount++;
+      proxyAttempted = false;
       return null;
     }
   }
