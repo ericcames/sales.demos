@@ -402,6 +402,33 @@ controller_templates_all:
       target_env: "{{ aap_env_name }}"
 
   # ---------------------------------------------------------------------
+  # Configure Automation Orchestrator (#457). Connects AO to AAP via OIDC
+  # and creates the AAP integration so AO can see job templates.
+  #
+  # RUNS AFTER INSTALL. setup.yml gates both on `install_ao`. This template
+  # is for re-running configuration on its own — after a sandbox rebuild,
+  # or to re-apply after an operator reconciliation clears the SSRF
+  # allowlist env var.
+  # ---------------------------------------------------------------------
+  - name: "AAP Ecosystem - Configure Automation Orchestrator"
+    description: "Connect Automation Orchestrator to AAP — OIDC SSO and the AAP integration for job template visibility."
+    labels:
+      - aap-ecosystem
+      - install
+    job_type: run
+    organization: "IT Service Automation"
+    inventory: "Sales Demo VMs"
+    project: "Sales Demos"
+    playbook: playbooks/configure_ao.yml
+    execution_environment: "Sales Demos - OCP Virt EE"
+    credentials:
+      - "Sales Demos - Vault"
+      - "Sales Demos - Env Secrets"
+    limit: "{{ aap_env_name }}"
+    extra_vars:
+      target_env: "{{ aap_env_name }}"
+
+  # ---------------------------------------------------------------------
   # The self-service portal (#103), runnable from AAP since #324.
   #
   # IT WAS LAPTOP-ONLY UNTIL THEN, AND THE REASON IS WORTH KEEPING. Added in

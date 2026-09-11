@@ -96,6 +96,7 @@ variable names are the contract. Skills are discovered natively from
 | `pah-link-aap` | `link_hub.yml` | Point AAP project syncs at `approved`, reversibly |
 | `sales-demos-portal` | `portal.yml` | Deploy the AAP self-service portal (RHDH + AAP plugin) |
 | `sales-demos-orchestrator` | `install_ao.yml` | Install Automation Orchestrator and its CloudNativePG database |
+| `sales-demos-orchestrator-config` | `configure_ao.yml` | Connect AO to AAP — OIDC SSO and AAP integration |
 | `sales-demos-alloy` | `deploy_alloy.yml` | Deploy Grafana Alloy for metrics and logs to Grafana Cloud |
 | `sales-demos-dashboard` | `deploy_dashboard.yml` | Push Grafana Cloud dashboards (dashboard-as-code) |
 
