@@ -1,10 +1,14 @@
 # AAP environment badge
 
-Paints a `SANDBOX` or `DEMO` pill in the middle of the AAP masthead, so you can
-tell which environment you are in **after** logging in.
+Paints a `SANDBOX` or `DEMO` pill in the middle of the AAP and AO masthead, so
+you can tell which environment you are in **after** logging in.
 
 ```
 |  RedHat AAP              [ SANDBOX ]              ⟳ ☾ 🔔 ? admin  |
+```
+
+```
+|  Automation Orchestrator [ SANDBOX ]              ⟳ ☾ 🔔 ? admin  |
 ```
 
 Green `#3E8635` for sandbox, red `#EE0000` for demo — the same convention the
@@ -28,6 +32,11 @@ patching a bundled asset inside the gateway container, which the operator
 reconciles away and an upgrade breaks. The browser is the right place, and in a
 demo it is sufficient: the only screen that matters is the one being shared.
 
+**AO has no branding at all** (#426). The `AutomationOrchestrator` CR has no
+`custom_login_info` or `custom_logo` fields, so neither the login page nor the
+post-login masthead carries any environment indicator. This extension is the
+only thing marking the environment on AO, on every page.
+
 **This changes nothing on the cluster.** It reads one AAP endpoint — the job
 template list, to find out which environment it is on — and sends nothing
 anywhere. No writes, no third parties, no storage.
@@ -37,9 +46,27 @@ anywhere. No writes, no third parties, no storage.
 It asks AAP. `inventory/group_vars/aap/controller_templates.yml` sets
 `target_env: "{{ aap_env_name }}"` on the `Linux Day 1 - 1 Provision` and
 `Linux Day 1 - Teardown` templates, so every AAP already states its own name
-in a field this repo controls. The extension does one same-origin request to
-`/api/controller/v2/job_templates/` and scans for a template carrying a
-`target_env` — by field, not by template name, so a rename cannot break it.
+in a field this repo controls. On AAP pages, the content script does one
+same-origin request to `/api/controller/v2/job_templates/` and scans for a
+template carrying a `target_env` — by field, not by template name, so a rename
+cannot break it.
+
+### On AO
+
+AO is a different Route on the same cluster (`ao-automation-orchestrator.apps.*`
+vs `aap-aap.apps.*`). AO has no `target_env` of its own, so the extension asks
+AAP on AO's behalf — the same question, same field, same answer.
+
+The content script cannot do that same-origin: AO and AAP are different origins.
+A background service worker (`background.js`) makes the cross-origin request
+using `host_permissions`, and AO's shared SSO session provides the AAP cookie.
+The content script derives the AAP hostname by replacing
+`ao-automation-orchestrator` with `aap-aap` in front of `.apps.<cluster-domain>`
+and sends it to the service worker.
+
+This adds no new state to keep in step. The Route naming (`aap-aap`,
+`ao-automation-orchestrator`) is set by the RHDP catalog item and the AO
+operator, and `content.js` already depends on the AAP naming convention.
 
 `playbooks/tasks/assert_target_environment.yml` fails a run closed if
 `target_env` ever disagrees with the template's `limit`, so the value the badge
@@ -72,6 +99,8 @@ regenerate and nothing to commit.
 
 If it was already loaded, hit **Reload** on the card: Chrome caches the
 extension's own files, and the old `envs.json` will otherwise still be in there.
+After the #477 update (AO support), a reload is required to pick up the new
+background service worker and `host_permissions`.
 
 ### Why the manifest matches all of `*.dyn.redhatworkshops.io`
 
@@ -87,10 +116,10 @@ is rejected with `Invalid value for 'content_scripts[0].matches[0]': Invalid
 host wildcard` and the extension will not load at all. Do not "tighten" it back
 to that.
 
-So the manifest matches every RHDP host and `content.js` narrows it in one line:
-the AAP gateway Route on this catalog item is always `aap-<namespace>`, so
-anything else — the OpenShift console, Cockpit, a demo web server — returns
-before touching the page.
+So the manifest matches every RHDP host and `content.js` narrows it: the AAP
+gateway Route is always `aap-<namespace>` and the AO Route is always
+`ao-automation-orchestrator`, so anything else — the OpenShift console, Cockpit,
+a demo web server — returns before touching the page.
 
 ## An unrecognized environment is a feature
 
