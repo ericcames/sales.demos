@@ -25,9 +25,10 @@ why your change had no effect.
 1. **Open a GitHub issue first.** Document before fixing. Label it — run
    `gh label list --repo ericcames/sales.demos` and apply every label that fits.
 
-2. **Branch from `main`:**
+2. **Create a worktree** (never branch in the main checkout):
    ```bash
-   git checkout -b <type>-<issue>-<slug>
+   git worktree add ../sales.demos-<slug> <type>-<issue>-<slug>
+   cd ../sales.demos-<slug>
    # examples: fix-86-preflight-vault-lookup, docs-191-dev-workflow-skill
    ```
    `<type>` is `fix`, `docs`, or the area. `<slug>` is 2–4 words describing the
@@ -49,9 +50,11 @@ why your change had no effect.
    without asking. `main` is protected — a PR is always required, even for the
    repo owner.
 
-6. **Delete the local branch after merge:**
+6. **Clean up the worktree and local branch after merge:**
    ```bash
-   git checkout main && git pull && git branch -d <branch>
+   cd /home/eames/git-repos/sales.demos
+   git worktree remove ../sales.demos-<slug>
+   git pull && git branch -d <branch>
    ```
    The remote branch deletes itself (`delete_branch_on_merge` is enabled).
    Pull `main` first so `-d` checks something real.
@@ -66,7 +69,7 @@ schedules, execution environments) **and syncs the project** to the latest
 mkdir -p ~/ansible-logs
 LOGFILE=~/ansible-logs/config-sandbox-$(date +%F-%H%M).log
 
-python3 -c "
+ANSIBLE_LOG_PATH="$LOGFILE" python3 -c "
 import subprocess, sys
 r = subprocess.run(
     ['ansible-playbook', 'playbooks/config.yml',
@@ -75,9 +78,13 @@ r = subprocess.run(
      '--vault-id', 'sales.demos@$HOME/secrets/.vault_pass_sales_demos'],
     cwd='$(pwd)')
 sys.exit(r.returncode)
-" 2>&1 | tee "$LOGFILE"
+"
 echo "Log: $LOGFILE"
 ```
+
+**Never pipe through `tee`.** In a pipeline the exit status is `tee`'s, not the
+playbook's, so a failed run reports success. `ANSIBLE_LOG_PATH` writes the log
+without a pipeline.
 
 **Why `python3 -c` instead of `ansible-playbook` directly?** Ansible's blocking
 IO detection fails under some terminal multiplexers. Wrapping in
@@ -97,7 +104,7 @@ which are hidden by `no_log: true`.
 works end-to-end:
 
 ```
-provision ──► register ──► configure ──► check
+provision ──► register ──► configure ──► compliance ──► check
 ```
 
 Launch it from AAP — the UI, or via MCP:
