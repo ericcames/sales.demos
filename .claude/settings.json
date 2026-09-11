@@ -7,6 +7,9 @@
       "mcp__openshift-edge__*",
       "mcp__aap-sandbox__*",
       "mcp__aap-demo__*",
+      "mcp__ao-sandbox__*",
+      "mcp__ao-demo__*",
+      "mcp__ao-edge__*",
       "mcp__grafana__*"
     ]
   }

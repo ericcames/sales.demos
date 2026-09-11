@@ -1,6 +1,6 @@
 ---
 name: sales-demos-mcp
-description: "Connect Claude Code to this repo's OpenShift clusters, AAP instances, and Grafana Cloud over MCP — six servers, one skill. Generates per-environment kubeconfigs for OpenShift, auto-creates bearer tokens for AAP, and registers the Grafana Cloud MCP server, then verifies every server answers. TRIGGER when: the user asks to set up, connect, refresh or fix the MCP servers, says an openshift-sandbox, openshift-demo, openshift-edge, aap-sandbox, aap-demo, or grafana MCP server is failing or shows no tools, or has just repointed an environment or rotated a token. SKIP: if the user wants to install OpenShift Virtualization or apply AAP configuration — that is ocpvirt-setup — or wants to deploy the AAP MCP server into a cluster, which is playbooks/mcp_server.yml run by ocpvirt-setup."
+description: "Connect Claude Code to this repo's OpenShift clusters, AAP instances, Automation Orchestrator, and Grafana Cloud over MCP — up to nine servers, one skill. Generates per-environment kubeconfigs for OpenShift, auto-creates bearer tokens for AAP, registers the AO and Grafana Cloud MCP servers, then verifies every server answers. TRIGGER when: the user asks to set up, connect, refresh or fix the MCP servers, says an openshift-sandbox, openshift-demo, openshift-edge, aap-sandbox, aap-demo, ao-sandbox, ao-demo, or grafana MCP server is failing or shows no tools, or has just repointed an environment or rotated a token. SKIP: if the user wants to install OpenShift Virtualization or apply AAP configuration — that is ocpvirt-setup — or wants to deploy the AAP MCP server into a cluster, which is playbooks/mcp_server.yml run by ocpvirt-setup."
 ---
 
 # sales-demos-mcp
@@ -17,7 +17,7 @@ which is the same reasoning that keeps `sales-demos-collections-sync`,
 
 ## What it sets up
 
-**Six servers — five per-environment, one global:**
+**Up to nine servers — seven per-environment, two global/external:**
 
 | Server | Auth | Access | Source |
 |---|---|---|---|
@@ -26,6 +26,8 @@ which is the same reasoning that keeps `sales-demos-collections-sync`,
 | `openshift-edge` | kubeconfig | read-write | `.mcp.json` (committed) |
 | `aap-sandbox` | bearer token | read-write | `claude mcp add --scope local` |
 | `aap-demo` | bearer token | read-only | `claude mcp add --scope local` |
+| `ao-sandbox` | JWT (auto-refreshed) | read-only | `claude mcp add --scope local` |
+| `ao-demo` | JWT (auto-refreshed) | read-only | `claude mcp add --scope local` |
 | `grafana` | service account token | read-only | `claude mcp add --scope local` |
 
 **There is no `aap-edge`, and that is not an oversight to fix in passing.**
@@ -179,7 +181,29 @@ bash utilities/make-aap-mcp.sh demo
 The script creates a personal access token, finds the `aap-mcp` route via the
 kubeconfig, and registers the server with `claude mcp add --scope local`.
 
-### Step 3 — Grafana Cloud MCP server
+### Step 3 — Automation Orchestrator MCP server
+
+Run **after** the kubeconfig exists — the script needs it to find the AO Route.
+
+```bash
+bash utilities/make-ao-mcp.sh sandbox
+```
+
+For `demo`:
+
+```bash
+bash utilities/make-ao-mcp.sh demo
+```
+
+The script resolves the AO admin password from the vault (it is the AAP admin
+password, #143), finds the AO Route via the kubeconfig, verifies login works,
+and registers the server with `claude mcp add --scope local`. The server
+manages JWT refresh transparently — no token to retire.
+
+**Prerequisite:** `pip install mcp` — the server is a Python MCP server using
+the official SDK.
+
+### Step 4 — Grafana Cloud MCP server
 
 Independent of the kubeconfig and AAP steps — Grafana Cloud is an external
 service, not tied to any RHDP environment.
