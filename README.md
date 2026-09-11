@@ -89,6 +89,7 @@ variable names are the contract. Skills are discovered natively from
 | `ocpvirt-new-env` | `prepare_env.yml` | Verify a fresh environment is warm, and time a real VM build |
 | `ocpvirt-provision` | `provision_vm.yml` | Run Terraform, register the new VMs in AAP |
 | `ocpvirt-windows-image` | `link_windows_image.yml` | Point CNV at the published Windows golden image |
+| `ocpvirt-rhel9-image` | `link_rhel9_image.yml` | Point CNV at the published RHEL 9 CIS L1 golden image |
 | `ocpvirt-demo` | `repair_linux_vm.yml` | Repair an existing Linux VM: register, configure, rescan |
 | `ocpvirt-teardown` | `teardown.yml` | Destroy VMs; keep CNV and the golden images |
 | `sales-demos-probe-env` | `probe_env.yml` | Measure the cluster and recommend `available_memory_gb` |
