@@ -21,11 +21,11 @@
 // closed if it ever disagrees with the template's limit. So there is no map to
 // keep in step and a new RHDP environment is back to being two edits.
 //
-// ON AO, the same question is asked via the background service worker, which
-// has host_permissions for the AAP origin. AO and AAP share SSO, so the AAP
-// session cookie is valid. The AAP hostname is derived from the AO hostname —
-// both are Routes on the same cluster, differing only in the prefix before
-// `.apps.<cluster-domain>`.
+// ON AO, the environment is read from chrome.storage.local, where the AAP
+// content script caches it. AAP and AO share the same cluster domain
+// (everything after `.apps.`), so the cache key is identical. A
+// storage.onChanged listener on AO picks it up the moment AAP resolves in
+// any tab — no background worker, no cross-origin request.
 
 (() => {
   "use strict";
@@ -203,51 +203,41 @@
     }
 
     status = "resolved";
+    // Cache for AO pages on the same cluster.
+    const domain = clusterDomain();
+    if (domain) chrome.storage.local.set({ ["env:" + domain]: name });
     return { label: name.toUpperCase(), ...colors.environments[name] };
   }
 
-  // AO is a different Route on the same cluster. The AAP origin is the same
-  // cluster domain with the `aap-aap` prefix that the RHDP catalog item always
-  // produces. This is the same naming convention AAP_HOST already depends on.
-  function deriveAapOrigin() {
-    const dot = location.hostname.indexOf(".apps.");
-    if (dot < 0) return null;
-    return `https://aap-aap${location.hostname.slice(dot)}`;
+  // AAP and AO are different Routes on the same cluster. The cluster domain
+  // (everything after `.apps.`) is the shared key.
+  function clusterDomain() {
+    const idx = location.hostname.indexOf(".apps.");
+    if (idx < 0) return null;
+    return location.hostname.slice(idx + 5); // skip ".apps."
   }
 
-  // Delegates environment resolution to the background service worker, which
-  // has host_permissions and can reach AAP cross-origin with the SSO cookie.
-  async function fetchEnvFromBackground() {
-    const aapOrigin = deriveAapOrigin();
-    if (!aapOrigin) {
+  // On AO, read the environment from chrome.storage.local. The AAP content
+  // script writes it when it resolves — same cluster domain, same key.
+  async function fetchEnvFromCache() {
+    const domain = clusterDomain();
+    if (!domain) {
       status = "unknown";
       return null;
     }
-
-    const reply = await chrome.runtime.sendMessage({
-      type: "resolve-env",
-      aapOrigin,
-    });
-
-    if (!reply || reply.status === "error") {
-      status = "unknown";
+    const key = "env:" + domain;
+    const result = await chrome.storage.local.get(key);
+    const name = result[key];
+    if (!name) {
+      // AAP hasn't cached an environment for this cluster yet. The poll timer
+      // and storage.onChanged listener will pick it up when it does.
+      status = "pending";
       return null;
     }
-    if (reply.status === "logged-out") {
-      status = "logged-out";
-      return null;
-    }
-    if (reply.status !== "resolved" || !reply.env) {
-      status = "unknown";
-      return null;
-    }
-
-    const name = reply.env;
     if (!colors.environments[name]) {
       status = "unknown";
       return null;
     }
-
     status = "resolved";
     return { label: name.toUpperCase(), ...colors.environments[name] };
   }
@@ -257,7 +247,7 @@
   function ensureEnv(onResolved) {
     if (resolved || inFlight) return;
     inFlight = true;
-    const resolver = onAO ? fetchEnvFromBackground : fetchEnv;
+    const resolver = onAO ? fetchEnvFromCache : fetchEnv;
     resolver()
       .then((env) => {
         if (env) {
@@ -358,6 +348,18 @@
         update();
         startPolling();
       });
+
+      // On AO, react immediately when AAP caches the environment in another
+      // tab — no need to wait for the next poll tick.
+      if (onAO) {
+        const domain = clusterDomain();
+        if (domain) {
+          chrome.storage.onChanged.addListener((changes, area) => {
+            if (resolved || area !== "local") return;
+            if (changes["env:" + domain]) update();
+          });
+        }
+      }
     })
     .catch((err) => console.error("[sales.demos] env badge failed:", err));
 })();

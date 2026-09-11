@@ -54,19 +54,17 @@ cannot break it.
 ### On AO
 
 AO is a different Route on the same cluster (`ao-automation-orchestrator.apps.*`
-vs `aap-aap.apps.*`). AO has no `target_env` of its own, so the extension asks
-AAP on AO's behalf — the same question, same field, same answer.
+vs `aap-aap.apps.*`). AO has no `target_env` of its own, so the extension reuses
+the answer AAP already gave — same cluster, same environment.
 
-The content script cannot do that same-origin: AO and AAP are different origins.
-A background service worker (`background.js`) makes the cross-origin request
-using `host_permissions`, and AO's shared SSO session provides the AAP cookie.
-The content script derives the AAP hostname by replacing
-`ao-automation-orchestrator` with `aap-aap` in front of `.apps.<cluster-domain>`
-and sends it to the service worker.
+When the content script resolves the environment on an AAP page, it caches
+`envName` in `chrome.storage.local` keyed by the cluster domain (everything
+after `.apps.` in the hostname). On AO, the content script reads that cache
+with the same key — AAP and AO share the cluster domain, so the lookup is
+immediate. A `storage.onChanged` listener on AO picks it up the moment AAP
+resolves in any tab, so the pill appears without waiting for the next poll tick.
 
-This adds no new state to keep in step. The Route naming (`aap-aap`,
-`ao-automation-orchestrator`) is set by the RHDP catalog item and the AO
-operator, and `content.js` already depends on the AAP naming convention.
+No background worker, no cross-origin request, no hostname map to keep in step.
 
 `playbooks/tasks/assert_target_environment.yml` fails a run closed if
 `target_env` ever disagrees with the template's `limit`, so the value the badge
@@ -99,8 +97,6 @@ regenerate and nothing to commit.
 
 If it was already loaded, hit **Reload** on the card: Chrome caches the
 extension's own files, and the old `envs.json` will otherwise still be in there.
-After the #477 update (AO support), a reload is required to pick up the new
-background service worker and `host_permissions`.
 
 ### Why the manifest matches all of `*.dyn.redhatworkshops.io`
 
