@@ -197,11 +197,13 @@ section. For each row in the Markdown table:
    `test -f`. Report missing files.
 
 ```bash
+export USE_CASE SALES_DEMOS_DOCS
 python3 - <<'PY'
 import re, os, sys
 
 use_case = os.environ.get("USE_CASE", "")
-path = f"$SALES_DEMOS_DOCS/docs/demos/{use_case}/talk-track.md"
+docs_root = os.environ.get("SALES_DEMOS_DOCS", "../sales.demos-docs")
+path = f"{docs_root}/docs/demos/{use_case}/talk-track.md"
 if not os.path.isfile(path):
     print(f"❌ {path} not found"); sys.exit(1)
 
