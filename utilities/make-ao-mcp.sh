@@ -125,11 +125,10 @@ echo "Registering MCP server '${SERVER_NAME}'..."
 # Remove existing registration if present
 claude mcp remove "${SERVER_NAME}" 2>/dev/null || true
 
-claude mcp add --scope local \
+claude mcp add "${SERVER_NAME}" --scope local \
   -e "AO_URL=${AO_URL}" \
   -e "AO_USERNAME=admin" \
   -e "AO_PASSWORD=${AO_PASSWORD}" \
-  "${SERVER_NAME}" \
   -- python3 "${SERVER_SCRIPT}"
 
 echo ""
