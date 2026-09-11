@@ -172,7 +172,9 @@ copy differs.
   to `<body>`; AAP's own markup is never modified. The masthead is PatternFly
   with version-prefixed class names (`pf-v5-c-masthead__*`), so anchoring inside
   it would break on a gateway upgrade. All this depends on is a `<header>`
-  existing at the top of the page.
+  existing somewhere on the page — the badge's vertical position is capped at
+  24 px from the viewport top, so a `<header>` placed lower (as on the AO login
+  page) still gets the pill in the right spot.
 - **It hides below 1100px** rather than overlapping the nav toggle or the
   right-hand icons. A badge sitting on top of the controls is worse than none,
   particularly on a shared screen.
@@ -186,6 +188,8 @@ copy differs.
 - **One request per page load.** The environment cannot change under a live
   page, so the first successful answer is cached and no further calls are made.
   While it is still unknown, a 3-second poll retries — that is what makes the
-  pill appear after login without a reload — and it stops itself the moment the
-  environment is known. The MutationObserver repaints from the cached value and
-  never re-fetches.
+  pill appear after login without a reload — and it stops itself once the
+  environment is known **and the badge is in the DOM** (not just resolved — the
+  header may not have rendered yet). A debounced `MutationObserver` with
+  `subtree: true` catches the header appearing anywhere in the React tree and
+  repaints from the cached value.

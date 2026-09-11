@@ -111,7 +111,7 @@
     badge.textContent = env.label;
     Object.assign(badge.style, {
       position: "fixed",
-      top: `${box.top + box.height / 2}px`,
+      top: `${Math.min(box.top + box.height / 2, 24)}px`,
       left: "50%",
       transform: "translate(-50%, -50%)",
       zIndex: "2147483000",
@@ -324,27 +324,34 @@
       };
       update();
 
-      // AAP is a single-page app: route changes re-render the body, and the
-      // theme toggle re-renders the masthead. Re-assert on both rather than
-      // painting once and hoping.
-      new MutationObserver(update).observe(document.body, {
+      // Both AAP and AO are single-page apps. AAP route changes swap direct
+      // children of <body>; AO renders its header deep inside an existing root
+      // div. subtree: true catches both. The 150ms trailing-edge debounce
+      // coalesces a React render burst into one update() after the DOM settles.
+      let debounceTimer = null;
+      new MutationObserver(() => {
+        if (debounceTimer) return;
+        debounceTimer = setTimeout(() => {
+          debounceTimer = null;
+          update();
+        }, 150);
+      }).observe(document.body, {
         childList: true,
-        subtree: false,
+        subtree: true,
       });
       window.addEventListener("resize", update);
       window.addEventListener("popstate", update);
 
-      // Signing in does not reliably mutate a direct child of <body>, so the
-      // observer alone can leave the pill missing until you click something.
-      // This is the only timer here, and it is bounded twice over: it stops the
-      // moment the environment is known, and it gives up after MAX_ATTEMPTS so
-      // a sign-in page left open does not poll AAP all afternoon.
+      // Belt-and-suspenders with the observer: retries paint() on a timer in
+      // case a mutation is missed. Stops when the badge is actually in the DOM
+      // (not just when the environment is resolved — the header may not exist
+      // yet), and gives up after MAX_ATTEMPTS.
       let poll = null;
       const startPolling = () => {
-        if (poll || resolved) return;
+        if (poll || (resolved && document.getElementById(BADGE_ID))) return;
         let attempts = 0;
         poll = setInterval(() => {
-          if (resolved || ++attempts > MAX_ATTEMPTS) {
+          if ((resolved && document.getElementById(BADGE_ID)) || ++attempts > MAX_ATTEMPTS) {
             clearInterval(poll);
             poll = null;
             return;

@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "AAP environment badge (sales.demos)",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "description": "Paints a SANDBOX / DEMO pill in the AAP and AO masthead. The sign-in page marks the environment; after login AAP does not, and AO has no branding at all (#426). Reads target_env from AAP so it never goes stale. See issues #54, #87, and #477.",
   "permissions": [
     "storage"
