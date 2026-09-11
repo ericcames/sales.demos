@@ -20,11 +20,15 @@
 #   4. Creating an AAP integration so AO can see JTs, WFJTs, inventories
 #
 # WHY THE SSRF ALLOWLIST. AO uses langchain_core's SSRF protection to block
-# private IP addresses on integration URLs. The AAP hostname resolves to a
-# private IP from inside the cluster. The AutomationOrchestrator CR's
-# `workflowHttpRequestAllowedHosts` only affects ao-worker (workflow HTTP
-# request steps), NOT ao-backend (integrations). The backend reads
-# APP_INTEGRATION_URL_ALLOWED_HOSTS from its environment.
+# private IP addresses. The AAP hostname resolves to a private IP from inside
+# the cluster (same-cluster communication). Three separate SSRF paths exist:
+#
+#   workflowHttpRequestAllowedHosts (CR) → ao-worker (workflow HTTP steps)
+#   APP_INTEGRATION_URL_ALLOWED_HOSTS    → ao-backend (integration proxy)
+#   APP_OIDC_ALLOW_PRIVATE_NETWORKS      → ao-backend (OIDC auth to AAP)
+#
+# The CR field only affects ao-worker. The two APP_ env vars must be set on
+# the ao-backend deployment so integrations and SSO both reach AAP.
 #
 # WHY OIDC SETUP IS NOT IDEMPOTENT. `POST setup_aap_oidc` returns 502 if
 # an OAuth2 application named "Syntara" already exists on AAP. The playbook
@@ -117,21 +121,41 @@
         name: "{{ ao_backend_deployment }}"
       register: ao_backend_current
 
-    - name: Check if SSRF allowlist already includes AAP hostname
+    - name: Extract ao-backend env vars for SSRF checks
       ansible.builtin.set_fact:
-        ao_ssrf_already_set: >-
+        ao_backend_env: >-
           {{
             ao_backend_current.resources[0].spec.template.spec.containers
             | selectattr('name', 'equalto', 'backend')
             | map(attribute='env')
             | flatten
+          }}
+
+    - name: Check if SSRF allowlists are already configured
+      ansible.builtin.set_fact:
+        ao_integration_ssrf_set: >-
+          {{
+            ao_backend_env
             | selectattr('name', 'equalto', 'APP_INTEGRATION_URL_ALLOWED_HOSTS')
             | selectattr('value', 'defined')
             | selectattr('value', 'search', aap_hostname)
             | list | length > 0
           }}
+        ao_oidc_private_set: >-
+          {{
+            ao_backend_env
+            | selectattr('name', 'equalto', 'APP_OIDC_ALLOW_PRIVATE_NETWORKS')
+            | selectattr('value', 'defined')
+            | selectattr('value', 'equalto', 'true')
+            | list | length > 0
+          }}
 
-    - name: Patch ao-backend with SSRF allowlist for AAP hostname
+    - name: Set whether any SSRF patch is needed
+      ansible.builtin.set_fact:
+        ao_ssrf_already_set: >-
+          {{ ao_integration_ssrf_set | bool and ao_oidc_private_set | bool }}
+
+    - name: Patch ao-backend with SSRF allowlists for AAP
       when: not ao_ssrf_already_set | bool
       ansible.builtin.command:
         argv:
@@ -145,6 +169,7 @@
           - "--token={{ openshift_api_token }}"
           - "--insecure-skip-tls-verify={{ not (openshift_validate_certs | default(false) | bool) }}"
           - "APP_INTEGRATION_URL_ALLOWED_HOSTS={{ [aap_hostname] | to_json }}"
+          - "APP_OIDC_ALLOW_PRIVATE_NETWORKS=true"
       changed_when: true
       no_log: true
 
