@@ -10,6 +10,7 @@ including *why* each choice was made.
 | Private Automation Hub as code | [`pah-plan`](https://ericcames.github.io/sales.demos-docs/plan/pah-plan/) |
 | Network MCP servers | [`network-mcp-plan`](https://ericcames.github.io/sales.demos-docs/plan/network-mcp-plan/) |
 | Platform add-ons (MCP servers) | [`platform-addons-plan`](https://ericcames.github.io/sales.demos-docs/plan/platform-addons-plan/) |
+| Automation Orchestrator | [`automation-orchestrator-plan`](https://ericcames.github.io/sales.demos-docs/plan/automation-orchestrator-plan/) |
 | Grafana Cloud observability | [`grafana-plan`](https://ericcames.github.io/sales.demos-docs/plan/grafana-plan/) |
 
 **The plans live in [sales.demos-docs](https://github.com/ericcames/sales.demos-docs),
