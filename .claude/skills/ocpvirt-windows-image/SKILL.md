@@ -165,12 +165,19 @@ read-only mounts and nothing else. Full detail: `/sales-demos-verify-ee`.
 
 ## Verify against the cluster, not the recap
 
-```bash
-oc get datasource win2k22 -n openshift-virtualization-os-images
-oc get volumesnapshot -n openshift-virtualization-os-images
-oc get hyperconverged kubevirt-hyperconverged -n openshift-cnv \
-  -o jsonpath='{.spec.dataImportCronTemplates[*].metadata.name}{"\n"}'
-oc get dataimportcron -n openshift-virtualization-os-images
+```
+mcp__openshift-<env>__resources_get  cdi.kubevirt.io/v1beta1 DataSource win2k22
+  namespace: openshift-virtualization-os-images
+
+mcp__openshift-<env>__resources_list  snapshot.storage.k8s.io/v1 VolumeSnapshot
+  namespace: openshift-virtualization-os-images
+
+mcp__openshift-<env>__resources_get  hco.kubevirt.io/v1beta1 HyperConverged kubevirt-hyperconverged
+  namespace: openshift-cnv
+# Check spec.dataImportCronTemplates[*].metadata.name
+
+mcp__openshift-<env>__resources_list  cdi.kubevirt.io/v1beta1 DataImportCron
+  namespace: openshift-virtualization-os-images
 ```
 
 `win2k22` should report `Ready=True`, and the cron template should be listed in
@@ -182,10 +189,10 @@ oc get dataimportcron -n openshift-virtualization-os-images
 the tag that was *asked for* — not the one imported. Ask what is actually
 served:
 
-```bash
-oc get datavolume win2k22-initial-import \
-  -n openshift-virtualization-os-images \
-  -o jsonpath='{.spec.source.registry.url}{"\n"}'
+```
+mcp__openshift-<env>__resources_get  cdi.kubevirt.io/v1beta1 DataVolume win2k22-initial-import
+  namespace: openshift-virtualization-os-images
+# Check spec.source.registry.url
 ```
 
 That must equal `docker://` plus `quay_windows_image` from this environment's

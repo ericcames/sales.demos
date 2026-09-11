@@ -37,7 +37,8 @@ everything.
 grep -h '^aap_env_name' inventory/group_vars/sandbox/connection.yml inventory/group_vars/demo/connection.yml
 
 # 2. What is actually running right now
-oc get vm,vmi -n sales-demos-sandbox 2>/dev/null || echo "(oc not logged in — the playbook uses the vault token, not your session)"
+#    mcp__openshift-<env>__resources_list  kubevirt.io/v1 VirtualMachine  namespace: sales-demos-<env>
+#    mcp__openshift-<env>__resources_list  kubevirt.io/v1 VirtualMachineInstance  namespace: sales-demos-<env>
 
 # 3. The vault password must be present or nothing decrypts
 test -r ~/secrets/.vault_pass_sales_demos \
@@ -101,14 +102,16 @@ Full detail, including how to diff the two runs: `/sales-demos-verify-ee`.
 
 ## Verify against the cluster, not the recap
 
-```bash
+```
 # Nothing left in the demo namespace
-oc get vm,vmi,svc,route -n sales-demos-sandbox
+mcp__openshift-<env>__resources_list  kubevirt.io/v1 VirtualMachine  namespace: sales-demos-<env>
+mcp__openshift-<env>__resources_list  v1 Service  namespace: sales-demos-<env>
+mcp__openshift-<env>__resources_list  route.openshift.io/v1 Route  namespace: sales-demos-<env>
 
 # The things that must have survived
-oc get hyperconverged -n openshift-cnv
-oc get datasource -n openshift-virtualization-os-images
-oc get secret -n sales-demos-tfstate | grep tfstate
+mcp__openshift-<env>__resources_list  hco.kubevirt.io/v1beta1 HyperConverged  namespace: openshift-cnv
+mcp__openshift-<env>__resources_list  cdi.kubevirt.io/v1beta1 DataSource  namespace: openshift-virtualization-os-images
+mcp__openshift-<env>__resources_list  v1 Secret  namespace: sales-demos-tfstate
 ```
 
 Expect the first to be empty and the last three to be intact. A green Ansible

@@ -167,25 +167,32 @@ syncs go back to resolving from the execution environment, as they did before
 
 ## Verify against AAP, not the recap
 
+```
+# The organization carries exactly one Galaxy credential, pointed at `approved`
+mcp__aap-<env>__organizations_list
+# Find "IT Service Automation" and check its galaxy_credentials
+
+# Credentials — look for the Galaxy credential attached to the organization
+mcp__aap-<env>__credentials_list
+# Filter for the Galaxy credential type
+```
+
+The vault+curl path still works if the MCP server is not registered:
+
 ```bash
 HOST=$(grep -oP '(?<=^aap_hostname: ")[^"]+' inventory/group_vars/sandbox/connection.yml)
 PW=$(ansible-vault view playbooks/group_vars/all/secrets.yml \
        --vault-id sales.demos@~/secrets/.vault_pass_sales_demos \
      | python3 -c 'import sys,yaml; print(yaml.safe_load(sys.stdin)["env_secrets"]["sandbox"]["aap_password"])')
 
-# The organization carries exactly one Galaxy credential, pointed at `approved`
 curl -sk -u "admin:$PW" \
   "https://$HOST/api/controller/v2/organizations/?name=IT%20Service%20Automation" \
   | python3 -c 'import sys,json; print(json.load(sys.stdin)["results"][0]["related"]["galaxy_credentials"])'
 
-# Exactly one token with this playbook's description — never two
 curl -sk -u "admin:$PW" \
   "https://$HOST/api/gateway/v1/tokens/?description=sales.demos%20PAH%20Galaxy%20(%2369)" \
   | python3 -c 'import sys,json; print(json.load(sys.stdin)["count"], "token(s)")'
 ```
-
-Or ask over MCP, which is the cheaper path:
-`mcp__aap-sandbox__organizations_list` and `mcp__aap-sandbox__credentials_list`.
 
 **The strongest check is the one the playbook already ran**: read the project
 update's stdout and confirm `Fetch galaxy collections from

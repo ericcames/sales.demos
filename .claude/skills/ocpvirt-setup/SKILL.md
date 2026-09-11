@@ -274,47 +274,23 @@ Full detail, including how to diff the two runs: `/sales-demos-verify-ee`.
 playbook was broken in two different ways; only running it and then checking
 the cluster caught either one.
 
-Reuses `$OCP_URL` and `$OCP_TOKEN` exported in the preflight above. If you are
-running this standalone, resolve them with the same two commands first — the URL
-through `ansible … -m debug`, the token through `ansible-vault view`. Never
-`yaml.safe_load` `secrets.yml` directly: on disk it is ciphertext, so it must be
-piped through the vault first.
+Ask the cluster over MCP — no credentials to export, no urllib:
 
-```bash
-python3 - <<'PY'
-import os, ssl, json, urllib.request
-base = os.environ["OCP_URL"].rstrip("/")
-token = os.environ["OCP_TOKEN"]
-ctx = ssl.create_default_context(); ctx.check_hostname = False; ctx.verify_mode = ssl.CERT_NONE
-
-def get(path):
-    req = urllib.request.Request(base + path,
-                                 headers={"Authorization": "Bearer " + token})
-    return json.load(urllib.request.urlopen(req, context=ctx, timeout=25))
-
-ok = True
-
-groups = {g["name"] for g in get("/apis")["groups"]}
-for g in ("kubevirt.io", "cdi.kubevirt.io", "hco.kubevirt.io", "instancetype.kubevirt.io"):
-    print(("PASS " if g in groups else "FAIL ") + "API group " + g)
-    ok &= g in groups
-
-want = {"u1.small": (1, "2Gi"), "u1.medium": (1, "4Gi"), "u1.large": (2, "8Gi")}
-its = {i["metadata"]["name"]: (i["spec"]["cpu"]["guest"], i["spec"]["memory"]["guest"])
-       for i in get("/apis/instancetype.kubevirt.io/v1beta1/virtualmachineclusterinstancetypes").get("items", [])}
-for name, shape in want.items():
-    got = its.get(name)
-    print(("PASS " if got == shape else "FAIL ") + f"instance type {name} {got}")
-    ok &= got == shape
-
-kvm = [n["status"]["allocatable"].get("devices.kubevirt.io/kvm") for n in get("/api/v1/nodes")["items"]]
-print(("PASS " if any(kvm) else "FAIL ") + f"devices.kubevirt.io/kvm on node: {kvm}")
-ok &= any(kvm)
-
-print("\nCLUSTER VERIFIED" if ok else "\nVERIFICATION FAILED - do not report success")
-raise SystemExit(0 if ok else 1)
-PY
 ```
+# 1. CNV API groups present
+mcp__openshift-<env>__resources_list  apiregistration.k8s.io/v1 APIService
+# Look for kubevirt.io, cdi.kubevirt.io, hco.kubevirt.io, instancetype.kubevirt.io
+
+# 2. Instance types match the t-shirt sizing
+mcp__openshift-<env>__resources_list  instancetype.kubevirt.io/v1beta1 VirtualMachineClusterInstancetype
+# Expect u1.small (1 cpu, 2Gi), u1.medium (1 cpu, 4Gi), u1.large (2 cpu, 8Gi)
+
+# 3. KVM device available on at least one node
+mcp__openshift-<env>__nodes_top
+# Check allocatable devices.kubevirt.io/kvm in node details
+```
+
+If the MCP server is not registered, run `/sales-demos-mcp` first.
 
 The instance-type shapes are checked because the t-shirt sizing tiers in
 the [OCP Virt plan](https://ericcames.github.io/sales.demos-docs/plan/ocpvirt-demo-plan/) depends on them. If they ever differ, Phase 1
