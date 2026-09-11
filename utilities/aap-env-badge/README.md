@@ -60,14 +60,14 @@ the answer AAP already gave — same cluster, same environment.
 When the content script resolves the environment on an AAP page, it caches
 `envName` in `chrome.storage.local` keyed by the cluster domain (everything
 after `.apps.` in the hostname). On AO, the content script reads that cache
-first. If the cache is empty — which is normal after SSO login, because the
-redirect from AAP back to AO never gives the AAP content script a chance to
-fetch templates while authenticated — AO falls back to a **cross-origin fetch**
-to `https://aap-aap.apps.<cluster>/api/controller/v2/job_templates/`. The
-`host_permissions` already cover the domain, and the SSO session cookie carries
-authentication. If the cookie does not carry (third-party cookie policy,
-SameSite restrictions), the fetch returns 401 and the cache-polling fallback
-continues — no worse than before.
+first. If the cache is empty — which is normal: SSO login redirects away from
+AAP before the content script can fetch while authenticated, and local-account
+login never touches AAP at all — AO falls back to its own **proxy API**.
+The list endpoint (`/api/v1/proxies/aap/job_templates`) returns only
+`id`/`name`/`description`, so the code fetches the list for template IDs and
+then fetches individual template details to read `extra_vars.target_env`. This
+is same-origin, uses AO's own session cookie, and works regardless of how the
+user logged in.
 
 A `storage.onChanged` listener on AO picks up a cache write from any other tab
 the moment it happens, so the pill appears without waiting for the next poll
