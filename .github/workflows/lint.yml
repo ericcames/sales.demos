@@ -214,8 +214,10 @@ jobs:
           for f in .claude/skills/*/SKILL.md; do
             dir=$(basename "$(dirname "$f")")
 
-            # bash -n every fenced bash block
+            # bash -n every fenced bash block (replace <placeholder> tokens
+            # so bash doesn't parse them as redirections)
             if ! awk '/^```bash$/{ p=1; next } /^```$/{ p=0 } p{ print }' "$f" \
+              | sed 's/<[a-zA-Z_][a-zA-Z0-9._-]*>/PLACEHOLDER/g' \
               | bash -n 2>/tmp/bash-n-err; then
               echo "::error::$f contains a bash block with syntax errors:"
               cat /tmp/bash-n-err
