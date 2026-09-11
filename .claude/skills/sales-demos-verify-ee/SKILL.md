@@ -32,22 +32,21 @@ Three times now that gap has held a real defect:
 Every collection pin matches exactly, laptop and EE. `build-ee.sh` checks that
 and is green. **The divergence is underneath them:**
 
-| | ansible-core | python |
-|---|---|---|
-| Laptop | 2.18.18rc1 | 3.14.7 |
-| `sales-demos-ee:v1.1.0` | 2.16.19 | 3.12.13 |
+**Check this first, every time.** Derive the current EE tag from the inventory
+(the same place `utilities/run-in-ee.sh` reads it) rather than hardcoding:
+
+```bash
+EE_TAG=$(sed -n 's|^ *image: *"{{ *aap_hostname *}}/sales_demos_ee:\([^"]*\)".*|\1|p' \
+  inventory/group_vars/aap/controller_execution_environments.yml)
+EE_IMAGE="quay.io/zigfreed/sales-demos-ee:${EE_TAG}"
+
+ansible --version | head -1
+podman run --rm --user 1000 --entrypoint ansible "$EE_IMAGE" --version | head -1
+```
 
 Two minor versions of core apart, and the laptop is on a release candidate.
 Nothing in this repo pins or compares ansible-core — `collections/requirements.yml`
 pins what sits *on top* of it. That is #173.
-
-**Check this first, every time.** It is one line and it explains most surprises:
-
-```bash
-ansible --version | head -1
-podman run --rm --user 1000 --entrypoint ansible \
-  quay.io/zigfreed/sales-demos-ee:v1.1.0 --version | head -1
-```
 
 ## Nothing is baked into the image — this is the answer for a customer
 
@@ -55,12 +54,12 @@ The EE is published to a public quay repository. It carries **no credential**,
 and that is verifiable rather than asserted:
 
 ```bash
-podman run --rm --entrypoint /bin/bash quay.io/zigfreed/sales-demos-ee:v1.1.0 \
+podman run --rm --entrypoint /bin/bash "$EE_IMAGE" \
   -c 'ls /etc/ansible 2>&1; ansible --version | grep "config file"'
 # ls: cannot access '/etc/ansible': No such file or directory
 #   config file = None
 
-podman history --no-trunc quay.io/zigfreed/sales-demos-ee:v1.1.0 | grep ansible.cfg
+podman history --no-trunc "$EE_IMAGE" | grep ansible.cfg
 # (no match — no layer in the final image copies a config in)
 ```
 

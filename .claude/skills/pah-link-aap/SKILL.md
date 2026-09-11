@@ -196,7 +196,9 @@ verbose run name `/api/galaxy/v3/plugin/ansible/content/approved/` — that is w
 ### The clean-container version of the same claim
 
 ```bash
-EE=quay.io/zigfreed/sales-demos-ee:v1.1.0    # tag from controller_execution_environments.yml
+EE_TAG=$(sed -n 's|^ *image: *"{{ *aap_hostname *}}/sales_demos_ee:\([^"]*\)".*|\1|p' \
+  inventory/group_vars/aap/controller_execution_environments.yml)
+EE="quay.io/zigfreed/sales-demos-ee:${EE_TAG}"
 podman run --rm -v "$PWD/collections/requirements.yml:/tmp/req.yml:ro,Z" \
   -e T="<a read-scoped gateway token>" -e H="$HOST" "$EE" bash -lc '
     ansible-galaxy collection install -r /tmp/req.yml \
