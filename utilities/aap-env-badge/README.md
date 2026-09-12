@@ -178,11 +178,14 @@ copy differs.
 - **It is an overlay, not DOM surgery.** One `position: fixed` element appended
   to `<body>`; AAP's own markup is never modified. The masthead is PatternFly
   with version-prefixed class names (`pf-v5-c-masthead__*`), so anchoring inside
-  it would break on a gateway upgrade. On AAP pages it needs a `<header>`; on
-  AO's post-login pages it falls back to the PF v6 Compass `__main-header`
-  (`<div>`, not `<header>`) when no `<header>` exists. The badge's vertical
-  position is capped at 24 px from the viewport top, so a `<header>` placed
-  lower (as on the AO login page) still gets the pill in the right spot.
+  it would break on a gateway upgrade. On AAP pages it needs a `<header>`. On
+  AO's post-login desktop pages, the only `<header>` is `#mobile-masthead`
+  which is `display: none` (height 0), and the Compass `__main-header` selector
+  matches nothing in the real DOM — so the code falls back to a synthetic
+  bounding box (`{ top: 0, height: 48 }`) that places the pill at the viewport
+  top without needing a real DOM anchor (#496). The badge's vertical position is
+  capped at 24 px from the viewport top, so a `<header>` placed lower (as on
+  the AO login page) still gets the pill in the right spot.
 - **It hides below 1100px** rather than overlapping the nav toggle or the
   right-hand icons. A badge sitting on top of the controls is worse than none,
   particularly on a shared screen.
