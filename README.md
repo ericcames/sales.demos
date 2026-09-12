@@ -32,16 +32,17 @@ here.
 
 ```bash
 git clone https://github.com/ericcames/sales.demos.git
-git clone https://github.com/ericcames/sales.demos-docs.git   # the words
+git clone https://github.com/ericcames/sales.demos-docs.git          # the words
+git clone https://github.com/ericcames/image.builder.pipeline.git    # the image factory
 cd sales.demos
 claude .
 # then:  /sales-demos-first-time
 ```
 
-[`.claude/skills/sales-demos-first-time/SKILL.md`](.claude/skills/sales-demos-first-time/SKILL.md)
-is the real onboarding document — it walks every prerequisite and validates each
-one. It is written to be *run* as a skill, but it is almost entirely shell and
-reads as a plain checklist, so work through it by hand if you would rather.
+[First-time setup](https://ericcames.github.io/sales.demos-docs/reference/first-time-setup/)
+is the full walkthrough — every prerequisite, every verification command.
+[`/sales-demos-first-time`](.claude/skills/sales-demos-first-time/SKILL.md)
+is the same thing as a Claude Code skill that runs each step interactively.
 
 | You need | Where it goes | Why it is not in the repo |
 |---|---|---|
@@ -224,6 +225,7 @@ runner (#7).
 
 | You want | Go to |
 |---|---|
+| First-time setup — prerequisites and verification | [First-time setup](https://ericcames.github.io/sales.demos-docs/reference/first-time-setup/) |
 | Talk tracks, run sheets, objections | [docs site](https://ericcames.github.io/sales.demos-docs) |
 | Design plans — *why* it is built this way | [Design Plans](https://ericcames.github.io/sales.demos-docs/plan/ocpvirt-demo-plan/) |
 | Running playbooks, verifying in the EE, run logs | [Running playbooks](https://ericcames.github.io/sales.demos-docs/reference/running-playbooks/) |
