@@ -237,6 +237,16 @@ reimplements logic.
 Skills live in `.claude/skills/` and are discovered natively — no marketplace,
 no `plugin.json`.
 
+**When referencing a skill in markdown, the skill name is the link text** —
+backtick-code style, linked to the SKILL.md on GitHub:
+
+```markdown
+[`/sales-demos-first-time`](https://github.com/ericcames/sales.demos/blob/main/.claude/skills/sales-demos-first-time/SKILL.md)
+```
+
+Not `[interactive skill](url) (/skill-name in Claude Code)` or other
+indirect phrasings. The skill name is what you type, so it is what you read.
+
 **A laptop run and a job template are not the same run, and only one of them is
 production** (#120). `ansible-playbook` resolves `~/.ansible/collections` and the
 system python; an AAP job template resolves what the EE baked in. CI cannot see
