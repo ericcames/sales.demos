@@ -57,17 +57,18 @@ file is no longer in git either — **back up both**.
 > within minutes. That one is absolute — which is why the CI guard fails on a
 > tracked `secrets.yml` that is not vault-encrypted.
 
-**Do not create `connection.yml.example` or any other `.example` twin**, and do
-not add a second sourceable secrets file — `docs/dev-environment.sh` is retired
-here.
+**Do not create `connection.yml.example` or any new `.example` file without the
+same justification the existing ones have**, and do not add a second sourceable
+secrets file — `docs/dev-environment.sh` is retired here.
 
-This used to say `secrets.yml.example` was the *only* `.example` file, and that
-has been untrue since 2026-08-09: `terraform/ocpvirt/terraform.tfvars.example`
-shipped with the Terraform module in #28 and is tracked. It is legitimate for the
-same reason — `terraform.tfvars` is gitignored, so the example is the only
-committed record of the module's inputs. The rule is about not *proliferating*
-them, and it stands; a third needs that same justification. A count stated as a
-fact goes stale silently, which is exactly what happened here (#434).
+Three `.example` files exist — `secrets.yml.example` (the gitignored
+vault-encrypted secrets file), `terraform.tfvars.example` (the gitignored
+Terraform vars), and `local.yml.example` (one per environment — the gitignored
+laptop overlay, #499). All three follow the same rule: a gitignored file whose
+shape nothing else documents. Adding another needs that same justification.
+
+`connection.yml.example` in particular remains wrong because `connection.yml` is
+committed and IS the reference — an example twin would be redundant.
 
 ## Audit before every push
 

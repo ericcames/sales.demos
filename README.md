@@ -56,7 +56,7 @@ working RHDP values on purpose.
 | Where you run from | Edit |
 |---|---|
 | AAP, or your own fork | `inventory/group_vars/<env>/connection.yml` — tracked; a job template reads the SCM checkout |
-| A laptop tracking this repo | `inventory/group_vars/<env>/local.yml` — gitignored overlay; redefine only the keys that differ |
+| A laptop tracking this repo | Copy `inventory/group_vars/<env>/local.yml.example` to `local.yml` beside it and fill in your cluster's values — three keys |
 
 `<env>` is `sandbox`, `demo` or `edge`. A gitignored file is not in the checkout
 a job template runs from, so `local.yml` is the laptop path only (#166). Both
@@ -137,6 +137,7 @@ inventory/
     aap/                             shared config: job templates, workflows, credentials
     sandbox/  demo/  edge/           per-environment connection settings:
       connection.yml                   committed — hostnames, API URLs, namespaces
+      local.yml.example                copy to local.yml and fill in your cluster
       local.yml                        GITIGNORED laptop-only overlay (#166)
 playbooks/                       the work: one playbook per phase
   group_vars/all/
