@@ -444,10 +444,16 @@
       return;
     }
     // mastheadBox has strict dimension checks for AAP's wide masthead.
-    // AO's compact header may fail those — fall back to aoMastheadBox.
-    const box = mastheadBox() || (onAO ? aoMastheadBox() : null);
+    // AO's compact header may fail those — fall back to aoMastheadBox,
+    // then to a synthetic box. AO's desktop Compass layout renders
+    // <header id="mobile-masthead"> with display:none (height 0), so
+    // both real lookups return null. The badge is position:fixed and
+    // needs only coordinates, not a real DOM anchor.
+    const box =
+      mastheadBox() ||
+      (onAO ? aoMastheadBox() : null) ||
+      (onAO ? { top: 0, height: 48 } : null);
     if (!box) {
-      // The SPA has not rendered a header yet. Nothing to anchor to.
       remove();
       return;
     }
