@@ -26,9 +26,7 @@ design plans and operator reference are published as a site from
 above and read the **run sheet** — that is the page to hold while you present.
 Nothing to clone, nothing to install.
 
-**Running or changing the automation?** A clone passes CI and still cannot run a
-playbook until you have supplied three things that deliberately do not live
-here.
+**Running or changing the automation?**
 
 ```bash
 git clone https://github.com/ericcames/sales.demos.git
@@ -43,26 +41,6 @@ claude .
 is the full walkthrough — every prerequisite, every verification command.
 [`/sales-demos-first-time`](.claude/skills/sales-demos-first-time/SKILL.md)
 is the same thing as a Claude Code skill that runs each step interactively.
-
-| You need | Where it goes | Why it is not in the repo |
-|---|---|---|
-| Automation Hub token | `~/.ansible.cfg` | One authoritative copy; a second would go stale on rotation (#22) |
-| Vault password | `~/secrets/.vault_pass_sales_demos` | The one secret that cannot itself be vaulted |
-| `secrets.yml` | `playbooks/group_vars/all/secrets.yml` | Built from `secrets.yml.example` beside it; shipping one person's encrypted credentials is what made this repo un-reusable (#130) |
-
-**Pointing it at your own cluster is a separate step**, and it is not on that
-table because the file you edit *is* committed — `connection.yml` ships with
-working RHDP values on purpose.
-
-| Where you run from | Edit |
-|---|---|
-| AAP, or your own fork | `inventory/group_vars/<env>/connection.yml` — tracked; a job template reads the SCM checkout |
-| A laptop tracking this repo | Copy `inventory/group_vars/<env>/local.yml.example` to `local.yml` beside it and fill in your cluster's values — three keys |
-
-`<env>` is `sandbox`, `demo` or `edge`. A gitignored file is not in the checkout
-a job template runs from, so `local.yml` is the laptop path only (#166). Both
-routes, in full:
-[Reusing this repo](https://ericcames.github.io/sales.demos-docs/reference/reusing-this-repo/).
 
 [`CONTRIBUTING.md`](CONTRIBUTING.md) is next if you intend to open a pull
 request — what must never be committed, where values live, the leak audit, and
