@@ -144,7 +144,9 @@ ansible-vault edit playbooks/group_vars/all/secrets.yml \
   environments, and for anything that runs from AAP** — a job template reads the
   SCM checkout, so the change has to be committed.
 - **`inventory/group_vars/<env>/local.yml` is a gitignored overlay for reusers**
-  (#131). Ansible loads a `group_vars/<group>/` directory in sorted order and
+  (#131). `local.yml.example` beside each `connection.yml` shows the three keys
+  to override; copy it to `local.yml` and fill in your cluster's values (#499).
+  Ansible loads a `group_vars/<group>/` directory in sorted order and
   the last file wins, so it overrides `connection.yml` with no code change. It
   exists so someone who clones can point this at their own cluster and still
   `git pull` without conflicting on the three identity lines, which move roughly
@@ -169,18 +171,16 @@ ansible-vault edit playbooks/group_vars/all/secrets.yml \
 - The vault password is at `~/secrets/.vault_pass_sales_demos` (`600`, in a
   `700` directory), outside this repo, following the same convention as
   `aap_config`'s `.vault_pass_<env>` files.
-- **Do not create `connection.yml.example` or any other `.example` twin.** This
-  rule used to claim `secrets.yml.example` was the *only* `.example` file here,
-  and that has been untrue since 2026-08-09:
-  `terraform/ocpvirt/terraform.tfvars.example` shipped with the Terraform module
-  in #28 and is tracked. It is legitimate — `terraform.tfvars` is gitignored, so
-  the example is the only committed record of the module's inputs, the same
-  argument that justifies `secrets.yml.example`.
+- **Do not create `connection.yml.example` or any new `.example` file without
+  the same justification the existing ones have.** Three `.example` files exist:
+  `secrets.yml.example` (the gitignored vault-encrypted secrets file),
+  `terraform.tfvars.example` (the gitignored Terraform vars), and
+  `local.yml.example` (one per environment — the gitignored laptop overlay,
+  #499). All three follow the same rule: a gitignored file whose shape nothing
+  else documents. Adding another needs that same justification.
 
-  The rule is about not *proliferating* them, and it stands. Two exist; adding a
-  third needs the same justification these two have — a gitignored file whose
-  shape nothing else documents. A count stated as a fact goes stale silently,
-  which is what happened here.
+  `connection.yml.example` in particular remains wrong because `connection.yml`
+  is committed and IS the reference — an example twin would be redundant.
 - Do **not** introduce a second sourceable secrets file. `docs/dev-environment.sh`
   is retired and must not come back.
 - **Never weaken the guard** in `utilities/check-no-secrets.sh`. It is the only
