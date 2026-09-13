@@ -317,6 +317,19 @@ You can check which path was taken: the terminal renders each call by its
 name, so `mcp__openshift-sandbox__pods_list` used the server and
 `Bash(oc get pods)` did not.
 
+**When reporting MCP server status, call each server — do not read config
+files.** A stdio server reports "Connected" if its local process starts; it
+does not prove the remote cluster is alive. `openshift-demo` showed
+"Connected" while `cluster-6d5xj` was expired and every call failed with
+`no such host` (#523). Use lightweight calls to verify:
+
+- OCP: `mcp__openshift-<env>__namespaces_list` with
+  `fieldSelector=metadata.name=default`
+- AAP: `mcp__aap-<env>__me_list`
+
+Report **Live** if data comes back, **Dead** if it errors. Never report a
+server as working based on a kubeconfig or token file existing.
+
 **One sanctioned exception, and it is the AAP platform version.** No tool on
 the AAP MCP server returns it — measured 2026-09-03, `config_retrieve` and
 `status_retrieve` both give the *controller* version (`4.8.6`) and
