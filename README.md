@@ -80,6 +80,7 @@ variable names are the contract. Skills are discovered natively from
 | `sales-demos-alloy` | `deploy_alloy.yml` | Deploy Grafana Alloy for metrics and logs to Grafana Cloud |
 | `sales-demos-config` | `config.yml` | Apply AAP config-as-code — templates, credentials, gateway branding |
 | `sales-demos-dashboard` | `deploy_dashboard.yml` | Push Grafana Cloud dashboards (dashboard-as-code) |
+| `sales-demos-env-urls` | `generate_env_urls.yml` | Regenerate the environment URL reference file |
 
 ### Repo maintenance skills
 
