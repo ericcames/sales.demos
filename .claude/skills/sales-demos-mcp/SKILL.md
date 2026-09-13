@@ -125,12 +125,12 @@ test -f .mcp.json \
   && echo "✅ .mcp.json present" \
   || echo "❌ .mcp.json missing — it is committed; you may be outside the repo root"
 
-# The kubeconfig for this environment still points AT this environment.
-# Generating it once is not enough: repointing an environment edits
-# connection.yml and the vault and does NOT regenerate this file (#161). The
-# failure is otherwise a DNS error naming a dead cluster, which says nothing
-# about kubeconfigs.
-bash utilities/check-kubeconfig.sh "$ENV" 2>&1 || true
+# All MCP credentials (kubeconfig, AAP URL, AO registration) still point AT
+# this environment. Generating them once is not enough: repointing an
+# environment (via connection.yml, local.yml, or vault edits) does NOT
+# regenerate these files (#161, #533). The failure is otherwise a DNS error
+# naming a dead cluster, which says nothing about credentials.
+bash utilities/check-mcp-staleness.sh "$ENV" 2>&1 || true
 
 test -d "inventory/group_vars/$ENV" \
   && echo "✅ environment '$ENV' exists" \

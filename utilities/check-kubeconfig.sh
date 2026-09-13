@@ -2,15 +2,17 @@
 # ===========================================================================
 # check-kubeconfig.sh — verify .kube/<env>.kubeconfig still points at <env>.
 #
-# Issue #161. VERIFY, DO NOT TRUST — the same shape as check-no-secrets.sh's
-# second check (#130), which tests that the .gitignore rule actually matches
-# rather than assuming a rule that is present is a rule that works.
+# Issue #161, updated #533. VERIFY, DO NOT TRUST — the same shape as
+# check-no-secrets.sh's second check (#130).
 #
 # WHAT GOES WRONG WITHOUT IT. utilities/make-kubeconfig.sh writes the file once.
-# Repointing an environment edits connection.yml and the vault; it does NOT
-# regenerate this file. The two then disagree silently, and the failure surfaces
-# as a DNS error against a cluster that no longer exists, at the moment someone
-# tries to reach a VM.
+# Repointing an environment edits connection.yml (or local.yml) and the vault;
+# it does NOT regenerate this file. The two then disagree silently, and the
+# failure surfaces as a DNS error against a cluster that no longer exists.
+#
+# The expected URL is resolved through Ansible variable precedence, so
+# local.yml overrides are respected (#533). Before #533 this script read
+# connection.yml with raw yaml.safe_load, which was blind to local.yml.
 #
 # This checks the repo's own per-environment kubeconfig. It deliberately does
 # NOT look at ~/.kube/config: that file holds clusters belonging to other demo
@@ -35,17 +37,25 @@ environments() { ls -1 inventory/group_vars | grep -v '^aap$'; }
 ENV="${1:-}"
 [ -n "$ENV" ] || { echo "usage: $0 <$(environments | paste -sd'|')>" >&2; exit 2; }
 
-CONN="inventory/group_vars/${ENV}/connection.yml"
 KUBE=".kube/${ENV}.kubeconfig"
 
-[ -f "$CONN" ] || { echo "❌ no such environment '$ENV' ($CONN missing)" >&2; exit 2; }
+[ -d "inventory/group_vars/$ENV" ] || { echo "❌ no such environment '$ENV'" >&2; exit 2; }
 
 if [ ! -f "$KUBE" ]; then
   echo "❌ $KUBE missing — generate it: bash utilities/make-kubeconfig.sh $ENV" >&2
   exit 1
 fi
 
-want="$(python3 -c "import yaml,sys;print(yaml.safe_load(open('$CONN'))['openshift_api_url'])")"
+VAULT_PASS="${SALES_DEMOS_VAULT_PASS:-$HOME/secrets/.vault_pass_sales_demos}"
+VAULT_ID="sales.demos@$VAULT_PASS"
+
+want="$(ansible -i inventory --limit "$ENV" aap -m debug --vault-id "$VAULT_ID" \
+  -a 'msg={{ openshift_api_url }}' 2>/dev/null | sed -n 's/.*"msg": "\(.*\)"/\1/p')"
+
+case "$want" in
+  https://*) ;;
+  *) echo "❌ could not resolve openshift_api_url for '$ENV' — got: ${want:-(empty)}" >&2; exit 2 ;;
+esac
 have="$(python3 -c "
 import yaml,sys
 d=yaml.safe_load(open('$KUBE')) or {}
@@ -56,8 +66,8 @@ print(c.get('server',''))
 if [ "$want" != "$have" ]; then
   cat >&2 <<EOF
 ❌ $KUBE is stale for '$ENV'.
-     connection.yml: $want
-     kubeconfig:     $have
+     expected:   $want
+     kubeconfig: $have
    The environment was repointed without regenerating the kubeconfig.
    Fix: bash utilities/make-kubeconfig.sh $ENV
 EOF
