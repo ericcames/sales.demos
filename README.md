@@ -42,6 +42,14 @@ is the full walkthrough — every prerequisite, every verification command.
 [`/sales-demos-first-time`](.claude/skills/sales-demos-first-time/SKILL.md)
 is the same thing as a Claude Code skill that runs each step interactively.
 
+**Cloning gives you a read-only copy.** You can run every playbook on your
+laptop using a gitignored `local.yml` overlay, but you cannot push to this repo.
+`config.yml` writes your cluster's identity into the AAP inventory as host
+variables, so AAP templates target your cluster without needing to push
+`connection.yml`. If you want to go further — carry your own changes, set
+`sales_demos_scm_url` to your fork — see
+[Reusing this repo](https://ericcames.github.io/sales.demos-docs/reference/reusing-this-repo/).
+
 [`CONTRIBUTING.md`](CONTRIBUTING.md) is next if you intend to open a pull
 request — what must never be committed, where values live, the leak audit, and
 the branch-and-PR workflow.

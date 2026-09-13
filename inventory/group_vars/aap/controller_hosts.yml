@@ -1,0 +1,44 @@
+---
+# ============================================================================
+# group_vars/aap/controller_hosts.yml — write cluster identity vars as host
+# variables in the AAP inventory (#528)
+# ============================================================================
+# THE PROBLEM: AAP reads connection.yml from the SCM checkout (upstream), so a
+# cloner's local.yml overlay is invisible. Every template targets the upstream
+# cluster, not the cloner's.
+#
+# THE FIX: config.yml already runs from the laptop and reads the LOCAL
+# connection.yml (updated by update-connection.sh from local.yml). This file
+# tells the dispatch role to write the cluster-specific variables as HOST
+# variables on each control host. AAP host vars override SCM-sourced group
+# vars (standard Ansible precedence), and the SCM inventory source has
+# overwrite_vars: false, so a sync does not clobber them.
+#
+# WHAT THIS MEANS:
+#   - Collaborators: no change — config.yml already runs, these vars match
+#   - Cloners: config.yml writes THEIR cluster values, templates work
+#   - No fork needed for AAP templates to target the right cluster
+#
+# CREDENTIALS ARE NOT HERE. aap_password, openshift_api_token, and the
+# admin passwords are Jinja lookups into env_secrets, resolved at run time
+# by the "Sales Demos - Env Secrets" custom credential type (#129). That
+# mechanism is correct and unchanged.
+#
+# THE CONTROL INVENTORY IS NOT COVERED. Sales Demo VMs - Control has
+# overwrite_vars: true, so host vars set here would be wiped on sync. That
+# inventory is for teardown only — teardown reads connection values from the
+# main inventory, not from its own host vars.
+# ============================================================================
+
+controller_hosts_all:
+  - name: "{{ aap_env_name }}-local"
+    inventory: "Sales Demo VMs"
+    variables:
+      aap_hostname: "{{ aap_hostname }}"
+      openshift_api_url: "{{ openshift_api_url }}"
+      openshift_apps_domain: "{{ openshift_apps_domain }}"
+      quay_rhel9_image: "{{ quay_rhel9_image }}"
+      quay_windows_image: "{{ quay_windows_image }}"
+      available_memory_gb: "{{ available_memory_gb }}"
+      demo_ssh_public_key: "{{ demo_ssh_public_key }}"
+      ocpvirt_namespace: "{{ ocpvirt_namespace }}"
