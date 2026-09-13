@@ -64,13 +64,13 @@ variable names are the contract. Skills are discovered natively from
 
 | Skill | Playbook | Does |
 |---|---|---|
-| `ocpvirt-setup` | `setup.yml` | Bare RHDP environment to demo-ready in one command |
-| `ocpvirt-new-env` | `prepare_env.yml` | Verify a fresh environment is warm, and time a real VM build |
-| `ocpvirt-provision` | `provision_vm.yml` | Run Terraform, register the new VMs in AAP |
-| `ocpvirt-windows-image` | `link_windows_image.yml` | Point CNV at the published Windows golden image |
-| `ocpvirt-rhel9-image` | `link_rhel9_image.yml` | Point CNV at the published RHEL 9 CIS L1 golden image |
-| `ocpvirt-demo` | `repair_linux_vm.yml` | Repair an existing Linux VM: register, configure, rescan |
-| `ocpvirt-teardown` | `teardown.yml` | Destroy VMs; keep CNV and the golden images |
+| `sales-demos-setup` | `setup.yml` | Bare RHDP environment to demo-ready in one command |
+| `sales-demos-verify-env` | `prepare_env.yml` | Verify a fresh environment is warm, and time a real VM build |
+| `sales-demos-provision` | `provision_vm.yml` | Run Terraform, register the new VMs in AAP |
+| `sales-demos-windows-image` | `link_windows_image.yml` | Point CNV at the published Windows golden image |
+| `sales-demos-rhel9-image` | `link_rhel9_image.yml` | Point CNV at the published RHEL 9 CIS L1 golden image |
+| `sales-demos-ocpvirt-demo` | `repair_linux_vm.yml` | Repair an existing Linux VM: register, configure, rescan |
+| `sales-demos-teardown` | `teardown.yml` | Destroy VMs; keep CNV and the golden images |
 | `sales-demos-probe-env` | `probe_env.yml` | Measure the cluster and recommend `available_memory_gb` |
 | `pah-sync` | `sync_hub.yml`, `curate_hub.yml` | Populate Private Automation Hub; reconcile the `approved` repo |
 | `pah-link-aap` | `link_hub.yml` | Point AAP project syncs at `approved`, reversibly |
