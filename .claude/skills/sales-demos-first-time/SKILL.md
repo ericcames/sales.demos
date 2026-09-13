@@ -92,15 +92,9 @@ grep -A3 'galaxy_server.rh_certified' ~/.ansible.cfg | grep -qE '^token=.+' \
 ```
 
 If missing, get one from **console.redhat.com → Automation Hub → Connect to Hub →
-Load token**, then the whole file should look like this:
+Load token**, then add these stanzas to `~/.ansible.cfg`:
 
 ```ini
-[defaults]
-stdout_callback = protect_data
-
-[callback_protect_data]
-sensitive_keywords = vault,pwd,pass,password,secret,token,key
-
 [galaxy]
 server_list = rh_certified, rh_validated, community
 
