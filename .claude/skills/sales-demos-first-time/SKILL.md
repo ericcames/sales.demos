@@ -79,10 +79,12 @@ ls inventory/group_vars/*/local.yml >/dev/null 2>&1 \
 
 ## Step 1 — Automation Hub token
 
-`~/.ansible.cfg` needs an `rh_certified` token. It does two jobs here: it is what
+`~/.ansible.cfg` needs three galaxy server stanzas — certified, validated, and
+community. The `rh_certified` token does two jobs here: it is what
 `ansible-galaxy` uses to install Red Hat certified collections, **and** it is
 read at run time as `automation_hub_token` via an `ini` lookup, so there is no
-second copy in the vault to go stale.
+second copy in the vault to go stale. The same token authenticates both
+`rh_certified` and `rh_validated`.
 
 ```bash
 grep -A3 'galaxy_server.rh_certified' ~/.ansible.cfg | grep -qE '^token=.+' \
@@ -90,13 +92,30 @@ grep -A3 'galaxy_server.rh_certified' ~/.ansible.cfg | grep -qE '^token=.+' \
 ```
 
 If missing, get one from **console.redhat.com → Automation Hub → Connect to Hub →
-Load token**, then add to `~/.ansible.cfg`:
+Load token**, then the whole file should look like this:
 
 ```ini
+[defaults]
+stdout_callback = protect_data
+
+[callback_protect_data]
+sensitive_keywords = vault,pwd,pass,password,secret,token,key
+
+[galaxy]
+server_list = rh_certified, rh_validated, community
+
 [galaxy_server.rh_certified]
 url=https://console.redhat.com/api/automation-hub/content/published/
 auth_url=https://sso.redhat.com/auth/realms/redhat-external/protocol/openid-connect/token
 token=<your token>
+
+[galaxy_server.rh_validated]
+url=https://console.redhat.com/api/automation-hub/content/validated/
+auth_url=https://sso.redhat.com/auth/realms/redhat-external/protocol/openid-connect/token
+token=<your token>
+
+[galaxy_server.community]
+url=https://galaxy.ansible.com/
 ```
 
 Use `~/.ansible.cfg`, **not** `~/.ansible/ansible.cfg`. The latter is a stale
