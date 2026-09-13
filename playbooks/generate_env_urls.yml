@@ -1,0 +1,42 @@
+---
+# ===========================================================================
+# generate_env_urls.yml — regenerate the environment URL reference file.
+# Issue #525.
+#
+#   ansible-playbook playbooks/generate_env_urls.yml -i inventory --limit sandbox \
+#     -e target_env=sandbox \
+#     --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
+#
+# Wraps utilities/generate-env-urls.py (#426, #429) so the generation follows
+# the repo's standard pattern: playbook + skill + AAP job template.
+#
+# The Python script reads openshift_apps_domain from EVERY environment's
+# connection.yml and writes a single cross-environment file.  --limit selects
+# which environment triggered the regeneration but the output always covers
+# all three.  That is by design — the file is a cross-environment reference.
+#
+# FROM THE LAPTOP (via skill):  --with-creds adds vault-decrypted passwords.
+# FROM AAP (via job template):  URLs only — the EE has no vault password file,
+# and the credentials are already in the vault.
+# ===========================================================================
+
+- name: Generate environment URLs
+  hosts: aap
+  gather_facts: false
+
+  tasks:
+    - name: Assert exactly one environment is targeted
+      ansible.builtin.include_tasks: tasks/assert_target_environment.yml
+
+    - name: Generate env-urls.yml
+      ansible.builtin.command:
+        cmd: >-
+          python3 utilities/generate-env-urls.py
+          {% if generate_env_urls_with_creds | default(false) | bool %}--with-creds{% endif %}
+        chdir: "{{ playbook_dir | dirname }}"
+      register: generate_result
+      changed_when: "'Wrote' in generate_result.stdout"
+
+    - name: Show result
+      ansible.builtin.debug:
+        msg: "{{ generate_result.stdout_lines }}"
