@@ -66,3 +66,9 @@ hub_ee_repositories_all:
 # in dispatch's include_wildcard_vars.yml only handles lists and dicts — a
 # suffixed scalar would be fed to `[] + true` and blow up.
 hub_ee_repository_sync: true
+
+# FRESH-ENVIRONMENT EE SYNC RESILIENCE (#547). The upstream defaults (50
+# retries x 1s delay = 50s of polling) are not enough on a new cluster where
+# the quay registry was just created. 120 x 2s = 4 minutes.
+hub_configuration_ee_repository_sync_async_retries: 120
+hub_configuration_ee_repository_sync_async_delay: 2

@@ -133,3 +133,8 @@ automation_hub_token: >-
 sales_demos_vault_password_file: >-
   {{ lookup('ansible.builtin.env', 'SALES_DEMOS_VAULT_PASS')
      | default('~/secrets/.vault_pass_sales_demos', true) }}
+
+# LAPTOP RUNS SEE ERRORS (#547). setup.yml and config.yml are laptop-only
+# commands, so no_log hiding only makes failures opaque. AAP job templates
+# have their own logging settings and are unaffected.
+aap_configuration_secure_logging: false

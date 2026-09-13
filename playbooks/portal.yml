@@ -50,9 +50,9 @@
 # IT ALSO NEEDS THE helm BINARY, which the EE did not carry until #324 added it.
 # Fixing the kubeconfig alone only moved the failure one task later.
 #
-# NOT IN setup.yml. The portal is a platform addon (#92 Phase 4), not part of
-# the base environment build. It runs separately via the sales-demos-portal
-# skill or the "AAP Ecosystem - Install Self-Service Portal" job template.
+# ADDED TO setup.yml IN #547. Was a standalone addon (#92 Phase 4); now part
+# of the base build, gated on `install_portal | default(true)`. Still runnable
+# on its own via the sales-demos-portal skill or the job template.
 # ===========================================================================
 
 - name: Deploy the AAP self-service portal
