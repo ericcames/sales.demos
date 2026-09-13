@@ -93,22 +93,6 @@
   # teardown leaves them alone.
   ansible.builtin.include_tasks: ensure_shared_objects.yml
 
-- name: Ensure the Terraform state namespace exists (idempotent guard)
-  kubernetes.core.k8s:
-    state: present
-    definition:
-      apiVersion: v1
-      kind: Namespace
-      metadata:
-        name: "{{ ocpvirt_state_namespace }}"
-        labels:
-          app.kubernetes.io/managed-by: sales.demos
-          sales.demos/purpose: terraform-state
-  environment:
-    K8S_AUTH_HOST: "{{ ocpvirt_api_url }}"
-    K8S_AUTH_API_KEY: "{{ ocpvirt_api_token }}"
-    K8S_AUTH_VERIFY_SSL: "{{ openshift_validate_certs | default(false) | bool }}"
-
 # --- Terraform ---------------------------------------------------------
 - name: Provision the VMs via Terraform
   block:

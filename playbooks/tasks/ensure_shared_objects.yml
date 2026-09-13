@@ -74,10 +74,10 @@
     K8S_AUTH_VERIFY_SSL: "{{ openshift_validate_certs | default(false) | bool }}"
 
 - name: Ensure the Terraform state namespace exists
-  # SAME TASK AS terraform_ocpvirt.yml line 96, moved here so setup / Day 0 can
-  # create it before any VM is provisioned (#530). The copy in
-  # terraform_ocpvirt.yml stays as belt-and-braces, same rationale as #351's
-  # provision-time guard.
+  # Moved from terraform_ocpvirt.yml into the shared-objects task so setup /
+  # Day 0 creates it before any VM is provisioned (#530). Without this, nightly
+  # teardown schedules fail on a new cluster because terraform init cannot find
+  # the backend namespace.
   kubernetes.core.k8s:
     state: present
     definition:

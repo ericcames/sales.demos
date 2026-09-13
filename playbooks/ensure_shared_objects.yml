@@ -1,0 +1,57 @@
+---
+# ===========================================================================
+# ensure_shared_objects.yml — create the cluster-scoped scaffolding both
+# guests share: the VM namespace, the Terraform state namespace, and the
+# sd1.* instance type catalog.
+#
+# Part of #351 (shared objects belong in Day 0, not the provision path) and
+# #530 (teardown fails when state namespace doesn't exist).
+#
+# Imported by setup.yml; also runnable on its own:
+#
+#   ansible-playbook playbooks/ensure_shared_objects.yml -i inventory \
+#     --limit sandbox -e target_env=sandbox \
+#     --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
+#
+# The task file (tasks/ensure_shared_objects.yml) is ALSO called during
+# provisioning (tasks/terraform_ocpvirt.yml) as belt-and-braces. That is
+# deliberate — an environment built before this wrapper existed, or one
+# where someone deletes the objects, fixes itself on the next provision.
+#
+# Creates no AAP token, so there is nothing to clean up in an `always:` block.
+# ===========================================================================
+
+- name: Ensure shared cluster objects exist
+  hosts: aap
+  gather_facts: false
+
+  environment:
+    K8S_AUTH_HOST: "{{ openshift_api_url }}"
+    K8S_AUTH_API_KEY: "{{ openshift_api_token }}"
+    K8S_AUTH_VERIFY_SSL: "{{ openshift_validate_certs | default(false) | bool }}"
+
+  vars:
+    ocpvirt_terraform_dir: "{{ playbook_dir }}/../terraform/ocpvirt"
+    ocpvirt_api_url: >-
+      {{ openshift_api_url | default(lookup('ansible.builtin.env', 'K8S_AUTH_HOST'), true) }}
+    ocpvirt_api_token: >-
+      {{ openshift_api_token | default(lookup('ansible.builtin.env', 'K8S_AUTH_API_KEY'), true) }}
+    ocpvirt_namespace_resolved: "{{ ocpvirt_namespace | default('sales-demos-' ~ aap_env_name, true) }}"
+    ocpvirt_state_namespace: "{{ tf_state_namespace | default('sales-demos-tfstate', true) }}"
+
+  tasks:
+    - name: Assert the environment is unambiguous
+      ansible.builtin.include_tasks: tasks/assert_target_environment.yml
+
+    - name: Assert the OpenShift connection is resolved
+      ansible.builtin.assert:
+        that:
+          - ocpvirt_api_url | length > 0
+          - ocpvirt_api_token | length > 0
+        fail_msg: >-
+          No OpenShift connection. Locally this comes from
+          group_vars/<env>/connection.yml plus the vault-encrypted
+          playbooks/group_vars/all/secrets.yml.
+
+    - name: Ensure the shared objects exist
+      ansible.builtin.include_tasks: tasks/ensure_shared_objects.yml
