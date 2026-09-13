@@ -56,6 +56,7 @@
   // before touching the page.
   const AAP_HOST = /^aap-/;
   const AO_HOST = /^ao-automation-orchestrator\b/;
+  const PORTAL_HOST = /^rhaap-portal-/;
 
   // Below this width the masthead's own controls crowd the middle. Hide rather
   // than overlap: a badge sitting on top of the nav toggle is worse than none,
@@ -106,6 +107,16 @@
     const el =
       document.querySelector("header") ||
       document.querySelector("[class*='compass__main-header']");
+    if (!el) return null;
+    const box = el.getBoundingClientRect();
+    if (box.height === 0) return null;
+    return box;
+  }
+
+  function portalMastheadBox() {
+    const el =
+      document.querySelector("header") ||
+      document.querySelector("[class*='MuiAppBar']");
     if (!el) return null;
     const box = el.getBoundingClientRect();
     if (box.height === 0) return null;
@@ -266,6 +277,7 @@
   }
 
   const onAO = AO_HOST.test(location.hostname);
+  const onPortal = PORTAL_HOST.test(location.hostname);
 
   // On AO, if the cache is empty, ask AO's own proxy for AAP's job
   // templates. AO's API requires a Bearer JWT — cookies alone return
@@ -418,10 +430,17 @@
     }
   }
 
+  async function fetchEnvForPortal() {
+    const cached = await fetchEnvFromCache();
+    if (cached) return cached;
+    status = "unknown";
+    return null;
+  }
+
   function ensureEnv(onResolved) {
     if (resolved || inFlight) return;
     inFlight = true;
-    const resolver = onAO ? fetchEnvForAO : fetchEnv;
+    const resolver = onPortal ? fetchEnvForPortal : onAO ? fetchEnvForAO : fetchEnv;
     resolver()
       .then((env) => {
         if (env) {
@@ -452,7 +471,8 @@
     const box =
       mastheadBox() ||
       (onAO ? aoMastheadBox() : null) ||
-      (onAO ? { top: 0, height: 48 } : null);
+      (onPortal ? portalMastheadBox() : null) ||
+      (onAO || onPortal ? { top: 0, height: 48 } : null);
     if (!box) {
       remove();
       return;
@@ -480,7 +500,7 @@
     render(colors.unknown, box);
   }
 
-  if (!AAP_HOST.test(location.hostname) && !onAO) return;
+  if (!AAP_HOST.test(location.hostname) && !onAO && !onPortal) return;
 
   fetch(chrome.runtime.getURL("colors.json"))
     .then((r) => r.json())
@@ -540,7 +560,7 @@
 
       // On AO, react immediately when AAP caches the environment in another
       // tab — no need to wait for the next poll tick.
-      if (onAO) {
+      if (onAO || onPortal) {
         const domain = clusterDomain();
         if (domain) {
           chrome.storage.onChanged.addListener((changes, area) => {
