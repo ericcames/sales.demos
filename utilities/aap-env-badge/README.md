@@ -1,7 +1,8 @@
 # AAP environment badge
 
-Paints a `SANDBOX` or `DEMO` pill in the middle of the AAP and AO masthead, so
-you can tell which environment you are in **after** logging in.
+Paints a `SANDBOX` or `DEMO` pill in the middle of the AAP, AO, and
+self-service portal masthead, so you can tell which environment you are in
+**after** logging in.
 
 ```
 |  RedHat AAP              [ SANDBOX ]              ⟳ ☾ 🔔 ? admin  |
@@ -9,6 +10,10 @@ you can tell which environment you are in **after** logging in.
 
 ```
 |  Automation Orchestrator [ SANDBOX ]              ⟳ ☾ 🔔 ? admin  |
+```
+
+```
+|  Red Hat Developer Hub      [ SANDBOX ]              ⟳ ☾ 🔔 ? admin  |
 ```
 
 Green `#3E8635` for sandbox, red `#EE0000` for demo — the same convention the
@@ -36,6 +41,13 @@ demo it is sufficient: the only screen that matters is the one being shared.
 `custom_login_info` or `custom_logo` fields, so neither the login page nor the
 post-login masthead carries any environment indicator. This extension is the
 only thing marking the environment on AO, on every page.
+
+**The self-service portal (RHDH) has no branding either** (#536). The portal is
+Red Hat Developer Hub (Backstage) deployed via Helm chart, and its login page
+redirects to AAP's OAuth flow. No `custom_logo` or equivalent exists on the
+RHDH side. This extension is the only environment indicator on every portal page,
+including the login page — where it shows grey `UNRECOGNIZED ENV` if the
+environment has not been cached from an AAP visit yet.
 
 **This changes nothing on the cluster.** It reads one AAP endpoint — the job
 template list, to find out which environment it is on — and sends nothing
@@ -79,6 +91,23 @@ reads is the same one the playbooks trust.
 
 `extra_vars` comes back as a JSON-encoded *string* rather than an object; the
 code parses it and tolerates both.
+
+### On the portal
+
+The self-service portal is Red Hat Developer Hub (Backstage), a third Route on
+the same cluster (`rhaap-portal-aap-portal.apps.*`). Like AO, it has no
+`target_env` of its own, so the extension reads the environment from the
+`chrome.storage.local` cache that AAP populates.
+
+Unlike AO, the portal has no proxy API to fall back to -- RHDH does not expose
+AAP's job templates through its own API. If the cache is empty (common on a
+fresh browser session), the pill shows grey `UNRECOGNIZED ENV`. This is
+deliberate: the portal login page has no badged logo, so the grey pill is the
+only signal that the environment has not been identified.
+
+The `storage.onChanged` listener picks up a cache write from any AAP tab the
+moment it happens, so opening AAP in another tab turns the grey pill coloured
+without a reload.
 
 ### Why not the hostname
 
