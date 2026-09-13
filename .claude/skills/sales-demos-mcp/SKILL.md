@@ -373,6 +373,7 @@ claude mcp list
 
 | Symptom | Cause | Fix |
 |---|---|---|
+| `✔ Connected` but calls fail or return no data | stdio servers (OpenShift, Grafana, AO) start locally; the check mark proves the process launched, not that the cluster is reachable | Verify with `oc whoami` or a live tool call (`namespaces_list`, `nodes_top`); if the cluster is dead, the kubeconfig is stale |
 | MCP server shows as failed at startup | Kubeconfig does not exist yet | Run the generator, then restart Claude Code |
 | `401 Unauthorized` on a tool call | Token in the vault is stale or the environment expired | Update `env_secrets.<env>.openshift_api_token`, re-run the generator |
 | `could not resolve <env> token` | Vault password wrong, or `env_secrets.<env>` missing | `/sales-demos-first-time` step 2 |
