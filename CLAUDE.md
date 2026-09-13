@@ -427,6 +427,10 @@ Environment secrets.
   Automation Hub token, and breaks `ansible-galaxy collection install` for Red
   Hat certified content. Set inventory and options via CLI flags or env vars.
 - Pin collections in `requirements.yml`.
+- **`infra.aap_configuration` is the upstream reference** for config-as-code
+  patterns. The [Red Hat Automation COP](https://github.com/redhat-cop/infra.aap_configuration)
+  maintains it; sales.demos aligns its bootstrap patterns with this collection's
+  approach (laptop bootstraps AAP, then AAP handles day-2).
 
 ## Terraform
 
