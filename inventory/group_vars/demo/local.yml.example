@@ -25,3 +25,8 @@
 aap_hostname: "aap-aap.apps.cluster-<id>.dyn.redhatworkshops.io"
 openshift_api_url: "https://api.cluster-<id>.dyn.redhatworkshops.io:6443"
 openshift_apps_domain: "apps.cluster-<id>.dyn.redhatworkshops.io"
+
+# SSH public key injected into demo VMs by cloud-init. Without this, the VM
+# is unreachable — cloud-init disables password auth with no authorized key.
+# The matching private half goes in secrets.yml as demo_ssh_private_key.
+demo_ssh_public_key: "ssh-rsa CHANGEME"
