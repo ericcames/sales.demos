@@ -1,9 +1,9 @@
 ---
-name: ocpvirt-new-env
-description: "Verify a fresh RHDP environment is genuinely demo-ready before anyone watches — boot sources actually imported, storage on the fast clone path, ingress admitting Routes — then build one real VM, time it, and destroy it. Runs playbooks/prepare_env.yml. TRIGGER when: the user has a new or rebuilt RHDP environment, asks whether an environment is ready or warm, says VM creation is slow, or is about to demo on a cluster nobody has built a VM on yet. SKIP: if OpenShift Virtualization is not installed at all — that is Phase 0, ocpvirt-setup — or if the user wants to provision demo VMs to keep, which is ocpvirt-provision."
+name: sales-demos-verify-env
+description: "Verify a fresh RHDP environment is genuinely demo-ready before anyone watches — boot sources actually imported, storage on the fast clone path, ingress admitting Routes — then build one real VM, time it, and destroy it. Runs playbooks/prepare_env.yml. TRIGGER when: the user has a new or rebuilt RHDP environment, asks whether an environment is ready or warm, says VM creation is slow, or is about to demo on a cluster nobody has built a VM on yet. SKIP: if OpenShift Virtualization is not installed at all — that is Phase 0, sales-demos-setup — or if the user wants to provision demo VMs to keep, which is sales-demos-provision."
 ---
 
-# ocpvirt-new-env
+# sales-demos-verify-env
 
 ## There is an AAP path now too (#330)
 
@@ -13,7 +13,7 @@ loop when iterating locally.
 
 Answers one question: **would a live VM build in front of a customer be fast?**
 
-Run this after `ocpvirt-setup` on a new environment, and before promising anyone
+Run this after `sales-demos-setup` on a new environment, and before promising anyone
 a live build.
 
 ## How long a fresh environment actually takes
@@ -22,7 +22,7 @@ Measured end to end on a brand-new RHDP environment (#30, #39):
 
 | Step | Fresh environment | Warm environment |
 |---|---|---|
-| `ocpvirt-setup` — install CNV | **~4 min** | already done |
+| `sales-demos-setup` — install CNV | **~4 min** | already done |
 | **This skill** — verify and time a build | **~2 min** | ~2 min |
 | — of which the VM build itself | **44s** | 45s |
 
@@ -32,7 +32,7 @@ before any of this starts.
 
 **A fresh cluster is usually already warm.** All six boot-source VolumeSnapshots
 were `readyToUse` before CNV finished installing — the import runs alongside the
-install, so `ocpvirt-setup` returning generally means you are ready. The often
+install, so `sales-demos-setup` returning generally means you are ready. The often
 repeated "5m47s cold versus ~30s warm" figure is a real measurement of a VM
 build, but it did **not** reproduce on a genuinely fresh environment; it almost
 certainly came from building immediately after install and catching the import
@@ -62,6 +62,9 @@ ceph-rbd one; **noobaa reports `copy`** and will make every build slow.
 ```bash
 ./utilities/preflight.sh "${ENV:-sandbox}"
 ```
+
+**Never pipe the run through `tee`.** In a pipeline the exit status comes from
+`tee`, not `ansible-playbook`, so a failed run reports success.
 
 ## Run
 
@@ -94,7 +97,7 @@ utilities/run-in-ee.sh playbooks/prepare_env.yml \
   surprise to the demo.
 - **Fails on `cloneStrategy`** — the default StorageClass is wrong for this
   cluster. This one will not fix itself with time.
-- **Fails on CNV** — Phase 0 has not run. Use `ocpvirt-setup`.
+- **Fails on CNV** — Phase 0 has not run. Use `sales-demos-setup`.
 
 Raise the bar only deliberately:
 
@@ -124,9 +127,9 @@ mcp__openshift-<env>__resources_list  v1 Namespace
 1. Paste the new URLs into that environment's `connection.yml` (RHDP URLs are
    committed in the clear on purpose) and put the token and password in the
    vault under `env_secrets.<env>`.
-2. `ocpvirt-setup` — runs `setup.yml`, which installs CNV, links the RHEL 9
+2. `sales-demos-setup` — runs `setup.yml`, which installs CNV, links the RHEL 9
    golden image, applies the AAP config, deploys the MCP server, installs AO,
    and **runs this skill's playbook** (`prepare_env.yml`) as its final stage.
    After this, the environment is demo-ready for Linux.
 3. `playbooks/link_windows_image.yml` — if the environment needs Windows demos.
-4. `ocpvirt-provision` — build the demo VMs.
+4. `sales-demos-provision` — build the demo VMs.

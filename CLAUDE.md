@@ -227,7 +227,7 @@ reimplements logic.
   points fail identically.
 - `.claude/skills/<name>/SKILL.md` does preflight checks, collects inputs, and
   invokes the playbook. Follow the shape of the skills already here — see
-  `.claude/skills/ocpvirt-setup/SKILL.md`: frontmatter `name` + `description`
+  `.claude/skills/sales-demos-setup/SKILL.md`: frontmatter `name` + `description`
   with explicit **TRIGGER** and **SKIP** clauses, then a Preflight Check section
   of shell one-liners, and a verification step that asks the target rather than
   trusting the Ansible recap.

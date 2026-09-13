@@ -148,9 +148,9 @@ do the actual work:
 
 | To do this | Use this skill |
 |---|---|
-| Set up a bare RHDP environment | `/ocpvirt-setup` |
-| Provision or rebuild VMs | `/ocpvirt-provision` |
-| Tear down VMs | `/ocpvirt-teardown` |
-| Run the demo content standalone | `/ocpvirt-demo` |
+| Set up a bare RHDP environment | `/sales-demos-setup` |
+| Provision or rebuild VMs | `/sales-demos-provision` |
+| Tear down VMs | `/sales-demos-teardown` |
+| Run the demo content standalone | `/sales-demos-ocpvirt-demo` |
 | Verify a playbook in the EE | `/sales-demos-verify-ee` |
 | First-time machine setup | `/sales-demos-first-time` |

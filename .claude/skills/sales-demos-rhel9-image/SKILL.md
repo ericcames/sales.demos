@@ -1,9 +1,9 @@
 ---
-name: ocpvirt-rhel9-image
-description: "Point this environment's OpenShift Virtualization at the published CIS L1 hardened RHEL 9 golden containerdisk. Creates a DataImportCron that populates the rhel9-cis-l1 DataSource alongside the stock rhel9, so Terraform clones the hardened image by default. No pull secret needed — the quay repo is public. Fully reversible. Runs playbooks/link_rhel9_image.yml. TRIGGER when: the user asks to enable or update the hardened RHEL 9 image, wants to repoint to a new RHEL 9 golden image tag, says VMs are booting the stock RHEL 9 cloud image instead of the hardened one, asks about the rhel9-cis-l1 DataSource, or asks about issue #202. SKIP: if the user wants the WINDOWS golden image — that is ocpvirt-windows-image — or wants to BUILD the golden image, which is ericcames/image.builder.pipeline."
+name: sales-demos-rhel9-image
+description: "Point this environment's OpenShift Virtualization at the published CIS L1 hardened RHEL 9 golden containerdisk. Creates a DataImportCron that populates the rhel9-cis-l1 DataSource alongside the stock rhel9, so Terraform clones the hardened image by default. No pull secret needed — the quay repo is public. Fully reversible. Runs playbooks/link_rhel9_image.yml. TRIGGER when: the user asks to enable or update the hardened RHEL 9 image, wants to repoint to a new RHEL 9 golden image tag, says VMs are booting the stock RHEL 9 cloud image instead of the hardened one, asks about the rhel9-cis-l1 DataSource, or asks about issue #202. SKIP: if the user wants the WINDOWS golden image — that is sales-demos-windows-image — or wants to BUILD the golden image, which is ericcames/image.builder.pipeline."
 ---
 
-# ocpvirt-rhel9-image
+# sales-demos-rhel9-image
 
 Links an environment to the published RHEL 9 CIS L1 hardened golden image.
 Takes about **2 minutes** for the cron to import and the DataSource to report
@@ -36,7 +36,7 @@ non-empty and rejects placeholder values.
 
 The quay repository is **public** (#208), so CDI pulls the image without
 credentials. This is the key difference from the Windows twin
-(`ocpvirt-windows-image`), which needs a pull secret because Windows media
+(`sales-demos-windows-image`), which needs a pull secret because Windows media
 cannot be redistributed publicly.
 
 ## Why a separate DataSource
@@ -135,13 +135,13 @@ Check `spec.dataImportCronTemplates` for the `rhel9-cis-l1-image-cron` entry.
 
 ## Where this sits
 
-1. `ocpvirt-setup` — runs `setup.yml`, which installs CNV **and links the
+1. `sales-demos-setup` — runs `setup.yml`, which installs CNV **and links the
    RHEL 9 golden image** as part of the setup.
-2. `ocpvirt-windows-image` — fills the Windows boot source (separate, needs a
+2. `sales-demos-windows-image` — fills the Windows boot source (separate, needs a
    pull secret).
 3. **This skill** — runs `link_rhel9_image.yml` standalone, for repointing to a
    new tag or linking on an environment that missed the setup run.
-4. `ocpvirt-provision` — builds demo VMs, cloning from `rhel9-cis-l1` by
+4. `sales-demos-provision` — builds demo VMs, cloning from `rhel9-cis-l1` by
    default.
 
 ## When it finishes
@@ -153,10 +153,10 @@ confirm the DataSource identity matches `quay_rhel9_image`.
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| `No HyperConverged CR` | CNV is not installed | Run `ocpvirt-setup` first |
+| `No HyperConverged CR` | CNV is not installed | Run `sales-demos-setup` first |
 | `quay_rhel9_image must name a real published containerdisk` | Image reference empty or placeholder in `connection.yml` | Set it to a real tag, e.g. `quay.io/zigfreed/rhel9-cis-l1-golden:20260905-0411` |
 | DataSource never reaches Ready | CDI importer failed to pull | Check the importer pod in `openshift-virtualization-os-images` for pull errors |
-| Ready, but the backing volume never becomes usable | Snapshot still materializing | Wait — this is the slow-build case `ocpvirt-new-env` exists to catch |
+| Ready, but the backing volume never becomes usable | Snapshot still materializing | Wait — this is the slow-build case `sales-demos-verify-env` exists to catch |
 | `401` / `Unauthorized` | RHDP bearer token expired | Refresh `openshift_api_token` in the vault, re-run `make-kubeconfig.sh` |
 | `Attempting to decrypt but no vault secrets found` | `--vault-id` missing from the command | Add `--vault-id sales.demos@~/secrets/.vault_pass_sales_demos` |
 

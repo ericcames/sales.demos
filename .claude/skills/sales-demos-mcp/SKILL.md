@@ -1,6 +1,6 @@
 ---
 name: sales-demos-mcp
-description: "Connect Claude Code to this repo's OpenShift clusters, AAP instances, Automation Orchestrator, and Grafana Cloud over MCP — up to eight servers, one skill. Generates per-environment kubeconfigs for OpenShift, auto-creates bearer tokens for AAP, registers the AO and Grafana Cloud MCP servers, then verifies every server answers. TRIGGER when: the user asks to set up, connect, refresh or fix the MCP servers, says an openshift-sandbox, openshift-demo, openshift-edge, aap-sandbox, aap-demo, ao-sandbox, ao-demo, or grafana MCP server is failing or shows no tools, or has just repointed an environment or rotated a token. SKIP: if the user wants to install OpenShift Virtualization or apply AAP configuration — that is ocpvirt-setup — or wants to deploy the AAP MCP server into a cluster, which is playbooks/mcp_server.yml run by ocpvirt-setup."
+description: "Connect Claude Code to this repo's OpenShift clusters, AAP instances, Automation Orchestrator, and Grafana Cloud over MCP — up to eight servers, one skill. Generates per-environment kubeconfigs for OpenShift, auto-creates bearer tokens for AAP, registers the AO and Grafana Cloud MCP servers, then verifies every server answers. TRIGGER when: the user asks to set up, connect, refresh or fix the MCP servers, says an openshift-sandbox, openshift-demo, openshift-edge, aap-sandbox, aap-demo, ao-sandbox, ao-demo, or grafana MCP server is failing or shows no tools, or has just repointed an environment or rotated a token. SKIP: if the user wants to install OpenShift Virtualization or apply AAP configuration — that is sales-demos-setup — or wants to deploy the AAP MCP server into a cluster, which is playbooks/mcp_server.yml run by sales-demos-setup."
 ---
 
 # sales-demos-mcp
@@ -382,7 +382,7 @@ claude mcp list
 | AAP MCP returns `401` | Token expired or deleted | Re-create it: `bash utilities/make-aap-mcp.sh <env>` |
 | AAP MCP write tools missing | `aap_mcp_allow_write_operations` is false for this environment | Intentional on `demo`. Changing it needs a delete-and-recreate — re-run `mcp_server.yml`, which handles that |
 | `npx: command not found` | Node not installed | See preflight; a standalone binary is the alternative |
-| `no aap-mcp route` from make-aap-mcp.sh | MCP server not deployed | Run `/ocpvirt-setup` or `playbooks/mcp_server.yml` first |
+| `no aap-mcp route` from make-aap-mcp.sh | MCP server not deployed | Run `/sales-demos-setup` or `playbooks/mcp_server.yml` first |
 | Grafana `grafana_cloud_url not set` | Vault keys missing or still CHANGEME | `ansible-vault edit` and add real values — see the [grafana plan](https://ericcames.github.io/sales.demos-docs/plan/grafana-plan/) |
 | Grafana MCP tools present but calls fail | Token expired or revoked | Create a new SA token in the Grafana Cloud UI, update the vault |
 | `uvx: command not found` | uv not installed | See preflight; install from https://docs.astral.sh/uv/ |

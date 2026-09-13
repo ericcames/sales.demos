@@ -1,9 +1,9 @@
 ---
-name: ocpvirt-provision
-description: "Phase 3 — build demo VMs on OpenShift Virtualization with Terraform and register them as managed hosts in AAP, ready for the daily-demo content to run against. Runs playbooks/provision_vm.yml. TRIGGER when: the user asks to provision, create, build or spin up demo VMs, wants a Linux or Windows VM for a demo, or asks for a specific size tier. SKIP: if the environment has never been set up — that is ocpvirt-setup — or if the user wants to destroy VMs, which is ocpvirt-teardown."
+name: sales-demos-provision
+description: "Phase 3 — build demo VMs on OpenShift Virtualization with Terraform and register them as managed hosts in AAP, ready for the daily-demo content to run against. Runs playbooks/provision_vm.yml. TRIGGER when: the user asks to provision, create, build or spin up demo VMs, wants a Linux or Windows VM for a demo, or asks for a specific size tier. SKIP: if the environment has never been set up — that is sales-demos-setup — or if the user wants to destroy VMs, which is sales-demos-teardown."
 ---
 
-# ocpvirt-provision
+# sales-demos-provision
 
 Phase 3. Runs `terraform/ocpvirt/` and registers the resulting VMs in AAP so the
 demo content has hosts to run against.
@@ -46,7 +46,7 @@ wrong:
 
 **`os_type=windows` or `both` requires that the environment is linked to the
 published CIS L1 hardened Windows golden image.** CNV ships `win2k22` as an empty
-DataSource placeholder; on a new environment, run `ocpvirt-windows-image` first
+DataSource placeholder; on a new environment, run `sales-demos-windows-image` first
 to fill it. The playbook preflights that DataSource and **warns rather than
 refuses**, because `os_type=both` still gets a working Linux guest and linking a
 minute later fixes the Windows half without re-provisioning.
@@ -56,6 +56,9 @@ minute later fixes the Windows half without re-provisioning.
 ```bash
 ./utilities/preflight.sh "${ENV:-sandbox}" --terraform
 ```
+
+**Never pipe the run through `tee`.** In a pipeline the exit status comes from
+`tee`, not `ansible-playbook`, so a failed run reports success.
 
 ## Run
 

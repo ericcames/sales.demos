@@ -1,12 +1,12 @@
 ---
-name: ocpvirt-teardown
+name: sales-demos-teardown
 description: "Destroy the demo VMs on OpenShift Virtualization and deregister them from AAP, leaving the expensive one-time setup intact — CNV, the boot-source DataSources including the Windows golden image, and the Terraform state namespace. Runs playbooks/teardown.yml. TRIGGER when: the user asks to tear down, destroy, clean up, or remove demo VMs, wants to free cluster memory before provisioning a different tier, or says a demo is finished. SKIP: if the user wants to remove OpenShift Virtualization itself or rebuild the golden image — this deliberately preserves both — or only wants to stop a VM rather than destroy it."
 ---
 
-# ocpvirt-teardown
+# sales-demos-teardown
 
 Destroys the VMs from `terraform/ocpvirt/` and removes them from the AAP
-inventory. This is the counterpart to `ocpvirt-provision`, and it runs the same
+inventory. This is the counterpart to `sales-demos-provision`, and it runs the same
 Terraform state.
 
 ## What survives, and why it matters
@@ -53,6 +53,9 @@ without the correct role inits an empty state, destroys nothing, and still
 reports success. The default is `web`.
 
 Be especially careful with `demo`: it is the environment customers are shown.
+
+**Never pipe the run through `tee`.** In a pipeline the exit status comes from
+`tee`, not `ansible-playbook`, so a failed run reports success.
 
 ## Run
 
@@ -129,5 +132,5 @@ running job is using.
   likelier victim of the two playbooks, because the nightly schedule can start
   while a manual job is still running. The playbook now fails with the lock ID
   and the exact `force-unlock` command (#46); see the same entry in
-  `ocpvirt-provision` for how to read `Who:` and why nothing unlocks
+  `sales-demos-provision` for how to read `Who:` and why nothing unlocks
   automatically.

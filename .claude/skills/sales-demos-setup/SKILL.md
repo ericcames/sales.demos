@@ -1,9 +1,9 @@
 ---
-name: ocpvirt-setup
-description: "Phase 0 of the sales.demos OpenShift Virtualization demo — take a bare RHDP environment to demo-ready in one command: install OpenShift Virtualization, apply the AAP configuration, then prove it by building and timing a real VM. Checks prerequisites, confirms the cluster is reachable, then runs playbooks/setup.yml. TRIGGER when: the user has a new or rebuilt RHDP environment, asks to set one up or prepare it for the ocpvirt demo, says OpenShift Virtualization or KubeVirt is missing, hits a missing kubevirt.io API, or asks to install CNV. SKIP: if the environment is already set up and the user wants to create demo VMs — that is ocpvirt-provision — or only wants to re-check readiness, which is ocpvirt-new-env."
+name: sales-demos-setup
+description: "Phase 0 of the sales.demos OpenShift Virtualization demo — take a bare RHDP environment to demo-ready in one command: install OpenShift Virtualization, apply the AAP configuration, then prove it by building and timing a real VM. Checks prerequisites, confirms the cluster is reachable, then runs playbooks/setup.yml. TRIGGER when: the user has a new or rebuilt RHDP environment, asks to set one up or prepare it for the ocpvirt demo, says OpenShift Virtualization or KubeVirt is missing, hits a missing kubevirt.io API, or asks to install CNV. SKIP: if the environment is already set up and the user wants to create demo VMs — that is sales-demos-provision — or only wants to re-check readiness, which is sales-demos-verify-env."
 ---
 
-# ocpvirt-setup
+# sales-demos-setup
 
 ## Most of this runs from AAP now (#330)
 
@@ -67,7 +67,7 @@ demoing on it**.
 - `install_cnv.yml` — only a cluster needs CNV
 - `config.yml` — only the AAP objects changed
 - `prepare_env.yml` — re-check an environment that has been sitting idle
-  (this one has its own skill, `ocpvirt-new-env`)
+  (this one has its own skill, `sales-demos-verify-env`)
 
 ## What it does not do
 
@@ -167,7 +167,7 @@ on the command line; that would put it in shell history.
 
 ```bash
 mkdir -p ~/ansible-logs
-export ANSIBLE_LOG_PATH=~/ansible-logs/ocpvirt-setup-sandbox-$(date +%F-%H%M).log
+export ANSIBLE_LOG_PATH=~/ansible-logs/sales-demos-setup-sandbox-$(date +%F-%H%M).log
 
 ansible-playbook playbooks/setup.yml -i inventory --limit sandbox -e target_env=sandbox \
   --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
@@ -247,7 +247,7 @@ around it.
 ## When it finishes
 
 Report the summary the playbook prints **and** the verification result above,
-then tell the user the cluster is ready for provisioning — `/ocpvirt-provision`
+then tell the user the cluster is ready for provisioning — `/sales-demos-provision`
 builds t-shirt-sized VMs, or run the `Cluster Day 0` workflow from AAP.
 
 ## If it fails
