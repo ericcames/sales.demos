@@ -57,6 +57,7 @@ USERNAME_RES = {
 CREDENTIAL_KEYS = [
     "aap_password",
     "openshift_api_token",
+    "kubeadmin_password",
     "linux_admin_password",
     "windows_admin_password",
 ]
@@ -169,6 +170,8 @@ def build_yaml(
                     lines.append(f'    aap_password: "{env_secrets["aap_password"]}"')
                 if "openshift_api_token" in env_secrets:
                     lines.append(f'    openshift_api_token: "{env_secrets["openshift_api_token"]}"')
+                if "kubeadmin_password" in env_secrets:
+                    lines.append(f'    kubeadmin_password: "{env_secrets["kubeadmin_password"]}"')
                 if "linux_admin_username" in env_usernames:
                     lines.append(f'    linux_admin_username: "{env_usernames["linux_admin_username"]}"')
                 if "linux_admin_password" in env_secrets:
