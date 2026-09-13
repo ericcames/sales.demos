@@ -64,6 +64,11 @@ STAGED: dict[str, str] = {
         "directly via ansible-vault view + Python YAML parsing, not via Jinja in "
         "a playbook. The scanner only covers playbooks/ and inventory/."
     ),
+    "kubeadmin_password": (
+        "Consumed by utilities/generate-env-urls.py (--with-creds), which reads "
+        "the vault directly via ansible-vault view + Python YAML parsing, not "
+        "via Jinja in a playbook. The scanner only covers playbooks/ and inventory/."
+    ),
 }
 
 # Structural Jinja that survives the extractor and is not a variable. Keep this
