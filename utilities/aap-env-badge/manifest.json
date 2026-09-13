@@ -1,18 +1,20 @@
 {
   "manifest_version": 3,
   "name": "AAP environment badge (sales.demos)",
-  "version": "1.7.0",
-  "description": "Paints a SANDBOX / DEMO pill in the AAP, AO, and self-service portal masthead. The sign-in page marks the environment; after login AAP does not, and AO and the portal have no branding at all (#426). Reads target_env from AAP so it never goes stale. See issues #54, #87, #477, and #536.",
+  "version": "1.8.0",
+  "description": "Paints a SANDBOX / DEMO / EDGE pill in the AAP, AO, self-service portal, and OCP console masthead, and on the OCP OAuth login page. Reads target_env from AAP so it never goes stale. See issues #54, #87, #477, #536, and #539.",
   "permissions": [
     "storage"
   ],
   "host_permissions": [
-    "https://*.dyn.redhatworkshops.io/*"
+    "https://*.dyn.redhatworkshops.io/*",
+    "https://*.internal.ames.net/*"
   ],
   "content_scripts": [
     {
       "matches": [
-        "https://*.dyn.redhatworkshops.io/*"
+        "https://*.dyn.redhatworkshops.io/*",
+        "https://*.internal.ames.net/*"
       ],
       "js": ["content.js"],
       "run_at": "document_idle"
@@ -22,7 +24,8 @@
     {
       "resources": ["colors.json"],
       "matches": [
-        "https://*.dyn.redhatworkshops.io/*"
+        "https://*.dyn.redhatworkshops.io/*",
+        "https://*.internal.ames.net/*"
       ]
     }
   ]
