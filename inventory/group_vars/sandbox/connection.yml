@@ -89,4 +89,4 @@ ocpvirt_namespace: "sales-demos-sandbox"
 # Overstating it is the dangerous direction: the guards fail closed, so a figure
 # that is too small merely refuses tiers the cluster could run, while one that is
 # too large admits a plan that will not schedule.
-available_memory_gb: 63
+available_memory_gb: 67
