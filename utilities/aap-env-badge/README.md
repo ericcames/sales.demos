@@ -1,8 +1,8 @@
 # AAP environment badge
 
-Paints a `SANDBOX` or `DEMO` pill in the middle of the AAP, AO, and
-self-service portal masthead, so you can tell which environment you are in
-**after** logging in.
+Paints a `SANDBOX`, `DEMO`, or `EDGE` pill in the middle of the AAP, AO,
+self-service portal, OCP console, and OCP OAuth login page masthead, so you can
+tell which environment you are in.
 
 ```
 |  RedHat AAP              [ SANDBOX ]              ⟳ ☾ 🔔 ? admin  |
@@ -16,8 +16,17 @@ self-service portal masthead, so you can tell which environment you are in
 |  Red Hat Developer Hub      [ SANDBOX ]              ⟳ ☾ 🔔 ? admin  |
 ```
 
-Green `#3E8635` for sandbox, red `#EE0000` for demo — the same convention the
-sign-in logo uses, from [`../env_colors.py`](../env_colors.py).
+```
+|  Red Hat OpenShift       [ SANDBOX ]              ⟳ ☾ 🔔 ? admin  |
+```
+
+```
+|  Log in with …           [ SANDBOX ]                                |
+```
+
+Green `#3E8635` for sandbox, red `#EE0000` for demo, purple `#6753AC` for edge
+— the same convention the sign-in logo uses, from
+[`../env_colors.py`](../env_colors.py).
 
 ## Why a browser extension and not a setting
 
@@ -109,6 +118,24 @@ The `storage.onChanged` listener picks up a cache write from any AAP tab the
 moment it happens, so opening AAP in another tab turns the grey pill coloured
 without a reload.
 
+### On the OCP console and OAuth login page
+
+The OCP console (`console-openshift-console.apps.*`) and OAuth login page
+(`oauth-openshift.apps.*`) are on the same cluster as AAP — same domain, same
+cache key. The extension reads the environment from `chrome.storage.local` only,
+like the portal. There is no proxy API fallback: the OCP console does not expose
+AAP's job templates.
+
+Unlike AAP's sign-in page, the OAuth login page has no `custom_logo` badge, so
+the pill shows there too — grey `UNRECOGNIZED ENV` if the cache is empty,
+coloured once AAP has been visited on that cluster. The `storage.onChanged`
+listener reacts immediately when an AAP tab caches the environment.
+
+The OCP console uses PatternFly, so the standard `<header>` lookup places the
+pill in the masthead. The OAuth login page may not have a standard `<header>`,
+so it falls back to a synthetic bounding box at the viewport top — the same
+pattern as AO and the portal.
+
 ### Why not the hostname
 
 It used to look `location.hostname` up in a generated map built from
@@ -134,7 +161,7 @@ regenerate and nothing to commit.
 If it was already loaded, hit **Reload** on the card: Chrome caches the
 extension's own files, and the old `envs.json` will otherwise still be in there.
 
-### Why the manifest matches all of `*.dyn.redhatworkshops.io`
+### Why the manifest matches all of `*.dyn.redhatworkshops.io` and `*.internal.ames.net`
 
 It looks too broad, and it is deliberate. **Chrome match patterns allow `*` only
 as an entire leading subdomain** (`*.example.com`) or as the whole host — never
@@ -148,10 +175,14 @@ is rejected with `Invalid value for 'content_scripts[0].matches[0]': Invalid
 host wildcard` and the extension will not load at all. Do not "tighten" it back
 to that.
 
-So the manifest matches every RHDP host and `content.js` narrows it: the AAP
-gateway Route is always `aap-<namespace>` and the AO Route is always
-`ao-automation-orchestrator`, so anything else — the OpenShift console, Cockpit,
-a demo web server — returns before touching the page.
+So the manifest matches every RHDP host and every edge host, and `content.js`
+narrows it: the content script checks the hostname prefix against `aap-*`,
+`ao-automation-orchestrator`, `rhaap-portal-*`, `console-openshift-console`, and
+`oauth-openshift`, and returns before touching the page on anything else
+(Cockpit, a demo web server, etc.).
+
+The `*.internal.ames.net` pattern enables the edge environment (#539). Without
+it the extension did not run on edge at all — not even for AAP or AO.
 
 ## An unrecognized environment is a feature
 

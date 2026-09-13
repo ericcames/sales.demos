@@ -1,11 +1,12 @@
-// AAP environment badge — issue #54, reworked in #87, extended to AO in #477.
+// AAP environment badge — issue #54, reworked in #87, extended to AO in #477,
+// the self-service portal in #536, and the OCP console / OAuth login in #539.
 //
 // The AAP sign-in page says which environment you are entering (custom_logo,
 // badged by utilities/make-env-logo.py). After login that marker is gone: the
 // masthead is the stock Red Hat lockup and a wide empty black bar, identical on
 // both environments — and after login is when you are actually clicking things.
-// AO has no branding at all (#426), so this is the only environment indicator
-// on every AO page.
+// AO has no branding at all (#426), and the OCP console and OAuth login page
+// have no environment indicator either, so this is the only marker on those UIs.
 //
 // No gateway setting fixes this. Measured on live AAP 2.6: 44 settings, only
 // custom_login_info and custom_logo are branding-related, and custom_logo was
@@ -50,13 +51,13 @@
   // rejected outright with "Invalid host wildcard", and the extension will not
   // load at all. Do not "tighten" it back to that.
   //
-  // So the manifest matches every RHDP host and this narrows it here instead.
-  // The AAP gateway Route on this catalog item is always `aap-<namespace>`, so
-  // anything else — the OpenShift console, Cockpit, a demo web server — bails
-  // before touching the page.
+  // So the manifest matches every RHDP host (and every edge host) and this
+  // narrows it here instead.
   const AAP_HOST = /^aap-/;
   const AO_HOST = /^ao-automation-orchestrator\b/;
   const PORTAL_HOST = /^rhaap-portal-/;
+  const OCP_HOST = /^console-openshift-console\b/;
+  const OAUTH_HOST = /^oauth-openshift\b/;
 
   // Below this width the masthead's own controls crowd the middle. Hide rather
   // than overlap: a badge sitting on top of the nav toggle is worse than none,
@@ -278,6 +279,8 @@
 
   const onAO = AO_HOST.test(location.hostname);
   const onPortal = PORTAL_HOST.test(location.hostname);
+  const onOCP = OCP_HOST.test(location.hostname);
+  const onOAuth = OAUTH_HOST.test(location.hostname);
 
   // On AO, if the cache is empty, ask AO's own proxy for AAP's job
   // templates. AO's API requires a Bearer JWT — cookies alone return
@@ -437,10 +440,24 @@
     return null;
   }
 
+  // OCP console and OAuth login are on the same cluster as AAP — same domain,
+  // same cache key. No proxy API fallback: the OCP console has no AAP endpoint.
+  // Unlike AAP's sign-in page, the OAuth login page has no custom_logo, so grey
+  // "UNRECOGNIZED ENV" is better than nothing.
+  async function fetchEnvForOCP() {
+    const cached = await fetchEnvFromCache();
+    if (cached) return cached;
+    status = "unknown";
+    return null;
+  }
+
   function ensureEnv(onResolved) {
     if (resolved || inFlight) return;
     inFlight = true;
-    const resolver = onPortal ? fetchEnvForPortal : onAO ? fetchEnvForAO : fetchEnv;
+    const resolver = onPortal ? fetchEnvForPortal
+      : onOCP || onOAuth ? fetchEnvForOCP
+      : onAO ? fetchEnvForAO
+      : fetchEnv;
     resolver()
       .then((env) => {
         if (env) {
@@ -472,7 +489,7 @@
       mastheadBox() ||
       (onAO ? aoMastheadBox() : null) ||
       (onPortal ? portalMastheadBox() : null) ||
-      (onAO || onPortal ? { top: 0, height: 48 } : null);
+      (onAO || onPortal || onOCP || onOAuth ? { top: 0, height: 48 } : null);
     if (!box) {
       remove();
       return;
@@ -500,7 +517,7 @@
     render(colors.unknown, box);
   }
 
-  if (!AAP_HOST.test(location.hostname) && !onAO && !onPortal) return;
+  if (!AAP_HOST.test(location.hostname) && !onAO && !onPortal && !onOCP && !onOAuth) return;
 
   fetch(chrome.runtime.getURL("colors.json"))
     .then((r) => r.json())
@@ -560,7 +577,7 @@
 
       // On AO, react immediately when AAP caches the environment in another
       // tab — no need to wait for the next poll tick.
-      if (onAO || onPortal) {
+      if (onAO || onPortal || onOCP || onOAuth) {
         const domain = clusterDomain();
         if (domain) {
           chrome.storage.onChanged.addListener((changes, area) => {
