@@ -97,6 +97,7 @@ environment, so they must never run from AAP:
 
 | Skill | Does |
 |---|---|
+| `sales-demos-bootstrap` | Full environment bootstrap from a single AAP URL — setup, MCP, probe, verify |
 | `sales-demos-first-time` | One-time setup on a new machine — start here |
 | `sales-demos-collections-sync` | Pin, install, and verify `collections/requirements.yml` |
 | `sales-demos-ee-build` | Build, verify, and publish the execution environment |

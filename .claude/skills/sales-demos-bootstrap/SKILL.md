@@ -2,8 +2,8 @@
 name: sales-demos-bootstrap
 description: >-
   Full environment bootstrap from a single AAP URL — repoint local.yml,
-  verify vault, run setup.yml (all 10 stages with timing), set up MCP servers,
-  probe the environment, regenerate env-urls, and verify everything.
+  verify vault, run setup.yml (all 11 stages with timing including probe),
+  set up MCP servers, and verify everything.
   TRIGGER when: user provides a new RHDP environment URL and wants it fully
   set up, or says "bootstrap", "new environment", "fresh cluster".
   SKIP: if only one component needs updating — use the specific skill instead.
@@ -141,7 +141,7 @@ user to get a fresh one from the OpenShift console (*Copy login command*).
 
 ## Step 7 — Run setup.yml
 
-This is the main event. All 10 stages, ~25-30 minutes. Wrap in
+This is the main event. All 11 stages, ~25-30 minutes. Wrap in
 `python3 subprocess.run()` for Claude Code's blocking IO.
 
 ```bash
@@ -174,18 +174,11 @@ Invoke
 to generate kubeconfigs, AAP bearer tokens, and register all MCP servers for
 the new cluster.
 
-## Step 9 — Probe the environment
+## Step 9 — Update local.yml with probe results
 
-Run `probe_env.yml` to measure `available_memory_gb` for the cluster:
-
-```bash
-ansible-playbook playbooks/probe_env.yml -i inventory --limit "$ENV" \
-  -e target_env="$ENV" \
-  --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
-```
-
-Update `local.yml` with the measured `available_memory_gb` value so Terraform
-uses the real capacity, not a hardcoded guess.
+`setup.yml` stage 10 already ran `probe_env.yml` and printed the recommended
+`available_memory_gb`. Update `local.yml` with that value so Terraform uses the
+real capacity, not a hardcoded guess.
 
 ## Step 10 — Verify env-urls
 

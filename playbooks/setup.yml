@@ -7,7 +7,7 @@
 #     -e target_env=sandbox \
 #     --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
 #
-# Ten stages, in this order:
+# Eleven stages, in this order:
 #
 #   1. install_cnv.yml             Install OpenShift Virtualization on the
 #                                  cluster and wait until the rhel9 boot source
@@ -46,7 +46,11 @@
 #                                  with credentials (laptop-only). Runs
 #                                  automatically since the vault is always
 #                                  available during setup.
-#  10. prepare_env.yml             Prove it. Checks the boot source, the storage
+#  10. probe_env.yml               Measure the cluster now that everything is
+#                                  installed — CPU, memory, storage, and
+#                                  recommend available_memory_gb. Strictly
+#                                  read-only (#100).
+#  11. prepare_env.yml             Prove it. Checks the boot source, the storage
 #                                  clone strategy and ingress, then builds one
 #                                  real VM, times it, and destroys it.
 #
@@ -103,14 +107,16 @@
 # convenience, not a bottleneck. Run install_cnv.yml when only a cluster needs
 # CNV, config.yml when only AAP objects changed, portal.yml when only the portal
 # needs redeploying, generate_env_urls.yml when URLs need refreshing,
-# prepare_env.yml to re-check an environment that has been sitting idle.
+# probe_env.yml to re-measure available_memory_gb after adding or removing
+# workloads, prepare_env.yml to re-check an environment that has been idle.
 #
 # EXPECT ROUGHLY 25-30 MINUTES: about 4 for CNV, 1-2 for the RHEL 9 golden
 # image import, a few for shared objects, several for the AAP objects and the
 # first Hub image mirror, about 1 for the MCP server, about 5 for Automation
 # Orchestrator and its database, about 2 to configure AO, about 5-10 for the
-# self-service portal (Helm + operator), about 1 for env URLs, and about 1 to
-# verify. That is on top of RHDP provisioning the environment itself.
+# self-service portal (Helm + operator), about 1 for env URLs, about 1 for the
+# probe, and about 1 to verify. That is on top of RHDP provisioning the
+# environment itself.
 # Pass `-e install_ao=false` to skip both AO stages.
 # Pass `-e install_portal=false` to skip the portal.
 # Pass `-e link_rhel9_image=false` to skip the golden image import.
@@ -125,7 +131,7 @@
       ansible.builtin.set_fact:
         setup_t_start: "{{ now(utc=true).strftime('%s') | int }}"
 
-- name: Phase 0 (1/10) — install OpenShift Virtualization
+- name: Phase 0 (1/11) — install OpenShift Virtualization
   ansible.builtin.import_playbook: install_cnv.yml
 
 - name: "Timer: after CNV"
@@ -136,7 +142,7 @@
       ansible.builtin.set_fact:
         setup_t_cnv: "{{ now(utc=true).strftime('%s') | int }}"
 
-- name: Phase 0 (2/10) — link the RHEL 9 CIS L1 golden image
+- name: Phase 0 (2/11) — link the RHEL 9 CIS L1 golden image
   # DEFAULT ON, AND SKIPPABLE. Needs the HyperConverged CR from stage 1 and the
   # quay credentials in the vault. `-e link_rhel9_image=false` skips it for
   # environments where the quay creds are not configured yet; the stock rhel9
@@ -152,7 +158,7 @@
       ansible.builtin.set_fact:
         setup_t_rhel9: "{{ now(utc=true).strftime('%s') | int }}"
 
-- name: Phase 0 (3/10) — ensure shared cluster objects
+- name: Phase 0 (3/11) — ensure shared cluster objects
   # VM namespace, Terraform state namespace, sd1.* instance type catalog.
   # Without this, the nightly teardown schedules fail on a new cluster (#530).
   ansible.builtin.import_playbook: ensure_shared_objects.yml
@@ -165,7 +171,7 @@
       ansible.builtin.set_fact:
         setup_t_shared: "{{ now(utc=true).strftime('%s') | int }}"
 
-- name: Phase 0 (4/10) — apply the AAP configuration
+- name: Phase 0 (4/11) — apply the AAP configuration
   ansible.builtin.import_playbook: config.yml
 
 - name: "Timer: after AAP config"
@@ -176,7 +182,7 @@
       ansible.builtin.set_fact:
         setup_t_config: "{{ now(utc=true).strftime('%s') | int }}"
 
-- name: Phase 0 (5/10) — deploy the AAP MCP server
+- name: Phase 0 (5/11) — deploy the AAP MCP server
   ansible.builtin.import_playbook: mcp_server.yml
 
 - name: "Timer: after MCP server"
@@ -187,7 +193,7 @@
       ansible.builtin.set_fact:
         setup_t_mcp: "{{ now(utc=true).strftime('%s') | int }}"
 
-- name: Phase 0 (6/10) — install Automation Orchestrator and its database
+- name: Phase 0 (6/11) — install Automation Orchestrator and its database
   # DEFAULT ON, AND SKIPPABLE. #141 wants AO in every build, so the default is
   # true rather than an opt-in nobody remembers. The flag exists because this
   # stage installs two operators and a database and is the longest-running
@@ -205,7 +211,7 @@
       ansible.builtin.set_fact:
         setup_t_ao_install: "{{ now(utc=true).strftime('%s') | int }}"
 
-- name: Phase 0 (7/10) — configure Automation Orchestrator
+- name: Phase 0 (7/11) — configure Automation Orchestrator
   # Gated on the same flag as install. If AO was not installed, there is nothing
   # to configure — and configure_ao.yml asserts the Route exists, so it would
   # fail cleanly anyway. A separate `configure_ao` flag is not needed unless
@@ -221,7 +227,7 @@
       ansible.builtin.set_fact:
         setup_t_ao_config: "{{ now(utc=true).strftime('%s') | int }}"
 
-- name: Phase 0 (8/10) — deploy the self-service portal
+- name: Phase 0 (8/11) — deploy the self-service portal
   # DEFAULT ON, AND SKIPPABLE. Same pattern as install_ao: the user always wants
   # it, but `-e install_portal=false` skips it when a hung Helm deploy must not
   # block a build that is otherwise fine. portal.yml stays runnable on its own
@@ -239,7 +245,7 @@
         setup_t_portal: "{{ now(utc=true).strftime('%s') | int }}"
         generate_env_urls_with_creds: true
 
-- name: Phase 0 (9/10) — generate the environment URL reference
+- name: Phase 0 (9/11) — generate the environment URL reference
   # WITH CREDS. setup.yml is always a laptop command and the vault is always
   # available, so generate_env_urls_with_creds is set to true in the preceding
   # timer play.
@@ -253,7 +259,22 @@
       ansible.builtin.set_fact:
         setup_t_env_urls: "{{ now(utc=true).strftime('%s') | int }}"
 
-- name: Phase 0 (10/10) — prove the environment is demo-ready
+- name: Phase 0 (10/11) — probe the environment
+  # STRICTLY READ-ONLY. Measures CPU, memory and storage now that everything is
+  # installed (AO, portal, MCP server all running). The recommendation for
+  # available_memory_gb reflects the cluster's real capacity under full load,
+  # not an optimistic pre-install measurement (#100).
+  ansible.builtin.import_playbook: probe_env.yml
+
+- name: "Timer: after probe"
+  hosts: aap
+  gather_facts: false
+  tasks:
+    - name: Record time after environment probe
+      ansible.builtin.set_fact:
+        setup_t_probe: "{{ now(utc=true).strftime('%s') | int }}"
+
+- name: Phase 0 (11/11) — prove the environment is demo-ready
   ansible.builtin.import_playbook: prepare_env.yml
 
 - name: "Timer: after verify"
@@ -280,7 +301,8 @@
           ao_configure: "{{ (setup_t_ao_config | int) - (setup_t_ao_install | int) }}"
           portal: "{{ (setup_t_portal | int) - (setup_t_ao_config | int) }}"
           env_urls: "{{ (setup_t_env_urls | int) - (setup_t_portal | int) }}"
-          verify: "{{ (setup_t_verify | int) - (setup_t_env_urls | int) }}"
+          probe: "{{ (setup_t_probe | int) - (setup_t_env_urls | int) }}"
+          verify: "{{ (setup_t_verify | int) - (setup_t_probe | int) }}"
           total: "{{ (setup_t_verify | int) - (setup_t_start | int) }}"
 
     - name: Print the timing summary
@@ -297,6 +319,7 @@
           - "  Configure AO:             {{ setup_elapsed.ao_configure }}s{{ ' (skipped)' if not (install_ao | default(true) | bool) else '' }}"
           - "  Self-service portal:      {{ setup_elapsed.portal }}s{{ ' (skipped)' if not (install_portal | default(true) | bool) else '' }}"
           - "  Generate env URLs:        {{ setup_elapsed.env_urls }}s"
+          - "  Probe environment:        {{ setup_elapsed.probe }}s"
           - "  Verify environment:       {{ setup_elapsed.verify }}s"
           - "  -----------------------------------"
           - "  TOTAL:                    {{ setup_elapsed.total }}s ({{ ((setup_elapsed.total | int) / 60) | round(1) }} min)"

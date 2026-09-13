@@ -1,6 +1,6 @@
 ---
 name: sales-demos-setup
-description: "Phase 0 of the sales.demos platform — take a bare RHDP environment to demo-ready in one command. Ten stages: install OpenShift Virtualization, link the RHEL 9 CIS image, create shared cluster objects, apply the AAP configuration, deploy the MCP server, install and configure Automation Orchestrator, deploy the self-service portal, generate the environment URL reference, then prove it by building and timing a real VM. Checks prerequisites, confirms the cluster is reachable, then runs playbooks/setup.yml. TRIGGER when: the user has a new or rebuilt RHDP environment, asks to set one up or prepare it for the ocpvirt demo, says OpenShift Virtualization or KubeVirt is missing, hits a missing kubevirt.io API, or asks to install CNV. SKIP: if the environment is already set up and the user wants to create demo VMs — that is sales-demos-provision — or only wants to re-check readiness, which is sales-demos-verify-env."
+description: "Phase 0 of the sales.demos platform — take a bare RHDP environment to demo-ready in one command. Eleven stages: install OpenShift Virtualization, link the RHEL 9 CIS image, create shared cluster objects, apply the AAP configuration, deploy the MCP server, install and configure Automation Orchestrator, deploy the self-service portal, generate the environment URL reference, probe the cluster for available_memory_gb, then prove it by building and timing a real VM. Checks prerequisites, confirms the cluster is reachable, then runs playbooks/setup.yml. TRIGGER when: the user has a new or rebuilt RHDP environment, asks to set one up or prepare it for the ocpvirt demo, says OpenShift Virtualization or KubeVirt is missing, hits a missing kubevirt.io API, or asks to install CNV. SKIP: if the environment is already set up and the user wants to create demo VMs — that is sales-demos-provision — or only wants to re-check readiness, which is sales-demos-verify-env."
 ---
 
 # sales-demos-setup
@@ -22,7 +22,7 @@ Phase 0. Takes a bare RHDP "Ansible Product Demo" environment to demo-ready in
 **one command**.
 
 This skill contains **no logic**. All the work is in
-[`playbooks/setup.yml`](../../../playbooks/setup.yml), which imports ten
+[`playbooks/setup.yml`](../../../playbooks/setup.yml), which imports eleven
 playbooks in order. The same playbooks run from AAP job templates with survey
 answers mapped to the same variable names. See `CLAUDE.md` →
 *Skills and playbooks*.
@@ -83,7 +83,13 @@ on AO.
 Regenerates the env-urls file with credentials included (setup.yml is always a
 laptop command with the vault available).
 
-**10. Prove it** (`prepare_env.yml`)
+**10. Probe the environment** (`probe_env.yml`)
+
+Measures CPU, memory, and storage now that everything is installed. Recommends
+`available_memory_gb` under full load (AO, portal, MCP server all running).
+Strictly read-only (#100).
+
+**11. Prove it** (`prepare_env.yml`)
 
 Checks the boot source is genuinely backed by a ready snapshot, that storage
 clones with `csi-clone` rather than copying, and that ingress admits Routes —
@@ -94,8 +100,8 @@ then builds one real VM, times it, and destroys it.
 **Roughly 25-30 minutes**: about 4 for CNV, 1-2 for the RHEL 9 golden image
 import, a few for shared objects, several for the AAP objects and the first Hub
 image mirror, about 1 for the MCP server, about 5 for AO and its database,
-about 2 to configure AO, about 5-10 for the portal, about 1 for env URLs, and
-about 1 to verify. That is on top of RHDP provisioning the environment itself,
+about 2 to configure AO, about 5-10 for the portal, about 1 for env URLs,
+about 1 for the probe, and about 1 to verify. That is on top of RHDP provisioning the environment itself,
 so **budget ~35-40 minutes from ordering an environment to demoing on it**.
 
 A timing summary is printed at the end of the run showing per-stage elapsed
@@ -114,6 +120,7 @@ times and a total.
 - `configure_ao.yml` — only AO needs reconfiguring
 - `portal.yml` — only the portal needs redeploying
 - `generate_env_urls.yml` — only the URL reference needs refreshing
+- `probe_env.yml` — re-measure `available_memory_gb` after workload changes
 - `prepare_env.yml` — re-check an environment that has been sitting idle
   (this one has its own skill, `sales-demos-verify-env`)
 
