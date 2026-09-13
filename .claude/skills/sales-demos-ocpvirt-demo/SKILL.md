@@ -1,9 +1,9 @@
 ---
-name: ocpvirt-demo
-description: "Re-run the demo content on Linux or Windows VMs that ALREADY EXIST: register or patch them, install and configure the web server, rescan for CIS compliance, and turn the demo URL from a 503 into a real page. Launches the Linux Day 1 - Repair or Windows Day 1 - Repair job template in AAP, whichever the VM is. TRIGGER when: the user asks to re-run, repair or reconfigure the demo content, says the demo URL returns 503 or does not load, wants a page tweak applied, or is recovering from a failed step on a VM that is still up. SKIP: if no VMs exist yet — a build from nothing is the Linux Day 1 - 0 Workflow or Windows Day 1 - 0 Workflow, reached through ocpvirt-provision — or if the environment itself has never been set up, which is ocpvirt-setup."
+name: sales-demos-ocpvirt-demo
+description: "Re-run the demo content on Linux or Windows VMs that ALREADY EXIST: register or patch them, install and configure the web server, rescan for CIS compliance, and turn the demo URL from a 503 into a real page. Launches the Linux Day 1 - Repair or Windows Day 1 - Repair job template in AAP, whichever the VM is. TRIGGER when: the user asks to re-run, repair or reconfigure the demo content, says the demo URL returns 503 or does not load, wants a page tweak applied, or is recovering from a failed step on a VM that is still up. SKIP: if no VMs exist yet — a build from nothing is the Linux Day 1 - 0 Workflow or Windows Day 1 - 0 Workflow, reached through sales-demos-provision — or if the environment itself has never been set up, which is sales-demos-setup."
 ---
 
-# ocpvirt-demo
+# sales-demos-ocpvirt-demo
 
 Takes demo VMs that exist and makes them a demo again — Linux or Windows.
 
@@ -103,7 +103,7 @@ httpd, firewalld, Cockpit, chrony, the demo page, and security patching.
 ```bash
 # 1. Are there Linux VMs on the cluster?
 #    mcp__openshift-<env>__resources_list  kubevirt.io/v1 VirtualMachine
-#    Look for *-lnx-* names. If none exist, this is ocpvirt-provision, not here.
+#    Look for *-lnx-* names. If none exist, this is sales-demos-provision, not here.
 
 # 2. Registration credentials present in the vault
 ansible-vault view playbooks/group_vars/all/secrets.yml \
@@ -211,7 +211,7 @@ reads, so it is safe to re-run mid-demo.
 ```bash
 # 1. Is there a Windows VM on the cluster?
 #    mcp__openshift-<env>__resources_list  kubevirt.io/v1 VirtualMachine
-#    Look for *-win-* names. If none exist, this is ocpvirt-provision, not here.
+#    Look for *-win-* names. If none exist, this is sales-demos-provision, not here.
 
 # 2. The Windows admin password must be in the vault — the credential carries
 #    it, and it is NOT the Linux one (#338). CIS L1 needs 14 characters and

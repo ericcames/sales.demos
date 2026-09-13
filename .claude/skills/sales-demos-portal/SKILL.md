@@ -1,6 +1,6 @@
 ---
 name: sales-demos-portal
-description: "Deploy the AAP self-service portal (Red Hat Developer Hub with the AAP plugin) via Helm chart into an RHDP environment. Runs playbooks/portal.yml, which creates the OAuth application, deploys the chart, and syncs the org list. TRIGGER when: the user wants to deploy the self-service portal, asks about RHDH or Developer Hub, or wants non-admin users to launch templates from a browser. SKIP: if the portal is already deployed and the user wants to use it, or if the user wants to install OpenShift Virtualization — that is ocpvirt-setup."
+description: "Deploy the AAP self-service portal (Red Hat Developer Hub with the AAP plugin) via Helm chart into an RHDP environment. Runs playbooks/portal.yml, which creates the OAuth application, deploys the chart, and syncs the org list. TRIGGER when: the user wants to deploy the self-service portal, asks about RHDH or Developer Hub, or wants non-admin users to launch templates from a browser. SKIP: if the portal is already deployed and the user wants to use it, or if the user wants to install OpenShift Virtualization — that is sales-demos-setup."
 ---
 
 # sales-demos-portal

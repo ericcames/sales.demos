@@ -1,6 +1,6 @@
 ---
 name: sales-demos-probe-env
-description: "Measure what a cluster actually has — allocatable, what is already requested, what is genuinely free — and emit a recommended available_memory_gb instead of trusting a hardcoded one. Strictly read-only, so it is safe mid-demo. Runs playbooks/probe_env.yml. TRIGGER when: the user asks how much room a cluster has, whether an add-on or another VM will fit, why Terraform refuses a tier, or has moved to a new or resized RHDP environment and the memory budget may be stale. SKIP: if the user is asking whether a VM build would be fast — that is ocpvirt-new-env — or if OpenShift Virtualization is not installed at all, which is ocpvirt-setup."
+description: "Measure what a cluster actually has — allocatable, what is already requested, what is genuinely free — and emit a recommended available_memory_gb instead of trusting a hardcoded one. Strictly read-only, so it is safe mid-demo. Runs playbooks/probe_env.yml. TRIGGER when: the user asks how much room a cluster has, whether an add-on or another VM will fit, why Terraform refuses a tier, or has moved to a new or resized RHDP environment and the memory budget may be stale. SKIP: if the user is asking whether a VM build would be fast — that is sales-demos-verify-env — or if OpenShift Virtualization is not installed at all, which is sales-demos-setup."
 ---
 
 # sales-demos-probe-env
@@ -109,7 +109,7 @@ utilities/run-in-ee.sh playbooks/probe_env.yml \
   `inventory/group_vars/aap/probe_workloads.yml` all fit. **Those are estimates**;
   each carries a `source:` saying so. Replace them with measurements as add-ons
   get installed.
-- **`CNV: NOT INSTALLED`** — Phase 0 has not run. Use `ocpvirt-setup`.
+- **`CNV: NOT INSTALLED`** — Phase 0 has not run. Use `sales-demos-setup`.
 - **`Unscheduled: n pod(s)`** — informational. Persistent unscheduled pods on a
   single-node cluster usually want more nodes than exist and will stay Pending.
 

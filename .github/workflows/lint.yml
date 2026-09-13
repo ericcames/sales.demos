@@ -192,7 +192,7 @@ jobs:
 
           # ...AND THE REVERSE. This check used to run one way only, which is
           # how #4 shipped a job template and a playbook but never its
-          # `ocpvirt-provision` skill: the README row said Done, no skill
+          # `sales-demos-provision` skill: the README row said Done, no skill
           # directory existed, and CI passed. A row may name a skill that does
           # not exist ONLY if it is explicitly marked "Not started".
           while IFS= read -r name; do

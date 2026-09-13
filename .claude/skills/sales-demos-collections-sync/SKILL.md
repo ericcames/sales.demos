@@ -8,7 +8,7 @@ description: "Pin, install, and verify the Ansible collections this repo depends
 Keeps `collections/requirements.yml` honest: every collection pinned to an
 exact version, installed to the recommended path, and verified to match.
 
-Unlike the `ocpvirt-*` skills this one has **no playbook**, and that is
+Unlike the environment skills this one has **no playbook**, and that is
 deliberate — it touches your laptop's collection path, never a demo
 environment. The "skill wraps a playbook" contract in `CLAUDE.md` exists so
 that anything touching an environment is runnable from AAP too. Nothing here

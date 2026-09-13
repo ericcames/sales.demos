@@ -1,13 +1,13 @@
 ---
 name: sales-demos-first-time
-description: "First-time setup for the sales.demos repo on a new machine. Checks and guides every local prerequisite — Automation Hub token, the vault password and the secrets file you build from the example, pinned collections, the python kubernetes client, and the run-log directory — then validates each one. TRIGGER when: the user is new to this repo, asks how to get started, says prerequisites are missing, or hits errors about vault decryption, a missing vault password, `couldn't resolve module/action`, or an undefined connection variable. SKIP: if setup is already done and the user wants to run a phase — that is ocpvirt-setup."
+description: "First-time setup for the sales.demos repo on a new machine. Checks and guides every local prerequisite — Automation Hub token, the vault password and the secrets file you build from the example, pinned collections, the python kubernetes client, and the run-log directory — then validates each one. TRIGGER when: the user is new to this repo, asks how to get started, says prerequisites are missing, or hits errors about vault decryption, a missing vault password, `couldn't resolve module/action`, or an undefined connection variable. SKIP: if setup is already done and the user wants to run a phase — that is sales-demos-setup."
 ---
 
 # sales-demos-first-time
 
 Walks a new machine through every local prerequisite for this repo, then
 validates them. Run once per machine; after that go straight to
-`/ocpvirt-setup`.
+`/sales-demos-setup`.
 
 **This repo is self-contained.** Every skill it needs lives in
 `.claude/skills/` and is discovered natively — no marketplace, no plugin. Do not
@@ -398,7 +398,7 @@ passed every preflight and then died there (#128). Get them from
 
 ## When it all passes
 
-Tell the user setup is complete and point them at `/ocpvirt-setup` to install
+Tell the user setup is complete and point them at `/sales-demos-setup` to install
 OpenShift Virtualization, or `/sales-demos-collections-sync` if they only wanted
 collections.
 

@@ -1,9 +1,9 @@
 ---
-name: ocpvirt-windows-image
-description: "Point this environment's OpenShift Virtualization at the published CIS L1 hardened Windows golden containerdisk. Required on a new environment before os_type=windows will boot — CNV ships win2k22 as an empty placeholder. Adds a DataImportCron to the HyperConverged CR and a pull secret for the private quay repository, then asks the cluster whether the DataSource really came up. Fully reversible. Runs playbooks/link_windows_image.yml. TRIGGER when: the user asks to enable or fix Windows VMs, says a Windows VM will not boot or sits forever in Provisioning, asks why win2k22 is not Ready, wants the Windows boot source populated, asks about issue #3, or wants to undo that link. SKIP: if the user wants to BUILD or publish the golden image itself — that is ericcames/image.builder.pipeline, a separate producer — or wants to provision demo VMs generally, which is ocpvirt-provision."
+name: sales-demos-windows-image
+description: "Point this environment's OpenShift Virtualization at the published CIS L1 hardened Windows golden containerdisk. Required on a new environment before os_type=windows will boot — CNV ships win2k22 as an empty placeholder. Adds a DataImportCron to the HyperConverged CR and a pull secret for the private quay repository, then asks the cluster whether the DataSource really came up. Fully reversible. Runs playbooks/link_windows_image.yml. TRIGGER when: the user asks to enable or fix Windows VMs, says a Windows VM will not boot or sits forever in Provisioning, asks why win2k22 is not Ready, wants the Windows boot source populated, asks about issue #3, or wants to undo that link. SKIP: if the user wants to BUILD or publish the golden image itself — that is ericcames/image.builder.pipeline, a separate producer — or wants to provision demo VMs generally, which is sales-demos-provision."
 ---
 
-# ocpvirt-windows-image
+# sales-demos-windows-image
 
 ## There is an AAP path now too (#318)
 
@@ -107,6 +107,9 @@ once, on 2026-09-05, published two days later as
 > **per-new-tag** check, not something to run before every link. Tags are
 > immutable — verify a tag once and the answer holds for ever.
 
+**Never pipe the run through `tee`.** In a pipeline the exit status comes from
+`tee`, not `ansible-playbook`, so a failed run reports success.
+
 ## Run
 
 ```bash
@@ -143,8 +146,8 @@ utilities/run-in-ee.sh playbooks/link_windows_image.yml \
 |---|---|---|
 | Fails at the `quay_windows_image` assert | Image reference empty or placeholder | Set `quay_windows_image` in `connection.yml` to the current CIS L1 tag. |
 | DataSource never reaches Ready | The importer cannot pull | Check the importer pod in `openshift-virtualization-os-images`; a private-repo auth failure surfaces there, not in the DataSource. |
-| Ready, but the backing volume never becomes usable | Snapshot still materializing | Wait. Cloning from a snapshot that is not `readyToUse` is the slow-build case `ocpvirt-new-env` exists to catch. |
-| VM still will not boot after a green run | Something other than the boot source | `ocpvirt-provision`, then the VM's own events. |
+| Ready, but the backing volume never becomes usable | Snapshot still materializing | Wait. Cloning from a snapshot that is not `readyToUse` is the slow-build case `sales-demos-verify-env` exists to catch. |
+| VM still will not boot after a green run | Something other than the boot source | `sales-demos-provision`, then the VM's own events. |
 
 ## Verify against the cluster, not the recap
 
@@ -186,9 +189,9 @@ statement — this is how to confirm it by hand.
 
 ## Where this sits
 
-1. `ocpvirt-setup` — runs `setup.yml`, which installs CNV, links the RHEL 9
+1. `sales-demos-setup` — runs `setup.yml`, which installs CNV, links the RHEL 9
    golden image, applies the AAP config, and verifies the environment.
 2. **This skill** — fills the Windows boot source from the published CIS L1 image.
    Not part of `setup.yml` — run it separately, or through the
    `Cluster Day 0` AAP workflow which includes it.
-3. `ocpvirt-provision` — build the demo VMs, now including `os_type=windows`.
+3. `sales-demos-provision` — build the demo VMs, now including `os_type=windows`.
