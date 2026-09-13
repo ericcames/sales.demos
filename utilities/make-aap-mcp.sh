@@ -1,19 +1,24 @@
 #!/usr/bin/env bash
 # ===========================================================================
-# make-aap-mcp.sh — register the AAP MCP server for one environment in the
-# local Claude Code config. Issue #150.
+# make-aap-mcp.sh — create an AAP MCP bearer token and write the credential
+# files that .mcp.json needs to connect. Issue #515 (replaces #150).
 #
 #   bash utilities/make-aap-mcp.sh sandbox
 #   bash utilities/make-aap-mcp.sh demo
 #
 # WHY THIS EXISTS. The AAP MCP server runs in the cluster (deployed by
-# playbooks/mcp_server.yml, which setup.yml calls). The client side needs a
-# bearer token, and tokens must not go in a tracked file, so the server is
-# registered with `claude mcp add --scope local` instead of .mcp.json.
+# playbooks/mcp_server.yml). The client side needs a bearer token, and tokens
+# must not go in a tracked file, so .mcp.json calls a wrapper script
+# (utilities/aap-mcp-stdio.sh) that reads the token from a gitignored file.
 #
-# This script automates what used to be a manual block in SKILL.md: resolve
-# the AAP hostname and password from the vault, create a personal access
-# token via the gateway API, find the MCP route, and register the server.
+# This script resolves the AAP hostname and password from the vault, finds
+# the MCP route, creates a personal access token via the gateway API, and
+# writes the token and URL to .aap/<env>.token and .aap/<env>.url.
+#
+# TOKEN SCOPE IS ALWAYS WRITE. Server-side enforcement
+# (aap_mcp_allow_write_operations) is the real guard, not the token scope.
+# During setup the server runs write-enabled; after setup it can be toggled
+# to read-only without changing the token or restarting Claude Code.
 #
 # THE TOKEN DOES NOT CLEAN ITSELF UP. An MCP client needs a durable
 # credential, so it deliberately survives — the documented exception in
@@ -39,7 +44,7 @@ if [[ ! -d "inventory/group_vars/$ENV_NAME" ]]; then
   exit 2
 fi
 
-VAULT_PASS="$HOME/secrets/.vault_pass_sales_demos"
+VAULT_PASS="${SALES_DEMOS_VAULT_PASS:-$HOME/secrets/.vault_pass_sales_demos}"
 VAULT_ID="sales.demos@$VAULT_PASS"
 if [[ ! -s "$VAULT_PASS" ]]; then
   echo "❌ $VAULT_PASS missing — without it the committed secrets cannot be decrypted." >&2
@@ -51,6 +56,13 @@ KUBECONFIG_FILE="$REPO_ROOT/.kube/${ENV_NAME}.kubeconfig"
 if [[ ! -s "$KUBECONFIG_FILE" ]]; then
   echo "❌ $KUBECONFIG_FILE missing — run 'bash utilities/make-kubeconfig.sh $ENV_NAME' first." >&2
   exit 1
+fi
+
+# --- One-time migration: remove old local-scope registration ---------------
+# Before #515, the server was registered with `claude mcp add --scope local`.
+# Clean that up so the old HTTP entry does not shadow the new stdio one.
+if command -v claude >/dev/null 2>&1; then
+  claude mcp remove "aap-$ENV_NAME" 2>/dev/null || true
 fi
 
 # --- Resolve AAP hostname and password from the vault ---------------------
@@ -82,14 +94,8 @@ if [[ -z "$MCP_HOST" ]]; then
 fi
 
 # --- Create a personal access token --------------------------------------
-# demo gets read scope; sandbox gets write scope.
 
-if [[ "$ENV_NAME" == "demo" ]]; then
-  TOKEN_SCOPE="read"
-else
-  TOKEN_SCOPE="write"
-fi
-
+TOKEN_SCOPE="write"
 TOKEN_DESC="sales.demos MCP ($ENV_NAME)"
 
 TOKEN_RESPONSE="$(curl -sk -u "admin:$AAP_PASS" -X POST "https://$AAP_HOST/api/gateway/v1/tokens/" \
@@ -106,20 +112,27 @@ fi
 
 TOKEN_ID="$(echo "$TOKEN_RESPONSE" | python3 -c 'import sys,json; print(json.load(sys.stdin)["id"])' 2>/dev/null)"
 
-# --- Register with Claude Code -------------------------------------------
+# --- Write credential files for the stdio bridge -------------------------
 
-claude mcp remove "aap-$ENV_NAME" 2>/dev/null || true
+mkdir -p "$REPO_ROOT/.aap" && chmod 700 "$REPO_ROOT/.aap"
 
-claude mcp add --transport http --scope local "aap-$ENV_NAME" "https://$MCP_HOST/mcp" \
-  --header "Authorization: Bearer $TOKEN"
+printf '%s\n' "$TOKEN" > "$REPO_ROOT/.aap/${ENV_NAME}.token"
+chmod 600 "$REPO_ROOT/.aap/${ENV_NAME}.token"
+
+printf '%s\n' "https://$MCP_HOST" > "$REPO_ROOT/.aap/${ENV_NAME}.url"
+chmod 600 "$REPO_ROOT/.aap/${ENV_NAME}.url"
 
 echo ""
-echo "✅ registered aap-$ENV_NAME (scope: $TOKEN_SCOPE)"
+echo "✅ aap-$ENV_NAME credentials written"
 echo "   environment : $ENV_NAME"
 echo "   AAP host    : $AAP_HOST"
 echo "   MCP route   : $MCP_HOST"
 echo "   token id    : $TOKEN_ID"
 echo "   token scope : $TOKEN_SCOPE"
+echo "   token file  : .aap/${ENV_NAME}.token"
+echo "   url file    : .aap/${ENV_NAME}.url"
+echo ""
+echo "   Restart Claude Code to bring aap-$ENV_NAME online."
 echo ""
 echo "⚠️  This token does not clean itself up — it is the documented exception."
 echo "   To retire it later:"

@@ -24,17 +24,15 @@ which is the same reasoning that keeps `sales-demos-collections-sync`,
 | `openshift-sandbox` | kubeconfig | read-write | `.mcp.json` (committed) |
 | `openshift-demo` | kubeconfig | read-only | `.mcp.json` (committed) |
 | `openshift-edge` | kubeconfig | read-write | `.mcp.json` (committed) |
-| `aap-sandbox` | bearer token | read-write | `claude mcp add --scope local` |
-| `aap-demo` | bearer token | read-only | `claude mcp add --scope local` |
+| `aap-sandbox` | bearer token | read-write | `.mcp.json` (committed) |
+| `aap-demo` | bearer token | read-write | `.mcp.json` (committed) |
 | `ao-sandbox` | JWT (auto-refreshed) | read-only | `claude mcp add --scope local` |
 | `ao-demo` | JWT (auto-refreshed) | read-only | `claude mcp add --scope local` |
 | `grafana` | service account token | read-only | `claude mcp add --scope local` |
 
 **There is no `aap-edge`, and that is not an oversight to fix in passing.**
-`edge` runs AAP, so the server is plausible, but `make-aap-mcp.sh` takes only
-`sandbox` and `demo` and defaults anything that is not `demo` to **write**
-scope. Adding `edge` is a posture decision, not a usage-line fix — the same
-call #405 made about that script.
+`edge` runs AAP, so the server is plausible, but adding it is a posture
+decision, not a usage-line fix — the same call #405 made about that script.
 
 **There is no `ao-edge` either, for a different reason: AO is not installed on
 `edge`.** Measured 2026-09-11 — `openshift-edge` has no Route in the
@@ -52,8 +50,11 @@ all. A single server whose target changed underneath you would reintroduce
 exactly that, so the environment is in the server's *name* and you pick it by
 picking the tool.
 
-`demo` is read-only on both platforms because it is the environment customers
-watch. That is a deliberate asymmetry, not an oversight — see #102.
+`demo`'s OpenShift server is `--read-only` because it is the environment
+customers watch. The AAP MCP server's posture is controlled server-side by
+`aap_mcp_allow_write_operations` — during setup it runs write-enabled so Claude
+can launch job templates; after setup, re-running `mcp_server.yml` without the
+override flips it to read-only with no Claude restart needed. See #102.
 
 ### Grafana Cloud server
 
@@ -78,23 +79,19 @@ Virtualization demo. It supplies `vm_create`, `vm_clone`, `vm_lifecycle`,
 
 The AAP MCP servers **run in the cluster** (deployed by `playbooks/mcp_server.yml`,
 which `setup.yml` calls). The client side needs a bearer token, and tokens must
-not go in tracked files, so they are registered with `claude mcp add --scope
-local`.
+not go in tracked files.
+
+`.mcp.json` defines `aap-sandbox` and `aap-demo` as stdio servers (#515). Each
+entry calls `utilities/aap-mcp-stdio.sh <env>`, which reads the token and route
+URL from gitignored files in `.aap/` and bridges stdio to the remote server via
+`npx supergateway`. The credential stays out of the tracked file — same pattern
+as the kubeconfig paths for OpenShift servers.
 
 `utilities/make-aap-mcp.sh` automates the full flow: resolve credentials from
 the vault, create a personal access token via the gateway API, find the MCP
-route, and register the server. For `demo`, the token scope is `read`; for
-`sandbox`, it is `write`. The environment's own
-`aap_mcp_allow_write_operations` is a second gate on the server side.
-
-**`.claude/settings.json` allowlists `mcp__aap-sandbox__*` and `mcp__aap-demo__*`
-for servers that are deliberately NOT in `.mcp.json`, and that mismatch is
-correct** (#131). A fresh clone therefore carries two permission entries
-pointing at nothing until this skill runs — that is the expected state, not a
-broken config, and it resolves the moment the servers are registered. The
-alternative would be putting a bearer token in a tracked file. Neither file can
-say so in place: both are strict JSON and take no comments, which is why it is
-recorded here.
+route, and write `.aap/<env>.token` and `.aap/<env>.url`. Token scope is always
+`write` — server-side enforcement (`aap_mcp_allow_write_operations`) is the
+real guard, not the token scope.
 
 **These tokens do not clean themselves up.** They are the documented exception
 in CLAUDE.md — an MCP client needs a durable credential, so the `always:` block
@@ -123,10 +120,6 @@ command -v npx >/dev/null \
 command -v uvx >/dev/null \
   && echo "✅ uvx ($(uvx --version 2>/dev/null || echo 'unknown')) — needed to launch mcp-grafana" \
   || echo "❌ uvx not found — install uv (https://docs.astral.sh/uv/getting-started/installation/)"
-
-command -v claude >/dev/null \
-  && echo "✅ claude CLI available" \
-  || echo "❌ claude CLI not found — needed for 'claude mcp add'"
 
 test -f .mcp.json \
   && echo "✅ .mcp.json present" \
@@ -188,7 +181,9 @@ bash utilities/make-aap-mcp.sh demo
 ```
 
 The script creates a personal access token, finds the `aap-mcp` route via the
-kubeconfig, and registers the server with `claude mcp add --scope local`.
+kubeconfig, and writes `.aap/<env>.token` and `.aap/<env>.url`. `.mcp.json`
+references these through the `aap-mcp-stdio.sh` wrapper, so the server comes
+online on the next Claude Code restart — no `claude mcp add` needed.
 
 ### Step 3 — Automation Orchestrator MCP server
 
@@ -380,7 +375,7 @@ claude mcp list
 | `dial tcp: no such host` | The RHDP environment has expired | Check `connection.yml` points at a live cluster — both had expired once before (#101) |
 | Tools present but every call fails | Kubeconfig points at a different cluster than you think | `oc whoami --show-server` with `KUBECONFIG` set |
 | AAP MCP returns `503` | Route admitted, pod not serving yet | Wait — `oc get deploy aap-mcp -n aap`; this is normal for ~60s after deploy |
-| AAP MCP returns `401` | Token expired or deleted | Re-create it: `bash utilities/make-aap-mcp.sh <env>` |
+| AAP MCP returns `401` | Token expired or deleted | Re-create it: `bash utilities/make-aap-mcp.sh <env>`, then restart Claude Code |
 | AAP MCP write tools missing | `aap_mcp_allow_write_operations` is false for this environment | Intentional on `demo`. Changing it needs a delete-and-recreate — re-run `mcp_server.yml`, which handles that |
 | `npx: command not found` | Node not installed | See preflight; a standalone binary is the alternative |
 | `no aap-mcp route` from make-aap-mcp.sh | MCP server not deployed | Run `/sales-demos-setup` or `playbooks/mcp_server.yml` first |
