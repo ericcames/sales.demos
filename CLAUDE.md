@@ -330,6 +330,11 @@ does not prove the remote cluster is alive. `openshift-demo` showed
 Report **Live** if data comes back, **Dead** if it errors. Never report a
 server as working based on a kubeconfig or token file existing.
 
+**When servers are dead, run `utilities/check-mcp-staleness.sh <env>`** to
+find out why — it compares kubeconfigs, AAP URLs, and AO registrations
+against the effective inventory values (respecting `local.yml`) and prints
+the exact `make-*` command to fix each one (#533).
+
 **One sanctioned exception, and it is the AAP platform version.** No tool on
 the AAP MCP server returns it — measured 2026-09-03, `config_retrieve` and
 `status_retrieve` both give the *controller* version (`4.8.6`) and
