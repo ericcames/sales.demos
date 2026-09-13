@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate inventory/env-urls.yml from the committed connection.yml files.
+"""Generate inventory/env-urls.yml from connection.yml (and local.yml overrides).
 
 Issue #426, #429.
 
@@ -133,6 +133,15 @@ def discover_environments() -> Dict[str, str]:
         if not conn.is_file():
             continue
         domain = read_apps_domain(conn)
+        # local.yml is a gitignored overlay that overrides connection.yml for
+        # laptop use. Ansible loads group_vars files in sorted order and
+        # local.yml ('l' > 'c') wins. Mirror that here so env-urls reflects
+        # the cluster the laptop is actually pointed at.
+        local = env_dir / "local.yml"
+        if local.is_file():
+            local_domain = read_apps_domain(local)
+            if local_domain:
+                domain = local_domain
         if domain:
             envs[env_dir.name] = domain
     return envs
@@ -215,7 +224,11 @@ def main() -> None:
         for env_name in envs:
             conn = GROUP_VARS / env_name / "connection.yml"
             if conn.is_file():
-                usernames[env_name] = read_usernames(conn)
+                u = read_usernames(conn)
+                local = GROUP_VARS / env_name / "local.yml"
+                if local.is_file():
+                    u.update(read_usernames(local))
+                usernames[env_name] = u
         secrets = read_vault_secrets()
 
     content = build_yaml(envs, with_creds=args.with_creds, usernames=usernames, secrets=secrets)
