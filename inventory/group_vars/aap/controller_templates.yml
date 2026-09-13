@@ -502,36 +502,6 @@ controller_templates_all:
     extra_vars:
       target_env: "{{ aap_env_name }}"
 
-  # ---------------------------------------------------------------------
-  # Generate environment URLs (#525). Regenerates inventory/env-urls.yml
-  # from the committed connection.yml files — a single-file lookup of every
-  # product URL (AAP, OCP console, AO, portal) across all environments.
-  #
-  # The output is gitignored (#426). From a laptop, --with-creds adds
-  # vault-decrypted passwords; from AAP the URLs are the value — they appear
-  # in the job log so an operator can verify them post-repoint.
-  #
-  # The Python script reads ALL environments regardless of --limit. --limit
-  # is still required for assert_target_environment consistency.
-  # ---------------------------------------------------------------------
-  - name: "AAP Ecosystem - Generate Environment URLs"
-    description: "Regenerate the environment URL reference file (inventory/env-urls.yml). Shows all product URLs in the job log — useful for verifying a repoint."
-    labels:
-      - aap-ecosystem
-      - read-only
-    job_type: run
-    organization: "IT Service Automation"
-    inventory: "Sales Demo VMs"
-    project: "Sales Demos"
-    playbook: playbooks/generate_env_urls.yml
-    execution_environment: "Sales Demos - OCP Virt EE"
-    credentials:
-      - "Sales Demos - Vault"
-      - "Sales Demos - Env Secrets"
-    limit: "{{ aap_env_name }}"
-    extra_vars:
-      target_env: "{{ aap_env_name }}"
-
   # =====================================================================
   # CLUSTER DAY 0 (#330). Prepare the CLUSTER to host demos, before any VM
   # exists. The subject of Day 1 is the VM; the subject of Day 0 is the cluster.
