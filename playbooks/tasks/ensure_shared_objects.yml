@@ -4,8 +4,8 @@
 # Issue #348.
 # ===========================================================================
 # CALLER: tasks/terraform_ocpvirt.yml, before `terraform init`. Needs
-# ocpvirt_namespace_resolved, ocpvirt_api_url, ocpvirt_api_token, and
-# ocpvirt_terraform_dir.
+# ocpvirt_namespace_resolved, ocpvirt_state_namespace, ocpvirt_api_url,
+# ocpvirt_api_token, and ocpvirt_terraform_dir.
 #
 # WHY THESE LEFT TERRAFORM. The VM namespace and the sd1.* instance types are
 # shared by both guests and must outlive either one. They used to be Terraform
@@ -73,6 +73,23 @@
     K8S_AUTH_API_KEY: "{{ ocpvirt_api_token }}"
     K8S_AUTH_VERIFY_SSL: "{{ openshift_validate_certs | default(false) | bool }}"
 
+- name: Ensure the Terraform state namespace exists
+  # SAME TASK AS terraform_ocpvirt.yml line 96, moved here so setup / Day 0 can
+  # create it before any VM is provisioned (#530). The copy in
+  # terraform_ocpvirt.yml stays as belt-and-braces, same rationale as #351's
+  # provision-time guard.
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: "{{ ocpvirt_state_namespace }}"
+        labels:
+          app.kubernetes.io/managed-by: sales.demos
+          sales.demos/purpose: terraform-state
+  environment: *ocpvirt_k8s_auth
+
 - name: Ensure the sd1.* instance type catalog exists
   # CLUSTER-SCOPED AND UNSUFFIXED, deliberately: two people running this against
   # one cluster converge on identical definitions rather than littering it with
@@ -134,6 +151,7 @@
 - name: Report the shared scaffolding
   ansible.builtin.debug:
     msg: >-
-      Shared objects ready in {{ ocpvirt_namespace_resolved }}:
-      {{ ocpvirt_tier_catalog.tiers.values() | map(attribute='instancetype') | join(', ') }}.
+      Shared objects ready: namespace {{ ocpvirt_namespace_resolved }},
+      state namespace {{ ocpvirt_state_namespace }},
+      instance types {{ ocpvirt_tier_catalog.tiers.values() | map(attribute='instancetype') | join(', ') }}.
       Teardown leaves these in place.
