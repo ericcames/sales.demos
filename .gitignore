@@ -60,6 +60,9 @@ inventory/group_vars/*/local.yml
 *.kubeconfig
 .kube/
 
+# AAP MCP bearer tokens and route URLs (#515)
+.aap/
+
 # ---------------------------------------------------------------------------
 # Terraform — state can contain secrets in plaintext; tfvars almost always do.
 # ---------------------------------------------------------------------------

@@ -30,6 +30,14 @@
         "--toolsets", "core,config,kubevirt",
         "--disable-multi-cluster"
       ]
+    },
+    "aap-sandbox": {
+      "command": "bash",
+      "args": ["utilities/aap-mcp-stdio.sh", "sandbox"]
+    },
+    "aap-demo": {
+      "command": "bash",
+      "args": ["utilities/aap-mcp-stdio.sh", "demo"]
     }
   }
 }
