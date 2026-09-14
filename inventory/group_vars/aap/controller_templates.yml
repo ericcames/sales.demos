@@ -208,6 +208,19 @@ controller_templates_all:
       # about to be shown.
       target_env: "{{ aap_env_name }}"
       provision_inventory: "Sales Demo VMs"
+      # THE CLUSTER THIS DESTROYS, RENDERED BY config.yml (#611). This template
+      # runs against `Sales Demo VMs - Control`, which #528's host vars do not
+      # reach (its inventory source has overwrite_vars: true). Without these
+      # lines the job reads connection.yml from the SCM checkout, which is
+      # allowed to be stale, and aims every destroy at a dead cluster while
+      # local.yml names the live one. config.yml renders them from the laptop,
+      # so local.yml wins exactly as it does for the main inventory.
+      # Credentials still arrive through the Env Secrets credential (#129).
+      aap_hostname: "{{ aap_hostname }}"
+      openshift_api_url: "{{ openshift_api_url }}"
+      openshift_apps_domain: "{{ openshift_apps_domain }}"
+      ocpvirt_namespace: "{{ ocpvirt_namespace }}"
+      demo_ssh_public_key: "{{ demo_ssh_public_key }}"
       # Must match what was provisioned, or destroy plans a different shape than
       # was built. These are the defaults; a run that used another tier should
       # pass its own on launch.
@@ -1298,6 +1311,15 @@ controller_templates_all:
     extra_vars:
       target_env: "{{ aap_env_name }}"
       provision_inventory: "Sales Demo VMs"
+      # The cluster this destroys, rendered by config.yml. Same reason as the
+      # Linux teardown template above (#611): Sales Demo VMs - Control never
+      # receives #528's host vars, so without these the job reads a stale
+      # connection.yml from the SCM checkout.
+      aap_hostname: "{{ aap_hostname }}"
+      openshift_api_url: "{{ openshift_api_url }}"
+      openshift_apps_domain: "{{ openshift_apps_domain }}"
+      ocpvirt_namespace: "{{ ocpvirt_namespace }}"
+      demo_ssh_public_key: "{{ demo_ssh_public_key }}"
       os_type: windows
       vm_size_tier: small
       # THE ROLE MUST MATCH WHAT WAS BUILT (#389). It is part of the Terraform
