@@ -151,8 +151,8 @@ while IFS= read -r f; do
 done < <(printf '%s\n' "$tracked_secrets")
 
 # ---------------------------------------------------------------------------
-# env-urls.yml MUST NOT BE TRACKED (#429). With --with-creds it holds plaintext
-# vault credentials. Same two checks as secrets.yml: not tracked, and ignored.
+# env-urls.yml MUST NOT BE TRACKED (#429). It holds plaintext vault credentials
+# by default (#565). Same two checks as secrets.yml: not tracked, and ignored.
 # No encryption check — env-urls.yml is plaintext by design; the protection is
 # that it must never reach the remote.
 # ---------------------------------------------------------------------------
@@ -167,7 +167,7 @@ fi
 
 if [ -z "$tracked_env_urls" ] && ! git check-ignore -q "$ENV_URLS_FILE"; then
   echo "::error::$ENV_URLS_FILE is NOT covered by .gitignore"
-  echo "    With --with-creds it holds plaintext passwords from the vault."
+  echo "    It holds plaintext passwords from the vault by default."
   echo "    Restore the rule in .gitignore before pushing."
   fail=1
 fi

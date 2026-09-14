@@ -213,9 +213,8 @@ PY
 | `install_portal` | `true` | Set to `false` to skip the portal deploy (stage 8) |
 | `link_rhel9_image` | `true` | Set to `false` to skip the golden image import (stage 2) |
 
-`generate_env_urls_with_creds` is automatically set to `true` inside setup.yml
-(in the timer play before stage 9) because setup.yml is always a laptop command
-with the vault available. Do not set it manually.
+Credentials are included in env-urls by default (#565). setup.yml is always a
+laptop command with the vault available, so no extra-var is needed.
 
 Everything else is resolved for you: hostname and API URL from that
 environment's committed `connection.yml`, credentials from the environment's
