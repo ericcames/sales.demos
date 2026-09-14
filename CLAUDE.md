@@ -139,19 +139,34 @@ ansible-vault edit playbooks/group_vars/all/secrets.yml \
 - `connection.yml` is committed plaintext and holds everything that is not a
   credential: `aap_hostname`, `openshift_api_url`, usernames, namespaces. It
   *does* vary per environment — that is the point.
-- A new RHDP environment means editing that environment's `connection.yml` plus
-  two keys in the vault. **That is still the path for this repo's own two
-  environments, and for anything that runs from AAP** — a job template reads the
-  SCM checkout, so the change has to be committed.
-- **`inventory/group_vars/<env>/local.yml` is a gitignored overlay for reusers**
-  (#131). `local.yml.example` beside each `connection.yml` shows the three keys
-  to override; copy it to `local.yml` and fill in your cluster's values (#499).
-  Ansible loads a `group_vars/<group>/` directory in sorted order and
-  the last file wins, so it overrides `connection.yml` with no code change. It
-  exists so someone who clones can point this at their own cluster and still
-  `git pull` without conflicting on the three identity lines, which move roughly
-  monthly here. It does **nothing** for AAP — gitignored files are not in the
-  checkout — so do not offer it as the answer to a job-template question (#166).
+- **A new RHDP environment means updating `local.yml` plus two keys in the
+  vault.** `connection.yml` is **not** updated during a bootstrap or repoint — a
+  stale `connection.yml` is the expected state during active development, not a
+  defect. `utilities/update-connection.sh <env>` (#513) exists for the separate,
+  deliberate step of committing `connection.yml` when the environment is stable.
+- **`inventory/group_vars/<env>/local.yml` is the per-SE repoint overlay — and
+  that IS the COP practice being taught** (#131, #499, #554).
+  `local.yml.example` beside each `connection.yml` shows the keys to override;
+  copy it to `local.yml` and fill in your cluster's values. Ansible loads a
+  `group_vars/<group>/` directory in sorted order and the last file wins, so it
+  overrides `connection.yml` with no code change. Each SE creates their own,
+  points at their own cluster, and can `git pull` without conflicting on the
+  identity lines. This is the same pattern the Red Hat Automation COP uses to
+  manage many AAPs from one codebase.
+
+  **`local.yml` IS the answer to the AAP job-template question**, and the
+  mechanism is `config.yml`. Gitignored files are invisible to AAP's SCM
+  checkout — that part is still true. But `config.yml` runs locally with
+  `local.yml`, resolves the effective values (including the override), and
+  populates the AAP inventory host variables via the API. AAP job templates read
+  those host vars, not `connection.yml` from the SCM checkout. So `local.yml`
+  reaches AAP, through `config.yml`, without ever being committed.
+
+  This replaced the earlier design where `connection.yml` had to be committed
+  for AAP to see the new cluster (#166). That design required every repoint to
+  go through a PR, and a stale `connection.yml` was a real defect. The current
+  design treats `connection.yml` as the upstream reference for fresh clones and
+  `local.yml` as the operational input — the distinction SEs need to learn.
 
   **The name is load-bearing.** `connection.local.yml` sorts *before*
   `connection.yml` and loses; it would be read, silently overridden, and leave
