@@ -10,8 +10,15 @@
 # Checks:
 #   1. Kubeconfig server URL  vs.  effective openshift_api_url
 #   2. AAP MCP URL            vs.  effective openshift_apps_domain
-#   3. AO MCP registration    vs.  effective openshift_apps_domain
-#   4. Portal MCP URL         vs.  effective openshift_apps_domain (#555)
+#   3. Portal MCP URL         vs.  effective openshift_apps_domain (#555)
+#   4. AO MCP registration    vs.  effective openshift_apps_domain (#595)
+#   5. No local-scope registration shadows a .mcp.json server (#603)
+#
+# Checks 1-3 read the files the .mcp.json servers read. Check 5 is what makes
+# them mean anything: a local-scope entry of the same name outranks
+# .mcp.json, so those files are never read while it exists. A pre-#515 HTTP
+# registration did exactly that — every file above was current, the script
+# passed, and aap-<env> kept dialling the previous cluster through restarts.
 #
 # Grafana is NOT checked — it is an external SaaS instance unrelated to
 # RHDP environment lifecycle.
@@ -27,6 +34,34 @@ set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 REPO_ROOT="$PWD"
+
+# `claude mcp add --scope local|user` writes to ~/.claude.json, not to
+# .claude/settings.local.json (which holds permissions) — reading the wrong
+# file is #595. Local scope is keyed on the absolute project path, so key on
+# the main checkout: a worktree is a different project to Claude Code.
+MAIN_ROOT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")"
+CLAUDE_JSON="${CLAUDE_CONFIG_DIR:-$HOME}/.claude.json"
+
+# claude_registrations <server> — one "<scope><TAB><url>" line per entry of
+# that name: local first (it wins), then user. The URL is the entry's `url`,
+# or AO_URL from its env for the stdio AO server. Prints nothing if none.
+claude_registrations() {
+  [[ -f "$CLAUDE_JSON" ]] || return 0
+  python3 - "$CLAUDE_JSON" "$MAIN_ROOT" "$1" <<'PY' 2>/dev/null || true
+import json, sys
+path, root, name = sys.argv[1:4]
+try:
+    d = json.load(open(path))
+except Exception:
+    sys.exit(0)
+scopes = (("local", ((d.get("projects") or {}).get(root) or {}).get("mcpServers")),
+          ("user", d.get("mcpServers")))
+for scope, servers in scopes:
+    s = (servers or {}).get(name)
+    if isinstance(s, dict):
+        print(scope, s.get("url") or (s.get("env") or {}).get("AO_URL") or "", sep="\t")
+PY
+}
 
 environments() { ls -1 inventory/group_vars | grep -v '^aap$'; }
 
@@ -129,7 +164,7 @@ else
     else
       echo "❌ aap-$ENV: URL is stale"
       echo "     have:     $aap_mcp_url"
-      echo "     expected: https://aap-mcp-aap.$EFFECTIVE_APPS_DOMAIN"
+      echo "     expected: https://aap-mcp-aap.$EFFECTIVE_APPS_DOMAIN/mcp"
       echo "   fix: bash utilities/make-aap-mcp.sh $ENV"
       stale=$((stale + 1))
     fi
@@ -184,22 +219,7 @@ fi
 # Check 4: AO MCP registration
 # ---------------------------------------------------------------------------
 
-ao_url=""
-settings_local="$REPO_ROOT/.claude/settings.local.json"
-
-if [[ -f "$settings_local" ]]; then
-  ao_url="$(python3 -c "
-import json, sys
-try:
-    d = json.load(open('$settings_local'))
-    servers = d.get('mcpServers', {})
-    ao = servers.get('ao-$ENV', {})
-    env = ao.get('env', {})
-    print(env.get('AO_URL', ''))
-except Exception:
-    pass
-" 2>/dev/null)" || true
-fi
+ao_url="$(claude_registrations "ao-$ENV" | head -n1 | cut -f2)" || true
 
 if [[ -z "$ao_url" ]]; then
   echo "⏭️  ao-$ENV: not registered"
@@ -213,6 +233,37 @@ else
     echo "   fix: bash utilities/make-ao-mcp.sh $ENV"
     stale=$((stale + 1))
   fi
+fi
+
+# ---------------------------------------------------------------------------
+# Check 5: local-scope registrations shadowing .mcp.json (#603)
+# ---------------------------------------------------------------------------
+# Precedence is local > project > user, so only a LOCAL entry can hide a
+# .mcp.json server. The names come from .mcp.json itself rather than a list
+# here, so a server added there is covered without touching this script.
+
+project_servers="$(python3 -c "
+import json
+servers = json.load(open('$REPO_ROOT/.mcp.json')).get('mcpServers', {})
+print('\n'.join(n for n in servers if n.endswith('-$ENV')))
+")"
+
+shadowed=0
+while IFS= read -r name; do
+  [[ -n "$name" ]] || continue
+  while IFS=$'\t' read -r scope url; do
+    [[ "$scope" == local ]] || continue
+    echo "❌ $name: a local-scope registration shadows .mcp.json"
+    echo "     it points at: ${url:-(no url)}"
+    echo "     local outranks project, so the $name files checked above are never read"
+    echo "   fix: (cd $MAIN_ROOT && claude mcp remove $name -s local), then restart Claude Code"
+    stale=$((stale + 1))
+    shadowed=$((shadowed + 1))
+  done < <(claude_registrations "$name")
+done <<<"$project_servers"
+
+if [[ "$shadowed" -eq 0 ]]; then
+  echo "✅ no local-scope registration shadows .mcp.json for $ENV"
 fi
 
 # ---------------------------------------------------------------------------

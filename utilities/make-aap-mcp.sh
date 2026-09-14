@@ -58,11 +58,48 @@ if [[ ! -s "$KUBECONFIG_FILE" ]]; then
   exit 1
 fi
 
-# --- One-time migration: remove old local-scope registration ---------------
-# Before #515, the server was registered with `claude mcp add --scope local`.
-# Clean that up so the old HTTP entry does not shadow the new stdio one.
+# --- Migration: remove the pre-#515 registration, then prove it is gone -----
+# Before #515, the server was registered with `claude mcp add --scope local`
+# as an HTTP entry with the URL inline. Local scope outranks .mcp.json, so
+# while that entry exists the stdio wrapper never runs and the .aap/ files
+# written below are never read.
+#
+# THIS USED TO BE `claude mcp remove "aap-$ENV" 2>/dev/null || true` (#603).
+# With the name in two scopes and no -s, it removed nothing, and the discarded
+# error hid that: the previous cluster survived every regeneration and
+# restart. So remove from local scope explicitly, treat only "not in local
+# scope" as success, and then ask which scope actually wins.
+#
+# Local scope is keyed on the absolute project path, so run from the main
+# checkout: a worktree is a different project to Claude Code.
+MAIN_ROOT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")"
+
 if command -v claude >/dev/null 2>&1; then
-  claude mcp remove "aap-$ENV_NAME" 2>/dev/null || true
+  if out="$(cd "$MAIN_ROOT" && claude mcp remove "aap-$ENV_NAME" -s local 2>&1)"; then
+    echo "🧹 removed a pre-#515 local-scope aap-$ENV_NAME registration"
+  elif [[ "$out" != *"in local scope"* ]]; then
+    echo "❌ could not remove the local-scope aap-$ENV_NAME registration:" >&2
+    echo "   $out" >&2
+    exit 1
+  fi
+
+  winner="$(cd "$MAIN_ROOT" && claude mcp get "aap-$ENV_NAME" 2>/dev/null \
+    | sed -n 's/^ *Scope: //p')" || true
+  case "$winner" in
+    "Project config"*) ;;
+    "")
+      echo "❌ Claude Code has no aap-$ENV_NAME server in $MAIN_ROOT — is .mcp.json intact?" >&2
+      exit 1
+      ;;
+    *)
+      echo "❌ aap-$ENV_NAME resolves from '$winner', not .mcp.json — it would ignore .aap/." >&2
+      echo "   inspect: (cd $MAIN_ROOT && claude mcp get aap-$ENV_NAME)" >&2
+      exit 1
+      ;;
+  esac
+else
+  echo "⚠️  claude CLI not on PATH — cannot check for a registration shadowing .mcp.json." >&2
+  echo "   Run 'bash utilities/check-mcp-staleness.sh $ENV_NAME' where it is." >&2
 fi
 
 # --- Resolve AAP hostname and password from the vault ---------------------
@@ -119,7 +156,11 @@ mkdir -p "$REPO_ROOT/.aap" && chmod 700 "$REPO_ROOT/.aap"
 printf '%s\n' "$TOKEN" > "$REPO_ROOT/.aap/${ENV_NAME}.token"
 chmod 600 "$REPO_ROOT/.aap/${ENV_NAME}.token"
 
-printf '%s\n' "https://$MCP_HOST" > "$REPO_ROOT/.aap/${ENV_NAME}.url"
+# The full Streamable HTTP endpoint, not the route root: aap-mcp-stdio.sh hands
+# this to supergateway verbatim, and the root answers 404 "Cannot POST /".
+# It was the bare host from #515 until #603, and nobody noticed because a
+# stale pre-#515 registration, which did carry /mcp, was shadowing it.
+printf '%s\n' "https://$MCP_HOST/mcp" > "$REPO_ROOT/.aap/${ENV_NAME}.url"
 chmod 600 "$REPO_ROOT/.aap/${ENV_NAME}.url"
 
 echo ""
