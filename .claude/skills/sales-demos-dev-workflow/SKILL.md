@@ -56,7 +56,12 @@ why your change had no effect.
    git pull && git branch -d <branch>
    ```
    The remote branch deletes itself (`delete_branch_on_merge` is enabled).
-   Pull `main` first so `-d` checks something real.
+   `-d` checks "pushed to upstream", not "merged" (#179) — after a squash merge
+   its "not yet merged to HEAD" warning is expected and means nothing.
+
+   **If `-d` refuses, the upstream is gone** (a `fetch --prune` ran). It then
+   falls back to HEAD and refuses every squash-merged branch (#571). Confirm
+   `gh pr view <n>` says MERGED and the worktree was clean, then `git branch -D`.
 
 ## Step 2 — `config.yml`
 
