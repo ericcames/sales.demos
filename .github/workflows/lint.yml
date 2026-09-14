@@ -40,7 +40,12 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
-      - run: pip install ansible-lint
+      # Pinned (#601) so "CI's version" is something you can reproduce on
+      # purpose. 26.x with .ansible-lint's `offline: true` writes its module
+      # mocks into ANSIBLE_HOME, which on a laptop is ~/.ansible, over the real
+      # installed collections. Run it locally only as CONTRIBUTING.md shows,
+      # and re-check that before bumping this.
+      - run: pip install ansible-lint==26.8.0
       - run: ansible-lint
 
   secret-guard:

@@ -142,6 +142,24 @@ Everything after the playbook is identical to the `ansible-playbook` command.
 Add `--with-hub-token` for `config.yml`, `validate.yml`, `setup.yml`,
 `sync_hub.yml`, `curate_hub.yml`. `/sales-demos-verify-ee` walks it.
 
+**Run CI's ansible-lint locally only with a throwaway `ANSIBLE_HOME`** (#601).
+CI pins the version in `.github/workflows/lint.yml`. Because `.ansible-lint` sets
+`offline: true`, ansible-lint 26.x writes its `mock_modules` stubs into
+`ANSIBLE_HOME`, and on a laptop that is `~/.ansible`, on top of your real
+collections. A bare run once replaced 24 modules, and `config.yml` failed with
+`Supported parameters include: .` (an empty list).
+
+```bash
+pip install ansible-lint==26.8.0   # in a venv; match lint.yml
+ANSIBLE_HOME="$(mktemp -d)" ansible-lint
+```
+
+Verified: every file under `~/.ansible/collections` hashed identically before
+and after, and the stubs landed in the temporary directory. If a run has already
+corrupted your collections, the
+[`/sales-demos-collections-sync`](https://github.com/ericcames/sales.demos/blob/main/.claude/skills/sales-demos-collections-sync/SKILL.md)
+audit reports `MODIFIED` and shows how to repair them.
+
 ## Workflow
 
 1. **Open an issue before writing code.** Label it — run
