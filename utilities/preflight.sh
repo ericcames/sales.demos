@@ -91,6 +91,11 @@ bad = [k for k, v in e.items() if 'CHANGEME' in str(v)]
 if bad:
     print('❌ ' + env + ' still has placeholders: ' + ', '.join(bad))
     sys.exit(1)
+non_ascii = [k for k, v in e.items() if v and any(ord(c) > 127 for c in str(v))]
+if non_ascii:
+    print('❌ ' + env + ' credentials contain non-ASCII characters'
+          ' (likely em-dash corruption from portal copy-paste): ' + ', '.join(non_ascii))
+    sys.exit(1)
 print('✅ ' + env + ' credentials filled in')
 "; then
   :

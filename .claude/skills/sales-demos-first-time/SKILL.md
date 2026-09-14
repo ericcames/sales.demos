@@ -27,7 +27,7 @@ Setting up sales.demos on this machine. About 10 minutes, once.
   3. Pinned collections            via /sales-demos-collections-sync
   4. Python kubernetes client
   5. Run-log directory             ~/ansible-logs/
-  6. Your environment's values     local.yml OR connection.yml + the vault
+  6. Your environment's values     local.yml + vault + auto-derived API token
 
 Nothing here has to be asked of anyone. Since #130 you create the vault
 password and the secrets file yourself — step 2, case A.
@@ -330,16 +330,25 @@ point your AAP project's `scm_url` at your own fork. Doing both is fine and they
 do not interfere: the overlay serves laptop runs, the committed file serves job
 templates.
 
-Then add that environment's credentials to the vault:
+Then add `aap_password` and `kubeadmin_password` to the vault:
 
 ```bash
 ansible-vault edit playbooks/group_vars/all/secrets.yml \
   --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
-# set env_secrets.<env>.aap_password and .openshift_api_token
+# set env_secrets.<env>.aap_password and .kubeadmin_password
 ```
 
-RHDP bearer tokens are short-lived — expect to refresh
-`openshift_api_token` far more often than anything else here.
+Now derive `openshift_api_token` automatically from `kubeadmin_password`:
+
+```bash
+bash utilities/derive-ocp-token.sh "$ENV" --update-vault
+```
+
+This OAuth-authenticates with `kubeadmin_password`, reads (or creates) a
+long-lived ServiceAccount token from the cluster, and writes it to
+`env_secrets.<env>.openshift_api_token` in the vault (#559). No manual
+copy-paste needed — the old flow was unreliable because the RHDP portal
+renders em dashes instead of hyphens, corrupting the JWT.
 
 ## Step 7 — Validate everything
 
