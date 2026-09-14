@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Generate inventory/env-urls.yml from connection.yml (and local.yml overrides).
+"""Generate env-urls.yml from connection.yml (and local.yml overrides).
 
-Issue #426, #429.
+Issue #426, #429, #582.
 
 Every Route hostname in this platform follows a fixed prefix plus the cluster's
 *.apps domain.  The apps domain is already committed in each environment's
@@ -15,6 +15,12 @@ By default the output includes usernames (from connection.yml) and passwords
 is gitignored, so credentials never reach the remote.
 
 Regenerate after repointing an environment (new RHDP cluster, edge rebuild).
+
+The file lives at the REPO ROOT, not in inventory/ (#582). Every command here
+passes ``-i inventory``, and Ansible parses every file in an inventory
+directory as an inventory source, so the old inventory/env-urls.yml produced
+"Skipping key (portal) in group (sandbox)" warnings on every run. Writing the
+new file deletes a leftover copy at the old path.
 
 Usage:
     python3 utilities/generate-env-urls.py              # URLs + credentials
@@ -34,7 +40,10 @@ from typing import Any, Dict, List, Optional, Tuple
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
 GROUP_VARS = REPO_ROOT / "inventory" / "group_vars"
-OUTPUT = REPO_ROOT / "inventory" / "env-urls.yml"
+OUTPUT = REPO_ROOT / "env-urls.yml"
+# Pre-#582 location. Removed on write so it stops being parsed as inventory
+# and a second plaintext copy of the credentials does not linger.
+LEGACY_OUTPUT = REPO_ROOT / "inventory" / "env-urls.yml"
 
 ROUTE_PREFIXES: List[Tuple[str, str]] = [
     ("aap", "aap-aap"),
@@ -240,6 +249,9 @@ def main() -> None:
         check_content = build_yaml(envs)
         if not OUTPUT.exists():
             print(f"MISSING: {OUTPUT.relative_to(REPO_ROOT)}", file=sys.stderr)
+            if LEGACY_OUTPUT.exists():
+                print(f"  (found at the old path {LEGACY_OUTPUT.relative_to(REPO_ROOT)} — "
+                      "regenerating moves it, #582)", file=sys.stderr)
             print("Run: python3 utilities/generate-env-urls.py", file=sys.stderr)
             raise SystemExit(1)
         existing = OUTPUT.read_text()
@@ -255,6 +267,9 @@ def main() -> None:
 
     OUTPUT.write_text(content)
     print(f"Wrote {OUTPUT.relative_to(REPO_ROOT)}")
+    if LEGACY_OUTPUT.exists():
+        LEGACY_OUTPUT.unlink()
+        print(f"Removed legacy {LEGACY_OUTPUT.relative_to(REPO_ROOT)} (#582)")
     for env_name in envs:
         detail = f"{len(ROUTE_PREFIXES)} URLs"
         if args.with_creds:

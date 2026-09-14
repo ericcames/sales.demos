@@ -155,22 +155,25 @@ done < <(printf '%s\n' "$tracked_secrets")
 # by default (#565). Same two checks as secrets.yml: not tracked, and ignored.
 # No encryption check — env-urls.yml is plaintext by design; the protection is
 # that it must never reach the remote.
+#
+# Both paths are checked: the file moved to the repo root in #582, and a copy
+# left at the old inventory/ path holds the same credentials.
 # ---------------------------------------------------------------------------
-ENV_URLS_FILE="inventory/env-urls.yml"
+for ENV_URLS_FILE in "env-urls.yml" "inventory/env-urls.yml"; do
+  tracked_env_urls=$(git ls-files "$ENV_URLS_FILE")
+  if [ -n "$tracked_env_urls" ]; then
+    echo "::error::$ENV_URLS_FILE is TRACKED — it may contain vault credentials"
+    echo "    Untrack it: git rm --cached $ENV_URLS_FILE"
+    fail=1
+  fi
 
-tracked_env_urls=$(git ls-files "$ENV_URLS_FILE")
-if [ -n "$tracked_env_urls" ]; then
-  echo "::error::$ENV_URLS_FILE is TRACKED — it may contain vault credentials"
-  echo "    Untrack it: git rm --cached $ENV_URLS_FILE"
-  fail=1
-fi
-
-if [ -z "$tracked_env_urls" ] && ! git check-ignore -q "$ENV_URLS_FILE"; then
-  echo "::error::$ENV_URLS_FILE is NOT covered by .gitignore"
-  echo "    It holds plaintext passwords from the vault by default."
-  echo "    Restore the rule in .gitignore before pushing."
-  fail=1
-fi
+  if [ -z "$tracked_env_urls" ] && ! git check-ignore -q "$ENV_URLS_FILE"; then
+    echo "::error::$ENV_URLS_FILE is NOT covered by .gitignore"
+    echo "    It holds plaintext passwords from the vault by default."
+    echo "    Restore the rule in .gitignore before pushing."
+    fail=1
+  fi
+done
 
 if [ "$fail" -ne 0 ]; then
   echo
