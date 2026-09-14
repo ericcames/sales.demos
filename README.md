@@ -37,9 +37,10 @@ claude .
 1. **Set up your laptop** —
    [`/sales-demos-first-time`](.claude/skills/sales-demos-first-time/SKILL.md),
    or read [First-time setup](https://ericcames.github.io/sales.demos-docs/reference/first-time-setup/).
-2. **Point it at your RHDP cluster** —
-   [`/sales-demos-bootstrap`](.claude/skills/sales-demos-bootstrap/SKILL.md)
-   with your AAP URL, or read [New environment](https://ericcames.github.io/sales.demos-docs/reference/new-environment/).
+2. **Point it at your RHDP cluster** — three inputs from the RHDP page (AAP
+   URL, AAP admin password, kubeadmin password) and one copy-paste prompt for
+   [`/sales-demos-bootstrap`](.claude/skills/sales-demos-bootstrap/SKILL.md):
+   see the [New environment quick start](https://ericcames.github.io/sales.demos-docs/reference/new-environment/#quick-start).
    Your cluster lives in a gitignored `local.yml`, so you never conflict on a
    pull — see [Reusing this repo](https://ericcames.github.io/sales.demos-docs/reference/reusing-this-repo/).
 3. **Opening a pull request?** Read [`CONTRIBUTING.md`](CONTRIBUTING.md) first.

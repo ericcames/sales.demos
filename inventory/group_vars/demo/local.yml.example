@@ -14,13 +14,18 @@
 # THE NAME MUST BE local.yml.  "connection.local.yml" sorts BEFORE
 # "connection.yml" and loses silently.
 #
-# You also need credentials.  Build playbooks/group_vars/all/secrets.yml
-# from secrets.yml.example beside it — that is where aap_password and
-# openshift_api_token live.
+# You also need credentials in playbooks/group_vars/all/secrets.yml (build
+# it from secrets.yml.example): aap_password and kubeadmin_password for this
+# environment.  `bash utilities/set-env-passwords.sh <env>` writes both
+# without echoing them.  openshift_api_token is derived from
+# kubeadmin_password by utilities/derive-ocp-token.sh — never pasted (#559).
 #
-# This is a LAPTOP mechanism.  AAP reads the committed connection.yml from
-# its SCM checkout; gitignored files are absent.  Repointing AAP means
-# editing connection.yml on a branch of your own.
+# AAP sees these values too, with no commit.  local.yml is absent from AAP's
+# SCM checkout, but config.yml runs on the laptop, resolves the effective
+# values (this file wins) and writes them into the AAP inventory as host
+# variables, which job templates read.  Committing connection.yml
+# (utilities/update-connection.sh) only refreshes the upstream reference
+# that fresh clones start from.
 
 aap_hostname: "aap-aap.apps.cluster-<id>.dyn.redhatworkshops.io"
 openshift_api_url: "https://api.cluster-<id>.dyn.redhatworkshops.io:6443"
