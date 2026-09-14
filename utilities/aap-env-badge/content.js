@@ -294,6 +294,11 @@
   // The list endpoint returns only id/name/description — no extra_vars.
   // So: fetch the list for a template ID, then fetch that template's
   // detail to get extra_vars.target_env.
+  //
+  // Failures along this chain log at debug, not error (#575). A 401/403 here
+  // means "not signed in" or "cluster expired" — ordinary states — and Chrome
+  // copies every console.error onto chrome://extensions → Errors. The error
+  // calls were a #495 diagnostic build; see them with DevTools → Verbose.
   let proxyAttempted = false;
   let aoToken = null;
 
@@ -306,7 +311,7 @@
       headers: { "Content-Type": "application/json" },
     });
     if (!csrfResp.ok) {
-      console.error("[env-badge] csrf_token:", csrfResp.status);
+      console.debug("[env-badge] csrf_token:", csrfResp.status);
       return null;
     }
     const csrfData = await csrfResp.json();
@@ -322,7 +327,7 @@
       },
     });
     if (!refreshResp.ok) {
-      console.error("[env-badge] refresh:", refreshResp.status);
+      console.debug("[env-badge] refresh:", refreshResp.status);
       return null;
     }
     const refreshData = await refreshResp.json();
@@ -333,7 +338,7 @@
   async function fetchEnvViaAOProxy() {
     const token = await aoGetToken();
     if (!token) {
-      console.error("[env-badge] no token");
+      console.debug("[env-badge] no token");
       return null;
     }
 
@@ -342,7 +347,7 @@
       token
     );
     if (!listData) {
-      console.error("[env-badge] proxy list failed");
+      console.debug("[env-badge] proxy list failed");
       return null;
     }
 
@@ -400,7 +405,7 @@
         signal: abort.signal,
       });
       if (response.status === 401 || response.status === 403) {
-        console.error("[env-badge] proxy", path, response.status);
+        console.debug("[env-badge] proxy", path, response.status);
         return null;
       }
       if (!response.ok) return null;

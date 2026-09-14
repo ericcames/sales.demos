@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "AAP environment badge (sales.demos)",
-  "version": "1.8.0",
+  "version": "1.8.1",
   "description": "Paints a SANDBOX / DEMO / EDGE pill in the AAP, AO, self-service portal, and OCP console masthead, and on the OCP OAuth login page. Reads target_env from AAP so it never goes stale. See issues #54, #87, #477, #536, and #539.",
   "permissions": [
     "storage"
