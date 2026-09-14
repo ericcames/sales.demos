@@ -398,6 +398,9 @@
         validate_certs: false
         status_code: [200, 201]
       register: ao_integration_result
+      retries: 5
+      delay: 20
+      until: ao_integration_result.status in [200, 201]
 
     - name: Report integration status
       ansible.builtin.debug:
