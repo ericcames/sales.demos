@@ -350,25 +350,29 @@
                     #   helm show values redhat-rhaap-portal \
                     #     --repo https://charts.openshift.io/ --version <v>
                     #
-                    # !unsafe is load-bearing: the chart's entries are Helm
-                    # template strings, which Ansible would otherwise try to
-                    # render itself and fail. Helm renders them.
+                    # The four AAP entries are written as what the chart's
+                    # plugins.load.* helpers RENDER for pluginMode oci and the
+                    # chart's imageTagInfo "2.1", not as the helper calls
+                    # themselves. The calls are Helm template strings, which
+                    # Ansible and ansible-lint both read as broken Jinja. In oci
+                    # mode the chart's integrity helpers render empty, so no
+                    # integrity field is carried either.
                     plugins:
                       - package: ./dynamic-plugins/dist/backstage-community-plugin-rbac
                         disabled: false
-                      - package: !unsafe '{{- include "plugins.load.scaffolder" . }}'
+                      - package: >-
+                          oci://registry.redhat.io/ansible-automation-platform/automation-portal:2.1!ansible-plugin-scaffolder-backend-module-backstage-rhaap
                         disabled: false
-                        integrity: !unsafe '{{- include "plugins.integrity.scaffolder" . }}'
                         pluginConfig:
                           dynamicPlugins:
                             backend:
                               ansible.plugin-scaffolder-backend-module-backstage-rhaap: {}
-                      - package: !unsafe '{{- include "plugins.load.catalog" . }}'
+                      - package: >-
+                          oci://registry.redhat.io/ansible-automation-platform/automation-portal:2.1!ansible-backstage-plugin-catalog-backend-module-rhaap
                         disabled: false
-                        integrity: !unsafe '{{- include "plugins.integrity.catalog" . }}'
-                      - package: !unsafe '{{- include "plugins.load.self-service" . }}'
+                      - package: >-
+                          oci://registry.redhat.io/ansible-automation-platform/automation-portal:2.1!ansible-plugin-backstage-self-service
                         disabled: false
-                        integrity: !unsafe '{{- include "plugins.integrity.self-service" . }}'
                         pluginConfig:
                           dynamicPlugins:
                             frontend:
@@ -392,9 +396,9 @@
                                 mountPoints:
                                   - mountPoint: application/listener
                                     importName: LocationListener
-                      - package: !unsafe '{{- include "plugins.load.auth" . }}'
+                      - package: >-
+                          oci://registry.redhat.io/ansible-automation-platform/automation-portal:2.1!ansible-backstage-plugin-auth-backend-module-rhaap-provider
                         disabled: false
-                        integrity: !unsafe '{{- include "plugins.integrity.auth" . }}'
                         pluginConfig: {}
                       - package: ./dynamic-plugins/dist/backstage-plugin-scaffolder-backend-module-github-dynamic
                         disabled: false
