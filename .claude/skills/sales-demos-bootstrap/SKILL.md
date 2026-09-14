@@ -249,14 +249,33 @@ The MCP servers need a Claude Code restart to take effect. Tell the user:
 
 ## Step 13 — Print summary
 
+**Do not type product hostnames into the summary. Take them from `env-urls.yml`**,
+the file Step 10 verified, and prove each one answers before listing it. A
+hardcoded host here once printed `https://ao-eda.<apps_domain>` for Automation
+Orchestrator, a Route that does not exist (#596).
+
+`env-urls.yml` builds each host from a fixed Route prefix plus the apps domain.
+It does not ask the cluster, so the curl is what proves the link. The block
+reads only the URL lines. The `credentials:` section of the same file is never
+printed:
+
+```bash
+awk -v env="$ENV:" '$0==env{p=1;next} /^[^ #]/{p=0} p && /^  [a-z_]+: "https:\/\//' env-urls.yml \
+  | sed -E 's/^  ([a-z_]+): "([^"]+)"/\1 \2/' \
+  | while read -r name url; do
+      printf '%-12s %s %s\n' "$name" "$(curl -sk -m 15 -o /dev/null -w '%{http_code}' "$url")" "$url"
+    done
+```
+
 Print a final summary covering:
 
 - The timing summary from setup.yml (per-stage and total)
-- All deployed URLs:
-  - AAP: `https://<aap_hostname>`
-  - Portal: `https://rhaap-portal-aap-portal.<apps_domain>`
-  - AO: `https://ao-eda.<apps_domain>` (if installed)
-  - MCP: deployed in-cluster
+- Every URL from the block above with its status. List a `200`/`302` as ready.
+  **`ocp_oauth` returns `403` on a healthy cluster**, because the OAuth server's
+  root refuses anonymous requests (measured on sandbox), so treat its `403` as
+  ready too. Report anything else, such as a `503` for a Route with no backend or
+  `ao` when `install_ao=false`, as **not answering**, never as a working link.
+- MCP: deployed in-cluster
 - `available_memory_gb` from the probe
 - What is ready and what needs a restart
 
