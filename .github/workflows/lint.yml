@@ -197,10 +197,12 @@ jobs:
           # not exist ONLY if it is explicitly marked "Not started".
           while IFS= read -r name; do
             [ -d ".claude/skills/$name" ] && continue
-            if grep -q "\`$name\`.*Not started" README.md; then continue; fi
+            if grep -q "\`/\?$name\`.*Not started" README.md; then continue; fi
             echo "::error::README.md lists skill '$name' with no .claude/skills/$name/ — create it, or mark the row 'Not started'"
             bad=1
-          done < <(grep -oE '^\| `[a-z0-9-]+`' README.md | tr -d '|` ' | sort -u)
+          # Rows may link the name, [`/name`](...) — match that too, or linked
+          # rows would silently drop out of this check (#567).
+          done < <(grep -oE '^\| \[?`/?[a-z0-9-]+`' README.md | tr -d '|`[/ ' | sort -u)
           if [ "$bad" -ne 0 ]; then
             echo "See CLAUDE.md -> 'Skills and playbooks' for the contract."
             exit 1
