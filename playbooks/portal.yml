@@ -329,11 +329,98 @@
               redhat-developer-hub:
                 global:
                   clusterRouterBase: "{{ cluster_router_base }}"
+                  # oci pulls the AAP plugins from registry.redhat.io, authed
+                  # by rhaap-portal-dynamic-plugins-registry-auth above. The
+                  # chart default, tarball, is deprecated and needs a
+                  # plugin-registry service this chart does not deploy.
                   pluginMode: oci
                   dynamic:
                     includes:
                       - dynamic-plugins.default.yaml
+                    # HELM REPLACES LISTS, IT DOES NOT MERGE THEM (#592).
+                    # Setting `plugins` at all discards the chart's default
+                    # list, so that list is carried here verbatim from
+                    # redhat-rhaap-portal 2.1.0 values.yaml, with the MCP
+                    # plugins (#555) appended. #555 set only the MCP three, and
+                    # the portal lost the AAP plugins with them: no rhaap
+                    # sign-in page, so RHDH fell back to GitHub sign-in.
+                    #
+                    # A CHART BUMP MUST RE-COPY THIS LIST from the new
+                    # version's values.yaml:
+                    #   helm show values redhat-rhaap-portal \
+                    #     --repo https://charts.openshift.io/ --version <v>
+                    #
+                    # The four AAP entries are written as what the chart's
+                    # plugins.load.* helpers RENDER for pluginMode oci and the
+                    # chart's imageTagInfo "2.1", not as the helper calls
+                    # themselves. The calls are Helm template strings, which
+                    # Ansible and ansible-lint both read as broken Jinja. In oci
+                    # mode the chart's integrity helpers render empty, so no
+                    # integrity field is carried either.
                     plugins:
+                      - package: ./dynamic-plugins/dist/backstage-community-plugin-rbac
+                        disabled: false
+                      - package: >-
+                          oci://registry.redhat.io/ansible-automation-platform/automation-portal:2.1!ansible-plugin-scaffolder-backend-module-backstage-rhaap
+                        disabled: false
+                        pluginConfig:
+                          dynamicPlugins:
+                            backend:
+                              ansible.plugin-scaffolder-backend-module-backstage-rhaap: {}
+                      - package: >-
+                          oci://registry.redhat.io/ansible-automation-platform/automation-portal:2.1!ansible-backstage-plugin-catalog-backend-module-rhaap
+                        disabled: false
+                      - package: >-
+                          oci://registry.redhat.io/ansible-automation-platform/automation-portal:2.1!ansible-plugin-backstage-self-service
+                        disabled: false
+                        pluginConfig:
+                          dynamicPlugins:
+                            frontend:
+                              ansible.plugin-backstage-self-service:
+                                signInPage:
+                                  importName: SignInPage
+                                providerSettings:
+                                  - title: RHAAP
+                                    description: Sign in with RHAAP
+                                    provider: ansible.auth.rhaap
+                                scaffolderFieldExtensions:
+                                  - importName: AAPTokenFieldExtension
+                                  - importName: AAPResourcePickerExtension
+                                dynamicRoutes:
+                                  - importName: LandingPage
+                                    path: /
+                                  - importName: SelfServicePage
+                                    path: /self-service
+                                  - importName: ExecutionEnvironmentPage
+                                    path: /self-service/ee
+                                mountPoints:
+                                  - mountPoint: application/listener
+                                    importName: LocationListener
+                      - package: >-
+                          oci://registry.redhat.io/ansible-automation-platform/automation-portal:2.1!ansible-backstage-plugin-auth-backend-module-rhaap-provider
+                        disabled: false
+                        pluginConfig: {}
+                      - package: ./dynamic-plugins/dist/backstage-plugin-scaffolder-backend-module-github-dynamic
+                        disabled: false
+                      - package: ./dynamic-plugins/dist/backstage-plugin-scaffolder-backend-module-gitlab-dynamic
+                        disabled: false
+                      - package: ./dynamic-plugins/dist/red-hat-developer-hub-backstage-plugin-catalog-backend-module-marketplace-dynamic
+                        disabled: true
+                      - package: ./dynamic-plugins/dist/red-hat-developer-hub-backstage-plugin-quickstart
+                        disabled: true
+                      - package: ./dynamic-plugins/dist/red-hat-developer-hub-backstage-plugin-adoption-insights
+                        disabled: true
+                      - package: ./dynamic-plugins/dist/red-hat-developer-hub-backstage-plugin-adoption-insights-backend-dynamic
+                        disabled: true
+                      - package: ./dynamic-plugins/dist/red-hat-developer-hub-backstage-plugin-analytics-module-adoption-insights-dynamic
+                        disabled: true
+                      - package: ./dynamic-plugins/dist/red-hat-developer-hub-backstage-plugin-dynamic-home-page
+                        disabled: true
+                      - package: ./dynamic-plugins/dist/red-hat-developer-hub-backstage-plugin-marketplace
+                        disabled: true
+                      - package: ./dynamic-plugins/dist/red-hat-developer-hub-backstage-plugin-marketplace-backend-dynamic
+                        disabled: true
+                      # MCP plugins (#555)
                       - package: >-
                           oci://ghcr.io/redhat-developer/rhdh-plugin-export-overlays/backstage-plugin-mcp-actions-backend:bs_1.42.5__0.1.2!backstage-plugin-mcp-actions-backend
                         disabled: false
