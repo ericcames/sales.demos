@@ -25,10 +25,16 @@
 # by the "Sales Demos - Env Secrets" custom credential type (#129). That
 # mechanism is correct and unchanged.
 #
-# THE CONTROL INVENTORY IS NOT COVERED. Sales Demo VMs - Control has
-# overwrite_vars: true, so host vars set here would be wiped on sync. That
-# inventory is for teardown only — teardown reads connection values from the
-# main inventory, not from its own host vars.
+# THE CONTROL INVENTORY IS NOT COVERED HERE. Sales Demo VMs - Control has
+# overwrite_vars: true, so host vars set here would be wiped on sync.
+#
+# This used to add that teardown "reads connection values from the main
+# inventory". It does not, and cannot: an AAP job sees only its own inventory.
+# Every teardown launched from AAP therefore read the committed connection.yml
+# and aimed at a dead cluster whenever that file was stale (#611). The teardown
+# job templates now carry the same identity in their extra_vars, rendered by
+# config.yml. If you add a variable to the list below that teardown reads, add
+# it there too.
 # ============================================================================
 
 controller_hosts_all:
