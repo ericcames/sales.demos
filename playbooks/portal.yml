@@ -355,7 +355,7 @@
                             - type: static
                               options:
                                 token: "{{ portal_mcp_token }}"
-                              subject: mcp-clients
+                                subject: mcp-clients
                         actions:
                           pluginSources:
                             - software-catalog-mcp-tool
