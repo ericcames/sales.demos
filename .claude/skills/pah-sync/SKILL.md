@@ -221,7 +221,9 @@ Three things must hold, and the third is the one people skip:
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| Run is green, repositories are **empty** | The offline token expired. It authenticates and then returns nothing — this is the signature failure. | Regenerate at `https://console.redhat.com/ansible/automation-hub/token`, update `~/.ansible.cfg` `[galaxy_server.rh_certified]` |
+| `Red Hat SSO rejected the offline token (invalid_grant: Token is not active)` | The offline token expired. Checked against Red Hat SSO before any remote is rewritten (#597) | Regenerate at `https://console.redhat.com/ansible/automation-hub/token`, replace it in **both** `[galaxy_server.rh_certified]` and `[galaxy_server.rh_validated]`, confirm with `bash utilities/check-hub-token.sh` |
+| `N of M hub sync tasks started since ... did not complete` | A sync this run started failed inside Pulp. On an already-populated hub the content counts alone would still pass (#597) | The assert prints each task's error. A 400 from `sso.redhat.com` means the token stopped working mid-run |
+| Run is green, repositories are **empty** | #68 recorded this as an expired token that authenticates and returns nothing. Since #597 an expired token is stopped before the sync, so this now means a **live** token that returned nothing | Check the account's Automation Hub access at `https://console.redhat.com/ansible/automation-hub`, and that `hub/*-requirements.yml` name real collections |
 | `The Red Hat offline token did not resolve` | No token in `~/.ansible.cfg`, or you are running inside an execution environment | Add the token. If in an EE, stop — this playbook is laptop-only |
 | A repository has **thousands** of versions | The remote lost its `requirements_file` | Check `inventory/group_vars/aap/hub_collection_remotes.yml`, re-apply |
 | `hub/<x>-requirements.yml is missing or empty` | Never generated, or a failed refresh | `python3 utilities/refresh-hub-requirements.py` |

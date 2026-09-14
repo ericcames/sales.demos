@@ -25,7 +25,7 @@ usage() {
   echo ""
   echo "Flags:"
   echo "  --k8s            Check kubernetes.core collection and python client"
-  echo "  --hub-token      Check Red Hat offline token in ~/.ansible.cfg"
+  echo "  --hub-token      Check the Red Hat offline token in ~/.ansible.cfg is live (asks Red Hat SSO)"
   echo "  --grafana        Check Grafana Cloud push credentials in vault"
   echo "  --grafana-editor Check Grafana Cloud editor SA token in vault"
   echo "  --terraform      Check terraform binary on PATH"
@@ -129,18 +129,10 @@ if $want_k8s; then
 fi
 
 if $want_hub_token; then
-  if python3 - <<'PY'
-import configparser, os
-c = configparser.ConfigParser(); c.read(os.path.expanduser("~/.ansible.cfg"))
-t = c.get("galaxy_server.rh_certified", "token", fallback="")
-if len(t) > 100:
-    print("✅ offline token present ({} chars)".format(len(t)))
-else:
-    print("❌ no offline token in ~/.ansible.cfg [galaxy_server.rh_certified] —"
-          " get one at https://console.redhat.com/ansible/automation-hub/token")
-    raise SystemExit(1)
-PY
-  then :; else fail=1; fi
+  # PRESENT IS NOT LIVE (#597). This used to check length > 100, which an
+  # expired token passes -- and then every Red Hat hub sync fails. The script
+  # asks Red Hat SSO, and is the one implementation the skills share.
+  if bash utilities/check-hub-token.sh; then :; else fail=1; fi
 fi
 
 if $want_grafana; then

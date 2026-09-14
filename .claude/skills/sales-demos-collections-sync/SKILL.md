@@ -37,11 +37,10 @@ test -f ansible.cfg \
   && echo "❌ project-local ansible.cfg present — it shadows ~/.ansible.cfg and breaks certified installs; delete it" \
   || echo "✅ no project-local ansible.cfg"
 
-# 2. ~/.ansible.cfg has a real Automation Hub token
-grep -q 'galaxy_server.rh_certified' ~/.ansible.cfg 2>/dev/null \
-  && grep -A3 'galaxy_server.rh_certified' ~/.ansible.cfg | grep -qE '^token=.+' \
-  && echo "✅ ~/.ansible.cfg has an rh_certified token" \
-  || echo "❌ ~/.ansible.cfg missing an rh_certified token — certified collections will not install"
+# 2. ~/.ansible.cfg has a LIVE Automation Hub token. Present is not enough: an
+#    expired one passes a grep and then 401s every certified install (#597).
+bash utilities/check-hub-token.sh \
+  || echo "   certified collections will not install until this passes"
 
 # 3. requirements.yml exists
 test -s collections/requirements.yml \

@@ -57,8 +57,8 @@ If that fails, stop:
 Read-only. Run it all, then work only on what is missing.
 
 ```bash
-test -f ~/.ansible.cfg && grep -q 'galaxy_server.rh_certified' ~/.ansible.cfg \
-  && echo "EXISTS   Hub token in ~/.ansible.cfg" || echo "MISSING  Hub token"
+bash utilities/check-hub-token.sh >/dev/null 2>&1 \
+  && echo "LIVE     Hub token in ~/.ansible.cfg" || echo "PROBLEM  Hub token missing or expired — step 1"
 test -s "${SALES_DEMOS_VAULT_PASS:-$HOME/secrets/.vault_pass_sales_demos}" \
   && echo "EXISTS   vault password" || echo "MISSING  vault password  <-- blocker"
 test -f playbooks/group_vars/all/secrets.yml \
@@ -90,11 +90,14 @@ second copy in the vault to go stale. The same token authenticates both
 `rh_certified` and `rh_validated`.
 
 ```bash
-grep -A3 'galaxy_server.rh_certified' ~/.ansible.cfg | grep -qE '^token=.+' \
-  && echo "✅ token present" || echo "❌ no token"
+bash utilities/check-hub-token.sh
 ```
 
-If missing, load one at https://console.redhat.com/ansible/automation-hub/token,
+**It asks Red Hat SSO, not grep, because present is not live** (#597). A token
+that expired passes every presence check, and then certified installs and
+every Red Hat hub sync fail on it. The script prints only the token's length.
+
+If missing or rejected, load one at https://console.redhat.com/ansible/automation-hub/token,
 then add these stanzas to `~/.ansible.cfg`:
 
 ```ini

@@ -171,6 +171,27 @@
           yours read-only for the run (#120).
         quiet: true
 
+    - name: Check the Red Hat offline token is live
+      ansible.builtin.include_tasks: tasks/check_hub_token.yml
+      when: hub_sync_enabled | bool
+
+    - name: Assert Red Hat SSO accepts the offline token
+      # PRESENT IS NOT LIVE (#597). The assert above passed on 2026-09-14 with a
+      # well-formed token that had expired: Pulp's first call to Red Hat SSO got
+      # 400, both Red Hat sync tasks failed inside a second, and nothing said so.
+      # Fail here, before any remote is rewritten, with the reason SSO gave.
+      ansible.builtin.assert:
+        that:
+          - hub_token_live | bool
+        fail_msg: >-
+          {{ hub_token_problem }} rh-certified and validated cannot sync with it.
+          Load a new token at https://console.redhat.com/ansible/automation-hub/token
+          and put it in ~/.ansible.cfg under both [galaxy_server.rh_certified] and
+          [galaxy_server.rh_validated]. bash utilities/check-hub-token.sh
+          confirms it before you re-run.
+        quiet: true
+      when: hub_sync_enabled | bool
+
     - name: Assert the generated requirements files are present and parse
       # These are what bound the sync. A missing file makes ansible.hub send a
       # remote with no requirements at all, which syncs EVERY version of EVERY
@@ -275,8 +296,19 @@
           - "Measured 4.4 minutes for all three on sandbox; allow longer on a cold cluster."
 
     - name: Record the start time
+      # hub_sync_started_at is epoch seconds for the elapsed-time report.
+      #
+      # hub_sync_started_iso feeds Pulp's pulp_created__gte filter, which picks
+      # out the sync tasks THIS run started (#597). It is taken TWO MINUTES
+      # EARLY on purpose: this clock is the laptop's and pulp_created is the
+      # cluster's, so a laptop running ahead would exclude this run's own tasks
+      # and fail the check on nothing. The cost of the margin is that a run
+      # from the previous two minutes is also counted -- it can only add a
+      # failure, never hide one.
       ansible.builtin.set_fact:
         hub_sync_started_at: "{{ now(utc=true).strftime('%s') }}"
+        hub_sync_started_iso: >-
+          {{ lookup('ansible.builtin.pipe', "date -u -d '2 minutes ago' +%Y-%m-%dT%H:%M:%SZ") }}
 
     # No block/always pair and no cleanup task, deliberately: nothing here mints
     # a token or writes a temporary file. ansible.hub authenticates with basic
@@ -323,6 +355,41 @@
         - hub_sync_wait | bool
         - not ansible_check_mode
       block:
+        - name: Ask Pulp for the sync tasks this run started
+          # A COUNT OF CONTENT CANNOT SEE A FAILED RE-SYNC (#597). A hub that
+          # synced yesterday still holds 214 collections when today's sync dies
+          # on authentication, so every assert after this one would pass. The
+          # task states are the only record of how THIS run's syncs ended.
+          #
+          # Verified against the live hub before relying on it: the filter
+          # returned one run's three completed tasks and excluded an earlier
+          # run's two failures.
+          ansible.builtin.uri:
+            url: >-
+              https://{{ aap_hostname }}/api/galaxy/pulp/api/v3/tasks/?name=pulp_ansible.app.tasks.collections.sync&pulp_created__gte={{
+              hub_sync_started_iso | urlencode }}&limit=100
+            url_username: "{{ aap_username }}"
+            url_password: "{{ aap_password }}"
+            force_basic_auth: true
+            validate_certs: "{{ aap_validate_certs | default(false) }}"
+          register: hub_sync_tasks
+
+        - name: Assert every sync this run started completed
+          ansible.builtin.assert:
+            that:
+              - hub_sync_tasks.json.results | length >= hub_collection_remotes | length
+              - hub_sync_tasks.json.results | rejectattr('state', 'equalto', 'completed') | list | length == 0
+            fail_msg: >-
+              {{ hub_sync_tasks.json.results | rejectattr('state', 'equalto', 'completed') | list | length }}
+              of {{ hub_sync_tasks.json.results | length }} hub sync tasks started since
+              {{ hub_sync_started_iso }} did not complete (at least
+              {{ hub_collection_remotes | length }} were expected). Errors:
+              {{ hub_sync_tasks.json.results | rejectattr('state', 'equalto', 'completed')
+                 | map(attribute='error') | map(attribute='description', default='none recorded') | list }}.
+              A 400 from sso.redhat.com means the offline token stopped working;
+              bash utilities/check-hub-token.sh confirms it.
+            quiet: true
+
         - name: Count what landed in each repository
           ansible.builtin.uri:
             url: "{{ hub_api }}/{{ item }}/collections/index/?limit=1"

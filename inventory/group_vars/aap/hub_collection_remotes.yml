@@ -69,14 +69,21 @@
 # token and not a galaxy.ansible.com token; see the three-token table in
 # https://ericcames.github.io/sales.demos-docs/demos/private-automation-hub/architecture/.
 #
-# TWO WAYS IT GOES WRONG, AND NEITHER RAISES AN ERROR:
-#   - EXPIRED: authenticates, returns zero collections, leaves an empty
-#     repository behind a green run.
+# TWO WAYS IT GOES WRONG. NEITHER USED TO RAISE AN ERROR; BOTH NOW DO (#597).
+#   - EXPIRED: measured 2026-09-14, Red Hat SSO answers Pulp's token exchange
+#     with 400 invalid_grant and both Red Hat sync tasks fail inside a second.
+#     config.yml only STARTS syncs, so it reported `changed` and finished
+#     green. (#68 recorded an earlier form: authenticates, returns nothing.)
 #   - ABSENT: applying this from an AAP execution environment resolves the
 #     lookup to an empty string, so these remotes are configured with no
 #     credential and sync anonymously — which is to say, not at all. PAH
-#     configuration is laptop-only by design (#68); playbooks/sync_hub.yml
-#     asserts the token up front so this fails loudly instead.
+#     configuration is laptop-only by design (#68).
+#
+# Both are now caught before a sync starts. playbooks/tasks/check_hub_token.yml
+# asks Red Hat SSO whether the token is live: config.yml skips the sync and
+# says so loudly, and playbooks/sync_hub.yml fails. sync_hub.yml also asserts
+# every sync task it started completed, which a content count cannot show on a
+# hub that was already populated.
 # ============================================================================
 
 # EXPECT changed=2 ON EVERY RUN, ALWAYS THE SAME TWO. rh-certified and validated
