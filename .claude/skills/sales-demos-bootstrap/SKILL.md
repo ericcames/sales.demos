@@ -226,6 +226,17 @@ not committed.
 
 ## Step 12 — Final verification
 
+Before the restart, confirm every MCP credential points at the new cluster
+**and that nothing will shadow them**:
+
+```bash
+bash utilities/check-mcp-staleness.sh "$ENV"
+```
+
+Fix anything it reports first. A restart cannot repair a local-scope
+registration left over from before #515: it outranks `.mcp.json`, so the
+server keeps dialling the old cluster however fresh `.aap/` is (#603).
+
 The MCP servers need a Claude Code restart to take effect. Tell the user:
 
 > Restart Claude Code to pick up the new MCP servers, then verify with
@@ -283,6 +294,7 @@ Most failures are in the `setup.yml` run (step 7). See the failure table in
 | Cluster unreachable (step 6) | Environment expired or not provisioned | Check RHDP environment status; re-run `derive-ocp-token.sh` |
 | `setup.yml` fails (step 7) | See the setup skill's failure table | Check `$ANSIBLE_LOG_PATH` |
 | MCP servers fail (step 8) | Kubeconfig or token stale | Re-run [`/sales-demos-mcp`](https://github.com/ericcames/sales.demos/blob/main/.claude/skills/sales-demos-mcp/SKILL.md) |
+| `aap-<env>` still dials the old cluster after a restart (step 12) | A pre-#515 local-scope registration outranks `.mcp.json` (#603) | `claude mcp remove aap-<env> -s local` from the main checkout, then restart — `check-mcp-staleness.sh` names it |
 
 Never paste a live cluster hostname or token into a commit message, issue, or
 PR. This repo is public — see `CLAUDE.md`.

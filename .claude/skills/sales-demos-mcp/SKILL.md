@@ -98,6 +98,14 @@ URL from gitignored files in `.aap/` and bridges stdio to the remote server via
 `npx supergateway`. The credential stays out of the tracked file — same pattern
 as the kubeconfig paths for OpenShift servers.
 
+**A local-scope entry of the same name outranks `.mcp.json`** (precedence is
+local > project > user). Before #515 these servers were registered with
+`claude mcp add --scope local` as HTTP entries with the URL inline, and one left
+behind keeps the server on its old cluster through every regeneration and
+restart. `make-aap-mcp.sh` removes it and then asserts, through
+`claude mcp get`, that the project entry is the one that wins; it fails rather
+than trust the removal (#603).
+
 `utilities/make-aap-mcp.sh` automates the full flow: resolve credentials from
 the vault, create a personal access token via the gateway API, find the MCP
 route, and write `.aap/<env>.token` and `.aap/<env>.url`. Token scope is always
@@ -446,6 +454,7 @@ claude mcp list
 | `dial tcp: no such host` | The RHDP environment has expired | Check `connection.yml` points at a live cluster — both had expired once before (#101) |
 | Tools present but every call fails | Kubeconfig points at a different cluster than you think | `oc whoami --show-server` with `KUBECONFIG` set |
 | AAP MCP returns `503` | Route admitted, pod not serving yet | Wait — `oc get deploy aap-mcp -n aap`; this is normal for ~60s after deploy |
+| `aap-<env>` still dials the previous cluster after a restart, though `.aap/<env>.url` is current | A pre-#515 local-scope registration outranks `.mcp.json` (#603) | `claude mcp remove aap-<env> -s local` from the main checkout, restart. `check-mcp-staleness.sh <env>` names every such shadow |
 | AAP MCP returns `401` | Token expired or deleted | Re-create it: `bash utilities/make-aap-mcp.sh <env>`, then restart Claude Code |
 | AAP MCP write tools missing | `aap_mcp_allow_write_operations` is false for this environment | Intentional on `demo`. Changing it needs a delete-and-recreate — re-run `mcp_server.yml`, which handles that |
 | `npx: command not found` | Node not installed | See preflight; a standalone binary is the alternative |
