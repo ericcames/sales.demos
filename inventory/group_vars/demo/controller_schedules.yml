@@ -50,15 +50,25 @@
 # ONE SWEEP, deliberately. `demo` is the environment customers are shown, and a
 # second late-evening sweep buys little there while adding one more thing that
 # could fire in the middle of an evening session with someone watching.
+#
+# EVERY ROLE, NOT JUST web (#393). Each entry passes all_roles: true, so the
+# sweep removes every role that has Terraform state for that OS, db and app
+# farms included, not only the job template's `vm_role: web`. It arrives as
+# extra_data, which AAP accepts only because the teardown templates prompt for
+# variables on launch. Manual launches still remove one role.
 controller_schedules_demo:
   - name: "Linux Day 1 - Nightly teardown (6 PM)"
     unified_job_template: "Linux Day 1 - Teardown"
     description: "Destroy demo VMs every day at 6 PM America/Phoenix."
     rrule: "DTSTART;TZID=America/Phoenix:20260810T180000 RRULE:FREQ=DAILY;INTERVAL=1"
     enabled: true
+    extra_data:
+      all_roles: true
 
   - name: "Windows Day 1 - Nightly teardown (6 PM)"
     unified_job_template: "Windows Day 1 - Teardown"
     description: "Destroy demo Windows demo VMs every day at 6 PM America/Phoenix."
     rrule: "DTSTART;TZID=America/Phoenix:20260810T180000 RRULE:FREQ=DAILY;INTERVAL=1"
     enabled: true
+    extra_data:
+      all_roles: true

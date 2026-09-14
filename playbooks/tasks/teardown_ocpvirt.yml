@@ -5,6 +5,11 @@
 #
 # CALLER: teardown.yml, via include_tasks: tasks/teardown_{{ hypervisor }}.yml
 #
+# RUNS ONCE PER ROLE when teardown.yml is given all_roles=true (#393), several
+# times in one play. Nothing here may carry over from one role's run into the
+# next: facts are re-set every run, and the one thing that would carry over, the
+# in-memory group of guests to unregister, is keyed by role.
+#
 # The ordering within this file is load-bearing:
 #   1. Read terraform state (get hostnames)
 #   2. Unregister guests from Insights and CDN (needs VMs running)
@@ -165,10 +170,15 @@
     # EVERY Linux guest, not just the first. Each one holds its own Red Hat
     # subscription and its own Insights host, so a farm of three leaks three
     # entitlements if this only reaches one of them.
+    #
+    # THE GROUP IS PER ROLE (#393). add_host groups last for the whole play, so
+    # a single `teardown_guests` group would still hold the web farm's guests
+    # when this runs again for db, and the db run would try to unregister
+    # machines that were already destroyed.
     - name: Add the Linux guests to the in-memory inventory
       ansible.builtin.add_host:
         name: "{{ item.host }}"
-        groups: teardown_guests
+        groups: "teardown_guests_{{ provision_vm_role }}"
         ansible_host: "{{ item.ansible_host }}"
         ansible_user: "{{ item.ansible_user }}"
         ansible_connection: ssh
@@ -185,7 +195,7 @@
       ansible.builtin.command: insights-client --unregister
       delegate_to: "{{ item }}"
       become: true
-      loop: "{{ groups['teardown_guests'] | default([]) }}"
+      loop: "{{ groups['teardown_guests_' ~ provision_vm_role] | default([]) }}"
       register: teardown_insights
       changed_when: teardown_insights.rc == 0
       failed_when: false
@@ -194,7 +204,7 @@
       ansible.builtin.command: subscription-manager unregister
       delegate_to: "{{ item }}"
       become: true
-      loop: "{{ groups['teardown_guests'] | default([]) }}"
+      loop: "{{ groups['teardown_guests_' ~ provision_vm_role] | default([]) }}"
       register: teardown_unregister
       changed_when: teardown_unregister.rc == 0
       failed_when: false
@@ -205,7 +215,7 @@
           {{ 'Released the subscription and removed the Insights host.'
              if (teardown_unregister.results | default([]) | selectattr('rc', 'equalto', 0) | list | length) > 0
              else 'WARNING: could not unregister the guest — the subscription and Insights host will linger. Remove them at console.redhat.com.' }}
-      when: groups['teardown_guests'] | default([]) | length > 0
+      when: groups['teardown_guests_' ~ provision_vm_role] | default([]) | length > 0
 
     - name: Destroy the VMs
       ansible.builtin.command:

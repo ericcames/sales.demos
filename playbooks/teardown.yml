@@ -50,6 +50,19 @@
     provision_vm_role: "{{ vm_role | default('web') }}"
     provision_vm_count: "{{ vm_count | default(1) | int }}"
 
+    # --- Every role at once (#393) ------------------------------------------
+    # The nightly schedules pass all_roles=true through their extra_data, so a
+    # `db` or `app` farm is swept as well as `web`. The roles come from the
+    # Terraform state Secrets, not from a list kept here: a list would be a
+    # second copy of the survey's choices, and a role missing from it runs all
+    # night while the job goes green, which is the bug this fixes. The Secrets
+    # also cover a role whose VMs were deleted by hand but whose state remains.
+    #
+    # A SEPARATE BOOLEAN, NOT vm_role=all. `all` passes the role regex, so a
+    # real farm could carry that name. Manual launches leave this false and
+    # remove exactly the vm_role they are given, as before.
+    teardown_all_roles: "{{ all_roles | default(false) | bool }}"
+
     provision_aap_inventory: "{{ provision_inventory | default('Sales Demo VMs') }}"
 
     # --- AAP, from connection.yml or an AAP Controller credential -----------
@@ -96,6 +109,70 @@
           Unknown hypervisor '{{ provision_hypervisor }}'. Supported: ocpvirt.
         quiet: true
 
+    - name: Assert the role is a valid role name
+      when: not (teardown_all_roles | bool)
+      ansible.builtin.assert:
+        that:
+          - provision_vm_role is match('^[a-z][a-z0-9]{0,7}$')
+        fail_msg: >-
+          vm_role '{{ provision_vm_role }}' is not a valid role (1-8 lowercase
+          alphanumerics, starting with a letter). To remove every role that has
+          state, pass all_roles=true instead.
+        quiet: true
+
+    # --- Every role with state (#393) ---------------------------------------
+    # Terraform's kubernetes backend labels each state Secret
+    # tfstateSecretSuffix=<env>-<os>-<role>, the same key tasks/teardown_*.yml
+    # builds. no_log because the Secrets hold the state itself.
+    - name: Find the Terraform state Secrets
+      when: teardown_all_roles | bool
+      kubernetes.core.k8s_info:
+        api_version: v1
+        kind: Secret
+        namespace: "{{ ocpvirt_state_namespace }}"
+        label_selectors:
+          - tfstate=true
+      environment:
+        K8S_AUTH_HOST: "{{ ocpvirt_api_url }}"
+        K8S_AUTH_API_KEY: "{{ ocpvirt_api_token }}"
+        K8S_AUTH_VERIFY_SSL: "{{ openshift_validate_certs | default(false) | bool }}"
+      register: teardown_state_secrets
+      no_log: true
+
+    - name: Derive the roles that have state for this environment and OS
+      when: teardown_all_roles | bool
+      vars:
+        _state_prefix: "{{ aap_env_name }}-{{ provision_os_type }}-"
+      ansible.builtin.set_fact:
+        teardown_roles: >-
+          {{ teardown_state_secrets.resources
+             | map(attribute='metadata.labels')
+             | map(attribute='tfstateSecretSuffix', default='')
+             | select('match', '^' ~ (_state_prefix | regex_escape) ~ '[a-z][a-z0-9]{0,7}$')
+             | map('regex_replace', '^' ~ (_state_prefix | regex_escape), '')
+             | unique | sort | list }}
+
+    - name: Report the roles about to be torn down
+      when: teardown_all_roles | bool
+      ansible.builtin.debug:
+        msg: >-
+          all_roles=true: {{ teardown_roles | length }} role(s) with
+          {{ provision_os_type }} state on {{ aap_env_name }}:
+          {{ teardown_roles | join(', ') if teardown_roles else '(none — nothing to tear down)' }}
+
     # --- Provider dispatch -------------------------------------------------
     - name: "Run teardown: {{ provision_hypervisor }}"
+      when: not (teardown_all_roles | bool)
       ansible.builtin.include_tasks: "tasks/teardown_{{ provision_hypervisor }}.yml"
+
+    # ONCE PER ROLE. The task file keys its Terraform state by
+    # provision_vm_role, so overriding it per iteration is all a role needs.
+    # loop_var is not `item`, because the task file's own loops use `item`.
+    - name: "Run teardown for every role: {{ provision_hypervisor }}"
+      when: teardown_all_roles | bool
+      ansible.builtin.include_tasks: "tasks/teardown_{{ provision_hypervisor }}.yml"
+      vars:
+        provision_vm_role: "{{ teardown_role }}"
+      loop: "{{ teardown_roles }}"
+      loop_control:
+        loop_var: teardown_role
