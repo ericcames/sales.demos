@@ -243,12 +243,10 @@
     - name: Record time after portal deploy
       ansible.builtin.set_fact:
         setup_t_portal: "{{ now(utc=true).strftime('%s') | int }}"
-        generate_env_urls_with_creds: true
 
 - name: Phase 0 (9/11) — generate the environment URL reference
-  # WITH CREDS. setup.yml is always a laptop command and the vault is always
-  # available, so generate_env_urls_with_creds is set to true in the preceding
-  # timer play.
+  # Credentials are included by default (#565). setup.yml is always a laptop
+  # command and the vault is always available.
   ansible.builtin.import_playbook: generate_env_urls.yml
 
 - name: "Timer: after env URLs"

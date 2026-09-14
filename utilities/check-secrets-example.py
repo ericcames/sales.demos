@@ -65,7 +65,7 @@ STAGED: dict[str, str] = {
         "a playbook. The scanner only covers playbooks/ and inventory/."
     ),
     "kubeadmin_password": (
-        "Consumed by utilities/generate-env-urls.py (--with-creds), which reads "
+        "Consumed by utilities/generate-env-urls.py (creds included by default), which reads "
         "the vault directly via ansible-vault view + Python YAML parsing, not "
         "via Jinja in a playbook. The scanner only covers playbooks/ and inventory/."
     ),

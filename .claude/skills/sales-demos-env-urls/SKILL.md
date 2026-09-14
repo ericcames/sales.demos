@@ -6,8 +6,7 @@ description: "Regenerate the environment URL reference file (inventory/env-urls.
 # sales-demos-env-urls
 
 Regenerates `inventory/env-urls.yml` from the committed `connection.yml` files.
-The file is gitignored — it contains credentials when generated with
-`--with-creds` (#426, #429).
+The file is gitignored — credentials are included by default (#426, #429, #565).
 
 ## There is an AAP path too (#525)
 
@@ -39,7 +38,6 @@ export ANSIBLE_LOG_PATH=~/ansible-logs/generate-env-urls-$(date +%F-%H%M).log
 
 ./utilities/run-ansible.sh playbooks/generate_env_urls.yml -i inventory --limit "$ENV" \
   -e target_env="$ENV" \
-  -e generate_env_urls_with_creds=true \
   --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
 ```
 
@@ -48,6 +46,7 @@ Without credentials (URLs only):
 ```bash
 ./utilities/run-ansible.sh playbooks/generate_env_urls.yml -i inventory --limit "$ENV" \
   -e target_env="$ENV" \
+  -e generate_env_urls_with_creds=false \
   --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
 ```
 

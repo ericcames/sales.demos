@@ -15,9 +15,9 @@
 # which environment triggered the regeneration but the output always covers
 # all three.  That is by design — the file is a cross-environment reference.
 #
-# FROM THE LAPTOP (via skill):  --with-creds adds vault-decrypted passwords.
-# FROM AAP (via job template):  URLs only — the EE has no vault password file,
-# and the credentials are already in the vault.
+# FROM THE LAPTOP (via skill):  credentials are included by default.
+# FROM AAP (via job template):  pass -e generate_env_urls_with_creds=false —
+# the EE has no vault password file, and the credentials are already in the vault.
 # ===========================================================================
 
 - name: Generate environment URLs
@@ -32,7 +32,7 @@
       ansible.builtin.command:
         cmd: >-
           python3 utilities/generate-env-urls.py
-          {% if generate_env_urls_with_creds | default(false) | bool %}--with-creds{% endif %}
+          {% if generate_env_urls_with_creds | default(true) | bool %}--with-creds{% endif %}
         chdir: "{{ playbook_dir | dirname }}"
       register: generate_result
       changed_when: "'Wrote' in generate_result.stdout"
