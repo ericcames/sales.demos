@@ -565,12 +565,16 @@ Environment secrets.
     | while read -r b; do git show-ref -q --verify "refs/heads/$b" && echo "$b"; done
   ```
 
-  **Use `-d`, never `-D`.** With an upstream set (every branch here has one via
+  **Use `-d` by default.** With an upstream set (every branch here has one via
   `git push -u`), `-d` checks "pushed to upstream", not "merged into HEAD".
   After a squash merge it prints a warning about "not yet merged to HEAD" —
-  **that is expected and means nothing**. Confirm with `gh pr view <n>` if
-  unsure. `-d` still catches unpushed work, which is the loss that actually
-  matters.
+  **that is expected and means nothing**. `-d` still catches unpushed work,
+  which is the loss that actually matters.
+
+  **Once the upstream is gone, `-D` is correct** (#571). After
+  `delete_branch_on_merge` and a `fetch --prune`, `-d` falls back to HEAD and
+  refuses *every* squash-merged branch. Confirm `gh pr view <n>` says MERGED
+  and `git status` is clean in any worktree on it, then `-D`.
 
   **`main` is now protected, and the rule above is enforced rather than
   trusted.** Recorded here for the same reason as the line above: it is a
