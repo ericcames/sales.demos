@@ -1,0 +1,88 @@
+---
+# ===========================================================================
+# approve_first_installplan.yml: approve an OLM Subscription's FIRST
+# InstallPlan, and never an upgrade. (#593)
+#
+# CALLERS: install_ao.yml, once for each Manual Subscription (CloudNativePG
+# and the Automation Orchestrator operator).
+#
+# WHY IT EXISTS. `installPlanApproval: Manual` holds upgrades, which is the
+# point: on 2026-09-09 an unattended AO build broke SSO in a sibling repo with
+# no configuration change on their side. But Manual also holds the first
+# install. Without this file, setup.yml would wait on a CSV that never installs
+# until the retries run out.
+#
+# THE RULE THAT KEEPS RE-RUNS SAFE. Approve only while the Subscription has no
+# `status.installedCSV`, meaning nothing is installed yet. Once an operator is
+# installed, a pending InstallPlan can only be an upgrade, and unapproved is
+# exactly the state it should stay in. "Approve whatever is unapproved" would
+# quietly undo the whole change on the next run.
+#
+# BY NAME, NEVER items[0]. The InstallPlan approved is the one the Subscription
+# names in `status.installPlanRef`, and only if it installs the Subscription's
+# own `status.currentCSV`. That is the same trap install_ao.yml documents for
+# CSVs.
+#
+# Inputs: installplan_subscription, installplan_namespace.
+# Optional: installplan_wait_retries (60), installplan_wait_delay (20).
+# ===========================================================================
+
+- name: Wait for the Subscription to resolve an InstallPlan or report an installed CSV | {{ installplan_subscription }}
+  kubernetes.core.k8s_info:
+    api_version: operators.coreos.com/v1alpha1
+    kind: Subscription
+    name: "{{ installplan_subscription }}"
+    namespace: "{{ installplan_namespace }}"
+  register: installplan_sub
+  retries: "{{ installplan_wait_retries | default(60) }}"
+  delay: "{{ installplan_wait_delay | default(20) }}"
+  until:
+    - installplan_sub.resources | default([]) | length > 0
+    - >-
+      (installplan_sub.resources[0].status | default({})).installedCSV is defined
+      or (installplan_sub.resources[0].status | default({})).installPlanRef is defined
+
+- name: Record the Subscription status | {{ installplan_subscription }}
+  ansible.builtin.set_fact:
+    installplan_status: "{{ installplan_sub.resources[0].status | default({}) }}"
+
+- name: Read the InstallPlan the Subscription names, by name | {{ installplan_subscription }}
+  when: installplan_status.installedCSV is not defined
+  kubernetes.core.k8s_info:
+    api_version: operators.coreos.com/v1alpha1
+    kind: InstallPlan
+    name: "{{ installplan_status.installPlanRef.name }}"
+    namespace: "{{ installplan_namespace }}"
+  register: installplan_plan
+
+- name: Approve the first InstallPlan, never an upgrade | {{ installplan_subscription }}
+  when:
+    - installplan_status.installedCSV is not defined
+    - installplan_plan.resources | default([]) | length > 0
+    - installplan_status.currentCSV | default('') in (installplan_plan.resources[0].spec.clusterServiceVersionNames | default([]))
+    - not (installplan_plan.resources[0].spec.approved | default(false) | bool)
+  kubernetes.core.k8s:
+    state: patched
+    merge_type: merge
+    definition:
+      apiVersion: operators.coreos.com/v1alpha1
+      kind: InstallPlan
+      metadata:
+        name: "{{ installplan_status.installPlanRef.name }}"
+        namespace: "{{ installplan_namespace }}"
+      spec:
+        approved: true
+
+- name: Report whether an upgrade is being held, and approve nothing | {{ installplan_subscription }}
+  when: installplan_status.installedCSV is defined
+  ansible.builtin.debug:
+    msg: >-
+      {{ installplan_subscription }} has {{ installplan_status.installedCSV }} installed.
+      {% if installplan_status.currentCSV | default(installplan_status.installedCSV) != installplan_status.installedCSV %}
+      An upgrade to {{ installplan_status.currentCSV }} is WAITING FOR APPROVAL and was not approved.
+      To take it deliberately:
+      oc get installplan -n {{ installplan_namespace }};
+      oc patch installplan <name> -n {{ installplan_namespace }} --type merge -p '{"spec":{"approved":true}}'
+      {% else %}
+      No upgrade is pending.
+      {% endif %}

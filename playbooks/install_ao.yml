@@ -178,7 +178,25 @@
             channel: "{{ cnpg_channel }}"
             source: "{{ cnpg_catalog_source }}"
             sourceNamespace: "{{ ao_catalog_source_namespace }}"
-            installPlanApproval: Automatic
+            # MANUAL, NOT AUTOMATIC (#593). Automatic lets OLM apply a new
+            # build unattended, possibly mid-demo, and nothing records that it
+            # happened. Manual holds upgrades but does NOT pin a version: a
+            # fresh install still takes the channel head. The next task
+            # approves that first install, and only that. Re-running this on an
+            # existing environment switches it to Manual in place.
+            #
+            # To take an upgrade deliberately:
+            #   oc get installplan -n cnpg-system
+            #   oc patch installplan <name> -n cnpg-system --type merge -p '{"spec":{"approved":true}}'
+            installPlanApproval: Manual
+
+    - name: Approve CloudNativePG's first InstallPlan, never an upgrade
+      ansible.builtin.include_tasks: tasks/approve_first_installplan.yml
+      vars:
+        installplan_subscription: "{{ cnpg_package }}"
+        installplan_namespace: "{{ cnpg_namespace }}"
+        installplan_wait_retries: "{{ ao_wait_retries }}"
+        installplan_wait_delay: "{{ ao_wait_delay }}"
 
     - name: Wait for the CloudNativePG ClusterServiceVersion to succeed
       # SELECT BY NAME, NEVER items[0]. An AllNamespaces operator has its CSV
@@ -377,7 +395,29 @@
             channel: "{{ ao_channel }}"
             source: "{{ ao_catalog_source }}"
             sourceNamespace: "{{ ao_catalog_source_namespace }}"
-            installPlanApproval: Automatic
+            # MANUAL, NOT AUTOMATIC (#593). This is the Subscription with
+            # evidence: AO's `stable` channel ships builds continuously, and on
+            # 2026-09-09 an automatic upgrade to v2026.8.1788958058 added SSRF
+            # checks to OIDC and broke AAP single sign-on in
+            # mlowcher61/automation-orchestrator-openshift with no config
+            # change. Same approval rules as the CloudNativePG Subscription.
+            #
+            # To take an upgrade deliberately:
+            #   oc get installplan -n automation-orchestrator-operator-system
+            #   oc patch installplan <name> -n automation-orchestrator-operator-system \
+            #     --type merge -p '{"spec":{"approved":true}}'
+            # THEN RE-RUN configure_ao.yml. Its APP_* env vars are patched onto
+            # ao-backend, which this operator owns, and an upgrade may
+            # regenerate that Deployment without them (#608).
+            installPlanApproval: Manual
+
+    - name: Approve the Automation Orchestrator operator's first InstallPlan, never an upgrade
+      ansible.builtin.include_tasks: tasks/approve_first_installplan.yml
+      vars:
+        installplan_subscription: "{{ ao_package }}"
+        installplan_namespace: "{{ ao_operator_namespace }}"
+        installplan_wait_retries: "{{ ao_wait_retries }}"
+        installplan_wait_delay: "{{ ao_wait_delay }}"
 
     - name: Wait for the Automation Orchestrator ClusterServiceVersion to succeed
       kubernetes.core.k8s_info:
