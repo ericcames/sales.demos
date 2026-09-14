@@ -22,6 +22,14 @@ playbook logic of its own — it calls `setup.yml`, invokes
 runs `probe_env.yml`, and updates gitignored local files. The playbooks do the
 work; this skill sequences them.
 
+## Quick start
+
+A new RHDP environment needs three inputs from its RHDP page: the **AAP URL**,
+the **AAP admin password**, and the **kubeadmin password**. The passwords go
+into the vault with `utilities/set-env-passwords.sh`; the URL goes in the
+prompt. The copy-paste commands live in one place, the
+[New environment quick start](https://ericcames.github.io/sales.demos-docs/reference/new-environment/#quick-start) — do not duplicate them here.
+
 ## When to use this vs the pieces
 
 | Situation | Use |
@@ -46,10 +54,11 @@ Derive:
 - `openshift_api_url`: `https://api.cluster-<id>.dyn.redhatworkshops.io:6443`
 - `openshift_apps_domain`: `apps.cluster-<id>.dyn.redhatworkshops.io`
 
-## Step 2 — Ask which environment
+## Step 2 — Which environment
 
-Ask: **sandbox, demo, or edge?** Default to `sandbox` if the user does not
-specify.
+If the prompt names one (`/sales-demos-bootstrap sandbox <url>`), use it.
+Otherwise ask: **sandbox, demo, or edge?** Default to `sandbox` if the user
+does not specify.
 
 Edge is different — it is a persistent bare-metal SNO, not an RHDP
 provisioning. If the user says edge, confirm they mean the NUC at
@@ -100,9 +109,20 @@ for key in ["aap_password", "kubeadmin_password"]:
 '
 ```
 
-If either is missing, tell the user to run
+If either is missing, **stop** and tell the user to run this in a terminal
+in the repo (the prompts hide input, so they need a real terminal):
+
+```bash
+bash utilities/set-env-passwords.sh <env>
+```
+
+Never ask the user to paste a password into the conversation. If the secrets
+file itself does not exist, that is
 [`/sales-demos-first-time`](https://github.com/ericcames/sales.demos/blob/main/.claude/skills/sales-demos-first-time/SKILL.md)
-to populate the vault, and **stop**. Do not proceed with missing credentials.
+instead.
+
+This check sees only *presence*. A password left over from the previous
+environment reads as present — the token derivation below is what catches it.
 
 Then derive a fresh `openshift_api_token` and store it in the vault:
 
@@ -114,6 +134,8 @@ This OAuth-authenticates with `kubeadmin_password`, reads (or creates) a
 long-lived ServiceAccount token from the cluster, and writes it to
 `env_secrets.<env>.openshift_api_token` in the vault. If it fails, the cluster
 is unreachable or the kubeadmin password is wrong — stop and tell the user.
+A stale `kubeadmin_password` from the old environment is the usual cause; the
+fix is `bash utilities/set-env-passwords.sh <env>`, then re-run this step.
 
 ## Step 5 — Run preflight
 
@@ -230,18 +252,20 @@ Print a final summary covering:
 ## What this does NOT do
 
 - **Does not commit `connection.yml`.** Uses `local.yml` (gitignored) so there
-  is nothing to push. Committing `connection.yml` is a separate step for when
-  the environment is stable and you want AAP job templates to use it.
+  is nothing to push. Committing `connection.yml` (`utilities/update-connection.sh`)
+  is a separate step for when the environment is stable; it refreshes the
+  upstream reference for fresh clones.
 - **Does not commit anything.** All changes are to gitignored files (`local.yml`,
   kubeconfigs, bearer tokens, `settings.local.json`).
 - **Does not create the vault from scratch.** That is
   [`/sales-demos-first-time`](https://github.com/ericcames/sales.demos/blob/main/.claude/skills/sales-demos-first-time/SKILL.md).
-  Run it first if the vault does not exist or is missing `aap_password` and
-  `kubeadmin_password`. `openshift_api_token` is derived automatically in step 4.
-- **Does not deploy to AAP job templates.** AAP reads from the SCM checkout,
-  which uses the committed `connection.yml`. To make AAP job templates target the
-  new cluster, commit the updated `connection.yml` and let the project sync
-  pick it up.
+  Run it first if the secrets file does not exist. Per-environment passwords
+  go in with `utilities/set-env-passwords.sh`; `openshift_api_token` is derived
+  automatically in step 4.
+- **Does not need a commit for AAP to see the new cluster.** `setup.yml` runs
+  `config.yml`, which resolves `local.yml` on the laptop and writes the
+  effective values into the AAP inventory as host variables. Job templates
+  read those, not `connection.yml` from the SCM checkout.
 - **Does not run link_hub.yml.** Attaching the Galaxy credential to the
   organization is opt-in and separate — see
   [`/pah-link-aap`](https://github.com/ericcames/sales.demos/blob/main/.claude/skills/pah-link-aap/SKILL.md).
@@ -253,8 +277,9 @@ Most failures are in the `setup.yml` run (step 7). See the failure table in
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| Vault credentials missing (step 4) | New environment, vault not updated | Run [`/sales-demos-first-time`](https://github.com/ericcames/sales.demos/blob/main/.claude/skills/sales-demos-first-time/SKILL.md) |
-| Token derivation fails (step 4) | kubeadmin_password wrong or cluster unreachable | Check `kubeadmin_password` in the vault; verify cluster DNS resolves |
+| Vault credentials missing (step 4) | New environment, vault not updated | `bash utilities/set-env-passwords.sh <env>` in a terminal |
+| Secrets file does not exist (step 4) | Machine never set up | Run [`/sales-demos-first-time`](https://github.com/ericcames/sales.demos/blob/main/.claude/skills/sales-demos-first-time/SKILL.md) |
+| Token derivation fails (step 4) | kubeadmin_password stale from the old environment, or cluster unreachable | `bash utilities/set-env-passwords.sh <env>`; verify cluster DNS resolves |
 | Cluster unreachable (step 6) | Environment expired or not provisioned | Check RHDP environment status; re-run `derive-ocp-token.sh` |
 | `setup.yml` fails (step 7) | See the setup skill's failure table | Check `$ANSIBLE_LOG_PATH` |
 | MCP servers fail (step 8) | Kubeconfig or token stale | Re-run [`/sales-demos-mcp`](https://github.com/ericcames/sales.demos/blob/main/.claude/skills/sales-demos-mcp/SKILL.md) |
