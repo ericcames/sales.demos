@@ -3,11 +3,16 @@
 # update-connection.sh — propagate local.yml overrides into connection.yml
 #
 # local.yml is a gitignored per-environment override that lets an SE point
-# their laptop at a different cluster without editing a committed file.
-# AAP reads the committed connection.yml from its SCM checkout, so local.yml
-# is invisible to it. This script bridges that gap: it reads local.yml and
-# updates the matching keys in connection.yml, preserving comments and
-# formatting.
+# at a different cluster without editing a committed file. It already reaches
+# AAP without this script: config.yml runs from the laptop, where local.yml is
+# loaded, and writes the effective values as AAP host variables (#528, see
+# inventory/group_vars/aap/controller_hosts.yml).
+#
+# What this script is for is the committed upstream reference. connection.yml
+# is what a fresh clone starts from, so once an environment is stable a
+# collaborator runs this to copy local.yml's keys into it, preserving comments
+# and formatting, and commits the result. A stale connection.yml during active
+# work is expected, not a defect.
 #
 # Usage:
 #     bash utilities/update-connection.sh <env>

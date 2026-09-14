@@ -7,10 +7,11 @@
 # cloner's local.yml overlay is invisible. Every template targets the upstream
 # cluster, not the cloner's.
 #
-# THE FIX: config.yml already runs from the laptop and reads the LOCAL
-# connection.yml (updated by update-connection.sh from local.yml). This file
-# tells the dispatch role to write the cluster-specific variables as HOST
-# variables on each control host. AAP host vars override SCM-sourced group
+# THE FIX: config.yml already runs from the laptop, where Ansible loads
+# local.yml after connection.yml, so the templates below resolve to the
+# EFFECTIVE values — no update-connection.sh step needed. This file tells the
+# dispatch role to write the cluster-specific variables as HOST variables on
+# each control host. AAP host vars override SCM-sourced group
 # vars (standard Ansible precedence), and the SCM inventory source has
 # overwrite_vars: false, so a sync does not clobber them.
 #
