@@ -244,8 +244,8 @@ def main() -> None:
     content = build_yaml(envs, with_creds=args.with_creds, usernames=usernames, secrets=secrets)
 
     if args.check:
-        # --check compares URL-only output regardless of --with-creds, because
-        # CI has no vault access.
+        # --check compares URL-only output whether or not credentials were
+        # included (--no-creds), because CI has no vault access.
         check_content = build_yaml(envs)
         if not OUTPUT.exists():
             print(f"MISSING: {OUTPUT.relative_to(REPO_ROOT)}", file=sys.stderr)

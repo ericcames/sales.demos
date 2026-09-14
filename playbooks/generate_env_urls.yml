@@ -29,10 +29,12 @@
       ansible.builtin.include_tasks: tasks/assert_target_environment.yml
 
     - name: Generate env-urls.yml
+      # The script includes credentials by default and opts OUT with --no-creds
+      # (#565). It has no --with-creds; passing it is an argparse error (#591).
       ansible.builtin.command:
         cmd: >-
           python3 utilities/generate-env-urls.py
-          {% if generate_env_urls_with_creds | default(true) | bool %}--with-creds{% endif %}
+          {% if not (generate_env_urls_with_creds | default(true) | bool) %}--no-creds{% endif %}
         chdir: "{{ playbook_dir | dirname }}"
       register: generate_result
       changed_when: "'Wrote' in generate_result.stdout"
