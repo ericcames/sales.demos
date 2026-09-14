@@ -91,12 +91,41 @@ for c in req:
     elif have != want:
         print(f"DRIFT     {name:38} pinned {want}, installed {have}"); bad += 1
     else:
-        print(f"OK        {name:38} {want}")
+        # Right version is not the same as intact files (#601): check them
+        # against the collection's own FILES.json checksums.
+        v = subprocess.run(["ansible-galaxy", "collection", "verify", "--offline", name],
+                           capture_output=True, text=True)
+        vout = v.stdout + v.stderr
+        # Python writes __pycache__ into collections at import time; not tampering.
+        changed = [l.strip() for l in vout.splitlines()
+                   if l.startswith("    ") and "__pycache__" not in l]
+        if changed:
+            print(f"MODIFIED  {name:38} {', '.join(changed)}"); bad += 1
+        elif v.returncode and "modified content" not in vout:
+            last = vout.strip().splitlines()[-1:] or ["verify failed"]
+            print(f"UNVERIFIED {name:37} {last[0]}"); bad += 1
+        else:
+            print(f"OK        {name:38} {want}")
 print("\n" + ("Everything pinned and installed as specified."
               if not bad else f"{bad} item(s) need attention."))
 sys.exit(0 if not bad else 1)
 PY
 ```
+
+**`MODIFIED` means files inside a correctly versioned collection were changed.**
+The known cause is ansible-lint 26.x writing its mock stubs over real modules
+(#601; see CONTRIBUTING.md for the safe way to run it). A task failing with
+`Supported parameters include: .` (an empty list) is the same problem. Repair
+just that collection, then re-run the audit:
+
+```bash
+ansible-galaxy collection install --force --no-deps <namespace.name>:<pinned-version>
+```
+
+The check uses `verify --offline` rather than searching for
+`argument_spec=dict()`, because several genuine modules and tests (such as
+`community.general.ohai`) have an empty spec, so a grep needs an allowlist that
+goes stale.
 
 ## Pin
 

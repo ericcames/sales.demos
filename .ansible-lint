@@ -5,6 +5,17 @@
 # roles the playbooks call from them, otherwise syntax-check fails with
 # "couldn't resolve module/action". Locally they resolve because the collections
 # are installed; CI is the clean case these mocks cover.
+#
+# THESE MOCKS CAN OVERWRITE REAL MODULES ON A LAPTOP (#601). ansible-lint 26.x
+# with `offline: true` writes each mock_modules entry into ANSIBLE_HOME, which
+# defaults to ~/.ansible, the same path the real collections are installed in.
+# A bare local run replaced 24 modules with empty stubs. The symptom was
+# "Supported parameters include: ." with an empty list. Run it as:
+#
+#   ANSIBLE_HOME="$(mktemp -d)" ansible-lint
+#
+# Do not "fix" this by removing `offline: true`. CI would then try to install
+# certified collections from Automation Hub with no token.
 offline: true
 profile: basic
 
