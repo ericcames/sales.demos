@@ -30,6 +30,24 @@ configuration.
 6. Waits for `Ready=True`, then **asks the Route for a page** and requires a
    `200`.
 
+**Both operator Subscriptions use `installPlanApproval: Manual`** (#593). The
+playbook approves each operator's first InstallPlan, so a fresh install
+completes. It never approves an upgrade, so a new AO build cannot land
+unattended, which has already broken SSO once elsewhere. Manual does not pin a
+version; a new environment still gets the channel head. To take an upgrade
+deliberately:
+
+```bash
+oc get installplan -n automation-orchestrator-operator-system   # or cnpg-system
+oc patch installplan <name> -n automation-orchestrator-operator-system \
+  --type merge -p '{"spec":{"approved":true}}'
+```
+
+**After approving an AO operator upgrade, re-run
+[`/sales-demos-orchestrator-config`](https://github.com/ericcames/sales.demos/blob/main/.claude/skills/sales-demos-orchestrator-config/SKILL.md).**
+Its `APP_*` env vars live on the operator-owned `ao-backend` Deployment and may
+not survive the upgrade (#608).
+
 ## Three databases, not two — the thing that will waste your afternoon
 
 The CRD requires exactly two secretRefs, `backendDatabase` and
