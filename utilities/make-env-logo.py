@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """Generate an AAP sign-in logo badged with the environment name.
 
-Ported from ericcames/aap_config, with this repo's two environments in place of
-its dev/qa/prod. Extends the official Ansible Automation Platform lockup rather
+Ported from ericcames/aap_config, with this repo's environments (sandbox, demo,
+edge — whatever env_colors.COLORS defines) in place of its dev/qa/prod. Extends the official Ansible Automation Platform lockup rather
 than replacing it, so the product branding survives and only an environment
 marker is added. The result is set as the gateway's `custom_logo`, which renders
 on the LOGIN page beside `custom_login_info`.
 
-Both environments look identical at the sign-in page otherwise, and the moment
+Every environment looks identical at the sign-in page otherwise, and the moment
 you are most likely to act on the wrong one is the moment before you have
 touched anything.
 
@@ -129,7 +129,7 @@ def build(env: str) -> pathlib.Path:
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--env", required=True, help="sandbox or demo")
+    ap.add_argument("--env", required=True, help=f"one of: {', '.join(COLORS)}")
     args = ap.parse_args()
     p = build(args.env)
     size = p.stat().st_size
