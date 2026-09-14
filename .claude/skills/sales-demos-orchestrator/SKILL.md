@@ -138,7 +138,7 @@ volume) are vars with working defaults. Override them only for a reason.
 mkdir -p ~/ansible-logs
 export ANSIBLE_LOG_PATH=~/ansible-logs/install-ao-sandbox-$(date +%F-%H%M).log
 
-ansible-playbook playbooks/install_ao.yml -i inventory --limit sandbox -e target_env=sandbox \
+./utilities/run-ansible.sh playbooks/install_ao.yml -i inventory --limit sandbox -e target_env=sandbox \
   --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
 ```
 

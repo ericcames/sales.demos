@@ -41,7 +41,7 @@ free-tier limit.
 ## Reversal
 
 ```bash
-ansible-playbook playbooks/deploy_alloy.yml -i inventory --limit sandbox \
+./utilities/run-ansible.sh playbooks/deploy_alloy.yml -i inventory --limit sandbox \
   -e target_env=sandbox -e alloy_state=absent \
   --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
 ```
@@ -75,7 +75,7 @@ Everything else — Grafana Cloud endpoints, AAP credentials, cluster connection
 mkdir -p ~/ansible-logs
 export ANSIBLE_LOG_PATH=~/ansible-logs/deploy-alloy-sandbox-$(date +%F-%H%M).log
 
-ansible-playbook playbooks/deploy_alloy.yml -i inventory --limit sandbox \
+./utilities/run-ansible.sh playbooks/deploy_alloy.yml -i inventory --limit sandbox \
   -e target_env=sandbox \
   --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
 ```

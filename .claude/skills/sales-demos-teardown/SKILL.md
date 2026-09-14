@@ -60,7 +60,7 @@ Be especially careful with `demo`: it is the environment customers are shown.
 ## Run
 
 ```bash
-ansible-playbook playbooks/teardown.yml -i inventory --limit sandbox \
+./utilities/run-ansible.sh playbooks/teardown.yml -i inventory --limit sandbox \
   -e target_env=sandbox \
   --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
 ```

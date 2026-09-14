@@ -37,7 +37,7 @@ ENV="${ENV:-sandbox}"
 mkdir -p ~/ansible-logs
 export ANSIBLE_LOG_PATH=~/ansible-logs/generate-env-urls-$(date +%F-%H%M).log
 
-ansible-playbook playbooks/generate_env_urls.yml -i inventory --limit "$ENV" \
+./utilities/run-ansible.sh playbooks/generate_env_urls.yml -i inventory --limit "$ENV" \
   -e target_env="$ENV" \
   -e generate_env_urls_with_creds=true \
   --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
@@ -46,7 +46,7 @@ ansible-playbook playbooks/generate_env_urls.yml -i inventory --limit "$ENV" \
 Without credentials (URLs only):
 
 ```bash
-ansible-playbook playbooks/generate_env_urls.yml -i inventory --limit "$ENV" \
+./utilities/run-ansible.sh playbooks/generate_env_urls.yml -i inventory --limit "$ENV" \
   -e target_env="$ENV" \
   --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
 ```

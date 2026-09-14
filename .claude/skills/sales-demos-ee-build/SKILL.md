@@ -107,9 +107,9 @@ Then set the new tag in `inventory/group_vars/aap/controller_execution_environme
 and apply it:
 
 ```bash
-ansible-playbook playbooks/validate.yml --check -i inventory --limit sandbox -e target_env=sandbox \
+./utilities/run-ansible.sh playbooks/validate.yml --check -i inventory --limit sandbox -e target_env=sandbox \
   --vault-id sales.demos@~/secrets/.vault_pass_sales_demos   # check mode first; --check is required (#173)
-ansible-playbook playbooks/config.yml   -i inventory --limit sandbox -e target_env=sandbox \
+./utilities/run-ansible.sh playbooks/config.yml   -i inventory --limit sandbox -e target_env=sandbox \
   --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
 ```
 

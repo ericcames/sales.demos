@@ -68,26 +68,16 @@ schedules, execution environments) **and syncs the project** to the latest
 mkdir -p ~/ansible-logs
 LOGFILE=~/ansible-logs/config-sandbox-$(date +%F-%H%M).log
 
-ANSIBLE_LOG_PATH="$LOGFILE" python3 -c "
-import subprocess, sys
-r = subprocess.run(
-    ['ansible-playbook', 'playbooks/config.yml',
-     '-i', 'inventory', '--limit', 'sandbox',
-     '-e', 'target_env=sandbox',
-     '--vault-id', 'sales.demos@$HOME/secrets/.vault_pass_sales_demos'],
-    cwd='$(pwd)')
-sys.exit(r.returncode)
-"
+ANSIBLE_LOG_PATH="$LOGFILE" ./utilities/run-ansible.sh playbooks/config.yml \
+  -i inventory --limit sandbox \
+  -e target_env=sandbox \
+  --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
 echo "Log: $LOGFILE"
 ```
 
 **Never pipe through `tee`.** In a pipeline the exit status is `tee`'s, not the
 playbook's, so a failed run reports success. `ANSIBLE_LOG_PATH` writes the log
 without a pipeline.
-
-**Why `python3 -c` instead of `ansible-playbook` directly?** Ansible's blocking
-IO detection fails under some terminal multiplexers. Wrapping in
-`subprocess.run()` avoids `Non-blocking file handles detected`.
 
 **`--limit` is mandatory.** Without it the play matches both environments and
 fails an assertion. `target_env` is belt-and-suspenders — it verifies the
@@ -138,7 +128,6 @@ SSH into the guest and check the MOTD renders with both URLs.
 |---|---|---|
 | `config.yml` fails with a censored error on credential types | AAP rejects `inputs` modifications on credential types that have credentials attached | Delete the credential (API DELETE), then the credential type, then re-run `config.yml` — it recreates both. This is a one-time manual step per schema change. |
 | Workflow runs but changes have no effect | `scm_update_on_launch: false` — the project is still on the old revision | Run `config.yml` first. It syncs the project. |
-| `ansible-playbook` fails with `Non-blocking file handles detected` | Terminal multiplexer / Claude Code IO interaction | Wrap in `python3 -c "import subprocess; ..."` as shown above |
 | MOTD or job template missing a new variable | Project revision lags — read the project update output (`Repository Version <sha>`), not the project's `scm_revision` field | Confirm the sync completed, then re-launch the workflow |
 
 ## What this does NOT replace

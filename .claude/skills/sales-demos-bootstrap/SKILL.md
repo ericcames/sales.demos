@@ -141,23 +141,16 @@ user to get a fresh one from the OpenShift console (*Copy login command*).
 
 ## Step 7 — Run setup.yml
 
-This is the main event. All 11 stages, ~25-30 minutes. Wrap in
-`python3 subprocess.run()` for Claude Code's blocking IO.
+This is the main event. All 11 stages, ~25-30 minutes.
 
 ```bash
 mkdir -p ~/ansible-logs
 export ANSIBLE_LOG_PATH=~/ansible-logs/sales-demos-bootstrap-${ENV}-$(date +%F-%H%M).log
-```
 
-```python
-import subprocess, os
-result = subprocess.run(
-    ["ansible-playbook", "playbooks/setup.yml",
-     "-i", "inventory", "--limit", os.environ["ENV"],
-     "-e", f"target_env={os.environ['ENV']}",
-     "--vault-id", f"sales.demos@{os.path.expanduser('~/secrets/.vault_pass_sales_demos')}"],
-    capture_output=False
-)
+./utilities/run-ansible.sh playbooks/setup.yml \
+  -i inventory --limit "$ENV" \
+  -e target_env="$ENV" \
+  --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
 ```
 
 Tell the user this takes ~25-30 minutes. The timing summary at the end shows

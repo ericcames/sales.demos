@@ -69,7 +69,7 @@ ceph-rbd one; **noobaa reports `copy`** and will make every build slow.
 ## Run
 
 ```bash
-ansible-playbook playbooks/prepare_env.yml -i inventory --limit sandbox \
+./utilities/run-ansible.sh playbooks/prepare_env.yml -i inventory --limit sandbox \
   -e target_env=sandbox \
   --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
 ```

@@ -229,7 +229,7 @@ on the command line; that would put it in shell history.
 mkdir -p ~/ansible-logs
 export ANSIBLE_LOG_PATH=~/ansible-logs/sales-demos-setup-sandbox-$(date +%F-%H%M).log
 
-ansible-playbook playbooks/setup.yml -i inventory --limit sandbox -e target_env=sandbox \
+./utilities/run-ansible.sh playbooks/setup.yml -i inventory --limit sandbox -e target_env=sandbox \
   --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
 ```
 
@@ -254,17 +254,17 @@ Optional overrides, if the user has a reason:
 
 ```bash
 # Skip the portal and AO (fastest path — just CNV + AAP config + verify)
-ansible-playbook playbooks/setup.yml -i inventory --limit sandbox \
+./utilities/run-ansible.sh playbooks/setup.yml -i inventory --limit sandbox \
   --vault-id sales.demos@~/secrets/.vault_pass_sales_demos \
   -e target_env=sandbox -e install_ao=false -e install_portal=false
 
 # Pin scratch space to a specific StorageClass instead of the cluster default
-ansible-playbook playbooks/setup.yml -i inventory --limit sandbox \
+./utilities/run-ansible.sh playbooks/setup.yml -i inventory --limit sandbox \
   --vault-id sales.demos@~/secrets/.vault_pass_sales_demos \
   -e target_env=sandbox -e cnv_storage_class=<storageclass-name>
 
 # Skip the boot-source wait (returns as soon as the operator is Available)
-ansible-playbook playbooks/setup.yml -i inventory --limit sandbox \
+./utilities/run-ansible.sh playbooks/setup.yml -i inventory --limit sandbox \
   --vault-id sales.demos@~/secrets/.vault_pass_sales_demos \
   -e target_env=sandbox -e cnv_wait_for_datasource=false
 ```

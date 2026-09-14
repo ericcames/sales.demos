@@ -107,7 +107,7 @@ closure and refuses to write a set missing one.
 mkdir -p ~/ansible-logs
 export ANSIBLE_LOG_PATH=~/ansible-logs/pah-sync-sandbox-$(date +%F-%H%M).log
 
-ansible-playbook playbooks/sync_hub.yml -i inventory --limit sandbox \
+./utilities/run-ansible.sh playbooks/sync_hub.yml -i inventory --limit sandbox \
   -e target_env=sandbox \
   --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
 ```
@@ -172,7 +172,7 @@ from `hub/approved-collections.yml`, and that reconcile adds *and* removes.
 python3 utilities/refresh-hub-requirements.py --write-approved
 
 # Make the repository equal the file
-ansible-playbook playbooks/curate_hub.yml -i inventory --limit sandbox \
+./utilities/run-ansible.sh playbooks/curate_hub.yml -i inventory --limit sandbox \
   -e target_env=sandbox \
   --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
 ```

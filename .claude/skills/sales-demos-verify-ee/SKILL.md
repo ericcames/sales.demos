@@ -115,7 +115,7 @@ which makes it a **regression test**, not a smoke test. Run it both ways and
 compare:
 
 ```bash
-ansible-playbook playbooks/probe_env.yml -i inventory --limit sandbox \
+./utilities/run-ansible.sh playbooks/probe_env.yml -i inventory --limit sandbox \
   -e target_env=sandbox --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
 
 utilities/run-in-ee.sh playbooks/probe_env.yml -i inventory --limit sandbox \

@@ -113,7 +113,7 @@ once, on 2026-09-05, published two days later as
 ## Run
 
 ```bash
-ansible-playbook playbooks/link_windows_image.yml -i inventory --limit sandbox \
+./utilities/run-ansible.sh playbooks/link_windows_image.yml -i inventory --limit sandbox \
   -e target_env=sandbox \
   --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
 ```
@@ -122,7 +122,7 @@ And the reversal, which ships in the same change because this touches a
 cluster-wide boot source:
 
 ```bash
-ansible-playbook playbooks/link_windows_image.yml -i inventory --limit sandbox \
+./utilities/run-ansible.sh playbooks/link_windows_image.yml -i inventory --limit sandbox \
   -e target_env=sandbox -e windows_image_link_state=absent \
   --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
 ```

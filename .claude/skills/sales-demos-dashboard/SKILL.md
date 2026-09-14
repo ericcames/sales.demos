@@ -85,7 +85,7 @@ This is separate from the Viewer SA token used by the MCP server.
 mkdir -p ~/ansible-logs
 export ANSIBLE_LOG_PATH=~/ansible-logs/deploy-dashboard-$(date +%F-%H%M).log
 
-ansible-playbook playbooks/deploy_dashboard.yml -i inventory \
+./utilities/run-ansible.sh playbooks/deploy_dashboard.yml -i inventory \
   --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
 ```
 
