@@ -336,20 +336,24 @@ applied to the wrong server — check which entry in `.mcp.json` was launched.
 
 ### AAP
 
-Verify the AAP MCP server by hitting its endpoint directly:
+Verify the AAP MCP server by hitting its endpoint directly, with the same token
+and URL files the stdio bridge reads:
 
 ```bash
 ENV=${ENV:-sandbox}
-VAULT_ID="sales.demos@$HOME/secrets/.vault_pass_sales_demos"
-MCP_HOST=$(KUBECONFIG=$PWD/.kube/$ENV.kubeconfig oc get route aap-mcp -n aap -o jsonpath='{.spec.host}')
+AAP_MCP_URL=$(cat .aap/$ENV.url)      # already ends in /mcp
+AAP_MCP_TOKEN=$(cat .aap/$ENV.token)
 
-curl -sk -o /dev/null -w '%{http_code}\n' -X POST "https://$MCP_HOST/mcp" \
+curl -sk -o /dev/null -w '%{http_code}\n' -X POST "$AAP_MCP_URL" \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json, text/event-stream' \
+  -H "Authorization: Bearer $AAP_MCP_TOKEN" \
   -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"verify","version":"0"}}}'
 ```
 
-`200` and a body naming `"serverInfo":{"name":"aap"}` is the pass. **A `503` means
+`200` and a body naming `"serverInfo":{"name":"aap"}` is the pass. **The endpoint
+requires the bearer token** (#515), so a `401` from a request without the
+`Authorization` header proves nothing about the server (#594). **A `503` means
 the Route is admitted but the pod is not serving yet** — wait and retry rather
 than assuming a misconfiguration. Measured on a working sandbox: **140 tools**,
 including `job_templates_launch_create`, `workflow_job_templates_launch_create`
@@ -456,7 +460,8 @@ claude mcp list
 | Tools present but every call fails | Kubeconfig points at a different cluster than you think | `oc whoami --show-server` with `KUBECONFIG` set |
 | AAP MCP returns `503` | Route admitted, pod not serving yet | Wait — `oc get deploy aap-mcp -n aap`; this is normal for ~60s after deploy |
 | `aap-<env>` still dials the previous cluster after a restart, though `.aap/<env>.url` is current | A pre-#515 local-scope registration outranks `.mcp.json` (#603) | `claude mcp remove aap-<env> -s local` from the main checkout, restart. `check-mcp-staleness.sh <env>` names every such shadow |
-| AAP MCP returns `401` | Token expired or deleted | Re-create it: `bash utilities/make-aap-mcp.sh <env>`, then restart Claude Code |
+| AAP MCP returns `401` to a request with **no** `Authorization` header | The command is wrong, not the server: the endpoint requires the bearer token (#594) | Use the Verify → AAP block as written. Do **not** mint a new token for this |
+| AAP MCP returns `401` **with** `Authorization: Bearer $(cat .aap/<env>.token)` | Token expired or deleted | Re-create it: `bash utilities/make-aap-mcp.sh <env>`, then restart Claude Code. Retire the old token by hand; these do not clean themselves up |
 | AAP MCP write tools missing | `aap_mcp_allow_write_operations` is false for this environment | Intentional on `demo`. Changing it needs a delete-and-recreate — re-run `mcp_server.yml`, which handles that |
 | `npx: command not found` | Node not installed | See preflight; a standalone binary is the alternative |
 | `no aap-mcp route` from make-aap-mcp.sh | MCP server not deployed | Run `/sales-demos-setup` or `playbooks/mcp_server.yml` first |
