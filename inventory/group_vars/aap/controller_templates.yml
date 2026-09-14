@@ -479,10 +479,12 @@ controller_templates_all:
   # re-run the whole of setup.yml, which also reinstalls CNV and reapplies the
   # entire AAP configuration.
   #
-  # THIS DEPLOYS THE SERVER, NOT THE CLIENT. Wiring a laptop to it is
-  # `claude mcp add --scope local` via the sales-demos-mcp skill, which writes
-  # to the operator's own config and is deliberately laptop-only (#102). Do not
-  # expect this template to change anything on your machine.
+  # THIS DEPLOYS THE SERVER, NOT THE CLIENT. Wiring a laptop to it is the
+  # sales-demos-mcp skill: utilities/make-aap-mcp.sh mints a token and writes
+  # the gitignored .aap/<env>.token and .aap/<env>.url, which the committed
+  # .mcp.json stdio entry (utilities/aap-mcp-stdio.sh, #515) reads at launch.
+  # That half is deliberately laptop-only (#102). Do not expect this template
+  # to change anything on your machine.
   # ---------------------------------------------------------------------
   - name: "AAP Ecosystem - Install MCP Server"
     description: "Deploy the AAP MCP server into this environment. Deploys the SERVER only — wiring a laptop to it is the sales-demos-mcp skill."
