@@ -1,12 +1,19 @@
 ---
 name: sales-demos-env-urls
-description: "Regenerate the environment URL reference file (inventory/env-urls.yml) — a single-file lookup of every product URL and optionally credentials across all environments. Runs playbooks/generate_env_urls.yml. TRIGGER when: the user has repointed an environment, asks for all the URLs, or env-urls.yml is stale or missing. SKIP: if the user only needs one specific URL — read connection.yml instead."
+description: "Regenerate the environment URL reference file (env-urls.yml at the repo root) — a single-file lookup of every product URL and optionally credentials across all environments. Runs playbooks/generate_env_urls.yml. TRIGGER when: the user has repointed an environment, asks for all the URLs, or env-urls.yml is stale or missing. SKIP: if the user only needs one specific URL — read connection.yml instead."
 ---
 
 # sales-demos-env-urls
 
-Regenerates `inventory/env-urls.yml` from the committed `connection.yml` files.
-The file is gitignored — credentials are included by default (#426, #429, #565).
+Regenerates `env-urls.yml` at the repo root from the `connection.yml` files
+(and any `local.yml` overrides). The file is gitignored — credentials are
+included by default (#426, #429, #565).
+
+**It is not in `inventory/` any more, and must not go back** (#582). Every
+command passes `-i inventory`, and Ansible parses every file in that directory
+as an inventory source — the old location printed
+`Skipping key (portal) in group (sandbox)` warnings on every run. Regenerating
+deletes a leftover `inventory/env-urls.yml`.
 
 ## There is an AAP path too (#525)
 
