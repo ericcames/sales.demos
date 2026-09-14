@@ -38,6 +38,14 @@
     "aap-demo": {
       "command": "bash",
       "args": ["utilities/aap-mcp-stdio.sh", "demo"]
+    },
+    "portal-sandbox": {
+      "command": "bash",
+      "args": ["utilities/portal-mcp-stdio.sh", "sandbox"]
+    },
+    "portal-demo": {
+      "command": "bash",
+      "args": ["utilities/portal-mcp-stdio.sh", "demo"]
     }
   }
 }

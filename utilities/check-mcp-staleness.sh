@@ -11,6 +11,7 @@
 #   1. Kubeconfig server URL  vs.  effective openshift_api_url
 #   2. AAP MCP URL            vs.  effective openshift_apps_domain
 #   3. AO MCP registration    vs.  effective openshift_apps_domain
+#   4. Portal MCP URL         vs.  effective openshift_apps_domain (#555)
 #
 # Grafana is NOT checked — it is an external SaaS instance unrelated to
 # RHDP environment lifecycle.
@@ -144,7 +145,43 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# Check 3: AO MCP registration
+# Check 3: Portal MCP URL (#555)
+# ---------------------------------------------------------------------------
+
+PORTAL_URL_FILE="$REPO_ROOT/.portal/${ENV}.url"
+PORTAL_TOKEN_FILE="$REPO_ROOT/.portal/${ENV}.token"
+
+if [[ ! -f "$PORTAL_URL_FILE" ]] && [[ ! -f "$PORTAL_TOKEN_FILE" ]]; then
+  echo "⏭️  portal-$ENV: not configured (.portal/${ENV}.url and .token missing)"
+else
+  if [[ ! -f "$PORTAL_URL_FILE" ]]; then
+    echo "❌ portal-$ENV: .portal/${ENV}.url missing"
+    echo "   fix: bash utilities/make-portal-mcp.sh $ENV"
+    stale=$((stale + 1))
+  else
+    portal_mcp_url="$(cat "$PORTAL_URL_FILE")"
+    if echo "$portal_mcp_url" | grep -qF "$EFFECTIVE_APPS_DOMAIN"; then
+      echo "✅ portal-$ENV URL ($portal_mcp_url)"
+    else
+      echo "❌ portal-$ENV: URL is stale"
+      echo "     have:     $portal_mcp_url"
+      echo "     expected domain: $EFFECTIVE_APPS_DOMAIN"
+      echo "   fix: bash utilities/make-portal-mcp.sh $ENV"
+      stale=$((stale + 1))
+    fi
+  fi
+
+  if [[ ! -f "$PORTAL_TOKEN_FILE" ]]; then
+    echo "❌ portal-$ENV: .portal/${ENV}.token missing"
+    echo "   fix: bash utilities/make-portal-mcp.sh $ENV"
+    stale=$((stale + 1))
+  else
+    echo "✅ portal-$ENV token present"
+  fi
+fi
+
+# ---------------------------------------------------------------------------
+# Check 4: AO MCP registration
 # ---------------------------------------------------------------------------
 
 ao_url=""
