@@ -75,7 +75,7 @@ disagree with `oc describe node`:
 ## Run
 
 ```bash
-ansible-playbook playbooks/probe_env.yml -i inventory --limit sandbox \
+./utilities/run-ansible.sh playbooks/probe_env.yml -i inventory --limit sandbox \
   -e target_env=sandbox \
   --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
 ```

@@ -96,7 +96,7 @@ If any check fails, stop and tell the user which one and the fix beside it.
 **Then confirm `approved` is populated** — this skill's whole premise:
 
 ```bash
-ansible-playbook playbooks/curate_hub.yml -i inventory --limit $ENV \
+./utilities/run-ansible.sh playbooks/curate_hub.yml -i inventory --limit $ENV \
   -e target_env=$ENV \
   --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
 ```
@@ -108,7 +108,7 @@ report `Added N` — that is expected on a fresh hub, not a warning.
 ## Dry run first
 
 ```bash
-ansible-playbook playbooks/link_hub.yml -i inventory --limit sandbox \
+./utilities/run-ansible.sh playbooks/link_hub.yml -i inventory --limit sandbox \
   -e target_env=sandbox \
   --vault-id sales.demos@~/secrets/.vault_pass_sales_demos --check
 ```
@@ -123,7 +123,7 @@ is a real preflight rather than a play that skips its own checks.
 mkdir -p ~/ansible-logs
 export ANSIBLE_LOG_PATH=~/ansible-logs/pah-link-sandbox-$(date +%F-%H%M).log
 
-ansible-playbook playbooks/link_hub.yml -i inventory --limit sandbox \
+./utilities/run-ansible.sh playbooks/link_hub.yml -i inventory --limit sandbox \
   -e target_env=sandbox \
   --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
 ```
@@ -140,7 +140,7 @@ the playbook working, not the playbook broken.
 ### Reversing it
 
 ```bash
-ansible-playbook playbooks/link_hub.yml -i inventory --limit sandbox \
+./utilities/run-ansible.sh playbooks/link_hub.yml -i inventory --limit sandbox \
   -e target_env=sandbox -e hub_galaxy_link_state=absent \
   --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
 ```

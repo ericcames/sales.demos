@@ -71,7 +71,7 @@ To repoint to a new image tag, update `quay_rhel9_image` in
 ## Run
 
 ```bash
-ansible-playbook playbooks/link_rhel9_image.yml -i inventory --limit sandbox \
+./utilities/run-ansible.sh playbooks/link_rhel9_image.yml -i inventory --limit sandbox \
   -e target_env=sandbox \
   --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
 ```
@@ -79,7 +79,7 @@ ansible-playbook playbooks/link_rhel9_image.yml -i inventory --limit sandbox \
 And the reversal:
 
 ```bash
-ansible-playbook playbooks/link_rhel9_image.yml -i inventory --limit sandbox \
+./utilities/run-ansible.sh playbooks/link_rhel9_image.yml -i inventory --limit sandbox \
   -e target_env=sandbox -e rhel9_image_link_state=absent \
   --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
 ```

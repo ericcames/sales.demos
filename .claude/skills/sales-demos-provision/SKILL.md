@@ -63,7 +63,7 @@ minute later fixes the Windows half without re-provisioning.
 ## Run
 
 ```bash
-ansible-playbook playbooks/provision_vm.yml -i inventory --limit sandbox \
+./utilities/run-ansible.sh playbooks/provision_vm.yml -i inventory --limit sandbox \
   -e target_env=sandbox -e os_type=linux -e vm_size_tier=small \
   --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
 ```

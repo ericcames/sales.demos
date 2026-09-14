@@ -69,7 +69,7 @@ Only one input, and it has a default. Ask the user only if it is ambiguous:
 mkdir -p ~/ansible-logs
 export ANSIBLE_LOG_PATH=~/ansible-logs/portal-sandbox-$(date +%F-%H%M).log
 
-ansible-playbook playbooks/portal.yml -i inventory --limit sandbox -e target_env=sandbox \
+./utilities/run-ansible.sh playbooks/portal.yml -i inventory --limit sandbox -e target_env=sandbox \
   --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
 ```
 

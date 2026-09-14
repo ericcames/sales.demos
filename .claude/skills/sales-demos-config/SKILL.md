@@ -54,22 +54,12 @@ non-check path (#173).
 mkdir -p ~/ansible-logs
 LOGFILE=~/ansible-logs/validate-${ENV:-sandbox}-$(date +%F-%H%M).log
 
-ANSIBLE_LOG_PATH="$LOGFILE" python3 -c "
-import subprocess, sys
-r = subprocess.run(
-    ['ansible-playbook', 'playbooks/validate.yml', '--check',
-     '-i', 'inventory', '--limit', '${ENV:-sandbox}',
-     '-e', 'target_env=${ENV:-sandbox}',
-     '--vault-id', 'sales.demos@$HOME/secrets/.vault_pass_sales_demos'],
-    cwd='$(pwd)')
-sys.exit(r.returncode)
-"
+ANSIBLE_LOG_PATH="$LOGFILE" ./utilities/run-ansible.sh playbooks/validate.yml --check \
+  -i inventory --limit ${ENV:-sandbox} \
+  -e target_env=${ENV:-sandbox} \
+  --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
 echo "Validate log: $LOGFILE"
 ```
-
-**Why `python3 -c` instead of `ansible-playbook` directly?** Ansible's blocking
-IO detection fails under Claude Code's Bash tool (which sets non-blocking IO on
-stdout/stderr). `subprocess.run()` gives the child its own blocking file handles.
 
 **Skip the validate step only when you already know what failed** — a credential
 type that AAP refuses to modify (see below), or a re-run after fixing a single
@@ -87,16 +77,10 @@ variable. Otherwise run it.
 mkdir -p ~/ansible-logs
 LOGFILE=~/ansible-logs/config-${ENV:-sandbox}-$(date +%F-%H%M).log
 
-ANSIBLE_LOG_PATH="$LOGFILE" python3 -c "
-import subprocess, sys
-r = subprocess.run(
-    ['ansible-playbook', 'playbooks/config.yml',
-     '-i', 'inventory', '--limit', '${ENV:-sandbox}',
-     '-e', 'target_env=${ENV:-sandbox}',
-     '--vault-id', 'sales.demos@$HOME/secrets/.vault_pass_sales_demos'],
-    cwd='$(pwd)')
-sys.exit(r.returncode)
-"
+ANSIBLE_LOG_PATH="$LOGFILE" ./utilities/run-ansible.sh playbooks/config.yml \
+  -i inventory --limit ${ENV:-sandbox} \
+  -e target_env=${ENV:-sandbox} \
+  --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
 echo "Log: $LOGFILE"
 ```
 
