@@ -156,7 +156,11 @@ mkdir -p "$REPO_ROOT/.aap" && chmod 700 "$REPO_ROOT/.aap"
 printf '%s\n' "$TOKEN" > "$REPO_ROOT/.aap/${ENV_NAME}.token"
 chmod 600 "$REPO_ROOT/.aap/${ENV_NAME}.token"
 
-printf '%s\n' "https://$MCP_HOST" > "$REPO_ROOT/.aap/${ENV_NAME}.url"
+# The full Streamable HTTP endpoint, not the route root: aap-mcp-stdio.sh hands
+# this to supergateway verbatim, and the root answers 404 "Cannot POST /".
+# It was the bare host from #515 until #603, and nobody noticed because a
+# stale pre-#515 registration, which did carry /mcp, was shadowing it.
+printf '%s\n' "https://$MCP_HOST/mcp" > "$REPO_ROOT/.aap/${ENV_NAME}.url"
 chmod 600 "$REPO_ROOT/.aap/${ENV_NAME}.url"
 
 echo ""

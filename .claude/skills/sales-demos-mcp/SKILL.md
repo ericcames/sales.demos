@@ -108,7 +108,8 @@ than trust the removal (#603).
 
 `utilities/make-aap-mcp.sh` automates the full flow: resolve credentials from
 the vault, create a personal access token via the gateway API, find the MCP
-route, and write `.aap/<env>.token` and `.aap/<env>.url`. Token scope is always
+route, and write `.aap/<env>.token` and `.aap/<env>.url` — the full `/mcp`
+endpoint, since the route root answers `404` (#603). Token scope is always
 `write` — server-side enforcement (`aap_mcp_allow_write_operations`) is the
 real guard, not the token scope.
 

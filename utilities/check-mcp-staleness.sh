@@ -164,7 +164,7 @@ else
     else
       echo "❌ aap-$ENV: URL is stale"
       echo "     have:     $aap_mcp_url"
-      echo "     expected: https://aap-mcp-aap.$EFFECTIVE_APPS_DOMAIN"
+      echo "     expected: https://aap-mcp-aap.$EFFECTIVE_APPS_DOMAIN/mcp"
       echo "   fix: bash utilities/make-aap-mcp.sh $ENV"
       stale=$((stale + 1))
     fi
