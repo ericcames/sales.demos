@@ -24,8 +24,8 @@ which is the same reasoning that keeps `sales-demos-collections-sync`,
 | `openshift-sandbox` | kubeconfig | read-write | `.mcp.json` (committed) |
 | `openshift-demo` | kubeconfig | read-only | `.mcp.json` (committed) |
 | `openshift-edge` | kubeconfig | read-write | `.mcp.json` (committed) |
-| `aap-sandbox` | bearer token | read-write | `.mcp.json` (committed) |
-| `aap-demo` | bearer token | read-write | `.mcp.json` (committed) |
+| `aap-sandbox` | bearer token | read-write (server-side, `group_vars/sandbox/mcp.yml`) | `.mcp.json` (committed) |
+| `aap-demo` | bearer token | **read-only** (server-side, `group_vars/demo/mcp.yml`) | `.mcp.json` (committed) |
 | `portal-sandbox` | static token | read-only | `.mcp.json` (committed) |
 | `portal-demo` | static token | read-only | `.mcp.json` (committed) |
 | `ao-sandbox` | JWT (auto-refreshed) | read-only | `claude mcp add --scope local` |
@@ -52,11 +52,20 @@ all. A single server whose target changed underneath you would reintroduce
 exactly that, so the environment is in the server's *name* and you pick it by
 picking the tool.
 
-`demo`'s OpenShift server is `--read-only` because it is the environment
-customers watch. The AAP MCP server's posture is controlled server-side by
-`aap_mcp_allow_write_operations` — during setup it runs write-enabled so Claude
-can launch job templates; after setup, re-running `mcp_server.yml` without the
-override flips it to read-only with no Claude restart needed. See #102.
+`demo` is read-only on both servers, because it is the environment customers
+watch, and **the two guards live in different places and must move together**:
+
+- **OpenShift** — `--read-only` on `openshift-demo` in `.mcp.json`, enforced by
+  the client. You can see it in the tracked file.
+- **AAP** — `aap_mcp_allow_write_operations` in `inventory/group_vars/<env>/mcp.yml`
+  (`true` for sandbox, `false` for demo), enforced by the server. It is *not*
+  visible in `.mcp.json`, which is why this table names the file. Nothing
+  overrides it during setup: `setup.yml` deploys demo read-only from the start.
+
+Changing the AAP value means editing `mcp.yml` and re-running `mcp_server.yml`
+(or the **AAP Ecosystem - Install MCP Server** template), which deletes and
+recreates the server so the new permission actually takes effect. The token and
+URL do not change, so no Claude restart is needed. See #102.
 
 ### Grafana Cloud server
 
