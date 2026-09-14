@@ -123,6 +123,34 @@
            if (web_url | default('', true) | length > 0)
            else 'Summary JSON: <web_url>/compliance/summary.json' }}
 
+- name: Publish the result as job artifacts
+  # SO A DOWNSTREAM STEP CAN BRANCH ON IT (#613). An Automation Orchestrator
+  # workflow reads an AAP step's `artifacts` -- whatever set_stats published --
+  # as ${<step>.artifacts.windows_compliance.compliant}. Without this the scan
+  # offers nothing to branch on: the gate below is off by default, so
+  # job_status is `successful` whether or not the guest is compliant (#470).
+  #
+  # BEFORE THE GATE, for the same reason the report is: when the gate does
+  # fire, the result is already published rather than lost with the node.
+  #
+  # ONE TEMPLATE FOR THE WHOLE MAPPING, not one per key. A per-key quoted
+  # template renders to a string whatever it is filtered through, and AAP then
+  # stores "3" rather than 3 -- job artifacts from provision_artifacts.yml show
+  # exactly that. Built as a single dict, the counts stay integers and
+  # `compliant` stays a boolean a condition can test directly.
+  ansible.builtin.set_stats:
+    data:
+      windows_compliance: >-
+        {{ {
+             'pass': windows_compliance_pass | int,
+             'fail': windows_compliance_fail | int,
+             'notconfigured': windows_compliance_notconfigured | int,
+             'errors': windows_compliance_errors | int,
+             'score': windows_compliance_score | int,
+             'compliant': (windows_compliance_fail | int) == 0
+                          and (windows_compliance_notconfigured | int) == 0
+           } }}
+
 - name: Fail on any non-compliant control
   # OFF BY DEFAULT, and only ever fires on a control the producer's profile
   # ENABLES. The sixteen documented exceptions can never trip it -- they are
