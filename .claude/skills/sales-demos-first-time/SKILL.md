@@ -1,13 +1,13 @@
 ---
 name: sales-demos-first-time
-description: "First-time setup for the sales.demos repo on a new machine. Checks and guides every local prerequisite — Automation Hub token, the vault password and the secrets file you build from the example, pinned collections, the python kubernetes client, and the run-log directory — then validates each one. TRIGGER when: the user is new to this repo, asks how to get started, says prerequisites are missing, or hits errors about vault decryption, a missing vault password, `couldn't resolve module/action`, or an undefined connection variable. SKIP: if setup is already done and the user wants to run a phase — that is sales-demos-setup."
+description: "First-time setup for the sales.demos repo on a new machine. Checks and guides every local prerequisite — Automation Hub token, the vault password and the secrets file you build from the example, pinned collections, the python kubernetes client, the CLI tools (oc, terraform, virtctl, helm), the run-log directory, and the environment's passwords — then validates each one. TRIGGER when: the user is new to this repo, asks how to get started, says prerequisites are missing, or hits errors about vault decryption, a missing vault password, `couldn't resolve module/action`, or an undefined connection variable. SKIP: if setup is already done and the user wants to point at a new environment — that is sales-demos-bootstrap — or run a phase, which is that phase's own skill."
 ---
 
 # sales-demos-first-time
 
 Walks a new machine through every local prerequisite for this repo, then
-validates them. Run once per machine; after that go straight to
-`/sales-demos-setup`.
+validates them. Run once per machine; after that point it at an RHDP cluster
+with [`/sales-demos-bootstrap`](https://github.com/ericcames/sales.demos/blob/main/.claude/skills/sales-demos-bootstrap/SKILL.md).
 
 **This repo is self-contained.** Every skill it needs lives in
 `.claude/skills/` and is discovered natively — no marketplace, no plugin. Do not
@@ -26,8 +26,9 @@ Setting up sales.demos on this machine. About 10 minutes, once.
   2. Vault password                ~/secrets/.vault_pass_sales_demos
   3. Pinned collections            via /sales-demos-collections-sync
   4. Python kubernetes client
+  4.5 CLI tools                    oc, terraform, virtctl, helm (+ optional)
   5. Run-log directory             ~/ansible-logs/
-  6. Your environment's values     local.yml + vault + auto-derived API token
+  6. Your environment's values     local.yml + set-env-passwords.sh + derived API token
 
 Nothing here has to be asked of anyone. Since #130 you create the vault
 password and the secrets file yourself — step 2, case A.
@@ -70,8 +71,10 @@ python3 -c "import kubernetes" 2>/dev/null \
   && echo "EXISTS   python kubernetes client" || echo "MISSING  python kubernetes client"
 test -d ~/ansible-logs \
   && echo "EXISTS   ~/ansible-logs" || echo "MISSING  ~/ansible-logs"
-command -v oc >/dev/null \
-  && echo "EXISTS   oc" || echo "MISSING  oc"
+for tool in oc terraform virtctl helm; do
+  command -v "$tool" >/dev/null \
+    && echo "EXISTS   $tool" || echo "MISSING  $tool"
+done
 ls inventory/group_vars/*/local.yml >/dev/null 2>&1 \
   && echo "EXISTS   local.yml override(s) — you have repointed at least one env" \
   || echo "NONE     no local.yml — you will run against the committed clusters"
@@ -91,8 +94,8 @@ grep -A3 'galaxy_server.rh_certified' ~/.ansible.cfg | grep -qE '^token=.+' \
   && echo "✅ token present" || echo "❌ no token"
 ```
 
-If missing, get one from **console.redhat.com → Automation Hub → Connect to Hub →
-Load token**, then add these stanzas to `~/.ansible.cfg`:
+If missing, load one at https://console.redhat.com/ansible/automation-hub/token,
+then add these stanzas to `~/.ansible.cfg`:
 
 ```ini
 [galaxy]
@@ -151,7 +154,20 @@ cp playbooks/group_vars/all/secrets.yml.example \
 
 Now fill in real values. `secrets.yml.example` documents every key and where to
 get it, and CI keeps it honest — `utilities/check-secrets-example.py` fails the
-build if the code reads a key the example does not declare (#128). Then encrypt:
+build if the code reads a key the example does not declare (#128). Not every
+key is needed on day one — tell the user which ones matter now:
+
+| Keys | Needed |
+|---|---|
+| `vaulted_subscriptions_client_id`, `vaulted_subscriptions_client_secret` | Before `config.yml`. Must be **present** — `CHANGEME` lets the apply succeed, blank breaks it |
+| `env_secrets.<env>.aap_password`, `.kubeadmin_password` | Before touching an environment — step 6 |
+| `env_secrets.<env>.openshift_api_token` | Never typed. Leave the placeholder; step 6 derives it |
+| `rhsm_org_id`, `rhsm_activation_key` | Before a Linux guest registers (Phase 4) — step 7 checks them |
+| `demo_ssh_private_key`, `.linux_admin_password`, `.windows_admin_password` | Before provisioning demo VMs. Windows needs 14+ characters |
+| `quay_username`, `quay_password` | Windows golden image only |
+| `grafana_cloud_*` | Grafana Cloud only |
+
+Then encrypt:
 
 ```bash
 ansible-vault encrypt playbooks/group_vars/all/secrets.yml \
@@ -182,13 +198,11 @@ ansible-vault view playbooks/group_vars/all/secrets.yml \
 nothing can restore them. Losing the password makes the file unrecoverable;
 losing the file loses both environments' credentials.
 
-`~/secrets/` also holds `.vault_pass_azure` and `.vault_pass_qa` for
-`aap_config`. Same convention, one file per vault ID.
-
 **Keeping vault passwords somewhere else?** Export `SALES_DEMOS_VAULT_PASS` with
-the full path. One variable moves both consumers that actually *read* the file —
-`utilities/make-kubeconfig.sh` and the AAP Vault credential built by
-`inventory/group_vars/aap/main.yml` — so they cannot end up disagreeing (#131).
+the full path. Every script that reads the vault (`make-kubeconfig.sh`,
+`derive-ocp-token.sh`, `set-env-passwords.sh` and the rest of `utilities/`) and
+the AAP Vault credential built by `inventory/group_vars/aap/main.yml` honour that
+one variable, so they cannot end up disagreeing (#131).
 The default stays `~/secrets/.vault_pass_sales_demos`, and every command below
 spells that path out because it is still the convention.
 
@@ -219,13 +233,14 @@ precisely so discovery cannot pick a different interpreter that lacks this.
 
 ## Step 4.5 — Command-line tools the playbooks shell out to
 
-Ansible collections are not enough. Three binaries became hard requirements as
-Phases 1–3 landed, and a machine without them completes every other step here
-and still cannot provision a VM.
+Ansible collections are not enough. Four binaries became hard requirements as
+the phases landed, and a machine without them completes every other step here
+and still cannot set up an environment or provision a VM.
 
 ```bash
-# oc — the OpenShift CLI. Playbooks and several skills shell out to it, and it
-# is also how you get an API token for the vault in step 6.
+# oc — the OpenShift CLI. prepare_env.yml, probe_env.yml and the make-*-mcp.sh
+# credential scripts shell out to it. (The API token is NOT fetched with oc —
+# derive-ocp-token.sh does that with curl in step 6.)
 command -v oc >/dev/null && echo "✅ $(oc version --client 2>/dev/null | head -1)" \
   || echo "❌ oc missing — download it from the OpenShift console's CLI tools page"
 
@@ -239,15 +254,23 @@ command -v terraform >/dev/null && echo "✅ $(terraform version | head -1)" \
 command -v virtctl >/dev/null && echo "✅ virtctl" \
   || echo "❌ virtctl missing — download it from the OpenShift console's CLI tools page"
 
+# helm — portal.yml (the self-service portal stage of setup.yml) drives
+# kubernetes.core.helm, which wraps the binary. The EE has it since #324; a
+# laptop run needs its own.
+command -v helm >/dev/null && echo "✅ helm $(helm version --short)" \
+  || echo "❌ helm missing — https://helm.sh/docs/intro/install/"
+
 # podman — only needed to BUILD the execution environment (/sales-demos-ee-build).
 # Skip if you never rebuild it.
 command -v podman >/dev/null && echo "✅ $(podman --version)" || echo "⚠️  podman missing (only needed to build the EE)"
 command -v ansible-builder >/dev/null && echo "✅ ansible-builder" || echo "⚠️  ansible-builder missing (only needed to build the EE)"
 
-# node/npx — only needed for the MCP servers (/sales-demos-mcp), which launch
-# kubernetes-mcp-server. Nothing else in this repo uses Node. If you would
-# rather not install it, upstream publishes a standalone binary for seven
-# platforms: https://github.com/containers/kubernetes-mcp-server/releases
+# node/npx — only needed for the MCP servers (/sales-demos-mcp): the OpenShift
+# servers launch kubernetes-mcp-server, and the AAP and portal bridges
+# (utilities/*-mcp-stdio.sh) run `npx supergateway`. Nothing else uses Node.
+# Upstream publishes a standalone kubernetes-mcp-server binary
+# (https://github.com/containers/kubernetes-mcp-server/releases), but that does
+# not cover the supergateway bridges.
 command -v npx >/dev/null && echo "✅ npx ($(node --version))" \
   || echo "⚠️  npx missing (only needed for /sales-demos-mcp)"
 
@@ -257,7 +280,7 @@ podman login --get-login registry.redhat.io >/dev/null 2>&1 \
   || echo "⚠️  not logged in — run: podman login registry.redhat.io"
 ```
 
-`oc`, `terraform` and `virtctl` are the three that block real work. The podman pair only
+`oc`, `terraform`, `virtctl` and `helm` are the four that block real work. The podman pair only
 matter if you are rebuilding the execution environment, which is rare — it is
 published to quay and mirrored into each environment's Private Automation Hub.
 `npx` matters only for the MCP servers, and is the one prerequisite here that is
@@ -265,7 +288,7 @@ not Python, Ansible or a Red Hat tool — worth knowing before it surprises you.
 
 ## Step 5 — Run-log directory
 
-Phase 0 takes 10–20 minutes. If it fails and the terminal is gone, so is the
+`setup.yml` takes 25–30 minutes. If it fails and the terminal is gone, so is the
 evidence.
 
 ```bash
@@ -298,18 +321,10 @@ checking.** `connection.yml` is committed with a working RHDP cluster — there
 are no `cluster-<id>` placeholders to look for, so grepping the file tells you
 nothing about whether it is *yours*.
 
-If the hostname is not your environment, **ask where you will run from before
-changing anything** — there are two correct answers and they are not
-interchangeable (#166).
-
-| You will run | Change | Why |
-|---|---|---|
-| `ansible-playbook` from this laptop | a gitignored `local.yml` overlay | You keep pulling upstream without conflicts |
-| AAP job templates | `connection.yml`, committed to your own branch | Gitignored files are **not** in the SCM checkout AAP runs from |
-
-Most people setting up a laptop want the first. Create the overlay beside
-`connection.yml`, holding **only the keys that differ** — not a copy of the
-file; everything else keeps coming from upstream:
+If the hostname is not your environment, create a gitignored `local.yml`
+overlay beside `connection.yml`, holding **only the keys that differ** — not a
+copy of the file; everything else keeps coming from upstream. If the user has
+an AAP URL, `/sales-demos-bootstrap` writes this for them; by hand:
 
 ```bash
 cat > inventory/group_vars/$ENV/local.yml <<'YAML'
@@ -325,20 +340,26 @@ be `local.yml`** — files in a `group_vars/` directory load in sorted order and
 the last wins, and `connection.local.yml` sorts *before* `connection.yml`, so it
 would be silently ignored and leave you pointed at the committed cluster.
 
-**If you are heading for AAP, edit `connection.yml` on a branch instead** and
-point your AAP project's `scm_url` at your own fork. Doing both is fine and they
-do not interfere: the overlay serves laptop runs, the committed file serves job
-templates.
+**The same `local.yml` serves AAP job templates** — do not tell the user to
+commit `connection.yml` for AAP. Gitignored files are not in AAP's SCM checkout,
+but `config.yml` runs on the laptop, resolves the effective values and writes
+them into the AAP inventory as host variables (#528), which job templates read.
+Committing `connection.yml` (`utilities/update-connection.sh`) only refreshes
+the upstream reference for fresh clones. This replaced #166's rule. A **fork**
+still repoints `sales_demos_scm_url`, but that is about whose code AAP syncs,
+not which cluster it targets.
 
-Then add `aap_password` and `kubeadmin_password` to the vault:
+Then the two passwords from the RHDP environment page. **Never ask the user to
+paste a password into the conversation.** Tell them to run this in a terminal
+in the repo — the prompts hide input, so it needs a real terminal, and Enter
+keeps an existing value:
 
 ```bash
-ansible-vault edit playbooks/group_vars/all/secrets.yml \
-  --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
-# set env_secrets.<env>.aap_password and .kubeadmin_password
+bash utilities/set-env-passwords.sh "$ENV"
 ```
 
-Now derive `openshift_api_token` automatically from `kubeadmin_password`:
+Now derive `openshift_api_token` automatically from `kubeadmin_password` (it
+logs in to the cluster `local.yml` points at):
 
 ```bash
 bash utilities/derive-ocp-token.sh "$ENV" --update-vault
@@ -361,7 +382,7 @@ ad-hoc `ansible` call:
 
 - `aap_env_name`, `aap_hostname`, `automation_hub_token` come from
   `inventory/group_vars/`, which sits beside the inventory.
-- `aap_password` and `openshift_api_token` come from `env_secrets` in
+- `aap_password`, `kubeadmin_password` and `openshift_api_token` come from `env_secrets` in
   `playbooks/group_vars/all/secrets.yml`, which sits beside the **playbooks**.
 
 Ansible loads a `group_vars/` directory adjacent to the inventory or adjacent to
@@ -397,13 +418,15 @@ def filled(v):
 pw = e.get("aap_password", "")
 tok = e.get("openshift_api_token", "")
 pw_set = filled(pw)
+kube_set = filled(e.get("kubeadmin_password", ""))
 token_ok = tok.startswith("sha256~") or (tok.startswith("eyJ") and "." in tok)
 rhsm_ok = filled(doc.get("rhsm_org_id")) and filled(doc.get("rhsm_activation_key"))
-print("env=%s pw_set=%s token_ok=%s rhsm_ok=%s" % (env, pw_set, token_ok, rhsm_ok))
+print("env=%s pw_set=%s kube_set=%s token_ok=%s rhsm_ok=%s" % (env, pw_set, kube_set, token_ok, rhsm_ok))
 '
 ```
 
-All three must be `True`. `token_ok` checks the shape rather than mere presence: a
+All four must be `True`. `token_ok` is only true once step 6's derivation has
+run, and it checks the shape rather than mere presence: a
 value that is non-empty but not a recognised token form will fail later as a
 confusing `401`, which is exactly how #86 hid for as long as it did. Both
 `sha256~` OAuth tokens and `eyJ` ServiceAccount JWTs are accepted; an Ansible
@@ -416,12 +439,15 @@ ones, and nothing needs them until Phase 4 registers a guest against the Red Hat
 CDN — where `playbooks/roles/linux_register` asserts them and stops. They were
 missing from `secrets.yml.example` entirely, so a secrets file built from it
 passed every preflight and then died there (#128). Get them from
-**console.redhat.com → Inventory → System Configuration → Activation Keys**.
+https://console.redhat.com/insights/connector/activation-keys.
 
 ## When it all passes
 
-Tell the user setup is complete and point them at `/sales-demos-setup` to install
-OpenShift Virtualization, or `/sales-demos-collections-sync` if they only wanted
+Tell the user setup is complete and point them at the
+[New environment quick start](https://ericcames.github.io/sales.demos-docs/reference/new-environment/#quick-start) — `set-env-passwords.sh`, then
+[`/sales-demos-bootstrap`](https://github.com/ericcames/sales.demos/blob/main/.claude/skills/sales-demos-bootstrap/SKILL.md) with their AAP
+URL. `/sales-demos-setup` re-runs only the cluster setup on an environment that
+is already pointed at; `/sales-demos-collections-sync` if they only wanted
 collections.
 
 ## If something fails
@@ -433,4 +459,5 @@ collections.
 | `couldn't resolve module/action` | Collections not installed | `/sales-demos-collections-sync` |
 | `Failed to import the required Python library (kubernetes)` | Wrong interpreter or missing client | Step 4 |
 | Certified collection install 401s | Hub token missing or stale | Step 1 |
-| `env=` is not what you asked for | Wrong `--limit` | Use `--limit sandbox` or `--limit demo` |
+| `env=` is not what you asked for | Wrong `--limit` | Use `--limit sandbox`, `--limit demo` or `--limit edge` |
+| `derive-ocp-token.sh` reports a 401 | `kubeadmin_password` is the previous environment's | `bash utilities/set-env-passwords.sh <env>` in a terminal, then derive again |
