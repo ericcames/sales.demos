@@ -76,11 +76,13 @@ YAML
 If `local.yml` already exists, read it first and preserve any extra keys
 (like `available_memory_gb` or SSH key overrides).
 
-## Step 4 — Verify vault credentials
+## Step 4 — Verify vault credentials and derive the API token
 
-The vault must already contain credentials for this environment. Assert that
-`env_secrets.<env>` has `openshift_api_token`, `aap_password`, and
-`kubeadmin_password`:
+The vault must already contain `aap_password` and `kubeadmin_password` for this
+environment. `openshift_api_token` is **derived automatically** from
+`kubeadmin_password` — it is never pasted manually (#559).
+
+First, verify the two manual credentials are present:
 
 ```bash
 VAULT_ID="sales.demos@$HOME/secrets/.vault_pass_sales_demos"
@@ -92,15 +94,26 @@ import sys, yaml, os
 env = os.environ["ENV"]
 data = yaml.safe_load(sys.stdin)
 secrets = data.get("env_secrets", {}).get(env, {})
-for key in ["openshift_api_token", "aap_password", "kubeadmin_password"]:
+for key in ["aap_password", "kubeadmin_password"]:
     status = "present" if secrets.get(key) else "MISSING"
     print(f"  {key}: {status}")
 '
 ```
 
-If any are missing, tell the user to run
+If either is missing, tell the user to run
 [`/sales-demos-first-time`](https://github.com/ericcames/sales.demos/blob/main/.claude/skills/sales-demos-first-time/SKILL.md)
 to populate the vault, and **stop**. Do not proceed with missing credentials.
+
+Then derive a fresh `openshift_api_token` and store it in the vault:
+
+```bash
+bash utilities/derive-ocp-token.sh "$ENV" --update-vault
+```
+
+This OAuth-authenticates with `kubeadmin_password`, reads (or creates) a
+long-lived ServiceAccount token from the cluster, and writes it to
+`env_secrets.<env>.openshift_api_token` in the vault. If it fails, the cluster
+is unreachable or the kubeadmin password is wrong — stop and tell the user.
 
 ## Step 5 — Run preflight
 
@@ -136,8 +149,8 @@ print(f"Cluster is reachable — {len(resp['groups'])} API groups")
 PY
 ```
 
-If the cluster does not answer, stop. The token may be expired — tell the
-user to get a fresh one from the OpenShift console (*Copy login command*).
+If the cluster does not answer, stop. Re-run `derive-ocp-token.sh` to get a
+fresh token, or check `kubeadmin_password` in the vault.
 
 ## Step 7 — Run setup.yml
 
@@ -221,9 +234,10 @@ Print a final summary covering:
   the environment is stable and you want AAP job templates to use it.
 - **Does not commit anything.** All changes are to gitignored files (`local.yml`,
   kubeconfigs, bearer tokens, `settings.local.json`).
-- **Does not create vault credentials.** That is
+- **Does not create the vault from scratch.** That is
   [`/sales-demos-first-time`](https://github.com/ericcames/sales.demos/blob/main/.claude/skills/sales-demos-first-time/SKILL.md).
-  Run it first if the vault is empty for this environment.
+  Run it first if the vault does not exist or is missing `aap_password` and
+  `kubeadmin_password`. `openshift_api_token` is derived automatically in step 4.
 - **Does not deploy to AAP job templates.** AAP reads from the SCM checkout,
   which uses the committed `connection.yml`. To make AAP job templates target the
   new cluster, commit the updated `connection.yml` and let the project sync
@@ -240,7 +254,8 @@ Most failures are in the `setup.yml` run (step 7). See the failure table in
 | Symptom | Cause | Fix |
 |---|---|---|
 | Vault credentials missing (step 4) | New environment, vault not updated | Run [`/sales-demos-first-time`](https://github.com/ericcames/sales.demos/blob/main/.claude/skills/sales-demos-first-time/SKILL.md) |
-| Cluster unreachable (step 6) | Token expired or environment not provisioned | Get a fresh token from the OpenShift console |
+| Token derivation fails (step 4) | kubeadmin_password wrong or cluster unreachable | Check `kubeadmin_password` in the vault; verify cluster DNS resolves |
+| Cluster unreachable (step 6) | Environment expired or not provisioned | Check RHDP environment status; re-run `derive-ocp-token.sh` |
 | `setup.yml` fails (step 7) | See the setup skill's failure table | Check `$ANSIBLE_LOG_PATH` |
 | MCP servers fail (step 8) | Kubeconfig or token stale | Re-run [`/sales-demos-mcp`](https://github.com/ericcames/sales.demos/blob/main/.claude/skills/sales-demos-mcp/SKILL.md) |
 

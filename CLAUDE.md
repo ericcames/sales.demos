@@ -178,11 +178,12 @@ ansible-vault edit playbooks/group_vars/all/secrets.yml \
   take effect and nothing looks wrong. `EE_IMAGE` in `utilities/build-ee.sh` was
   already env-overridable; `.github/CODEOWNERS` is deliberately left alone, as a
   fork's own to rewrite.
-- **`SALES_DEMOS_VAULT_PASS` overrides the vault password path** for the only
-  two places that *execute* it — the `file` lookup in
-  `inventory/group_vars/aap/main.yml` and `utilities/make-kubeconfig.sh`. One
-  variable for both, so they cannot disagree. The ~73 documentation mentions of
-  the default path are deliberately left alone.
+- **`SALES_DEMOS_VAULT_PASS` overrides the vault password path** for the three
+  places that *execute* it — the `file` lookup in
+  `inventory/group_vars/aap/main.yml`, `utilities/make-kubeconfig.sh`, and
+  `utilities/derive-ocp-token.sh`. One variable for all three, so they cannot
+  disagree. The ~73 documentation mentions of the default path are deliberately
+  left alone.
 - The vault password is at `~/secrets/.vault_pass_sales_demos` (`600`, in a
   `700` directory), outside this repo, following the same convention as
   `aap_config`'s `.vault_pass_<env>` files.
