@@ -1,0 +1,61 @@
+---
+# ===========================================================================
+# check_hub_token.yml — is the Red Hat offline token LIVE, not merely present?
+#
+# Included by config.yml and sync_hub.yml before either starts a hub sync
+# (#597). Shared rather than copied so the two call sites cannot drift apart,
+# the same reason as assert_target_environment.yml.
+#
+# PRESENT IS NOT LIVE. On 2026-09-14 ~/.ansible.cfg held a well-formed token
+# that Red Hat SSO had retired -- `invalid_grant`, "Token is not active". Every
+# length check passed. Pulp's first call to SSO got 400, both Red Hat sync
+# tasks died inside a second, and config.yml finished green.
+#
+# THE PROBE IS THE EXCHANGE PULP ITSELF MAKES: grant_type=refresh_token with
+# client_id cloud-services, against the auth_url the remotes carry. It mints a
+# short-lived access token that is thrown away; the offline token is neither
+# rotated nor consumed. no_log because the request body IS the credential.
+#
+# Sets two facts and fails nothing. The caller decides whether a dead token is
+# fatal (sync_hub.yml) or a loud skip (config.yml):
+#   hub_token_live     true only when SSO answered 200
+#   hub_token_problem  one sentence saying why not, safe to print
+#
+# check_mode: false because `uri` does not run under --check, and "is this
+# credential live" has no dry-run answer. The call changes nothing anywhere.
+# ===========================================================================
+
+- name: Ask Red Hat SSO whether the offline token is live
+  ansible.builtin.uri:
+    url: https://sso.redhat.com/auth/realms/redhat-external/protocol/openid-connect/token
+    method: POST
+    body_format: form-urlencoded
+    body:
+      grant_type: refresh_token
+      client_id: cloud-services
+      refresh_token: "{{ automation_hub_token }}"
+    status_code: [200, 400, 401]
+    timeout: 30
+  register: hub_token_probe
+  failed_when: false
+  no_log: true
+  check_mode: false
+  when: automation_hub_token | default('') | length > 100
+
+- name: Record whether the token is live, and why not
+  # The registered result is never echoed: on success it holds a live access
+  # token. Only the status and SSO's own error fields reach these facts.
+  ansible.builtin.set_fact:
+    hub_token_live: "{{ (hub_token_probe.status | default(-1) | int) == 200 }}"
+    hub_token_problem: >-
+      {%- if automation_hub_token | default('') | length <= 100 -%}
+      No Red Hat offline token resolved from ~/.ansible.cfg [galaxy_server.rh_certified]
+      (an execution environment has no such file of its own).
+      {%- elif (hub_token_probe.status | default(-1) | int) in [400, 401] -%}
+      Red Hat SSO rejected the offline token
+      ({{ hub_token_probe.json.error | default('HTTP ' ~ hub_token_probe.status) }}:
+      {{ hub_token_probe.json.error_description | default('no description') }}).
+      {%- elif (hub_token_probe.status | default(-1) | int) != 200 -%}
+      Could not reach Red Hat SSO to check the offline token
+      ({{ hub_token_probe.msg | default('status ' ~ (hub_token_probe.status | default('unknown'))) }}).
+      {%- endif -%}

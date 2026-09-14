@@ -127,6 +127,47 @@
         - sync_project | default(true) | bool
         - config_project_lookup.json.count | default(0) | int > 0
 
+    # -------------------------------------------------------------------
+    # Is the Red Hat offline token LIVE, not merely present (#597)?
+    #
+    # This play only STARTS the hub syncs -- hub_sync_wait defaults to false --
+    # so it never sees how they end. On 2026-09-14 an expired token made both
+    # Red Hat syncs fail inside a second while this play reported `changed`
+    # and finished green. Asking Red Hat SSO before dispatch is the only point
+    # at which this play can know.
+    #
+    # A DEAD TOKEN SKIPS THE SYNC, LOUDLY, RATHER THAN FAILING THE PLAY. This is
+    # stage 4 of setup.yml, the token is a laptop credential, and nothing else
+    # in an environment build needs the hub. playbooks/sync_hub.yml -- where
+    # the sync is the whole point -- fails instead.
+    #
+    # An explicit -e hub_sync_enabled=true still wins over the set_fact below:
+    # extra vars outrank facts, and saying so on the command line is a choice.
+    # -------------------------------------------------------------------
+    - name: Check the Red Hat offline token is live before starting hub syncs
+      ansible.builtin.include_tasks: tasks/check_hub_token.yml
+      when:
+        - hub_sync_enabled | default(true) | bool
+        - not ansible_check_mode
+
+    - name: Skip the hub sync when the token cannot authenticate
+      ansible.builtin.set_fact:
+        hub_sync_enabled: false
+      when:
+        - hub_token_live is defined
+        - not (hub_token_live | bool)
+
+    - name: Say loudly that the hub sync was skipped
+      ansible.builtin.debug:
+        msg:
+          - "HUB SYNC SKIPPED on {{ aap_env_name }}: {{ hub_token_problem }}"
+          - "Remotes and repositories are still configured; rh-certified and validated get no new content."
+          - "Fix: load a token at https://console.redhat.com/ansible/automation-hub/token, put it in
+            ~/.ansible.cfg under [galaxy_server.rh_certified] and [galaxy_server.rh_validated], then run /pah-sync."
+      when:
+        - hub_token_live is defined
+        - not (hub_token_live | bool)
+
     - name: Apply all objects via the dispatch role
       # Basic auth on purpose. dispatch supports it directly, so no OAuth token
       # is minted — which means there is nothing to leak and nothing to clean
@@ -142,3 +183,8 @@
           - "Sign-in banner and environment-badged logo set on the gateway."
           - "Automation Analytics settings applied."
           - "The sign-in logo shows on the LOGIN page only — log out to see it."
+          - >-
+            {{ ('Hub sync: SKIPPED — ' ~ hub_token_problem)
+               if (hub_token_live is defined and not (hub_token_live | bool))
+               else ('Hub sync: started, not awaited — /pah-sync waits and verifies.'
+                     if (hub_sync_enabled | default(true) | bool) else 'Hub sync: not requested.') }}
