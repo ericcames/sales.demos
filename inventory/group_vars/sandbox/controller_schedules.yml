@@ -49,27 +49,41 @@
 
 # TWO SWEEPS. sandbox is the environment being actively built against and work
 # sessions run late: 6 PM is the real one, 10 PM catches VMs created after it.
+#
+# EVERY ROLE, NOT JUST web (#393). Each entry passes all_roles: true, so the
+# sweep removes every role that has Terraform state for that OS, db and app
+# farms included, not only the job template's `vm_role: web`. It arrives as
+# extra_data, which AAP accepts only because the teardown templates prompt for
+# variables on launch. Manual launches still remove one role.
 controller_schedules_sandbox:
   - name: "Linux Day 1 - Nightly teardown (6 PM)"
     unified_job_template: "Linux Day 1 - Teardown"
     description: "Destroy sandbox demo VMs every day at 6 PM America/Phoenix."
     rrule: "DTSTART;TZID=America/Phoenix:20260810T180000 RRULE:FREQ=DAILY;INTERVAL=1"
     enabled: true
+    extra_data:
+      all_roles: true
 
   - name: "Linux Day 1 - Nightly teardown (10 PM safety net)"
     unified_job_template: "Linux Day 1 - Teardown"
     description: "Second sweep at 10 PM America/Phoenix — catches VMs created after the 6 PM run."
     rrule: "DTSTART;TZID=America/Phoenix:20260810T220000 RRULE:FREQ=DAILY;INTERVAL=1"
     enabled: true
+    extra_data:
+      all_roles: true
 
   - name: "Windows Day 1 - Nightly teardown (6 PM)"
     unified_job_template: "Windows Day 1 - Teardown"
     description: "Destroy sandbox Windows demo VMs every day at 6 PM America/Phoenix."
     rrule: "DTSTART;TZID=America/Phoenix:20260810T180000 RRULE:FREQ=DAILY;INTERVAL=1"
     enabled: true
+    extra_data:
+      all_roles: true
 
   - name: "Windows Day 1 - Nightly teardown (10 PM safety net)"
     unified_job_template: "Windows Day 1 - Teardown"
     description: "Second Windows sweep at 10 PM America/Phoenix — matches the Linux safety net."
     rrule: "DTSTART;TZID=America/Phoenix:20260810T220000 RRULE:FREQ=DAILY;INTERVAL=1"
     enabled: true
+    extra_data:
+      all_roles: true

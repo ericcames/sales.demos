@@ -71,10 +71,20 @@ omitting it lets a mistyped `--limit` through — an acceptable risk for an appl
 and not for a destroy.
 
 Pass the same `vm_role`, `os_type` and `vm_size_tier` the VMs were provisioned
-with, or Terraform plans against a different shape:
+with, or Terraform plans against a different shape. `os_type` is `linux` or
+`windows`; `both` was removed in #301, so tear each OS down separately:
 
 ```bash
-  -e vm_role=db -e os_type=both -e vm_size_tier=large
+  -e vm_role=db -e os_type=linux -e vm_size_tier=large
+```
+
+**To remove every role at once, pass `-e all_roles=true`** (#393). The playbook
+lists the Terraform state Secrets for this environment and OS
+(`tfstate-default-<env>-<os>-<role>` in `sales-demos-tfstate`) and tears down
+each role it finds; `vm_role` is ignored. The nightly schedules do exactly this.
+
+```bash
+  -e all_roles=true -e os_type=linux
 ```
 
 ## Verify it in the EE before merging a change
@@ -106,9 +116,14 @@ recap only says the tasks ran.
 
 ## From AAP
 
-The `Linux Day 1 - Teardown` job template does the same thing, and runs
-**nightly on a schedule** — 6 PM and 10 PM in sandbox, 6 PM only in demo, all
-`America/Phoenix` (no daylight saving, so they never drift).
+The `Linux Day 1 - Teardown` and `Windows Day 1 - Teardown` job templates do the
+same thing, and run **nightly on a schedule**: 6 PM and 10 PM in sandbox, 6 PM
+only in demo, all `America/Phoenix` (no daylight saving, so they never drift).
+
+**Every schedule passes `all_roles: true`** (#393), so each sweep removes every
+role with state for its OS, not just `web`. A manual launch still removes only
+the template's `vm_role: web`; add `all_roles: true` to the launch's extra vars
+to sweep everything.
 
 It is the only template that runs against `Sales Demo VMs - Control`, because it
 deletes hosts from `Sales Demo VMs` and AAP locks the hosts of the inventory a
@@ -127,6 +142,12 @@ running job is using.
   teardown without `-e vm_role=<role>` defaults to `web` and inits an empty state
   for the role that was actually provisioned. Check `vm_role` first, then
   `aap_env_name`.
+- **`all_roles=true` reports `(none — nothing to tear down)` but VMs are still
+  running** — the roles come from the state Secrets' `tfstateSecretSuffix`
+  label, so a VM with no state behind it is invisible to the sweep (for
+  example, built before #389, or its state deleted by hand). Compare the
+  `v1 Secret` list in `sales-demos-tfstate` with the VMs' `sales-demos/role`
+  label.
 - **`Error acquiring the state lock`** — a previous run was cancelled, timed
   out, or had its pod evicted, and never released the lock. Teardown is the
   likelier victim of the two playbooks, because the nightly schedule can start
