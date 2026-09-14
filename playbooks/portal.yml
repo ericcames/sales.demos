@@ -104,6 +104,10 @@
       ansible.builtin.set_fact:
         cluster_router_base: "{{ openshift_apps_domain }}"
 
+    - name: Generate MCP static token for RHDH MCP endpoint (#555)
+      ansible.builtin.set_fact:
+        portal_mcp_token: "{{ lookup('password', '/dev/null chars=ascii_letters,digits length=32') }}"
+
     - name: Report the target
       ansible.builtin.debug:
         msg: "Deploying self-service portal to {{ aap_env_name }} ({{ aap_hostname }})."
@@ -326,12 +330,36 @@
                 global:
                   clusterRouterBase: "{{ cluster_router_base }}"
                   pluginMode: oci
+                  dynamic:
+                    includes:
+                      - dynamic-plugins.default.yaml
+                    plugins:
+                      - package: >-
+                          oci://ghcr.io/redhat-developer/rhdh-plugin-export-overlays/backstage-plugin-mcp-actions-backend:bs_1.42.5__0.1.2!backstage-plugin-mcp-actions-backend
+                        disabled: false
+                      - package: >-
+                          oci://ghcr.io/redhat-developer/rhdh-plugin-export-overlays/red-hat-developer-hub-backstage-plugin-software-catalog-mcp-tool:bs_1.42.5__0.2.3!red-hat-developer-hub-backstage-plugin-software-catalog-mcp-tool
+                        disabled: false
+                      - package: >-
+                          oci://ghcr.io/redhat-developer/rhdh-plugin-export-overlays/red-hat-developer-hub-backstage-plugin-techdocs-mcp-tool:bs_1.42.5__0.3.0!red-hat-developer-hub-backstage-plugin-techdocs-mcp-tool
+                        disabled: false
                 upstream:
                   backstage:
                     appConfig:
                       integrations:
                         github: []
                         gitlab: []
+                      backend:
+                        auth:
+                          externalAccess:
+                            - type: static
+                              options:
+                                token: "{{ portal_mcp_token }}"
+                              subject: mcp-clients
+                        actions:
+                          pluginSources:
+                            - software-catalog-mcp-tool
+                            - techdocs-mcp-tool
             wait: true
             wait_timeout: "600s"
             state: present
@@ -372,6 +400,23 @@
     - name: Set portal URL
       ansible.builtin.set_fact:
         portal_url: "https://{{ portal_routes.resources[0].spec.host }}"
+
+    # -------------------------------------------------------------------
+    # Store MCP token in a K8s Secret so make-portal-mcp.sh can read it
+    # -------------------------------------------------------------------
+
+    - name: Create portal-mcp-token Secret (#555)
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: v1
+          kind: Secret
+          metadata:
+            name: portal-mcp-token
+            namespace: "{{ portal_namespace }}"
+          type: Opaque
+          stringData:
+            token: "{{ portal_mcp_token }}"
 
     # -------------------------------------------------------------------
     # Update OAuth redirect URI now that we know the portal URL
@@ -511,3 +556,5 @@
           - "AAP orgs:      {{ aap_org_names | join(', ') }}"
           - "Permissions:   disabled (non-admin users can see and launch templates)"
           - "Sync interval: 1 minute"
+          - "MCP endpoint:  {{ portal_url }}/api/mcp-actions/v1"
+          - "MCP token:     stored in Secret portal-mcp-token (run make-portal-mcp.sh to generate client files)"

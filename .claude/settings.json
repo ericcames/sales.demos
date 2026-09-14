@@ -10,7 +10,9 @@
       "mcp__ao-sandbox__*",
       "mcp__ao-demo__*",
       "mcp__ao-edge__*",
-      "mcp__grafana__*"
+      "mcp__grafana__*",
+      "mcp__portal-sandbox__*",
+      "mcp__portal-demo__*"
     ]
   },
   "hooks": {

@@ -63,6 +63,9 @@ inventory/group_vars/*/local.yml
 # AAP MCP bearer tokens and route URLs (#515)
 .aap/
 
+# Portal (RHDH) MCP static tokens and URLs (#555)
+.portal/
+
 # ---------------------------------------------------------------------------
 # Terraform — state can contain secrets in plaintext; tfvars almost always do.
 # ---------------------------------------------------------------------------

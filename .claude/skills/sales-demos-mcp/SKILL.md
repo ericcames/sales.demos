@@ -1,14 +1,14 @@
 ---
 name: sales-demos-mcp
-description: "Connect Claude Code to this repo's OpenShift clusters, AAP instances, Automation Orchestrator, and Grafana Cloud over MCP — up to eight servers, one skill. Generates per-environment kubeconfigs for OpenShift, auto-creates bearer tokens for AAP, registers the AO and Grafana Cloud MCP servers, then verifies every server answers. TRIGGER when: the user asks to set up, connect, refresh or fix the MCP servers, says an openshift-sandbox, openshift-demo, openshift-edge, aap-sandbox, aap-demo, ao-sandbox, ao-demo, or grafana MCP server is failing or shows no tools, or has just repointed an environment or rotated a token. SKIP: if the user wants to install OpenShift Virtualization or apply AAP configuration — that is sales-demos-setup — or wants to deploy the AAP MCP server into a cluster, which is playbooks/mcp_server.yml run by sales-demos-setup."
+description: "Connect Claude Code to this repo's OpenShift clusters, AAP instances, RHDH portal, Automation Orchestrator, and Grafana Cloud over MCP — up to ten servers, one skill. Generates per-environment kubeconfigs for OpenShift, auto-creates bearer tokens for AAP, extracts portal MCP tokens, registers the AO and Grafana Cloud MCP servers, then verifies every server answers. TRIGGER when: the user asks to set up, connect, refresh or fix the MCP servers, says an openshift-sandbox, openshift-demo, openshift-edge, aap-sandbox, aap-demo, portal-sandbox, portal-demo, ao-sandbox, ao-demo, or grafana MCP server is failing or shows no tools, or has just repointed an environment or rotated a token. SKIP: if the user wants to install OpenShift Virtualization or apply AAP configuration — that is sales-demos-setup — or wants to deploy the AAP MCP server into a cluster, which is playbooks/mcp_server.yml run by sales-demos-setup."
 ---
 
 # sales-demos-mcp
 
-Makes the clusters, AAP instances, and Grafana Cloud directly queryable from
-Claude Code. Before this, every question about an environment cost a `curl`, a
-vault read and a JSON parse; after it, `namespaces_list` or
-`job_templates_list` is a tool call.
+Makes the clusters, AAP instances, RHDH portal, and Grafana Cloud directly
+queryable from Claude Code. Before this, every question about an environment
+cost a `curl`, a vault read and a JSON parse; after it, `namespaces_list`,
+`job_templates_list`, or a portal catalog query is a tool call.
 
 **No playbook, by design.** This touches the laptop — it writes kubeconfigs,
 creates tokens, and configures your MCP client. It must never run from AAP,
@@ -17,7 +17,7 @@ which is the same reasoning that keeps `sales-demos-collections-sync`,
 
 ## What it sets up
 
-**Up to eight servers — seven per-environment, one global/external:**
+**Up to ten servers — nine per-environment, one global/external:**
 
 | Server | Auth | Access | Source |
 |---|---|---|---|
@@ -26,6 +26,8 @@ which is the same reasoning that keeps `sales-demos-collections-sync`,
 | `openshift-edge` | kubeconfig | read-write | `.mcp.json` (committed) |
 | `aap-sandbox` | bearer token | read-write | `.mcp.json` (committed) |
 | `aap-demo` | bearer token | read-write | `.mcp.json` (committed) |
+| `portal-sandbox` | static token | read-only | `.mcp.json` (committed) |
+| `portal-demo` | static token | read-only | `.mcp.json` (committed) |
 | `ao-sandbox` | JWT (auto-refreshed) | read-only | `claude mcp add --scope local` |
 | `ao-demo` | JWT (auto-refreshed) | read-only | `claude mcp add --scope local` |
 | `grafana` | service account token | read-only | `claude mcp add --scope local` |
@@ -185,7 +187,49 @@ kubeconfig, and writes `.aap/<env>.token` and `.aap/<env>.url`. `.mcp.json`
 references these through the `aap-mcp-stdio.sh` wrapper, so the server comes
 online on the next Claude Code restart — no `claude mcp add` needed.
 
-### Step 3 — Automation Orchestrator MCP server
+### Portal (RHDH) servers
+
+The RHDH self-service portal exposes an MCP endpoint natively (#555) via the
+`backstage-plugin-mcp-actions-backend` plugin, with `software-catalog-mcp-tool`
+and `techdocs-mcp-tool` as action sources. `portal.yml` enables the plugins,
+generates a static bearer token, and stores it in a `portal-mcp-token` Secret.
+
+`.mcp.json` defines `portal-sandbox` and `portal-demo` as stdio servers. Each
+entry calls `utilities/portal-mcp-stdio.sh <env>`, which reads the token and
+route URL from gitignored files in `.portal/` and bridges stdio to the remote
+endpoint via `npx supergateway`. Same pattern as the AAP servers.
+
+`utilities/make-portal-mcp.sh` reads the portal Route and the `portal-mcp-token`
+Secret from the cluster via the kubeconfig, and writes `.portal/<env>.token` and
+`.portal/<env>.url`. Simpler than the AAP flow — the token already exists in the
+Secret, so no API call creates one.
+
+The token dies with the portal deployment (which dies with the RHDP env). On a
+fresh bootstrap, `portal.yml` generates a new token and creates a new Secret.
+`make-portal-mcp.sh` picks up the new one. No vault entry, no rotation — same
+ephemeral-environment reasoning as the AAP MCP PAT.
+
+### Step 3 — Portal MCP server
+
+Run **after** the kubeconfig exists — the script needs it to find the portal
+Route and Secret.
+
+```bash
+bash utilities/make-portal-mcp.sh sandbox
+```
+
+For `demo`:
+
+```bash
+bash utilities/make-portal-mcp.sh demo
+```
+
+The script reads the portal Route and `portal-mcp-token` Secret, then writes
+`.portal/<env>.token` and `.portal/<env>.url`. `.mcp.json` references these
+through the `portal-mcp-stdio.sh` wrapper, so the server comes online on the
+next Claude Code restart.
+
+### Step 4 — Automation Orchestrator MCP server
 
 Run **after** the kubeconfig exists — the script needs it to find the AO Route.
 
@@ -207,7 +251,7 @@ manages JWT refresh transparently — no token to retire.
 **Prerequisite:** `pip install mcp` — the server is a Python MCP server using
 the official SDK.
 
-### Step 4 — Grafana Cloud MCP server
+### Step 5 — Grafana Cloud MCP server
 
 Independent of the kubeconfig and AAP steps — Grafana Cloud is an external
 service, not tied to any RHDP environment.
@@ -292,6 +336,24 @@ the Route is admitted but the pod is not serving yet** — wait and retry rather
 than assuming a misconfiguration. Measured on a working sandbox: **140 tools**,
 including `job_templates_launch_create`, `workflow_job_templates_launch_create`
 and `jobs_stdout_retrieve`.
+
+### Portal (RHDH)
+
+Verify the portal MCP endpoint is reachable:
+
+```bash
+ENV=${ENV:-sandbox}
+PORTAL_URL=$(cat .portal/$ENV.url)
+PORTAL_TOKEN=$(cat .portal/$ENV.token)
+
+curl -sk -o /dev/null -w '%{http_code}\n' -X POST "$PORTAL_URL" \
+  -H 'Content-Type: application/json' \
+  -H "Authorization: Bearer $PORTAL_TOKEN" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"verify","version":"0"}}}'
+```
+
+`200` is the pass. The portal is read-only — it exposes the software catalog and
+TechDocs, not mutating operations.
 
 ### Automation Orchestrator
 
@@ -379,6 +441,9 @@ claude mcp list
 | AAP MCP write tools missing | `aap_mcp_allow_write_operations` is false for this environment | Intentional on `demo`. Changing it needs a delete-and-recreate — re-run `mcp_server.yml`, which handles that |
 | `npx: command not found` | Node not installed | See preflight; a standalone binary is the alternative |
 | `no aap-mcp route` from make-aap-mcp.sh | MCP server not deployed | Run `/sales-demos-setup` or `playbooks/mcp_server.yml` first |
+| Portal MCP returns `401` | Token mismatch or Secret missing | Re-run `portal.yml` to regenerate, then `bash utilities/make-portal-mcp.sh <env>` |
+| `no portal route` from make-portal-mcp.sh | Portal not deployed | Run `/sales-demos-setup` or `playbooks/portal.yml` first |
+| Portal MCP `no such host` | RHDP environment expired | Same as OpenShift — repoint and re-bootstrap |
 | Grafana `grafana_cloud_url not set` | Vault keys missing or still CHANGEME | `ansible-vault edit` and add real values — see the [grafana plan](https://ericcames.github.io/sales.demos-docs/plan/grafana-plan/) |
 | Grafana MCP tools present but calls fail | Token expired or revoked | Create a new SA token in the Grafana Cloud UI, update the vault |
 | `uvx: command not found` | uv not installed | See preflight; install from https://docs.astral.sh/uv/ |
