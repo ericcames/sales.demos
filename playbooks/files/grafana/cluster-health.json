@@ -511,7 +511,7 @@
       },
       "targets": [
         {
-          "expr": "kubevirt_vmi_info{cluster=\"$cluster\", namespace=~\"${namespace:regex}\"}",
+          "expr": "kubevirt_vmi_info{cluster=\"$cluster\", namespace=~\"${namespace:regex}\", guest_os_name!=\"\"} or on (name, namespace) kubevirt_vmi_info{cluster=\"$cluster\", namespace=~\"${namespace:regex}\"}",
           "legendFormat": "",
           "refId": "A",
           "instant": true,
