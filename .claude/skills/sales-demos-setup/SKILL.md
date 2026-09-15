@@ -1,6 +1,6 @@
 ---
 name: sales-demos-setup
-description: "Phase 0 of the sales.demos platform — take a bare RHDP environment to demo-ready in one command. Eleven stages: install OpenShift Virtualization, link the RHEL 9 CIS image, create shared cluster objects, apply the AAP configuration, deploy the MCP server, install and configure Automation Orchestrator, deploy the self-service portal, generate the environment URL reference, probe the cluster for available_memory_gb, then prove it by building and timing a real VM. Checks prerequisites, confirms the cluster is reachable, then runs playbooks/setup.yml. TRIGGER when: the user has a new or rebuilt RHDP environment, asks to set one up or prepare it for the ocpvirt demo, says OpenShift Virtualization or KubeVirt is missing, hits a missing kubevirt.io API, or asks to install CNV. SKIP: if the environment is already set up and the user wants to create demo VMs — that is sales-demos-provision — or only wants to re-check readiness, which is sales-demos-verify-env."
+description: "Phase 0 of the sales.demos platform — take a bare RHDP environment to demo-ready in one command. Twelve stages: install OpenShift Virtualization, link the RHEL 9 CIS image, link the Windows CIS image, create shared cluster objects, apply the AAP configuration, deploy the MCP server, install and configure Automation Orchestrator, deploy the self-service portal, generate the environment URL reference, probe the cluster for available_memory_gb, then prove it by building and timing a real VM. Checks prerequisites, confirms the cluster is reachable, then runs playbooks/setup.yml. TRIGGER when: the user has a new or rebuilt RHDP environment, asks to set one up or prepare it for the ocpvirt demo, says OpenShift Virtualization or KubeVirt is missing, hits a missing kubevirt.io API, or asks to install CNV. SKIP: if the environment is already set up and the user wants to create demo VMs — that is sales-demos-provision — or only wants to re-check readiness, which is sales-demos-verify-env."
 ---
 
 # sales-demos-setup
@@ -22,7 +22,7 @@ Phase 0. Takes a bare RHDP "Ansible Product Demo" environment to demo-ready in
 **one command**.
 
 This skill contains **no logic**. All the work is in
-[`playbooks/setup.yml`](../../../playbooks/setup.yml), which imports eleven
+[`playbooks/setup.yml`](../../../playbooks/setup.yml), which imports twelve
 playbooks in order. The same playbooks run from AAP job templates with survey
 answers mapped to the same variable names. See `CLAUDE.md` →
 *Skills and playbooks*.
@@ -45,51 +45,57 @@ answers mapped to the same variable names. See `CLAUDE.md` →
 Creates a DataImportCron for rhel9-cis-l1 alongside the stock rhel9. Skippable
 with `-e link_rhel9_image=false`.
 
-**3. Ensure shared cluster objects** (`ensure_shared_objects.yml`)
+**3. Link the Windows golden image** (`link_windows_image.yml`)
+
+Creates a DataImportCron for win2k22 and imports via an explicit DataVolume.
+Needs the quay credentials (private repository). Skippable with
+`-e link_windows_image=false`.
+
+**4. Ensure shared cluster objects** (`ensure_shared_objects.yml`)
 
 VM namespace, Terraform state namespace, and the sd1.* instance type catalog
 (#351, #530). Without this, nightly teardown schedules fail on a new cluster.
 
-**4. Apply the AAP configuration** (`config.yml`)
+**5. Apply the AAP configuration** (`config.yml`)
 
 Organization, project, credentials, both inventories and their sync, the job
 templates and their surveys, the nightly teardown schedules, and the execution
 environment — mirrored from quay into *this environment's* Private Automation
 Hub, so the demo does not depend on quay.io at run time.
 
-**5. Deploy the AAP MCP server** (`mcp_server.yml`)
+**6. Deploy the AAP MCP server** (`mcp_server.yml`)
 
 So a new environment arrives with the MCP server already on rather than needing
 a second visit. Write posture comes from the environment's own group_vars.
 
-**6. Install Automation Orchestrator** (`install_ao.yml`)
+**7. Install Automation Orchestrator** (`install_ao.yml`)
 
 Installs AO and the PostgreSQL it cannot run without, via CloudNativePG. Default
 on, skipped with `-e install_ao=false`.
 
-**7. Configure Automation Orchestrator** (`configure_ao.yml`)
+**8. Configure Automation Orchestrator** (`configure_ao.yml`)
 
 Connects AO to AAP — OIDC SSO and the AAP integration so AO can see job
 templates. Gated on the same `install_ao` flag.
 
-**8. Deploy the self-service portal** (`portal.yml`)
+**9. Deploy the self-service portal** (`portal.yml`)
 
 Helm chart, gateway OAuth app, org sync. Default on, skipped with
 `-e install_portal=false`. Needs AAP configured first (stage 4), does not depend
 on AO.
 
-**9. Generate the environment URL reference** (`generate_env_urls.yml`)
+**10. Generate the environment URL reference** (`generate_env_urls.yml`)
 
 Regenerates the env-urls file with credentials included (setup.yml is always a
 laptop command with the vault available).
 
-**10. Probe the environment** (`probe_env.yml`)
+**11. Probe the environment** (`probe_env.yml`)
 
 Measures CPU, memory, and storage now that everything is installed. Recommends
 `available_memory_gb` under full load (AO, portal, MCP server all running).
 Strictly read-only (#100).
 
-**11. Prove it** (`prepare_env.yml`)
+**12. Prove it** (`prepare_env.yml`)
 
 Checks the boot source is genuinely backed by a ready snapshot, that storage
 clones with `csi-clone` rather than copying, and that ingress admits Routes —
@@ -97,12 +103,13 @@ then builds one real VM, times it, and destroys it.
 
 ## How long
 
-**Roughly 25-30 minutes**: about 4 for CNV, 1-2 for the RHEL 9 golden image
-import, a few for shared objects, several for the AAP objects and the first Hub
-image mirror, about 1 for the MCP server, about 5 for AO and its database,
-about 2 to configure AO, about 5-10 for the portal, about 1 for env URLs,
-about 1 for the probe, and about 1 to verify. That is on top of RHDP provisioning the environment itself,
-so **budget ~35-40 minutes from ordering an environment to demoing on it**.
+**Roughly 30-35 minutes**: about 4 for CNV, 1-2 for the RHEL 9 golden image
+import, about 7-10 for the Windows golden image import, a few for shared
+objects, several for the AAP objects and the first Hub image mirror, about 1
+for the MCP server, about 5 for AO and its database, about 2 to configure AO,
+about 5-10 for the portal, about 1 for env URLs, about 1 for the probe, and
+about 1 to verify. That is on top of RHDP provisioning the environment itself,
+so **budget ~40-45 minutes from ordering an environment to demoing on it**.
 
 A timing summary is printed at the end of the run showing per-stage elapsed
 times and a total.
@@ -112,7 +119,8 @@ times and a total.
 `setup.yml` is a convenience, not a bottleneck:
 
 - `install_cnv.yml` — only a cluster needs CNV
-- `link_rhel9_image.yml` — only the golden image needs linking
+- `link_rhel9_image.yml` — only the RHEL 9 golden image needs linking
+- `link_windows_image.yml` — only the Windows golden image needs linking
 - `ensure_shared_objects.yml` — only the shared objects need creating
 - `config.yml` — only the AAP objects changed
 - `mcp_server.yml` — only the MCP server needs redeploying
@@ -150,7 +158,7 @@ beside it. Do not attempt the run with a failing prerequisite.
 ## Confirm the cluster actually needs this
 
 CNV may already be installed. Check before running — the playbook is
-idempotent, but 25-30 minutes of waiting is not worth spending on a no-op.
+idempotent, but 30-35 minutes of waiting is not worth spending on a no-op.
 
 **Each value comes from where it actually lives, and they are two different
 places.** `openshift_api_url` is plaintext in `inventory/group_vars/<env>/`, so
@@ -209,9 +217,10 @@ PY
 | Variable | Default | Meaning |
 |---|---|---|
 | `ENV` (inventory limit) | `sandbox` | Which environment to target — `sandbox`, `demo`, or `edge` |
-| `install_ao` | `true` | Set to `false` to skip both AO stages (6 and 7) |
-| `install_portal` | `true` | Set to `false` to skip the portal deploy (stage 8) |
-| `link_rhel9_image` | `true` | Set to `false` to skip the golden image import (stage 2) |
+| `install_ao` | `true` | Set to `false` to skip both AO stages (7 and 8) |
+| `install_portal` | `true` | Set to `false` to skip the portal deploy (stage 9) |
+| `link_rhel9_image` | `true` | Set to `false` to skip the RHEL 9 golden image import (stage 2) |
+| `link_windows_image` | `true` | Set to `false` to skip the Windows golden image import (stage 3) |
 
 Credentials are included in env-urls by default (#565). setup.yml is always a
 laptop command with the vault available, so no extra-var is needed.
@@ -232,7 +241,7 @@ export ANSIBLE_LOG_PATH=~/ansible-logs/sales-demos-setup-sandbox-$(date +%F-%H%M
   --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
 ```
 
-**Always set `ANSIBLE_LOG_PATH`** — this run takes 25-30 minutes and the log is
+**Always set `ANSIBLE_LOG_PATH`** — this run takes 30-35 minutes and the log is
 the only evidence left if it fails. Logs live outside the repo, in
 `~/ansible-logs/`. Tell the user the path so they can find it later.
 
@@ -246,7 +255,7 @@ than configuring sandbox and demo in the same run. Passing `target_env` as well
 makes the play verify the inventory resolved to the environment you meant, and
 fail loudly if not — cheap insurance against applying to the wrong cluster.
 
-Tell the user this takes 25-30 minutes and stream the output. The play is
+Tell the user this takes 30-35 minutes and stream the output. The play is
 idempotent — a re-run against an installed cluster is safe.
 
 Optional overrides, if the user has a reason:

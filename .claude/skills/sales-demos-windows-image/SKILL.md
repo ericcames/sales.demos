@@ -190,8 +190,9 @@ statement — this is how to confirm it by hand.
 ## Where this sits
 
 1. `sales-demos-setup` — runs `setup.yml`, which installs CNV, links the RHEL 9
-   golden image, applies the AAP config, and verifies the environment.
+   golden image, links the Windows golden image (stage 3), applies the AAP
+   config, and verifies the environment.
 2. **This skill** — fills the Windows boot source from the published CIS L1 image.
-   Not part of `setup.yml` — run it separately, or through the
-   `Cluster Day 0` AAP workflow which includes it.
+   Now part of `setup.yml` as stage 3 of 12. Also runnable standalone, or through
+   the `Cluster Day 0` AAP workflow which includes it.
 3. `sales-demos-provision` — build the demo VMs, now including `os_type=windows`.

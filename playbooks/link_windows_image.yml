@@ -99,9 +99,10 @@
     # both of its branches.
     win_wanted_image_url: "docker://{{ quay_windows_image }}"
 
-    # The image is ~4.5 GiB compressed; cluster-side pull takes ~80 min.
-    win_import_retries: 100
-    win_import_delay: 60
+    # The image is ~4.5 GiB compressed; cluster-side pull takes ~7-10 min
+    # (measured: AAP job 68, 437s on sandbox).
+    win_import_retries: 30
+    win_import_delay: 30
 
     # Short wait for the DataSource after the PVC is already Bound.
     win_wait_retries: 30
