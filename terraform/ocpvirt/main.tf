@@ -88,7 +88,14 @@ resource "kubernetes_manifest" "linux_vm" {
       labels    = merge(local.common_labels, { "sales-demos/os" = "linux" })
     }
     spec = {
-      running = true
+      # runStrategy, NOT the deprecated `running` (#632). The two are mutually
+      # exclusive, and KubeVirt's lifecycle API -- the OpenShift MCP server's
+      # vm_lifecycle, the console's Stop/Start -- patches runStrategy, so a VM
+      # declared with `running` could not be stopped or started by anything but
+      # virtctl. Existing VMs are migrated before apply by
+      # playbooks/tasks/terraform_ocpvirt.yml. spec.runStrategy stays in
+      # computed_fields so a VM stopped on purpose is not a Terraform diff.
+      runStrategy = "Always"
 
       instancetype = {
         kind = "VirtualMachineClusterInstancetype"
@@ -511,7 +518,14 @@ resource "kubernetes_manifest" "windows_vm" {
       labels    = merge(local.common_labels, { "sales-demos/os" = "windows" })
     }
     spec = {
-      running = true
+      # runStrategy, NOT the deprecated `running` (#632). The two are mutually
+      # exclusive, and KubeVirt's lifecycle API -- the OpenShift MCP server's
+      # vm_lifecycle, the console's Stop/Start -- patches runStrategy, so a VM
+      # declared with `running` could not be stopped or started by anything but
+      # virtctl. Existing VMs are migrated before apply by
+      # playbooks/tasks/terraform_ocpvirt.yml. spec.runStrategy stays in
+      # computed_fields so a VM stopped on purpose is not a Terraform diff.
+      runStrategy = "Always"
 
       instancetype = {
         kind = "VirtualMachineClusterInstancetype"

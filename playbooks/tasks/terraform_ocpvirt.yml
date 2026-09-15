@@ -193,6 +193,59 @@
     # label tfstateSecretSuffix=<env>-linux. Recorded because the code that did
     # it is gone.
 
+    # -------------------------------------------------------------------
+    # MIGRATE `spec.running` TO `spec.runStrategy` BEFORE APPLY (#632).
+    #
+    # terraform/ocpvirt used to declare `running = true`. It now declares
+    # `runStrategy = "Always"`, and KubeVirt rejects a VM that has both.
+    # Terraform alone cannot always remove the old field: server-side apply only
+    # deletes fields its own field manager owns, and any VM ever stopped or
+    # started since it was built (virtctl, the console) has `running` owned by
+    # virt-api instead. Measured on sandbox 2026-09-15 with a server-side
+    # dry-run: the Terraform-owned VM converged, the restarted one was rejected
+    # with "Running and RunStrategy are mutually exclusive".
+    #
+    # One JSON patch does the swap atomically and preserves the state -- true
+    # becomes Always, false becomes Halted -- so no VM starts or stops. The
+    # `test` op makes it a no-op if something changed the field in between.
+    # Once no VM has `running`, this finds nothing and does nothing.
+    # -------------------------------------------------------------------
+    - name: Find VMs still declaring the deprecated spec.running
+      kubernetes.core.k8s_info:
+        api_version: kubevirt.io/v1
+        kind: VirtualMachine
+        namespace: "{{ ocpvirt_namespace_resolved }}"
+        label_selectors:
+          - app.kubernetes.io/managed-by=terraform
+      environment:
+        K8S_AUTH_HOST: "{{ ocpvirt_api_url }}"
+        K8S_AUTH_API_KEY: "{{ ocpvirt_api_token }}"
+        K8S_AUTH_VERIFY_SSL: "{{ openshift_validate_certs | default(false) | bool }}"
+      register: ocpvirt_vms_with_running
+
+    - name: Swap spec.running for the equivalent spec.runStrategy
+      kubernetes.core.k8s_json_patch:
+        api_version: kubevirt.io/v1
+        kind: VirtualMachine
+        namespace: "{{ ocpvirt_namespace_resolved }}"
+        name: "{{ item.metadata.name }}"
+        patch:
+          - op: test
+            path: /spec/running
+            value: "{{ item.spec.running }}"
+          - op: remove
+            path: /spec/running
+          - op: add
+            path: /spec/runStrategy
+            value: "{{ 'Always' if item.spec.running else 'Halted' }}"
+      environment:
+        K8S_AUTH_HOST: "{{ ocpvirt_api_url }}"
+        K8S_AUTH_API_KEY: "{{ ocpvirt_api_token }}"
+        K8S_AUTH_VERIFY_SSL: "{{ openshift_validate_certs | default(false) | bool }}"
+      loop: "{{ ocpvirt_vms_with_running.resources | selectattr('spec.running', 'defined') | list }}"
+      loop_control:
+        label: "{{ item.metadata.name }}"
+
     - name: Initialize Terraform against the kubernetes backend
       ansible.builtin.command:
         argv:
