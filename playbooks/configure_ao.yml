@@ -198,7 +198,7 @@
     # failing a delete that has already happened. Measured on sandbox, first
     # run of #621. Readiness is waited for on the Deployments below instead.
     - name: Restart the AO components so they read the new ConfigMap
-      when: ao_settings_cm is changed
+      when: ao_settings_cm.changed
       kubernetes.core.k8s:
         state: absent
         api_version: v1
@@ -537,7 +537,7 @@
           Automation Orchestrator configured successfully.
             AO URL:          {{ ao_url }}
             AAP URL:         {{ aap_url }}
-            SSRF allowlist:  ConfigMap {{ ao_admin_settings_configmap }} {{ 'written, components restarted' if (ao_settings_cm is changed) else 'already current' }}; ao-worker verified
+            SSRF allowlist:  ConfigMap {{ ao_admin_settings_configmap }} {{ 'written, components restarted' if (ao_settings_cm.changed) else 'already current' }}; ao-worker verified
             OIDC provider:   {{ 'already configured' if (ao_oidc_exists | bool) else 'created' }}
             AAP credential:  {{ 'already exists' if (ao_aap_cred_exists | bool) else 'created' }}
             AAP integration: {{ 'already exists' if (ao_aap_integration_exists | bool) else 'created' }}
