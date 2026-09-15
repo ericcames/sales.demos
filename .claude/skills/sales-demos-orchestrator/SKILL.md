@@ -45,8 +45,9 @@ oc patch installplan <name> -n automation-orchestrator-operator-system \
 
 **After approving an AO operator upgrade, re-run
 [`/sales-demos-orchestrator-config`](https://github.com/ericcames/sales.demos/blob/main/.claude/skills/sales-demos-orchestrator-config/SKILL.md).**
-Its `APP_*` env vars live on the operator-owned `ao-backend` Deployment and may
-not survive the upgrade (#608).
+Its `APP_*` settings live in the `ao-admin-settings` ConfigMap, which the
+operator does not own, so they should survive the upgrade — but that is
+untested until one is taken, and re-running proves it (#608, #621).
 
 ## Three databases, not two — the thing that will waste your afternoon
 

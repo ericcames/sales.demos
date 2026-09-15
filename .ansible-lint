@@ -42,6 +42,9 @@ mock_modules:
   - kubernetes.core.k8s
   - kubernetes.core.k8s_info
   - kubernetes.core.helm
+  # configure_ao.yml asks an ao-worker pod for its SSRF allowlist (#621) —
+  # the ConfigMap existing proves nothing about a pod started before it.
+  - kubernetes.core.k8s_exec
   # OpenShift Virtualization — VM lifecycle (Phases 1-4).
   - redhat.openshift_virtualization.kubevirt_vm
   - redhat.openshift_virtualization.kubevirt_vm_info
