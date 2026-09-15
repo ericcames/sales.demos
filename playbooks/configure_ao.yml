@@ -62,6 +62,8 @@
     ao_name: "ao"
     ao_route_name: "ao"
     ao_admin_settings_configmap: "ao-admin-settings"
+    # The AO credential this play creates and owns (#622) — matched by name.
+    ao_aap_cred_name: "AAP Admin"
     # Deployment name and its pods' app.kubernetes.io/component label. All
     # three load the ConfigMap; only these run code that reaches AAP.
     ao_settings_components:
@@ -406,12 +408,26 @@
         status_code: 200
       register: ao_credentials
 
-    - name: Set whether AAP credential exists
+    # AO LETS ONLY A CREDENTIAL'S CREATOR BROWSE AAP WITH IT (#622). This play
+    # logs in as the local AO `admin`, so "AAP Admin" is owned by `admin`. It
+    # serves the integration, and workflow RUNS may use it whoever starts them
+    # — measured on sandbox, the run path does not check ownership. But a
+    # person who builds or edits AAP steps as their SSO user is refused it in
+    # the builder, reported misleadingly as "AAP Authentication Failed". They
+    # need a credential they created themselves. A playbook cannot make one for
+    # them: an SSO login is a browser OIDC flow.
+    #
+    # MATCH BY NAME, NOT BY TYPE. Matching any credential of the AAP type used
+    # to skip creation whenever a person had already made their own, and then
+    # bind the integration to the first match — possibly one owned by an SSO
+    # user, which this play's `admin` would then be refused.
+    - name: Set whether this playbook's AAP credential exists
       ansible.builtin.set_fact:
         ao_aap_cred_exists: >-
           {{
             ao_credentials.json.resources
             | selectattr('credential_type_id', 'equalto', ao_aap_cred_type_id | trim)
+            | selectattr('name', 'equalto', ao_aap_cred_name)
             | list | length > 0
           }}
 
@@ -422,8 +438,12 @@
         method: POST
         body_format: json
         body:
-          name: "AAP Admin"
-          description: "AAP admin credentials for integration"
+          name: "{{ ao_aap_cred_name }}"
+          description: >-
+            Used by the AAP integration and by workflows loaded as code; any
+            user may run those. Owned by the local AO admin, so SSO users cannot
+            browse AAP with it in the workflow builder — create your own AAP
+            credential for that (sales.demos #622).
           credential_type_id: "{{ ao_aap_cred_type_id | trim }}"
           project_id: "{{ ao_default_project_id | trim }}"
           inputs:
@@ -443,6 +463,7 @@
             ao_cred_result.json.id | default(
               ao_credentials.json.resources
               | selectattr('credential_type_id', 'equalto', ao_aap_cred_type_id | trim)
+              | selectattr('name', 'equalto', ao_aap_cred_name)
               | map(attribute='id') | first
             )
           }}
