@@ -1,12 +1,13 @@
 ---
 name: sales-demos-orchestrator-config
-description: "Configure Automation Orchestrator post-install — connect it to AAP via OIDC (SSO login) and an AAP integration (so AO can see job templates, workflows, inventories). Runs playbooks/configure_ao.yml. TRIGGER when: the user asks to configure AO, connect AO to AAP, set up SSO for AO, set up OIDC on AO, asks why AO has no integrations, says AO login only shows local accounts, or asks why AO cannot see AAP job templates. SKIP: if AO is not installed (that is sales-demos-orchestrator), or if the user wants to create or edit workflows in AO (that is the AO UI/API directly)."
+description: "Configure Automation Orchestrator post-install — connect it to AAP via OIDC (SSO login) and an AAP integration (so AO can see job templates, workflows, inventories), and allow AAP through AO's SSRF check on every component that reaches it. Runs playbooks/configure_ao.yml. TRIGGER when: the user asks to configure AO, connect AO to AAP, set up SSO for AO, set up OIDC on AO, asks why AO has no integrations, says AO login only shows local accounts, asks why AO cannot see AAP job templates, or says an AO workflow's AAP step fails with 'base_url is not permitted by SSRF policy'. SKIP: if AO is not installed (that is sales-demos-orchestrator), or if the user wants to create or edit workflows in AO (that is the AO UI/API directly)."
 ---
 
 # sales-demos-orchestrator-config
 
 Connects a running Automation Orchestrator to this environment's AAP instance.
-Takes about **2 minutes**.
+Takes about **2 minutes**, plus about a minute more the first time, while the
+AO components restart.
 
 This skill contains **no logic**. All the work is in
 [`playbooks/configure_ao.yml`](../../../playbooks/configure_ao.yml). See
@@ -18,9 +19,19 @@ Route before this can configure it.
 ## What it does
 
 1. Reads the AO **Route** from the cluster to get the live URL.
-2. Patches the `ao-backend` Deployment with `APP_INTEGRATION_URL_ALLOWED_HOSTS`
-   so AO's SSRF protection allows reaching AAP (which resolves to a private IP
-   inside the cluster).
+2. Writes the **SSRF allowlist** into the ConfigMap `ao-admin-settings`:
+   `APP_INTEGRATION_URL_ALLOWED_HOSTS` (the AAP hostname) and
+   `APP_OIDC_ALLOW_PRIVATE_NETWORKS`. AAP resolves to a private IP inside the
+   cluster, which AO's SSRF protection blocks by default.
+   - **Every AO Deployment already loads that ConfigMap** through an optional
+     `envFrom`. That matters because browsing AAP runs in `ao-backend`, but
+     **running** an AAP step in a workflow runs in `ao-worker` (#621).
+   - **If the ConfigMap changed,** it restarts the `ao-backend`, `ao-worker`
+     and `ao-background-worker` pods and waits for them to be ready.
+   - **If an older run patched the variables directly onto a Deployment,** it
+     removes them, so the ConfigMap is the one source.
+   - **Then it runs `printenv` inside an `ao-worker` pod** and fails if the AAP
+     hostname is not there.
 3. Sets up AAP as an **OIDC identity provider** via `setup_aap_oidc` — users
    can then log into AO with their AAP credentials.
 4. Creates an **AAP credential** and **AAP integration** — AO can now see
@@ -88,8 +99,8 @@ beside it. Do not attempt the run with a failing prerequisite.
 |---|---|---|
 | `ENV` (inventory limit) | `sandbox` | Which environment to target — `sandbox`, `demo`, or `edge` |
 
-The playbook's other inputs (namespace, deployment names) are vars with working
-defaults. Override them only for a reason.
+The playbook's other inputs (namespace, ConfigMap and component names) are vars
+with working defaults. Override them only for a reason.
 
 ## Run
 
@@ -112,13 +123,20 @@ Tell the user this takes about 2 minutes and stream the output.
 ## Verify on the cluster
 
 **A green playbook run is not proof.** Confirm independently with the
-`openshift-sandbox` (or `openshift-demo`) MCP tools:
+`openshift-<env>` and `ao-<env>` MCP tools:
 
-1. `pods_list_in_namespace` for `automation-orchestrator` — `ao-backend` pods
-   should be `Running` and have the `APP_INTEGRATION_URL_ALLOWED_HOSTS` env var.
-2. Open AO in a browser → Settings → Identity Providers → AAP OIDC should exist.
-3. Settings → Integrations → AAP integration should show connected.
-4. In AO, create a workflow → "Add AAP step" should show JTs from AAP.
+1. `resources_get` ConfigMap `ao-admin-settings` in `automation-orchestrator` —
+   `APP_INTEGRATION_URL_ALLOWED_HOSTS` holds this environment's AAP hostname.
+2. `pods_exec` into an `ao-worker` pod with `printenv
+   APP_INTEGRATION_URL_ALLOWED_HOSTS` — the same hostname. **This is the check
+   that matters.** Before #621 the backend had the setting, the worker did not,
+   and nothing else showed the difference.
+3. `ao-<env>` `identity_providers_list` — the AAP OIDC provider exists.
+4. `ao-<env>` `integrations_list` and `proxies_aap_job_templates` — the AAP
+   integration exists and templates are listed.
+5. **The real proof is a workflow run.** An AO workflow with one AAP job
+   template step (a read-only one, such as `Cluster Day 0 - Probe Capacity`)
+   launches an AAP job instead of failing in under a second.
 
 ## When it finishes
 
@@ -131,15 +149,19 @@ the AO URL.
 |---|---|---|
 | `401` on AO login | AO admin password does not match AAP admin password | Was the environment built before #143? Retrieve with `oc get secret ao-initial-admin-password -n automation-orchestrator -o jsonpath='{.data.password}' \| base64 -d` |
 | `502` on `setup_aap_oidc` | OAuth2 app "Syntara" already exists on AAP | Identity provider already configured — the playbook checks first but if run was interrupted between the AAP-side OAuth2 creation and the AO-side save, delete the "Syntara" app from AAP |
-| `422` on integration create with SSRF error | `APP_INTEGRATION_URL_ALLOWED_HOSTS` not applied yet | Re-run — the playbook patches and waits for rollout before creating the integration |
+| `422` on integration create with SSRF error | The backend pods have not restarted onto the ConfigMap yet | Re-run — the playbook restarts the components and waits before creating the integration |
+| "ao-worker pod ... does not have ... in APP_INTEGRATION_URL_ALLOWED_HOSTS" | The worker Deployment no longer loads `ao-admin-settings`, or its pods never restarted | Check the Deployment's `envFrom` still names the ConfigMap; re-run to restart the pods |
+| A workflow's AAP step fails at once: "base_url is not permitted by SSRF policy" | `ao-worker` lacks the allowlist (#621) | Re-run this skill — it writes the ConfigMap, restarts `ao-worker`, and verifies inside the pod |
 | `422` on credential create | Credential type or project not found | Check AO API is healthy; the playbook looks up the "Ansible Automation Platform" credential type and "default" project by name |
-| Timeout waiting for `ao-backend` rollout | Deployment stuck | Check `oc get pods -n automation-orchestrator` for crash-looping backend pods |
+| Timeout waiting for the AO components | A Deployment stuck after the restart | Check `oc get pods -n automation-orchestrator` for crash-looping pods |
 | `401` on the verify step | JWT expired (15-minute lifetime) | Re-run — the playbook logs in once at the start |
 
 ## Removing the configuration
 
 Delete the integration, credential, and identity provider through the AO API or
-UI. The SSRF allowlist env var on ao-backend is harmless to leave in place.
+UI. To remove the SSRF allowlist, delete the `ao-admin-settings` ConfigMap and
+restart the AO pods — AO then cannot reach AAP at all, so only do this when
+removing the integration too.
 
 To remove the OAuth2 application from AAP, delete the "Syntara" application via
 the AAP API or UI under Administration → Applications.

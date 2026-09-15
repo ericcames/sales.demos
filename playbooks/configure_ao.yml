@@ -21,14 +21,27 @@
 #
 # WHY THE SSRF ALLOWLIST. AO uses langchain_core's SSRF protection to block
 # private IP addresses. The AAP hostname resolves to a private IP from inside
-# the cluster (same-cluster communication). Three separate SSRF paths exist:
+# the cluster (same-cluster communication). The settings that open it:
 #
-#   workflowHttpRequestAllowedHosts (CR) → ao-worker (workflow HTTP steps)
-#   APP_INTEGRATION_URL_ALLOWED_HOSTS    → ao-backend (integration proxy)
-#   APP_OIDC_ALLOW_PRIVATE_NETWORKS      → ao-backend (OIDC auth to AAP)
+#   workflowHttpRequestAllowedHosts (CR)  → ao-worker (workflow HTTP steps)
+#   APP_INTEGRATION_URL_ALLOWED_HOSTS     → ao-backend (browsing AAP through the
+#                                           integration proxy) AND ao-worker
+#                                           (RUNNING an AAP step in a workflow)
+#   APP_OIDC_ALLOW_PRIVATE_NETWORKS       → ao-backend (OIDC auth to AAP)
 #
-# The CR field only affects ao-worker. The two APP_ env vars must be set on
-# the ao-backend deployment so integrations and SSO both reach AAP.
+# THE WORKER HALF WAS MISSED UNTIL #621. This playbook used to set both APP_
+# variables on ao-backend only. Everything a person can check looked healthy —
+# SSO worked, the integration was Enabled, the builder browsed AAP's templates
+# — and the first workflow run failed in 0.6 s with "Integration ... base_url
+# is not permitted by SSRF policy", because AAP steps execute in ao-worker.
+#
+# WHY A CONFIGMAP, NOT AN ENV PATCH. Every AO Deployment already loads
+# `envFrom: configMapRef ao-admin-settings (optional: true)` — a hook the
+# operator provides and does not own. Writing the settings there reaches
+# ao-backend, ao-worker and ao-background-worker at once, and a ConfigMap the
+# operator does not own should survive an operator upgrade that regenerates
+# its Deployments, which a patched env var may not (#608). Pods read envFrom
+# only at start, so a changed ConfigMap restarts the three components.
 #
 # WHY OIDC SETUP IS NOT IDEMPOTENT. `POST setup_aap_oidc` returns 502 if
 # an OAuth2 application named "Syntara" already exists on AAP. The playbook
@@ -48,7 +61,13 @@
     ao_namespace: "automation-orchestrator"
     ao_name: "ao"
     ao_route_name: "ao"
-    ao_backend_deployment: "ao-backend"
+    ao_admin_settings_configmap: "ao-admin-settings"
+    # Deployment name and its pods' app.kubernetes.io/component label. All
+    # three load the ConfigMap; only these run code that reaches AAP.
+    ao_settings_components:
+      - {deployment: "ao-backend", component: "backend"}
+      - {deployment: "ao-worker", component: "worker"}
+      - {deployment: "ao-background-worker", component: "background-worker"}
     ao_api_retries: 30
     ao_api_delay: 10
 
@@ -111,83 +130,160 @@
         msg: "Connecting AO ({{ ao_url }}) to AAP ({{ aap_url }})"
 
     # -----------------------------------------------------------------
-    # 2. Patch the SSRF allowlist on ao-backend
+    # 2. SSRF allowlist — the ao-admin-settings ConfigMap (#621)
     # -----------------------------------------------------------------
-    - name: Read current ao-backend deployment
+    - name: Write the SSRF allowlist into the ao-admin-settings ConfigMap
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: "{{ ao_admin_settings_configmap }}"
+            namespace: "{{ ao_namespace }}"
+            labels:
+              app.kubernetes.io/part-of: sales-demos
+          data:
+            APP_INTEGRATION_URL_ALLOWED_HOSTS: "{{ [aap_hostname] | to_json }}"
+            APP_OIDC_ALLOW_PRIVATE_NETWORKS: "true"
+      register: ao_settings_cm
+
+    - name: Read the AO Deployments that load the ConfigMap
       kubernetes.core.k8s_info:
         api_version: apps/v1
         kind: Deployment
         namespace: "{{ ao_namespace }}"
-        name: "{{ ao_backend_deployment }}"
-      register: ao_backend_current
+        name: "{{ item.deployment }}"
+      loop: "{{ ao_settings_components }}"
+      loop_control:
+        label: "{{ item.deployment }}"
+      register: ao_settings_deployments
 
-    - name: Extract ao-backend env vars for SSRF checks
-      ansible.builtin.set_fact:
-        ao_backend_env: >-
-          {{
-            ao_backend_current.resources[0].spec.template.spec.containers
-            | selectattr('name', 'equalto', 'backend')
-            | map(attribute='env')
-            | flatten
-          }}
-
-    - name: Check if SSRF allowlists are already configured
-      ansible.builtin.set_fact:
-        ao_integration_ssrf_set: >-
-          {{
-            ao_backend_env
-            | selectattr('name', 'equalto', 'APP_INTEGRATION_URL_ALLOWED_HOSTS')
-            | selectattr('value', 'defined')
-            | selectattr('value', 'search', aap_hostname)
-            | list | length > 0
-          }}
-        ao_oidc_private_set: >-
-          {{
-            ao_backend_env
-            | selectattr('name', 'equalto', 'APP_OIDC_ALLOW_PRIVATE_NETWORKS')
-            | selectattr('value', 'defined')
-            | selectattr('value', 'equalto', 'true')
-            | list | length > 0
-          }}
-
-    - name: Set whether any SSRF patch is needed
-      ansible.builtin.set_fact:
-        ao_ssrf_already_set: >-
-          {{ ao_integration_ssrf_set | bool and ao_oidc_private_set | bool }}
-
-    - name: Patch ao-backend with SSRF allowlists for AAP
-      when: not ao_ssrf_already_set | bool
+    # An environment configured before #621 has both variables patched straight
+    # onto ao-backend's container. An explicit `env` entry wins over `envFrom`,
+    # so a leftover copy would silently override the ConfigMap on a repoint.
+    - name: Remove APP_* variables patched directly onto a Deployment, so the ConfigMap is the one source
+      when:
+        - item.resources | length > 0
+        - >-
+          item.resources[0].spec.template.spec.containers
+          | map(attribute='env') | map('default', []) | flatten
+          | map(attribute='name')
+          | intersect(['APP_INTEGRATION_URL_ALLOWED_HOSTS', 'APP_OIDC_ALLOW_PRIVATE_NETWORKS'])
+          | length > 0
       ansible.builtin.command:
         argv:
           - oc
           - set
           - env
-          - "deployment/{{ ao_backend_deployment }}"
+          - "deployment/{{ item.item.deployment }}"
           - "-n"
           - "{{ ao_namespace }}"
           - "--server={{ openshift_api_url }}"
           - "--token={{ openshift_api_token }}"
           - "--insecure-skip-tls-verify={{ not (openshift_validate_certs | default(false) | bool) }}"
-          - "APP_INTEGRATION_URL_ALLOWED_HOSTS={{ [aap_hostname] | to_json }}"
-          - "APP_OIDC_ALLOW_PRIVATE_NETWORKS=true"
+          - "APP_INTEGRATION_URL_ALLOWED_HOSTS-"
+          - "APP_OIDC_ALLOW_PRIVATE_NETWORKS-"
+      loop: "{{ ao_settings_deployments.results }}"
+      loop_control:
+        label: "{{ item.item.deployment }}"
       changed_when: true
       no_log: true
 
-    - name: Wait for ao-backend rollout after SSRF patch
-      when: not ao_ssrf_already_set | bool
+    # Pods read envFrom only when they start. Deleting them is enough — each
+    # Deployment recreates its pods — and it changes nothing the operator owns.
+    #
+    # NO `wait: true` HERE. With a label selector and no name, the module waits
+    # on a resource called "None" and times out after 120 s per component,
+    # failing a delete that has already happened. Measured on sandbox, first
+    # run of #621. Readiness is waited for on the Deployments below instead.
+    - name: Restart the AO components so they read the new ConfigMap
+      when: ao_settings_cm is changed
+      kubernetes.core.k8s:
+        state: absent
+        api_version: v1
+        kind: Pod
+        namespace: "{{ ao_namespace }}"
+        label_selectors:
+          - "app.kubernetes.io/instance={{ ao_name }}"
+          - "app.kubernetes.io/component={{ item.component }}"
+        delete_all: true
+      loop: "{{ ao_settings_components }}"
+      loop_control:
+        label: "{{ item.deployment }}"
+
+    - name: Wait for the AO components to be ready again
       kubernetes.core.k8s_info:
         api_version: apps/v1
         kind: Deployment
         namespace: "{{ ao_namespace }}"
-        name: "{{ ao_backend_deployment }}"
-      register: ao_backend_rollout
+        name: "{{ item.deployment }}"
+      loop: "{{ ao_settings_components }}"
+      loop_control:
+        label: "{{ item.deployment }}"
+      register: ao_settings_rollout
       retries: "{{ ao_api_retries }}"
       delay: "{{ ao_api_delay }}"
       until:
-        - ao_backend_rollout.resources[0].status.readyReplicas | default(0) | int
-          == ao_backend_rollout.resources[0].spec.replicas | default(1) | int
-        - ao_backend_rollout.resources[0].status.updatedReplicas | default(0) | int
-          == ao_backend_rollout.resources[0].spec.replicas | default(1) | int
+        - ao_settings_rollout.resources | length > 0
+        - ao_settings_rollout.resources[0].status.readyReplicas | default(0) | int
+          == ao_settings_rollout.resources[0].spec.replicas | default(1) | int
+        - ao_settings_rollout.resources[0].status.updatedReplicas | default(0) | int
+          == ao_settings_rollout.resources[0].spec.replicas | default(1) | int
+
+    # Ask the pod, not the ConfigMap. The ConfigMap existing proves nothing
+    # about a worker that started before it was written — that is exactly the
+    # state that passed every check in #621.
+    # A pod being deleted still reports phase Running until it is gone, and it
+    # still carries the old environment — skip anything with a deletionTimestamp.
+    - name: Find a running ao-worker pod that is not terminating
+      kubernetes.core.k8s_info:
+        api_version: v1
+        kind: Pod
+        namespace: "{{ ao_namespace }}"
+        label_selectors:
+          - "app.kubernetes.io/instance={{ ao_name }}"
+          - "app.kubernetes.io/component=worker"
+        field_selectors:
+          - status.phase=Running
+      register: ao_worker_pods
+      retries: "{{ ao_api_retries }}"
+      delay: "{{ ao_api_delay }}"
+      until: >-
+        ao_worker_pods.resources
+        | rejectattr('metadata.deletionTimestamp', 'defined')
+        | list | length > 0
+
+    - name: Pick the ao-worker pod to ask
+      ansible.builtin.set_fact:
+        ao_worker_pod_name: >-
+          {{
+            (ao_worker_pods.resources
+             | rejectattr('metadata.deletionTimestamp', 'defined')
+             | first).metadata.name
+          }}
+
+    - name: Read the allowlist from inside an ao-worker pod
+      kubernetes.core.k8s_exec:
+        namespace: "{{ ao_namespace }}"
+        pod: "{{ ao_worker_pod_name }}"
+        command: printenv APP_INTEGRATION_URL_ALLOWED_HOSTS
+      register: ao_worker_allowlist
+      changed_when: false
+      failed_when: false
+
+    - name: Assert ao-worker can reach AAP through the SSRF check
+      ansible.builtin.assert:
+        that:
+          - aap_hostname in (ao_worker_allowlist.stdout | default(''))
+        fail_msg: >-
+          ao-worker pod {{ ao_worker_pod_name }} does not
+          have {{ aap_hostname }} in APP_INTEGRATION_URL_ALLOWED_HOSTS
+          (got '{{ ao_worker_allowlist.stdout | default('') | trim }}'). Every AAP
+          step in a workflow run will fail with "base_url is not permitted by
+          SSRF policy" (#621). Check that the Deployment still loads the
+          {{ ao_admin_settings_configmap }} ConfigMap via envFrom.
+        quiet: true
 
     # -----------------------------------------------------------------
     # 3. Login to AO
@@ -441,6 +537,7 @@
           Automation Orchestrator configured successfully.
             AO URL:          {{ ao_url }}
             AAP URL:         {{ aap_url }}
+            SSRF allowlist:  ConfigMap {{ ao_admin_settings_configmap }} {{ 'written, components restarted' if (ao_settings_cm is changed) else 'already current' }}; ao-worker verified
             OIDC provider:   {{ 'already configured' if (ao_oidc_exists | bool) else 'created' }}
             AAP credential:  {{ 'already exists' if (ao_aap_cred_exists | bool) else 'created' }}
             AAP integration: {{ 'already exists' if (ao_aap_integration_exists | bool) else 'created' }}

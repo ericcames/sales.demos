@@ -426,8 +426,8 @@ controller_templates_all:
   #
   # RUNS AFTER INSTALL. setup.yml gates both on `install_ao`. This template
   # is for re-running configuration on its own — after a sandbox rebuild,
-  # or to re-apply after an operator reconciliation clears the SSRF
-  # allowlist env var.
+  # or to re-apply the SSRF allowlist in the ao-admin-settings ConfigMap
+  # after an operator upgrade (#621, #608).
   # ---------------------------------------------------------------------
   - name: "AAP Ecosystem - Configure Automation Orchestrator"
     description: "Connect Automation Orchestrator to AAP — OIDC SSO and the AAP integration for job template visibility."

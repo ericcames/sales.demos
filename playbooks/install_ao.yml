@@ -406,9 +406,10 @@
             #   oc get installplan -n automation-orchestrator-operator-system
             #   oc patch installplan <name> -n automation-orchestrator-operator-system \
             #     --type merge -p '{"spec":{"approved":true}}'
-            # THEN RE-RUN configure_ao.yml. Its APP_* env vars are patched onto
-            # ao-backend, which this operator owns, and an upgrade may
-            # regenerate that Deployment without them (#608).
+            # THEN RE-RUN configure_ao.yml. Its APP_* settings live in the
+            # ConfigMap ao-admin-settings, which the operator does not own, so
+            # they should survive an upgrade -- untested until one is taken
+            # (#608). Re-running costs about two minutes and proves it.
             installPlanApproval: Manual
 
     - name: Approve the Automation Orchestrator operator's first InstallPlan, never an upgrade
