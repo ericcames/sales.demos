@@ -100,6 +100,7 @@ nothing, and nothing deploys from CI.
 | [`/sales-demos-orchestrator`](.claude/skills/sales-demos-orchestrator/SKILL.md) | `install_ao.yml` | Install Automation Orchestrator and its CloudNativePG database |
 | [`/sales-demos-orchestrator-config`](.claude/skills/sales-demos-orchestrator-config/SKILL.md) | `configure_ao.yml` | Connect AO to AAP — OIDC SSO and AAP integration |
 | [`/sales-demos-orchestrator-workflow`](.claude/skills/sales-demos-orchestrator-workflow/SKILL.md) | `ao_workflows.yml` | Load the AO demo workflows from config-as-code, resolving names to this environment's IDs |
+| [`/sales-demos-orchestrator-rehearse`](.claude/skills/sales-demos-orchestrator-rehearse/SKILL.md) | `ao_rehearse.yml` | Preflight the AO demo's known failure points, break compliance, run to the approval gate, report timings |
 | [`/sales-demos-alloy`](.claude/skills/sales-demos-alloy/SKILL.md) | `deploy_alloy.yml` | Deploy Grafana Alloy for metrics and logs to Grafana Cloud |
 | [`/sales-demos-dashboard`](.claude/skills/sales-demos-dashboard/SKILL.md) | `deploy_dashboard.yml` | Push Grafana Cloud dashboards (dashboard-as-code) |
 

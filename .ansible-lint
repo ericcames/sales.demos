@@ -66,6 +66,11 @@ mock_modules:
   # ansible.platform 2.7.20260604 ships 22 modules and none of them launch
   # anything. It covers gateway objects; launching is controller-domain.
   - ansible.controller.workflow_launch
+  # Rehearsing the Automation Orchestrator demo (#623, playbooks/ao_rehearse.yml)
+  # launches "Windows Day 2 - Break Compliance" and waits for it. Same reason
+  # again: ansible.platform has no module that launches or waits on a job.
+  - ansible.controller.job_launch
+  - ansible.controller.job_wait
   # Guest configuration (Phase 4, playbooks/run_demo.yml).
   - ansible.posix.firewalld
   # Windows Day 1 (#340). ansible.windows is pinned in

@@ -475,6 +475,31 @@ controller_templates_all:
       target_env: "{{ aap_env_name }}"
 
   # ---------------------------------------------------------------------
+  # Rehearse the Automation Orchestrator demo (#623). Preflights every fault
+  # the first rehearsal hit (#621, #622, #474, #616), then breaks compliance
+  # on the Windows guest so the workflow has something to fix. Add
+  # ao_rehearse_run: true to extra vars to also start the loaded workflow —
+  # it stops at the approval, because a person approving is the demo.
+  # ---------------------------------------------------------------------
+  - name: "AAP Ecosystem - Rehearse Automation Orchestrator Demo"
+    description: "Preflight the AO demo's known failure points, break compliance on the Windows guest, and optionally run the workflow to its approval gate."
+    labels:
+      - aap-ecosystem
+    job_type: run
+    organization: "IT Service Automation"
+    inventory: "Sales Demo VMs"
+    project: "Sales Demos"
+    playbook: playbooks/ao_rehearse.yml
+    execution_environment: "Sales Demos - OCP Virt EE"
+    credentials:
+      - "Sales Demos - Vault"
+      - "Sales Demos - Env Secrets"
+    limit: "{{ aap_env_name }}"
+    ask_variables_on_launch: true
+    extra_vars:
+      target_env: "{{ aap_env_name }}"
+
+  # ---------------------------------------------------------------------
   # The self-service portal (#103), runnable from AAP since #324.
   #
   # IT WAS LAPTOP-ONLY UNTIL THEN, AND THE REASON IS WORTH KEEPING. Added in
