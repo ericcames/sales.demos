@@ -1,0 +1,293 @@
+---
+# ===========================================================================
+# tasks/ao_workflow_apply.yml — create, update, or remove ONE Automation
+# Orchestrator workflow from group_vars/aap/ao_workflows.yml (#474).
+#
+# Called by playbooks/ao_workflows.yml once per workflow, with:
+#   ao_wf                     the workflow entry from ao_workflows
+#   ao_workflow_state         present | absent
+#   ao_project_ids, ao_integration_ids, ao_credential_ids, ao_jt_ids
+#                             name → ID maps for this environment
+#   ao_sso_users              federated AO users (GET /api/v1/users)
+#   ao_existing_workflow_ids  workflow name → ID, non-built-in
+# Appends one line per workflow to ao_workflow_results.
+# ===========================================================================
+
+- name: "Remove the workflow — {{ ao_wf.name }}"
+  when: ao_workflow_state == 'absent'
+  block:
+    - name: "Delete the workflow if it exists — {{ ao_wf.name }}"
+      when: ao_wf.name in ao_existing_workflow_ids
+      ansible.builtin.uri:
+        url: "{{ ao_url }}/api/v1/workflows/{{ ao_existing_workflow_ids[ao_wf.name] }}"
+        method: DELETE
+        headers: "{{ ao_auth_header }}"
+        validate_certs: false
+        status_code: [200, 204]
+      changed_when: true
+
+    - name: "Record the result — {{ ao_wf.name }}"
+      ansible.builtin.set_fact:
+        ao_workflow_results: >-
+          {{ ao_workflow_results | default([])
+             + [ao_wf.name ~ ': ' ~ ('removed' if ao_wf.name in ao_existing_workflow_ids else 'not present — nothing to remove')] }}
+
+- name: "Load the workflow — {{ ao_wf.name }}"
+  when: ao_workflow_state == 'present'
+  block:
+    # Every name must resolve before anything is sent. A typo would otherwise
+    # surface as a KeyError deep inside the render, naming nothing useful.
+    - name: "Check every name resolves in this environment — {{ ao_wf.name }}"
+      ansible.builtin.assert:
+        that:
+          - ao_wf.project in ao_project_ids
+          - ao_wf_missing | length == 0
+        fail_msg: >-
+          {{ ao_wf.name }} references names this environment does not have.
+          Project '{{ ao_wf.project }}' {{ 'found' if ao_wf.project in ao_project_ids else 'NOT found' }}.
+          Missing: {{ ao_wf_missing | join('; ') }}.
+          AO credentials and the integration come from
+          /sales-demos-orchestrator-config; AAP job templates from
+          /sales-demos-config.
+        quiet: true
+      vars:
+        ao_wf_jt_nodes: "{{ ao_wf.nodes | selectattr('type', 'equalto', 'aap_job_template') | list }}"
+        ao_wf_missing: >-
+          {{
+            (ao_wf_jt_nodes | map(attribute='job_template') | reject('in', ao_jt_ids)
+             | map('regex_replace', '^', 'AAP job template: ') | list)
+            + (ao_wf_jt_nodes | map(attribute='credential') | reject('in', ao_credential_ids)
+               | map('regex_replace', '^', 'AO credential: ') | list)
+            + (ao_wf_jt_nodes | map(attribute='integration') | reject('in', ao_integration_ids)
+               | map('regex_replace', '^', 'AO integration: ') | list)
+            | unique
+          }}
+
+    # An AAP username becomes a federated AO user on its first SSO login, named
+    # <username>-<hash> (measured: admin → admin-380b8050b735910e). Nobody may
+    # have logged in yet on a fresh environment, so an empty match is a warning,
+    # not a failure: the approval then accepts any authorized user.
+    - name: "Resolve SSO approvers — {{ ao_wf.name }}"
+      ansible.builtin.set_fact:
+        ao_wf_approver_usernames: >-
+          {{
+            ao_sso_users
+            | selectattr('username', 'match',
+                '^(' ~ (ao_wf_approvers_sso | map('regex_escape') | join('|')) ~ ')-[0-9a-f]+$')
+            | map(attribute='username') | list
+            if ao_wf_approvers_sso | length > 0 else []
+          }}
+      vars:
+        ao_wf_approvers_sso: >-
+          {{ ao_wf.nodes | selectattr('type', 'equalto', 'approval')
+             | map(attribute='approvers_sso') | map('default', []) | flatten | unique | list }}
+
+    - name: "Warn when no SSO approver has logged in yet — {{ ao_wf.name }}"
+      when:
+        - ao_wf.nodes | selectattr('type', 'equalto', 'approval') | list | length > 0
+        - ao_wf_approver_usernames | length == 0
+      ansible.builtin.debug:
+        msg: >-
+          No AO user from AAP SSO matches the approvers in {{ ao_wf.name }} — nobody
+          has logged in to AO through AAP yet. Its approval will accept any
+          authorized user. Log in once through SSO and re-run to restrict it.
+
+    # ONE EXPRESSION PER NODE, built as a whole mapping, so job_template_id stays
+    # an integer. A per-key quoted template would turn it into a string.
+    - name: "Start the node list — {{ ao_wf.name }}"
+      ansible.builtin.set_fact:
+        ao_wf_nodes: []
+
+    - name: "Render each node with this environment's IDs — {{ ao_wf.name }}"
+      ansible.builtin.set_fact:
+        ao_wf_nodes: >-
+          {{
+            ao_wf_nodes + [
+              {'id': ao_node.id, 'name': ao_node.name, 'type': ao_node.type,
+               'position': ao_node.position | default({'x': 0, 'y': 0})}
+              | combine(
+                  {'parameters': {
+                     'limit': ao_node.limit | default(''),
+                     'diff_mode': false,
+                     'credential_id': ao_credential_ids[ao_node.credential],
+                     'integration_id': ao_integration_ids[ao_node.integration],
+                     'job_template_id': ao_jt_ids[ao_node.job_template],
+                     'job_template_name': ao_node.job_template,
+                     'organization_name': ao_node.organization}}
+                  if ao_node.type == 'aap_job_template' else
+                  ({'parameters': {'condition': ao_node.condition}}
+                   if ao_node.type == 'condition' else
+                   {'settings': {},
+                    'parameters': {
+                      'prompt': ao_node.prompt | trim,
+                      'approver_users': ao_wf_approver_usernames,
+                      'fallback_decision': ao_node.fallback_decision | default('reject')}})
+                )
+            ]
+          }}
+      loop: "{{ ao_wf.nodes }}"
+      loop_control:
+        loop_var: ao_node
+        label: "{{ ao_node.name }}"
+
+    - name: "Assemble the workflow definition — {{ ao_wf.name }}"
+      ansible.builtin.set_fact:
+        ao_wf_definition: >-
+          {{
+            {'name': ao_wf.name,
+             'description': ao_wf.description | default('') | trim,
+             'schema_version': '2.0.0',
+             'triggers': ao_wf.triggers,
+             'nodes': ao_wf_nodes,
+             'edges': ao_wf.edges}
+          }}
+
+    - name: "Validate the definition with AO — {{ ao_wf.name }}"
+      ansible.builtin.uri:
+        url: "{{ ao_url }}/api/v1/workflows/validate"
+        method: POST
+        body_format: json
+        body:
+          workflow_definition: "{{ ao_wf_definition }}"
+        headers: "{{ ao_auth_header }}"
+        validate_certs: false
+        status_code: 200
+      register: ao_wf_validation
+
+    - name: "Assert AO found no errors — {{ ao_wf.name }}"
+      ansible.builtin.assert:
+        that:
+          - ao_wf_validation.json.is_valid | bool
+        fail_msg: >-
+          AO rejected {{ ao_wf.name }}: {{ ao_wf_validation.json.error_count }} error(s).
+          {{ ao_wf_validation.json.findings | default([]) | to_json }}
+          Fix inventory/group_vars/aap/ao_workflows.yml — a condition or prompt
+          must reference a node ID defined in the same workflow.
+        quiet: true
+
+    - name: "Create the workflow — {{ ao_wf.name }}"
+      when: ao_wf.name not in ao_existing_workflow_ids
+      ansible.builtin.uri:
+        url: "{{ ao_url }}/api/v1/workflows"
+        method: POST
+        body_format: json
+        body:
+          name: "{{ ao_wf.name }}"
+          description: "{{ ao_wf.description | default('') | trim }}"
+          project_id: "{{ ao_project_ids[ao_wf.project] }}"
+          labels:
+            managed-by: sales-demos
+          workflow_definition: "{{ ao_wf_definition }}"
+        headers: "{{ ao_auth_header }}"
+        validate_certs: false
+        status_code: [200, 201]
+      register: ao_wf_created
+      changed_when: true
+
+    - name: "Read the existing workflow — {{ ao_wf.name }}"
+      when: ao_wf.name in ao_existing_workflow_ids
+      ansible.builtin.uri:
+        url: "{{ ao_url }}/api/v1/workflows/{{ ao_existing_workflow_ids[ao_wf.name] }}"
+        headers: "{{ ao_auth_header }}"
+        validate_certs: false
+        status_code: 200
+      register: ao_wf_current
+
+    # Positions are layout, not behaviour, and AO may store them as floats — so
+    # they are left out of the comparison. Without that, every run would save a
+    # new version of an unchanged workflow.
+    - name: "Decide whether the stored definition differs — {{ ao_wf.name }}"
+      when: ao_wf.name in ao_existing_workflow_ids
+      ansible.builtin.set_fact:
+        ao_wf_needs_update: >-
+          {{
+            (ao_wf_current.json.version.workflow_definition.nodes
+             | map('dict2items') | map('rejectattr', 'key', 'equalto', 'position') | map('list') | map('items2dict')
+             | sort(attribute='id') | to_json(sort_keys=True))
+            != (ao_wf_definition.nodes
+             | map('dict2items') | map('rejectattr', 'key', 'equalto', 'position') | map('list') | map('items2dict')
+             | sort(attribute='id') | to_json(sort_keys=True))
+            or (ao_wf_current.json.version.workflow_definition.edges | sort(attribute='to') | to_json(sort_keys=True))
+               != (ao_wf_definition.edges | sort(attribute='to') | to_json(sort_keys=True))
+            or (ao_wf_current.json.version.workflow_definition.triggers | map(attribute='id') | sort | list)
+               != (ao_wf_definition.triggers | map(attribute='id') | sort | list)
+          }}
+
+    - name: "Update the workflow with a new version — {{ ao_wf.name }}"
+      when:
+        - ao_wf.name in ao_existing_workflow_ids
+        - ao_wf_needs_update | bool
+      ansible.builtin.uri:
+        url: "{{ ao_url }}/api/v1/workflows/{{ ao_existing_workflow_ids[ao_wf.name] }}"
+        method: PATCH
+        body_format: json
+        body:
+          description: "{{ ao_wf.description | default('') | trim }}"
+          workflow_definition: "{{ ao_wf_definition }}"
+          change_description: "Loaded from sales.demos inventory/group_vars/aap/ao_workflows.yml"
+          expected_version: "{{ ao_wf_current.json.current_version }}"
+        headers: "{{ ao_auth_header }}"
+        validate_certs: false
+        status_code: 200
+      register: ao_wf_updated
+      changed_when: true
+
+    - name: "Set the workflow ID — {{ ao_wf.name }}"
+      ansible.builtin.set_fact:
+        ao_wf_id: >-
+          {{ ao_existing_workflow_ids[ao_wf.name] if ao_wf.name in ao_existing_workflow_ids
+             else ao_wf_created.json.id }}
+        ao_wf_action: >-
+          {{ 'created' if ao_wf.name not in ao_existing_workflow_ids
+             else ('updated' if ao_wf_needs_update | bool else 'unchanged') }}
+
+    # Ask AO, not the tasks above: read the stored version back and compare the
+    # things that make the workflow behave — its steps and its condition.
+    - name: "Read the stored workflow back — {{ ao_wf.name }}"
+      ansible.builtin.uri:
+        url: "{{ ao_url }}/api/v1/workflows/{{ ao_wf_id }}"
+        headers: "{{ ao_auth_header }}"
+        validate_certs: false
+        status_code: 200
+      register: ao_wf_stored
+
+    - name: "Assert AO stored what the file defines — {{ ao_wf.name }}"
+      ansible.builtin.assert:
+        that:
+          - (ao_wf_stored.json.version.workflow_definition.nodes | map(attribute='name') | sort | list)
+            == (ao_wf.nodes | map(attribute='name') | sort | list)
+          - (ao_wf_stored.json.version.workflow_definition.nodes | selectattr('type', 'equalto', 'condition')
+             | map(attribute='parameters.condition') | sort | list)
+            == (ao_wf.nodes | selectattr('type', 'equalto', 'condition') | map(attribute='condition') | sort | list)
+          - (ao_wf_stored.json.version.workflow_definition.nodes | selectattr('type', 'equalto', 'aap_job_template')
+             | map(attribute='parameters.job_template_id') | sort | list)
+            == (ao_wf_definition.nodes | selectattr('type', 'equalto', 'aap_job_template')
+             | map(attribute='parameters.job_template_id') | sort | list)
+        fail_msg: >-
+          AO's stored version of {{ ao_wf.name }} does not match the file after the
+          {{ ao_wf_action }} — step names, the condition, or the AAP job template
+          IDs differ. Inspect it with ao-<env> workflow_get.
+        quiet: true
+
+    - name: "Publish the loaded version — {{ ao_wf.name }}"
+      when:
+        - ao_wf.publish | default(false) | bool
+        - ao_wf_stored.json.published_version_number != ao_wf_stored.json.current_version
+      ansible.builtin.uri:
+        url: "{{ ao_url }}/api/v1/workflows/{{ ao_wf_id }}/versions/{{ ao_wf_stored.json.current_version }}/publish"
+        method: POST
+        body_format: json
+        body:
+          change_description: "Published from sales.demos inventory/group_vars/aap/ao_workflows.yml"
+        headers: "{{ ao_auth_header }}"
+        validate_certs: false
+        status_code: [200, 201]
+      changed_when: true
+
+    - name: "Record the result — {{ ao_wf.name }}"
+      ansible.builtin.set_fact:
+        ao_workflow_results: >-
+          {{ ao_workflow_results | default([])
+             + [ao_wf.name ~ ': ' ~ ao_wf_action ~ ' (version ' ~ ao_wf_stored.json.current_version ~ ', '
+                ~ ('published' if ao_wf_stored.json.published_version_number else 'draft') ~ ', approvers: '
+                ~ (ao_wf_approver_usernames | join(', ') if ao_wf_approver_usernames | length > 0 else 'any authorized user') ~ ')'] }}

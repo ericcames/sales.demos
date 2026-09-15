@@ -1,0 +1,127 @@
+---
+# ===========================================================================
+# ao_workflows.yml — load Automation Orchestrator workflows as code (#474).
+#
+#   ansible-playbook playbooks/ao_workflows.yml -i inventory --limit sandbox \
+#     -e target_env=sandbox \
+#     --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
+#
+#   -e ao_workflow_state=absent       remove the workflows in the file instead —
+#                                     AND their run history: AO deletes a
+#                                     workflow's executions and approval records
+#                                     with it (measured). Updating never does.
+#   -e '{"ao_workflows_only": ["Windows Day 2 - Compliance Remediation"]}'
+#
+# Idempotent, no prompts. Every input via extra_vars. Creates no token that
+# outlives the run — the AO access token expires on its own after ~15 minutes.
+#
+# WHAT IT DOES. For each workflow in inventory/group_vars/aap/ao_workflows.yml:
+# resolve every name to this environment's ID, render AO's definition, have AO
+# validate it, create or update it (an unchanged workflow is not saved, so
+# versions do not pile up), read it back and assert AO stored what the file
+# says. Why the file holds names rather than an AO export is in its header.
+#
+# NOT A setup.yml STAGE. Building the workflow live on the AO canvas is the
+# demo. This loaded copy is the fallback and the source for rehearsals.
+#
+# RUNS AFTER configure_ao.yml, which creates the AAP integration and the
+# "AAP Admin" credential the workflow steps use, and the SSRF allowlist every
+# AAP step needs at run time (#621).
+# ===========================================================================
+
+- name: Load Automation Orchestrator workflows as code
+  hosts: aap
+  gather_facts: false
+
+  environment:
+    K8S_AUTH_HOST: "{{ openshift_api_url }}"
+    K8S_AUTH_API_KEY: "{{ openshift_api_token }}"
+    K8S_AUTH_VERIFY_SSL: "{{ openshift_validate_certs | default(false) | bool }}"
+
+  vars:
+    ao_namespace: "automation-orchestrator"
+    ao_route_name: "ao"
+    ao_workflow_state: present
+    # Names of workflows to load; empty loads every workflow in the file.
+    ao_workflows_only: []
+    ao_api_retries: 30
+    ao_api_delay: 10
+
+  tasks:
+    - name: Assert the environment is unambiguous
+      ansible.builtin.include_tasks: tasks/assert_target_environment.yml
+
+    - name: Assert the required inputs are set
+      ansible.builtin.assert:
+        that:
+          - openshift_api_url | default('') | length > 0
+          - openshift_api_token | default('') | length > 0
+          - aap_password | default('') | length > 0
+          - aap_username | default('') | length > 0
+          - ao_workflows is defined
+          - ao_workflows | length > 0
+          - ao_workflow_state in ['present', 'absent']
+        fail_msg: >-
+          openshift_api_url, openshift_api_token, aap_password and aap_username are
+          required (secrets.yml on a laptop, the "Sales Demos - Env Secrets"
+          credential from AAP); ao_workflows comes from
+          inventory/group_vars/aap/ao_workflows.yml; ao_workflow_state must be
+          present or absent (got '{{ ao_workflow_state }}').
+        quiet: true
+
+    - name: Choose the workflows to act on
+      ansible.builtin.set_fact:
+        ao_selected_workflows: >-
+          {{ ao_workflows if ao_workflows_only | length == 0
+             else ao_workflows | selectattr('name', 'in', ao_workflows_only) | list }}
+
+    - name: Assert every requested workflow is in the file
+      ansible.builtin.assert:
+        that:
+          - ao_selected_workflows | length == (ao_workflows_only | length if ao_workflows_only | length > 0 else ao_workflows | length)
+        fail_msg: >-
+          ao_workflows_only names a workflow that is not in ao_workflows.yml:
+          {{ ao_workflows_only | reject('in', ao_workflows | map(attribute='name') | list) | list }}
+        quiet: true
+
+    - name: Connect to Automation Orchestrator
+      ansible.builtin.include_tasks: tasks/ao_connect.yml
+
+    # Everything a workflow can name, read once. limit=100 comfortably covers
+    # this repo; AO paginates with a cursor beyond that.
+    - name: Read what this environment's AO and AAP have
+      ansible.builtin.uri:
+        url: "{{ ao_url }}/api/v1/{{ item }}"
+        headers: "{{ ao_auth_header }}"
+        validate_certs: false
+        status_code: 200
+      loop:
+        - projects
+        - integrations
+        - credentials
+        - proxies/aap/job_templates
+        - users?auth_type=federated&limit=100
+        - workflows?limit=100
+      register: ao_lookups
+
+    - name: Build the name-to-ID maps
+      ansible.builtin.set_fact:
+        ao_project_ids: "{{ ao_lookups.results[0].json.resources | items2dict(key_name='name', value_name='id') }}"
+        ao_integration_ids: "{{ ao_lookups.results[1].json.resources | items2dict(key_name='name', value_name='id') }}"
+        ao_credential_ids: "{{ ao_lookups.results[2].json.resources | items2dict(key_name='name', value_name='id') }}"
+        ao_jt_ids: "{{ ao_lookups.results[3].json.results | items2dict(key_name='name', value_name='id') }}"
+        ao_sso_users: "{{ ao_lookups.results[4].json.resources | default([]) }}"
+        ao_existing_workflow_ids: >-
+          {{ ao_lookups.results[5].json.resources | rejectattr('is_builtin') | list
+             | items2dict(key_name='name', value_name='id') }}
+
+    - name: Apply each workflow
+      ansible.builtin.include_tasks: tasks/ao_workflow_apply.yml
+      loop: "{{ ao_selected_workflows }}"
+      loop_control:
+        loop_var: ao_wf
+        label: "{{ ao_wf.name }}"
+
+    - name: Report
+      ansible.builtin.debug:
+        msg: "{{ ['Automation Orchestrator workflows (' ~ ao_workflow_state ~ ') at ' ~ ao_url ~ ':'] + ao_workflow_results | default([]) }}"

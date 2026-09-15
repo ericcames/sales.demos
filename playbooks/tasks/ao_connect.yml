@@ -1,0 +1,58 @@
+---
+# ===========================================================================
+# tasks/ao_connect.yml — find Automation Orchestrator and log in to its API.
+# Shared by playbooks that drive AO's REST API (#474).
+#
+# Sets:  ao_url           https://<the ao Route host>
+#        ao_auth_header   {Authorization: Bearer <access token>}
+# Needs: ao_namespace, ao_route_name, ao_api_retries, ao_api_delay, aap_password
+#
+# LOGS IN AS THE LOCAL AO `admin`, whose password install_ao.yml seeds from
+# aap_password (#143). Everything created with this session is owned by
+# `admin` — and AO lets only a credential's creator browse AAP with it, while
+# workflow runs are not checked against the user who starts them (#622). The
+# token lasts about 15 minutes; a playbook that runs longer must log in again.
+# ===========================================================================
+- name: Read the Automation Orchestrator Route
+  kubernetes.core.k8s_info:
+    api_version: route.openshift.io/v1
+    kind: Route
+    namespace: "{{ ao_namespace }}"
+    name: "{{ ao_route_name }}"
+  register: ao_connect_route
+
+- name: Assert the AO Route exists
+  ansible.builtin.assert:
+    that:
+      - ao_connect_route.resources | length > 0
+    fail_msg: >-
+      No Route named '{{ ao_route_name }}' in {{ ao_namespace }}. Is Automation
+      Orchestrator installed and configured? Run /sales-demos-orchestrator, then
+      /sales-demos-orchestrator-config.
+    quiet: true
+
+- name: Set the AO base URL
+  ansible.builtin.set_fact:
+    ao_url: "https://{{ ao_connect_route.resources[0].spec.host }}"
+
+- name: Log in to Automation Orchestrator as the local admin
+  ansible.builtin.uri:
+    url: "{{ ao_url }}/api/v1/auth/login"
+    method: POST
+    body_format: json
+    body:
+      username: admin
+      password: "{{ aap_password }}"
+    validate_certs: false
+    status_code: 200
+  register: ao_connect_login
+  retries: "{{ ao_api_retries }}"
+  delay: "{{ ao_api_delay }}"
+  until: ao_connect_login.status == 200
+  no_log: true
+
+- name: Set the AO auth header
+  ansible.builtin.set_fact:
+    ao_auth_header:
+      Authorization: "Bearer {{ ao_connect_login.json.access_token }}"
+  no_log: true

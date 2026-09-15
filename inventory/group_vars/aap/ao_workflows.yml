@@ -1,0 +1,131 @@
+---
+# ============================================================================
+# group_vars/aap/ao_workflows.yml — Automation Orchestrator workflows as code
+# (#474). Loaded by playbooks/ao_workflows.yml, the "AAP Ecosystem - Load
+# Automation Orchestrator Workflows" job template, and
+# /sales-demos-orchestrator-workflow.
+#
+# WHY THIS IS NOT AN EXPORT. AO exports a workflow as JSON, but that JSON
+# embeds values that only exist in the environment it came from: the AO
+# integration and credential UUIDs, AAP's numeric job template IDs, and the
+# approver's federated username (admin-<hash>). Imported into a fresh RHDP
+# environment every one of them is wrong. So this file names things instead,
+# and the playbook resolves each name to this environment's ID at load time:
+#
+#   job_template  → AAP job template ID   (GET /api/v1/proxies/aap/job_templates)
+#   credential    → AO credential ID      (GET /api/v1/credentials)
+#   integration   → AO integration ID     (GET /api/v1/integrations)
+#   project       → AO project ID         (GET /api/v1/projects)
+#   approvers_sso → federated AO usernames (GET /api/v1/users), matched on the
+#                   AAP username they logged in with
+#
+# NODE IDS ARE CHOSEN HERE, AND EXPRESSIONS REFERENCE THEM. AO references a
+# step by its node ID, never its display name — `${scan.…}` fails to save
+# when `scan` is only a name. AO's builder generates IDs like
+# activity_e4e7a3f2_02d6_…; POST /workflows/validate accepted readable ones
+# in AO's own prefix style (measured 2026-09-15), so the condition below reads
+# `${activity_scan.…}`. Keep the IDs stable: renaming one means updating every
+# expression that references it.
+#
+# COMPARE NUMBERS, NOT BOOLEANS. AO reads a bare `false` in a condition as a
+# reference to a step named "false" and fails at run time. The scan publishes
+# windows_compliance {pass, fail, notconfigured, errors, score, compliant}
+# (#613); branch on `fail`.
+#
+# OWNERSHIP (#622). The loader logs in as the local AO `admin`, so the workflow
+# and the "AAP Admin" credential it uses belong to `admin`. Anyone can RUN it —
+# the run path does not check credential ownership. An SSO user who opens it
+# in the builder and browses an AAP step's templates is refused that
+# credential and needs one of their own. That is why building live on the
+# canvas stays the demo and this copy is the fallback and the rehearsal source.
+#
+# Fields per workflow:
+#   name, description        the workflow (matched by name on update/remove)
+#   project                  AO project name
+#   publish                  true publishes the loaded version; drafts run too
+#   triggers, edges          AO's own shape (edges use from / to / from_port)
+#   nodes[]                  id, name, type, position, plus by type:
+#     aap_job_template       job_template, organization, credential,
+#                            integration, limit
+#     condition              condition
+#     approval               prompt, approvers_sso (list of AAP usernames),
+#                            fallback_decision
+# ============================================================================
+
+ao_workflows:
+  # "(as code)" IS LOAD-BEARING. The loader matches workflows by name, and the
+  # demo is a presenter building "Windows Day 2 - Compliance Remediation" live
+  # on the canvas. Sharing that name would let a load overwrite a live build
+  # with a new version, or a live build collide with the loaded copy.
+  - name: "Windows Day 2 - Compliance Remediation (as code)"
+    description: >-
+      Scan the Windows demo guest for CIS L1 compliance; if any control failed,
+      a named approver must approve remediation, then fix and re-scan. The
+      #470 demo, rehearsed on sandbox 2026-09-15.
+    project: "default"
+    publish: false
+    triggers:
+      - id: activity_trigger
+        name: "Windows Day 2 compliance"
+        type: manual_trigger
+        position: {x: -1051, y: -138}
+        parameters: {}
+    nodes:
+      - id: activity_scan
+        name: scan
+        type: aap_job_template
+        position: {x: -760, y: -186}
+        job_template: "Windows Day 2 - Compliance Scan"
+        organization: "IT Service Automation"
+        credential: "AAP Admin"
+        integration: "Ansible Automation Platform"
+        limit: windemo
+
+      - id: logic_compliance_check
+        name: compliance_check
+        type: condition
+        position: {x: -469, y: -172}
+        condition: "${activity_scan.artifacts.windows_compliance.fail} > 0"
+
+      - id: activity_security_approval
+        name: security_approval
+        type: approval
+        position: {x: -178, y: -141}
+        prompt: >-
+          Security lead: approve remediation of CIS 2.3.6.6 (RequireStrongKey)
+          on web-win-1. Scan result:
+          ${activity_scan.artifacts.windows_compliance.fail} failed control(s),
+          score ${activity_scan.artifacts.windows_compliance.score}%.
+        # AAP usernames whose AO SSO identity may approve. Resolved to the
+        # federated AO user each became on first SSO login. If none has logged
+        # in through SSO yet, the approval falls back to any authorized user
+        # and the loader says so.
+        approvers_sso:
+          - "{{ aap_username }}"
+        fallback_decision: reject
+
+      - id: activity_fix
+        name: fix
+        type: aap_job_template
+        position: {x: 113, y: -121}
+        job_template: "Windows Day 2 - Fix Compliance"
+        organization: "IT Service Automation"
+        credential: "AAP Admin"
+        integration: "Ansible Automation Platform"
+        limit: windemo
+
+      - id: activity_rescan
+        name: rescan
+        type: aap_job_template
+        position: {x: 404, y: -119}
+        job_template: "Windows Day 2 - Compliance Scan"
+        organization: "IT Service Automation"
+        credential: "AAP Admin"
+        integration: "Ansible Automation Platform"
+        limit: windemo
+    edges:
+      - {from: activity_trigger, to: activity_scan}
+      - {from: activity_scan, to: logic_compliance_check}
+      - {from: logic_compliance_check, from_port: "true", to: activity_security_approval}
+      - {from: activity_security_approval, from_port: approved, to: activity_fix}
+      - {from: activity_fix, to: activity_rescan}
