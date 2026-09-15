@@ -1,0 +1,437 @@
+---
+# ===========================================================================
+# ao_rehearse.yml — rehearse the Automation Orchestrator demo (#623, #470).
+#
+#   ansible-playbook playbooks/ao_rehearse.yml -i inventory --limit sandbox \
+#     -e target_env=sandbox \
+#     --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
+#
+#   -e ao_rehearse_run=true               also start the workflow; stop at its approval
+#   -e ao_rehearse_break=false            skip "Windows Day 2 - Break Compliance"
+#   -e ao_rehearse_report_execution=<id>  report a finished run's timings and approval
+#
+# Idempotent in the sense that matters: it changes only the demo guest (the
+# break) and starts at most one AO execution. No prompts; every input via
+# extra_vars. Creates no token that outlives the run.
+#
+# WHY THE PREFLIGHT CHECKS WHAT IT CHECKS. On 2026-09-15 every check anyone
+# made before the first rehearsal passed — SSO worked, the integration was
+# Enabled, `proxies_aap_job_templates` listed 36 templates — while three
+# faults were live, and each surfaced only in front of the canvas. So each
+# check here asks the component that failed, not the one that looked fine:
+#
+#   ao-worker has the SSRF allowlist    printenv inside the pod        (#621)
+#   the step's credential works for     the organizations proxy WITH   (#622)
+#     the user running this               that credential_id — the MCP
+#                                         check never passed one
+#   the workflow exists                 by name, the as-code copy      (#474)
+#   the Windows guest is up             the VirtualMachine's status
+#   windemo holds exactly one host      a stale host makes every       (#616)
+#                                         Windows job fail
+#
+# IT STOPS AT THE APPROVAL, ON PURPOSE. A person approving in AO is the part of
+# the demo being rehearsed; approving it from here would rehearse nothing.
+# Approve in the UI, then report on the run with ao_rehearse_report_execution.
+# ===========================================================================
+
+- name: Rehearse the Automation Orchestrator demo
+  hosts: aap
+  gather_facts: false
+
+  environment:
+    K8S_AUTH_HOST: "{{ openshift_api_url }}"
+    K8S_AUTH_API_KEY: "{{ openshift_api_token }}"
+    K8S_AUTH_VERIFY_SSL: "{{ openshift_validate_certs | default(false) | bool }}"
+
+  vars:
+    ao_namespace: "automation-orchestrator"
+    ao_route_name: "ao"
+    ao_api_retries: 30
+    ao_api_delay: 10
+    ao_rehearse_workflow: "Windows Day 2 - Compliance Remediation (as code)"
+    ao_rehearse_vm_name: "web-win-1"
+    ao_rehearse_inventory: "Sales Demo VMs"
+    ao_rehearse_host_group: "windemo"
+    ao_rehearse_break_template: "Windows Day 2 - Break Compliance"
+    ao_rehearse_break: true
+    ao_rehearse_run: false
+    ao_rehearse_report_execution: ""
+    ao_rehearse_gate_timeout_seconds: 300
+    # AO timestamps carry fractions and a zone suffix that differ between
+    # endpoints; everything after the seconds is dropped before parsing, so
+    # durations are whole seconds.
+    ao_rehearse_time_format: "%Y-%m-%dT%H:%M:%S"
+
+  tasks:
+    - name: Assert the environment is unambiguous
+      ansible.builtin.include_tasks: tasks/assert_target_environment.yml
+
+    - name: Assert the required inputs are set
+      ansible.builtin.assert:
+        that:
+          - openshift_api_url | default('') | length > 0
+          - openshift_api_token | default('') | length > 0
+          - aap_hostname | default('') | length > 0
+          - aap_username | default('') | length > 0
+          - aap_password | default('') | length > 0
+          - ocpvirt_namespace | default('') | length > 0
+          - aap_organization_name | default('') | length > 0
+          - ao_rehearse_break | bool in [true, false]
+          - ao_rehearse_run | bool in [true, false]
+        fail_msg: >-
+          openshift_api_url, openshift_api_token, aap_hostname, aap_username,
+          aap_password, ocpvirt_namespace and aap_organization_name are required
+          (secrets.yml plus inventory on a laptop; the "Sales Demos - Env Secrets"
+          credential and host variables from AAP).
+        quiet: true
+
+    - name: Connect to Automation Orchestrator
+      ansible.builtin.include_tasks: tasks/ao_connect.yml
+
+    # =================================================================
+    # REPORT MODE — a finished (or paused) run's timings and approval
+    # =================================================================
+    - name: Report on an execution
+      when: ao_rehearse_report_execution | length > 0
+      block:
+        - name: Read the execution with its definition
+          ansible.builtin.uri:
+            url: "{{ ao_url }}/api/v1/executions/{{ ao_rehearse_report_execution }}?include=workflow_definition"
+            headers: "{{ ao_auth_header }}"
+            validate_certs: false
+            status_code: [200, 404]
+          register: ao_rh_exec
+
+        - name: Assert the execution exists
+          ansible.builtin.assert:
+            that:
+              - ao_rh_exec.status == 200
+            fail_msg: >-
+              Execution {{ ao_rehearse_report_execution }} not found. Removing a
+              workflow deletes its executions and approval records
+              (/sales-demos-orchestrator-workflow) — was it removed?
+            quiet: true
+
+        # The steps come from their own endpoint. `?include=activities` on the
+        # execution returns them in a different shape, without
+        # temporal_activity_id — measured on the first report run.
+        - name: Read the execution's steps
+          ansible.builtin.uri:
+            url: "{{ ao_url }}/api/v1/executions/{{ ao_rehearse_report_execution }}/activities?limit=100"
+            headers: "{{ ao_auth_header }}"
+            validate_certs: false
+            status_code: 200
+          register: ao_rh_acts
+
+        - name: Read the execution's approvals
+          ansible.builtin.uri:
+            url: "{{ ao_url }}/api/v1/approvals?execution_id={{ ao_rehearse_report_execution }}"
+            headers: "{{ ao_auth_header }}"
+            validate_certs: false
+            status_code: 200
+          register: ao_rh_approvals
+
+        - name: Map node IDs to step names
+          ansible.builtin.set_fact:
+            ao_rh_names: >-
+              {{ ((ao_rh_exec.json.workflow_definition | default({}, true)).nodes | default([])
+                  + (ao_rh_exec.json.workflow_definition | default({}, true)).triggers | default([]))
+                 | items2dict(key_name='id', value_name='name') }}
+            ao_rh_lines: []
+
+        - name: Time each step
+          ansible.builtin.set_fact:
+            ao_rh_lines: >-
+              {{ ao_rh_lines + [
+                   (ao_rh_names[ao_rh_act.temporal_activity_id] | default(ao_rh_act.temporal_activity_id)).ljust(22)
+                   ~ ' ' ~ ao_rh_act.status.ljust(10) ~ ' '
+                   ~ (((((ao_rh_act.completed_at | string)[:19] | replace(' ', 'T') | to_datetime(ao_rehearse_time_format))
+                        - ((ao_rh_act.started_at | string)[:19] | replace(' ', 'T') | to_datetime(ao_rehearse_time_format))).total_seconds()
+                       | int | string) ~ ' s'
+                      if ao_rh_act.started_at and ao_rh_act.completed_at else '-')
+                   ~ ((' | AAP job ' ~ ao_rh_act.output_data.job_id
+                       ~ ((' | fail=' ~ ao_rh_act.output_data.artifacts.windows_compliance.fail
+                           ~ ' score=' ~ ao_rh_act.output_data.artifacts.windows_compliance.score)
+                          if (ao_rh_act.output_data.artifacts | default({})).windows_compliance is defined else ''))
+                      if (ao_rh_act.output_data | default({}, true)).job_id is defined else '')
+                   ~ ((' | ' ~ ao_rh_act.output_data.decision ~ ' by ' ~ ao_rh_act.output_data.decided_by)
+                      if (ao_rh_act.output_data | default({}, true)).decision is defined else '')
+                   ~ ((' | evaluated ' ~ ao_rh_act.output_data.evaluated_result)
+                      if (ao_rh_act.output_data | default({}, true)).evaluated_result is defined else '')
+                 ] }}
+          loop: "{{ ao_rh_acts.json.resources | default([]) | selectattr('started_at') | sort(attribute='started_at') }}"
+          loop_control:
+            loop_var: ao_rh_act
+            label: "{{ ao_rh_act.temporal_activity_id }}"
+
+        - name: Report
+          ansible.builtin.debug:
+            msg: >-
+              {{
+                ['Execution ' ~ ao_rehearse_report_execution ~ ' of ' ~ ao_rh_exec.json.workflow_name
+                 ~ ' — ' ~ ao_rh_exec.json.status
+                 ~ ((' in ' ~ ((((ao_rh_exec.json.completed_at | string)[:19] | replace(' ', 'T') | to_datetime(ao_rehearse_time_format))
+                               - ((ao_rh_exec.json.created_at | string)[:19] | replace(' ', 'T') | to_datetime(ao_rehearse_time_format))).total_seconds() | int) ~ ' s')
+                    if ao_rh_exec.json.completed_at else '')]
+                + ao_rh_lines
+                + (ao_rh_approvals.json.resources | default([])
+                   | map(attribute='status') | map('regex_replace', '^', 'Approval: ') | list)
+                + (ao_rh_approvals.json.resources | default([]) | selectattr('decided_at')
+                   | map(attribute='decision_notes') | map('default', '', true)
+                   | map('regex_replace', '^', 'Decision notes: ') | list)
+              }}
+
+    # =================================================================
+    # PREFLIGHT, BREAK, RUN
+    # =================================================================
+    - name: Preflight, break and run
+      when: ao_rehearse_report_execution | length == 0
+      block:
+        # --- #621: ask the worker pod, not the ConfigMap -----------------
+        - name: Find a running ao-worker pod that is not terminating
+          kubernetes.core.k8s_info:
+            api_version: v1
+            kind: Pod
+            namespace: "{{ ao_namespace }}"
+            label_selectors:
+              - "app.kubernetes.io/instance=ao"
+              - "app.kubernetes.io/component=worker"
+            field_selectors:
+              - status.phase=Running
+          register: ao_rh_workers
+
+        - name: Assert an ao-worker pod is running
+          ansible.builtin.assert:
+            that:
+              - ao_rh_workers.resources | rejectattr('metadata.deletionTimestamp', 'defined') | list | length > 0
+            fail_msg: "No running ao-worker pod in {{ ao_namespace }} — AO cannot run any workflow."
+            quiet: true
+
+        - name: Read the SSRF allowlist inside the ao-worker pod
+          kubernetes.core.k8s_exec:
+            namespace: "{{ ao_namespace }}"
+            pod: "{{ (ao_rh_workers.resources | rejectattr('metadata.deletionTimestamp', 'defined') | first).metadata.name }}"
+            command: printenv APP_INTEGRATION_URL_ALLOWED_HOSTS
+          register: ao_rh_allowlist
+          changed_when: false
+          failed_when: false
+
+        - name: Assert ao-worker can reach AAP (#621)
+          ansible.builtin.assert:
+            that:
+              - aap_hostname in (ao_rh_allowlist.stdout | default(''))
+            fail_msg: >-
+              ao-worker does not allow {{ aap_hostname }} through AO's SSRF check.
+              Every AAP step would fail at run time with "base_url is not permitted
+              by SSRF policy". Run /sales-demos-orchestrator-config (#621).
+            quiet: true
+
+        # --- #474: the workflow to rehearse ------------------------------
+        - name: List AO workflows
+          ansible.builtin.uri:
+            url: "{{ ao_url }}/api/v1/workflows?limit=100"
+            headers: "{{ ao_auth_header }}"
+            validate_certs: false
+            status_code: 200
+          register: ao_rh_workflows
+
+        - name: Assert the workflow to rehearse exists
+          ansible.builtin.assert:
+            that:
+              - ao_rh_workflows.json.resources | selectattr('name', 'equalto', ao_rehearse_workflow) | list | length == 1
+            fail_msg: >-
+              AO has no single workflow named '{{ ao_rehearse_workflow }}'. Load it
+              with /sales-demos-orchestrator-workflow (#474), or pass
+              -e ao_rehearse_workflow='<name>' to rehearse one built on the canvas.
+            quiet: true
+
+        - name: Read the workflow
+          ansible.builtin.uri:
+            url: "{{ ao_url }}/api/v1/workflows/{{ (ao_rh_workflows.json.resources | selectattr('name', 'equalto', ao_rehearse_workflow) | first).id }}"
+            headers: "{{ ao_auth_header }}"
+            validate_certs: false
+            status_code: 200
+          register: ao_rh_workflow
+
+        - name: Pick the workflow's trigger and first AAP step
+          ansible.builtin.set_fact:
+            ao_rh_workflow_id: "{{ ao_rh_workflow.json.id }}"
+            ao_rh_trigger_id: "{{ ao_rh_workflow.json.version.workflow_definition.triggers[0].id }}"
+            ao_rh_aap_step: >-
+              {{ ao_rh_workflow.json.version.workflow_definition.nodes
+                 | selectattr('type', 'equalto', 'aap_job_template') | first }}
+
+        # --- #622: the credential, as the user running this --------------
+        # This is the call the workflow builder makes. The MCP check only ever
+        # called the proxy without a credential_id, so it could not see #622.
+        - name: Browse AAP through the workflow's own credential
+          ansible.builtin.uri:
+            url: >-
+              {{ ao_url }}/api/v1/proxies/aap/organizations?page_size=200&credential_id={{ ao_rh_aap_step.parameters.credential_id
+              }}&integration_id={{ ao_rh_aap_step.parameters.integration_id }}
+            headers: "{{ ao_auth_header }}"
+            validate_certs: false
+            status_code: [200, 401, 403, 502]
+          register: ao_rh_cred_check
+
+        - name: Assert the credential works for this user (#622)
+          ansible.builtin.assert:
+            that:
+              - ao_rh_cred_check.status == 200
+            fail_msg: >-
+              AO refused the workflow's AAP credential ({{ ao_rh_cred_check.status }}:
+              {{ (ao_rh_cred_check.json | default({})).title | default('') }}). "AAP
+              Authentication Failed" here usually means the credential was created by
+              a different AO user — AO lets only its creator browse AAP with it
+              (#622). Load the workflow with /sales-demos-orchestrator-workflow so it
+              uses "AAP Admin", or run this as the credential's creator.
+            quiet: true
+
+        # --- the guest ---------------------------------------------------
+        - name: Read the Windows demo VM
+          kubernetes.core.k8s_info:
+            api_version: kubevirt.io/v1
+            kind: VirtualMachine
+            namespace: "{{ ocpvirt_namespace }}"
+            name: "{{ ao_rehearse_vm_name }}"
+          register: ao_rh_vm
+
+        - name: Assert the Windows demo VM is running
+          ansible.builtin.assert:
+            that:
+              - ao_rh_vm.resources | length > 0
+              - (ao_rh_vm.resources[0].status | default({})).printableStatus | default('') == 'Running'
+            fail_msg: >-
+              {{ ao_rehearse_vm_name }} in {{ ocpvirt_namespace }} is
+              {{ ((ao_rh_vm.resources[0] | default({})).status | default({})).printableStatus | default('missing') }}.
+              Build it with the Windows Day 1 - 0 Workflow first.
+            quiet: true
+
+        # --- #616: exactly one host behind the limit ----------------------
+        - name: Find the host group in AAP
+          ansible.builtin.uri:
+            url: >-
+              https://{{ aap_hostname }}/api/controller/v2/groups/?name={{ ao_rehearse_host_group | urlencode
+              }}&inventory__name={{ ao_rehearse_inventory | urlencode }}
+            url_username: "{{ aap_username }}"
+            url_password: "{{ aap_password }}"
+            force_basic_auth: true
+            validate_certs: "{{ aap_validate_certs | default(false) | bool }}"
+            status_code: 200
+          register: ao_rh_group
+
+        - name: List the hosts in the group
+          when: ao_rh_group.json.count == 1
+          ansible.builtin.uri:
+            url: "https://{{ aap_hostname }}/api/controller/v2/groups/{{ ao_rh_group.json.results[0].id }}/hosts/"
+            url_username: "{{ aap_username }}"
+            url_password: "{{ aap_password }}"
+            force_basic_auth: true
+            validate_certs: "{{ aap_validate_certs | default(false) | bool }}"
+            status_code: 200
+          register: ao_rh_hosts
+
+        - name: Assert the group holds exactly one host (#616)
+          ansible.builtin.assert:
+            that:
+              - ao_rh_group.json.count == 1
+              - ao_rh_hosts.json.count == 1
+            fail_msg: >-
+              Group '{{ ao_rehearse_host_group }}' in '{{ ao_rehearse_inventory }}'
+              {{ 'does not exist' if ao_rh_group.json.count == 0 else 'holds ' ~ ao_rh_hosts.json.count | default('?') ~ ' hosts: '
+                 ~ (ao_rh_hosts.json.results | default([]) | map(attribute='name') | join(', ')) }}.
+              Every Windows job targets them all; a stale host left by a failed
+              teardown makes each one fail (#616). Remove the dead host in AAP.
+            quiet: true
+
+        - name: Preflight passed
+          ansible.builtin.debug:
+            msg:
+              - "ao-worker allows {{ aap_hostname }} (#621)"
+              - "'{{ ao_rehearse_workflow }}' exists; its credential works for this user (#622, #474)"
+              - "{{ ao_rehearse_vm_name }} is Running; {{ ao_rehearse_host_group }} holds {{ ao_rh_hosts.json.results[0].name }} (#616)"
+
+        # --- break -------------------------------------------------------
+        - name: Break compliance on the guest
+          when: ao_rehearse_break | bool
+          ansible.controller.job_launch:
+            name: "{{ ao_rehearse_break_template }}"
+            organization: "{{ aap_organization_name }}"
+            limit: "{{ ao_rehearse_host_group }}"
+            wait: true
+            timeout: 600
+            controller_host: "https://{{ aap_hostname }}"
+            controller_username: "{{ aap_username }}"
+            controller_password: "{{ aap_password }}"
+            validate_certs: "{{ aap_validate_certs | default(false) }}"
+          register: ao_rh_break
+
+        - name: Assert the break succeeded
+          when: ao_rehearse_break | bool
+          ansible.builtin.assert:
+            that:
+              - ao_rh_break.status == 'successful'
+            fail_msg: "{{ ao_rehearse_break_template }} (AAP job {{ ao_rh_break.id }}) ended {{ ao_rh_break.status }}."
+            quiet: true
+
+        # --- run to the gate ----------------------------------------------
+        - name: Run the workflow to its approval
+          when: ao_rehearse_run | bool
+          block:
+            - name: Start the workflow
+              ansible.builtin.uri:
+                url: "{{ ao_url }}/api/v1/executions"
+                method: POST
+                body_format: json
+                body:
+                  workflow_id: "{{ ao_rh_workflow_id }}"
+                  trigger_node_id: "{{ ao_rh_trigger_id }}"
+                  use_published: false
+                  input_data: {}
+                headers: "{{ ao_auth_header }}"
+                validate_certs: false
+                status_code: [200, 201, 202]
+              register: ao_rh_started
+              changed_when: true
+
+            - name: Wait until the approval is pending, or the run ends
+              ansible.builtin.uri:
+                url: "{{ ao_url }}/api/v1/executions/{{ ao_rh_started.json.id }}"
+                headers: "{{ ao_auth_header }}"
+                validate_certs: false
+                status_code: 200
+              register: ao_rh_state
+              retries: "{{ (ao_rehearse_gate_timeout_seconds | int / 5) | round(0, 'ceil') | int }}"
+              delay: 5
+              until: >-
+                (ao_rh_state.json.approval_pending | default(false) | bool)
+                or ao_rh_state.json.status in ['completed', 'failed', 'cancelled', 'canceled']
+
+            - name: Read the run's approvals
+              ansible.builtin.uri:
+                url: "{{ ao_url }}/api/v1/approvals?execution_id={{ ao_rh_started.json.id }}"
+                headers: "{{ ao_auth_header }}"
+                validate_certs: false
+                status_code: 200
+              register: ao_rh_run_approvals
+
+            - name: Assert the run reached its approval
+              ansible.builtin.assert:
+                that:
+                  - ao_rh_state.json.approval_pending | default(false) | bool
+                fail_msg: >-
+                  Execution {{ ao_rh_started.json.id }} is {{ ao_rh_state.json.status }}
+                  without reaching an approval. {{ ao_rh_state.json.error_details | default('', true) }}
+                  If it completed, the guest was already compliant — run without
+                  -e ao_rehearse_break=false. Details:
+                  -e ao_rehearse_report_execution={{ ao_rh_started.json.id }}
+                quiet: true
+
+            - name: Ready for the human
+              ansible.builtin.debug:
+                msg:
+                  - "Execution {{ ao_rh_started.json.id }} is paused at its approval."
+                  - "Prompt: {{ (ao_rh_run_approvals.json.resources | first).prompt }}"
+                  - "Approvers: {{ (ao_rh_run_approvals.json.resources | first).approver_users | map(attribute='username') | join(', ') | default('any authorized user', true) }}"
+                  - "Approve in AO ({{ ao_url }}): Review approval → Approve → Submit decision."
+                  - "Then report: -e ao_rehearse_report_execution={{ ao_rh_started.json.id }}"
