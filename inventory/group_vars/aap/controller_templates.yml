@@ -713,6 +713,32 @@ controller_templates_all:
       - "Sales Demos - Vault"
       - "Sales Demos - Env Secrets"
 
+  # ---------------------------------------------------------------------
+  # NOT PER-ENVIRONMENT EITHER, for the same reason as template 2 (#629).
+  #
+  # deploy_alerts.yml is `hosts: localhost` and pushes ONE rule group to the
+  # same Grafana folder from whichever controller runs it. The rules carry the
+  # `cluster` label, so one group alerts on every environment Alloy is in.
+  #
+  # Numbered 3 because an alert on a cluster with no Alloy never fires — the
+  # same chain as the dashboard. It does not need template 2 to have run: it
+  # creates the folder itself.
+  # ---------------------------------------------------------------------
+  - name: "AAP Observability - 3 Deploy Alerts"
+    description: "Push the Sales Demos alert rules to Grafana Cloud as code. NOT per-environment — one Grafana Cloud spans every environment, and the rules are labelled by cluster."
+    labels:
+      - observability
+      - install
+    job_type: run
+    organization: "IT Service Automation"
+    inventory: "Sales Demo VMs"
+    project: "Sales Demos"
+    playbook: playbooks/deploy_alerts.yml
+    execution_environment: "Sales Demos - OCP Virt EE"
+    credentials:
+      - "Sales Demos - Vault"
+      - "Sales Demos - Env Secrets"
+
   # =====================================================================
   # GOLDEN IMAGE (#318). Point CNV at the CIS-hardened images that
   # image.builder.pipeline publishes.

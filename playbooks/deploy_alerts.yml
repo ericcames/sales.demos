@@ -1,0 +1,161 @@
+# ===========================================================================
+# deploy_alerts.yml — push Grafana alert rules to Grafana Cloud. Issue #629.
+#
+#   ansible-playbook playbooks/deploy_alerts.yml \
+#     --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
+#
+#   # reversal
+#   ansible-playbook playbooks/deploy_alerts.yml -e alerts_state=absent \
+#     --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
+#
+# WHAT THIS DOES. Reads one alert rule group from
+# playbooks/files/grafana/alert-rules.json and PUTs it into the "Sales Demos"
+# folder — the same folder deploy_dashboard.yml uses. A rule-group PUT is
+# idempotent and replaces the whole group, so a rule deleted from the JSON is
+# deleted from Grafana on the next run. Nothing drifts silently.
+#
+# THE SAME SHAPE AS deploy_dashboard.yml, ON PURPOSE. localhost, no --limit,
+# the Editor SA token. Grafana Cloud is one external service spanning every
+# environment, and the rules carry the `cluster` label so one group covers
+# them all.
+#
+# THE RULES STAY EDITABLE IN THE UI. X-Disable-Provenance: true, so someone
+# learning Grafana can open a rule and change it. The next run puts the
+# committed version back — the JSON is the source of truth, the UI is a
+# scratchpad.
+#
+# NO CONTACT POINT IS CONFIGURED HERE. Firing alerts follow the stack's default
+# notification policy. Adding a receiver would put an address or webhook in a
+# public repo, which is exactly what this playbook must not do.
+#
+# THE LEGACY PROVISIONING API. Grafana marks /api/v1/provisioning/.../rule-groups
+# deprecated in favour of the App Platform alerting APIs. deploy_dashboard.yml
+# is on the legacy dashboard API for the same reason: it is what works today
+# and matches the rest of the repo. Move both together when one moves.
+# ===========================================================================
+---
+- name: Deploy Grafana Cloud alert rules
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  vars:
+    alerts_state: "present"
+    grafana_folder_uid: "sales-demos"
+    grafana_folder_title: "Sales Demos"
+
+  tasks:
+    - name: Assert Grafana Cloud credentials are set
+      ansible.builtin.assert:
+        that:
+          - grafana_cloud_url is defined
+          - grafana_cloud_url | length > 0
+          - "'CHANGEME' not in grafana_cloud_url"
+          - grafana_cloud_editor_sa_token is defined
+          - grafana_cloud_editor_sa_token | length > 0
+          - "'CHANGEME' not in grafana_cloud_editor_sa_token"
+          - alerts_state in ['present', 'absent']
+        fail_msg: >-
+          grafana_cloud_url and grafana_cloud_editor_sa_token must be set in
+          the vault, and alerts_state must be present or absent. See
+          secrets.yml.example for instructions.
+        quiet: true
+
+    - name: Load the alert rule group JSON
+      ansible.builtin.set_fact:
+        alert_group: "{{ lookup('ansible.builtin.file', playbook_dir ~ '/files/grafana/alert-rules.json') | from_json }}"
+
+    # Rules cannot exist without their folder, and nothing guarantees the
+    # dashboard playbook ran first. Same call, same accepted codes.
+    - name: Create the Sales Demos folder
+      ansible.builtin.uri:
+        url: "{{ grafana_cloud_url }}/api/folders"
+        method: POST
+        headers:
+          Authorization: "Bearer {{ grafana_cloud_editor_sa_token }}"
+          Content-Type: "application/json"
+        body_format: json
+        body:
+          uid: "{{ grafana_folder_uid }}"
+          title: "{{ grafana_folder_title }}"
+        status_code: [200, 409, 412]
+      when: alerts_state == 'present'
+
+    # The provisioning API requires folderUID, ruleGroup and orgID on every
+    # rule. They are added here rather than repeated five times in the JSON,
+    # so the file cannot disagree with itself about which group a rule is in.
+    #
+    # ONE dict template for the whole body, not a template per key. A per-key
+    # template renders to a string whatever filter it ends in, so `interval`
+    # went out as "60" and Grafana rejected the group with a bare
+    # "bad request data" 400. Built as one expression, the integers stay integers.
+    - name: Build the alert rule group request body
+      ansible.builtin.set_fact:
+        alert_group_body: >-
+          {{ alert_group | combine({
+               'folderUid': grafana_folder_uid,
+               'rules': alert_group.rules
+                        | map('combine', {'folderUID': grafana_folder_uid,
+                                          'ruleGroup': alert_group.title,
+                                          'orgID': 1})
+                        | list
+             }) }}
+      when: alerts_state == 'present'
+
+    - name: Push the alert rule group to Grafana Cloud
+      ansible.builtin.uri:
+        url: "{{ grafana_cloud_url }}/api/v1/provisioning/folder/{{ grafana_folder_uid }}/rule-groups/{{ alert_group.title }}"
+        method: PUT
+        headers:
+          Authorization: "Bearer {{ grafana_cloud_editor_sa_token }}"
+          Content-Type: "application/json"
+          X-Disable-Provenance: "true"
+        body_format: json
+        body: "{{ alert_group_body }}"
+        status_code: [200]
+      register: grafana_alerts_push
+      when: alerts_state == 'present'
+
+    - name: Delete the alert rule group from Grafana Cloud
+      ansible.builtin.uri:
+        url: "{{ grafana_cloud_url }}/api/v1/provisioning/folder/{{ grafana_folder_uid }}/rule-groups/{{ alert_group.title }}"
+        method: DELETE
+        headers:
+          Authorization: "Bearer {{ grafana_cloud_editor_sa_token }}"
+        status_code: [204, 404]
+      when: alerts_state == 'absent'
+
+    # Ask Grafana, do not trust the PUT. The group is read back and every rule
+    # uid in the JSON must be present (or, for absent, the group must be gone).
+    - name: Read the rule group back
+      ansible.builtin.uri:
+        url: "{{ grafana_cloud_url }}/api/v1/provisioning/folder/{{ grafana_folder_uid }}/rule-groups/{{ alert_group.title }}"
+        method: GET
+        headers:
+          Authorization: "Bearer {{ grafana_cloud_editor_sa_token }}"
+        status_code: [200, 404]
+      register: grafana_alerts_readback
+
+    - name: Assert Grafana holds exactly the committed rules
+      ansible.builtin.assert:
+        that:
+          - grafana_alerts_readback.status == 200
+          - (grafana_alerts_readback.json.rules | map(attribute='uid') | sort) == (alert_group.rules | map(attribute='uid') | sort)
+        fail_msg: "Grafana's rule group does not match playbooks/files/grafana/alert-rules.json."
+        quiet: true
+      when: alerts_state == 'present'
+
+    - name: Assert the rule group is gone
+      ansible.builtin.assert:
+        that:
+          - grafana_alerts_readback.status == 404
+        fail_msg: "The rule group still exists after the DELETE."
+        quiet: true
+      when: alerts_state == 'absent'
+
+    - name: Report the result
+      ansible.builtin.debug:
+        msg:
+          - "Alert rules {{ 'pushed to' if alerts_state == 'present' else 'removed from' }} Grafana Cloud."
+          - "Group: {{ grafana_folder_title }} / {{ alert_group.title }} ({{ alert_group.rules | length }} rules)"
+          - "UI: Alerting > Alert rules, filtered to folder '{{ grafana_folder_title }}'"
