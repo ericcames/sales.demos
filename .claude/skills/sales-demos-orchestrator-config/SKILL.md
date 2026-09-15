@@ -1,6 +1,6 @@
 ---
 name: sales-demos-orchestrator-config
-description: "Configure Automation Orchestrator post-install — connect it to AAP via OIDC (SSO login) and an AAP integration (so AO can see job templates, workflows, inventories), and allow AAP through AO's SSRF check on every component that reaches it. Runs playbooks/configure_ao.yml. TRIGGER when: the user asks to configure AO, connect AO to AAP, set up SSO for AO, set up OIDC on AO, asks why AO has no integrations, says AO login only shows local accounts, asks why AO cannot see AAP job templates, or says an AO workflow's AAP step fails with 'base_url is not permitted by SSRF policy'. SKIP: if AO is not installed (that is sales-demos-orchestrator), or if the user wants to create or edit workflows in AO (that is the AO UI/API directly)."
+description: "Configure Automation Orchestrator post-install — connect it to AAP via OIDC (SSO login) and an AAP integration (so AO can see job templates, workflows, inventories), and allow AAP through AO's SSRF check on every component that reaches it. Runs playbooks/configure_ao.yml. TRIGGER when: the user asks to configure AO, connect AO to AAP, set up SSO for AO, set up OIDC on AO, asks why AO has no integrations, says AO login only shows local accounts, asks why AO cannot see AAP job templates, says an AO workflow's AAP step fails with 'base_url is not permitted by SSRF policy', or says an AAP step's Organization dropdown shows 'AAP Authentication Failed'. SKIP: if AO is not installed (that is sales-demos-orchestrator), or if the user wants to create or edit workflows in AO (that is the AO UI/API directly)."
 ---
 
 # sales-demos-orchestrator-config
@@ -34,10 +34,32 @@ Route before this can configure it.
      hostname is not there.
 3. Sets up AAP as an **OIDC identity provider** via `setup_aap_oidc` — users
    can then log into AO with their AAP credentials.
-4. Creates an **AAP credential** and **AAP integration** — AO can now see
-   job templates, workflow job templates, inventories and EEs from AAP.
+4. Creates the AO credential **AAP Admin** (matched by that name) and the **AAP
+   integration** — AO can now see job templates, workflow job templates,
+   inventories and EEs from AAP.
 5. **Validates** by querying AO's proxy endpoint to confirm job templates are
    visible.
+
+## People who build workflows need their own AAP credential
+
+**AO lets only the user who created a credential browse AAP with it** (#622).
+This playbook logs in as the local AO `admin`, so **AAP Admin** belongs to
+`admin`. Measured on sandbox:
+
+| What | Does it check who owns the credential? |
+|---|---|
+| Browsing AAP in the workflow builder (an AAP step's Organization and Job template dropdowns) | **Yes.** Anyone else gets `AAP Authentication Failed` |
+| Running a workflow | **No.** A step used a credential the user who started the run does not own |
+
+So **AAP Admin** does its job for the integration and for workflows loaded as
+code, which anyone can run. But **anyone who builds or edits AAP steps while
+logged in through AAP SSO needs a credential they created**: in the step, click
+**Change** under the credential and create a Basic Auth credential with the AAP
+admin username and password. Once per person, per environment.
+
+A playbook cannot create that credential for them — an SSO login is a browser
+OIDC flow, not something Ansible can do — and the error text does not say
+"ownership", which is why this section exists.
 
 ## Preflight Check
 
@@ -134,14 +156,17 @@ Tell the user this takes about 2 minutes and stream the output.
 3. `ao-<env>` `identity_providers_list` — the AAP OIDC provider exists.
 4. `ao-<env>` `integrations_list` and `proxies_aap_job_templates` — the AAP
    integration exists and templates are listed.
-5. **The real proof is a workflow run.** An AO workflow with one AAP job
+5. `ao-<env>` `credentials_list` — **AAP Admin** exists and
+   `integration_count` is 1.
+6. **The real proof is a workflow run.** An AO workflow with one AAP job
    template step (a read-only one, such as `Cluster Day 0 - Probe Capacity`)
    launches an AAP job instead of failing in under a second.
 
 ## When it finishes
 
 Report the playbook summary **and** the verification above, then give the user
-the AO URL.
+the AO URL. **Tell them about the credential section above** if they are going
+to build workflows in the UI.
 
 ## If it fails
 
@@ -152,6 +177,7 @@ the AO URL.
 | `422` on integration create with SSRF error | The backend pods have not restarted onto the ConfigMap yet | Re-run — the playbook restarts the components and waits before creating the integration |
 | "ao-worker pod ... does not have ... in APP_INTEGRATION_URL_ALLOWED_HOSTS" | The worker Deployment no longer loads `ao-admin-settings`, or its pods never restarted | Check the Deployment's `envFrom` still names the ConfigMap; re-run to restart the pods |
 | A workflow's AAP step fails at once: "base_url is not permitted by SSRF policy" | `ao-worker` lacks the allowlist (#621) | Re-run this skill — it writes the ConfigMap, restarts `ao-worker`, and verifies inside the pod |
+| An AAP step's Organization dropdown: "AAP Authentication Failed" (`AAP_AUTHENTICATION_ERROR`), while AAP itself is healthy | The step's credential was created by a different AO user — AO checks ownership and reports it as an authentication failure (#622). `ao-backend`'s log says `User … is not authorized to use credential …` | Create your own AAP credential in the step (**Change** → new Basic Auth credential). Re-running this skill does not help |
 | `422` on credential create | Credential type or project not found | Check AO API is healthy; the playbook looks up the "Ansible Automation Platform" credential type and "default" project by name |
 | Timeout waiting for the AO components | A Deployment stuck after the restart | Check `oc get pods -n automation-orchestrator` for crash-looping pods |
 | `401` on the verify step | JWT expired (15-minute lifetime) | Re-run — the playbook logs in once at the start |
