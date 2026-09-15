@@ -267,7 +267,9 @@
                 name: "{{ prep_smoke_vm }}"
                 namespace: "{{ prep_smoke_namespace }}"
               spec:
-                running: true
+                # runStrategy, not the deprecated `running` (#632), matching
+                # terraform/ocpvirt.
+                runStrategy: Always
                 instancetype:
                   kind: VirtualMachineClusterInstancetype
                   name: "{{ prep_smoke_instancetype }}"
