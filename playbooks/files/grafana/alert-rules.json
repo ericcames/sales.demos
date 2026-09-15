@@ -1,0 +1,207 @@
+{
+  "title": "sales-demos-health",
+  "folderUid": "sales-demos",
+  "interval": 60,
+  "rules": [
+    {
+      "uid": "sales-demos-alloy-federation-down",
+      "title": "Alloy federation down",
+      "condition": "C",
+      "for": "5m",
+      "noDataState": "OK",
+      "execErrState": "Error",
+      "labels": {
+        "severity": "critical",
+        "source": "sales-demos"
+      },
+      "annotations": {
+        "summary": "Cluster {{ $labels.cluster }} stopped sending metrics to Grafana Cloud",
+        "description": "Alloy reported the Prometheus federation target within the last hour but not now. Check the alloy DaemonSet in the grafana-alloy namespace, then re-run AAP Observability - 1 Deploy Alloy.",
+        "__dashboardUid__": "sales-demos-cluster-health",
+        "__panelId__": "6"
+      },
+      "data": [
+        {
+          "refId": "A",
+          "datasourceUid": "grafanacloud-prom",
+          "relativeTimeRange": {"from": 3600, "to": 0},
+          "model": {
+            "refId": "A",
+            "instant": true,
+            "expr": "max by (cluster) (max_over_time(up{job=\"prometheus.scrape.thanos_federate\"}[1h])) unless on (cluster) (max by (cluster) (up{job=\"prometheus.scrape.thanos_federate\"} == 1))"
+          }
+        },
+        {
+          "refId": "C",
+          "datasourceUid": "__expr__",
+          "model": {
+            "refId": "C",
+            "type": "threshold",
+            "expression": "A",
+            "conditions": [{"evaluator": {"type": "gt", "params": [0]}}]
+          }
+        }
+      ]
+    },
+    {
+      "uid": "sales-demos-aap-scrape-down",
+      "title": "AAP controller metrics down",
+      "condition": "C",
+      "for": "5m",
+      "noDataState": "OK",
+      "execErrState": "Error",
+      "labels": {
+        "severity": "warning",
+        "source": "sales-demos"
+      },
+      "annotations": {
+        "summary": "AAP on cluster {{ $labels.cluster }} stopped answering the metrics scrape",
+        "description": "Alloy scraped /api/controller/v2/metrics/ through the gateway within the last hour but not now. Either AAP is down or the aap_username/aap_password Alloy uses no longer work.",
+        "__dashboardUid__": "sales-demos-cluster-health",
+        "__panelId__": "5"
+      },
+      "data": [
+        {
+          "refId": "A",
+          "datasourceUid": "grafanacloud-prom",
+          "relativeTimeRange": {"from": 3600, "to": 0},
+          "model": {
+            "refId": "A",
+            "instant": true,
+            "expr": "max by (cluster) (max_over_time(up{job=\"prometheus.scrape.aap_controller\"}[1h])) unless on (cluster) (max by (cluster) (up{job=\"prometheus.scrape.aap_controller\"} == 1))"
+          }
+        },
+        {
+          "refId": "C",
+          "datasourceUid": "__expr__",
+          "model": {
+            "refId": "C",
+            "type": "threshold",
+            "expression": "A",
+            "conditions": [{"evaluator": {"type": "gt", "params": [0]}}]
+          }
+        }
+      ]
+    },
+    {
+      "uid": "sales-demos-vm-stopped",
+      "title": "Running VM count dropped",
+      "condition": "C",
+      "for": "1m",
+      "noDataState": "OK",
+      "execErrState": "Error",
+      "labels": {
+        "severity": "warning",
+        "source": "sales-demos"
+      },
+      "annotations": {
+        "summary": "{{ $values.A }} fewer VMs running on cluster {{ $labels.cluster }} than 10 minutes ago",
+        "description": "A stopped VM has no VMI, so its metrics disappear rather than change: this compares the running count with ten minutes ago. Expected after a deliberate teardown; otherwise check the VM in OpenShift Virtualization.",
+        "__dashboardUid__": "sales-demos-cluster-health",
+        "__panelId__": "3"
+      },
+      "data": [
+        {
+          "refId": "A",
+          "datasourceUid": "grafanacloud-prom",
+          "relativeTimeRange": {"from": 900, "to": 0},
+          "model": {
+            "refId": "A",
+            "instant": true,
+            "expr": "count by (cluster) (kubevirt_vmi_info{phase=\"running\"} offset 10m) - (count by (cluster) (kubevirt_vmi_info{phase=\"running\"}) or (count by (cluster) (kubevirt_vmi_info{phase=\"running\"} offset 10m) * 0))"
+          }
+        },
+        {
+          "refId": "C",
+          "datasourceUid": "__expr__",
+          "model": {
+            "refId": "C",
+            "type": "threshold",
+            "expression": "A",
+            "conditions": [{"evaluator": {"type": "gt", "params": [0]}}]
+          }
+        }
+      ]
+    },
+    {
+      "uid": "sales-demos-aap-pending-jobs",
+      "title": "AAP jobs stuck pending",
+      "condition": "C",
+      "for": "15m",
+      "noDataState": "OK",
+      "execErrState": "Error",
+      "labels": {
+        "severity": "warning",
+        "source": "sales-demos"
+      },
+      "annotations": {
+        "summary": "{{ $values.A }} AAP jobs pending for 15 minutes on cluster {{ $labels.cluster }}",
+        "description": "Jobs that stay pending usually mean no capacity: the execution node is full, the instance group has no instances, or the EE image cannot be pulled.",
+        "__dashboardUid__": "sales-demos-cluster-health",
+        "__panelId__": "21"
+      },
+      "data": [
+        {
+          "refId": "A",
+          "datasourceUid": "grafanacloud-prom",
+          "relativeTimeRange": {"from": 600, "to": 0},
+          "model": {
+            "refId": "A",
+            "instant": true,
+            "expr": "max by (cluster) (awx_pending_jobs_total)"
+          }
+        },
+        {
+          "refId": "C",
+          "datasourceUid": "__expr__",
+          "model": {
+            "refId": "C",
+            "type": "threshold",
+            "expression": "A",
+            "conditions": [{"evaluator": {"type": "gt", "params": [0]}}]
+          }
+        }
+      ]
+    },
+    {
+      "uid": "sales-demos-series-budget",
+      "title": "Free-tier series budget above 80%",
+      "condition": "C",
+      "for": "15m",
+      "noDataState": "OK",
+      "execErrState": "Error",
+      "labels": {
+        "severity": "warning",
+        "source": "sales-demos"
+      },
+      "annotations": {
+        "summary": "{{ $values.A }} active series, against the 10,000 free-tier limit",
+        "description": "The budget is for the whole stack, not per cluster, so every environment running Alloy counts against it. The federation match[] list in playbooks/deploy_alloy.yml is the control.",
+        "__dashboardUid__": "sales-demos-cluster-health",
+        "__panelId__": "7"
+      },
+      "data": [
+        {
+          "refId": "A",
+          "datasourceUid": "grafanacloud-prom",
+          "relativeTimeRange": {"from": 600, "to": 0},
+          "model": {
+            "refId": "A",
+            "instant": true,
+            "expr": "count({__name__!=\"\"})"
+          }
+        },
+        {
+          "refId": "C",
+          "datasourceUid": "__expr__",
+          "model": {
+            "refId": "C",
+            "type": "threshold",
+            "expression": "A",
+            "conditions": [{"evaluator": {"type": "gt", "params": [8000]}}]
+          }
+        }
+      ]
+    }
+  ]
+}

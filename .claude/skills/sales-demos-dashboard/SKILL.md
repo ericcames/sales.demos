@@ -1,12 +1,13 @@
 ---
 name: sales-demos-dashboard
-description: "Push Grafana Cloud dashboards (dashboard-as-code). Runs playbooks/deploy_dashboard.yml. TRIGGER when: the user wants to push, deploy, or update the Grafana dashboard, apply dashboard-as-code, or set up the cluster health dashboard. SKIP: if the user only wants to query Grafana Cloud (that is the MCP server from /sales-demos-mcp) or deploy Alloy (that is /sales-demos-alloy)."
+description: "Push Grafana Cloud dashboards and alert rules (dashboard- and alerts-as-code). Runs playbooks/deploy_dashboard.yml and playbooks/deploy_alerts.yml. TRIGGER when: the user wants to push, deploy, or update the Grafana dashboard or alert rules, apply dashboard-as-code, set up the cluster health dashboard, add or change a Grafana alert, or asks why no alerts exist. SKIP: if the user only wants to query Grafana Cloud (that is the MCP server from /sales-demos-mcp) or deploy Alloy (that is /sales-demos-alloy)."
 ---
 
 # sales-demos-dashboard
 
-Push Grafana Cloud dashboards defined as committed JSON. Issue
-[#275](https://github.com/ericcames/sales.demos/issues/275).
+Push Grafana Cloud dashboards and alert rules defined as committed JSON. Issues
+[#275](https://github.com/ericcames/sales.demos/issues/275) (dashboard) and
+[#629](https://github.com/ericcames/sales.demos/issues/629) (alerts).
 
 ## There is an AAP path now too (#318)
 
@@ -30,6 +31,27 @@ This skill contains **no logic**. All the work is in
 
 The dashboard covers cluster nodes, KubeVirt VMs, AAP platform health, and
 logs. A `cluster` template variable makes it work for both sandbox and demo.
+
+`deploy_alerts.yml` does the same for alert rules
+(`playbooks/files/grafana/alert-rules.json`): it PUTs one rule group,
+`sales-demos-health`, into the same folder. The PUT replaces the whole group, so
+a rule removed from the JSON is removed from Grafana. Five rules, each labelled
+by `cluster`:
+
+| Rule | Fires when |
+|---|---|
+| Alloy federation down | a cluster reported metrics in the last hour but not now (5m) |
+| AAP controller metrics down | the AAP metrics scrape answered in the last hour but not now (5m) |
+| Running VM count dropped | fewer VMs running than 10 minutes ago (1m) — expected after a teardown |
+| AAP jobs stuck pending | any pending job for 15m |
+| Free-tier series budget above 80% | over 8,000 active series stack-wide (15m) |
+
+**No contact point is configured.** Firing alerts follow the stack's default
+notification policy; adding a receiver would put an address in a public repo.
+Rules stay editable in the UI (`X-Disable-Provenance`), and the next run puts the
+committed version back.
+
+AAP path: `AAP Observability - 3 Deploy Alerts`, not per-environment, like template 2.
 
 ## Preflight Check
 
@@ -102,6 +124,25 @@ Ansible needs the inventory path to resolve `group_vars/all/` for vault
 variable loading.
 
 This takes under 30 seconds.
+
+### Alert rules
+
+```bash
+export ANSIBLE_LOG_PATH=~/ansible-logs/deploy-alerts-$(date +%F-%H%M).log
+
+./utilities/run-ansible.sh playbooks/deploy_alerts.yml -i inventory \
+  --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
+
+# reversal — deletes the rule group, then asserts it is gone
+./utilities/run-ansible.sh playbooks/deploy_alerts.yml -i inventory \
+  -e alerts_state=absent \
+  --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
+```
+
+The playbook reads the group back and asserts every committed rule uid is there,
+so a green run already means Grafana holds the rules. Confirm from the agent's
+side anyway: `alerting_manage_rules` with `operation: list` should show the five
+rules in folder "Sales Demos", each `normal` unless something is genuinely wrong.
 
 ## Verify via Grafana MCP
 
