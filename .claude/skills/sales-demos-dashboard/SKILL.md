@@ -171,8 +171,13 @@ appears wrong in the live dashboard despite the v1 API returning the correct
 value, check the v2 apiserver directly:
 
 ```
-GET /apis/dashboard.grafana.app/v2/namespaces/stacks-1820169/dashboards/sales-demos-cluster-health
+GET /apis/dashboard.grafana.app/v2/namespaces/stacks-<stack-id>/dashboards/sales-demos-cluster-health
 ```
+
+`<stack-id>` is your stack's numeric ID: Grafana Cloud portal › your stack ›
+Details, or the `stack_id` label on `grafanacloud_instance_info` in the
+`grafanacloud-usage` data source. Like the stack URL, it identifies the
+account, so it is never written into a tracked file (#635).
 
 Compare `resourceVersion` and `generation` between the v2 response and what
 the Grafana UI is rendering — a mismatch indicates read replica lag or a
