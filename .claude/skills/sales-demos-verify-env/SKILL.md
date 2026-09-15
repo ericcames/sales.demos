@@ -127,9 +127,8 @@ mcp__openshift-<env>__resources_list  v1 Namespace
 1. Paste the new URLs into that environment's `connection.yml` (RHDP URLs are
    committed in the clear on purpose) and put the token and password in the
    vault under `env_secrets.<env>`.
-2. `sales-demos-setup` — runs `setup.yml`, which installs CNV, links the RHEL 9
-   golden image, applies the AAP config, deploys the MCP server, installs AO,
-   and **runs this skill's playbook** (`prepare_env.yml`) as its final stage.
-   After this, the environment is demo-ready for Linux.
-3. `playbooks/link_windows_image.yml` — if the environment needs Windows demos.
-4. `sales-demos-provision` — build the demo VMs.
+2. `sales-demos-setup` — runs `setup.yml`, which installs CNV, links both the
+   RHEL 9 and Windows golden images, applies the AAP config, deploys the MCP
+   server, installs AO, and **runs this skill's playbook** (`prepare_env.yml`)
+   as its final stage. After this, the environment is demo-ready.
+3. `sales-demos-provision` — build the demo VMs.

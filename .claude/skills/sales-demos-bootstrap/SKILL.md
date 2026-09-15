@@ -2,7 +2,7 @@
 name: sales-demos-bootstrap
 description: >-
   Full environment bootstrap from a single AAP URL — repoint local.yml,
-  verify vault, run setup.yml (all 11 stages with timing including probe),
+  verify vault, run setup.yml (all 12 stages with timing including probe),
   set up MCP servers, and verify everything.
   TRIGGER when: user provides a new RHDP environment URL and wants it fully
   set up, or says "bootstrap", "new environment", "fresh cluster".
@@ -176,7 +176,7 @@ fresh token, or check `kubeadmin_password` in the vault.
 
 ## Step 7 — Run setup.yml
 
-This is the main event. All 11 stages, ~25-30 minutes.
+This is the main event. All 12 stages, ~30-35 minutes.
 
 ```bash
 mkdir -p ~/ansible-logs
@@ -188,7 +188,7 @@ export ANSIBLE_LOG_PATH=~/ansible-logs/sales-demos-bootstrap-${ENV}-$(date +%F-%
   --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
 ```
 
-Tell the user this takes ~25-30 minutes. The timing summary at the end shows
+Tell the user this takes ~30-35 minutes. The timing summary at the end shows
 per-stage elapsed times.
 
 If it fails, check the log at `$ANSIBLE_LOG_PATH` and see the failure table
