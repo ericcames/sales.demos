@@ -516,6 +516,20 @@
           "refId": "A",
           "instant": true,
           "format": "table"
+        },
+        {
+          "expr": "sum by (name) (kubevirt_vmi_vcpu_count{cluster=\"$cluster\", namespace=~\"${namespace:regex}\"})",
+          "legendFormat": "",
+          "refId": "B",
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "expr": "max by (name) (kubevirt_vmi_memory_domain_bytes{cluster=\"$cluster\", namespace=~\"${namespace:regex}\"})",
+          "legendFormat": "",
+          "refId": "C",
+          "instant": true,
+          "format": "table"
         }
       ],
       "fieldConfig": {
@@ -525,6 +539,13 @@
           }
         },
         "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "Memory" },
+            "properties": [
+              { "id": "unit", "value": "bytes" },
+              { "id": "decimals", "value": 0 }
+            ]
+          },
           {
             "matcher": { "id": "byName", "options": "phase" },
             "properties": [
@@ -544,23 +565,37 @@
       },
       "transformations": [
         {
+          "id": "joinByField",
+          "options": { "byField": "name", "mode": "outer" }
+        },
+        {
           "id": "filterFieldsByName",
           "options": {
             "include": {
-              "names": ["name", "namespace", "phase", "guest_os_name", "node", "instance_type"]
+              "names": ["name", "namespace", "phase", "guest_os_name", "node", "Value #B", "Value #C"]
             }
           }
         },
         {
           "id": "organize",
           "options": {
+            "indexByName": {
+              "guest_os_name": 0,
+              "name": 1,
+              "Value #B": 2,
+              "Value #C": 3,
+              "namespace": 4,
+              "node": 5,
+              "phase": 6
+            },
             "renameByName": {
               "name": "VM",
               "namespace": "Namespace",
               "phase": "Phase",
               "guest_os_name": "Guest OS",
               "node": "Node",
-              "instance_type": "Instance Type"
+              "Value #B": "vCPU",
+              "Value #C": "Memory"
             }
           }
         }
