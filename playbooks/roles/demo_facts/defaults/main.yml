@@ -28,6 +28,35 @@ demo_facts_show_full: false
 # names ARE the contract.
 demo_facts_compare: false
 
+# WHICH FIELDS THE DRIFT REPORT COMPARES (#648), and the omissions are the
+# design. `gathered` and `uptime.seconds` change on EVERY run by definition --
+# reporting them would mean the report always says "drift" and the viewer learns
+# to ignore it. `uptime.last_boot` is deliberately IN: a reboot is exactly the
+# kind of change worth seeing, and unlike uptime.seconds it only moves when
+# something actually happened.
+demo_facts_compare_fields:
+  - hostname
+  - os.distribution
+  - os.version
+  - os.kernel
+  - os.architecture
+  - resources.vcpus
+  - resources.memory_mb
+  - virtualization.type
+  - virtualization.role
+  - network.addresses
+  - network.dns_servers
+  - network.domain
+  - platform.selinux
+  - platform.product
+  - platform.vendor
+  - uptime.last_boot
+  - provisioning.vm_size_tier
+  - provisioning.instance_type
+  - provisioning.environment
+  - golden_image.source
+  - golden_image.cis_level
+
 # Publish facts.html to the guest's docroot. The curated summary reaches AAP's
 # Facts tab regardless of this — that copy is the job template's use_fact_cache,
 # not anything this role does.

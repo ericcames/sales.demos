@@ -124,6 +124,13 @@
   ansible.builtin.debug:
     var: demo_facts_summary
 
+- name: Compare against the previously cached facts
+  # AFTER the summary is built and BEFORE anything publishes, so facts.html can
+  # carry the diff. See compare.yml for why reading the cache mid-run returns
+  # the PREVIOUS run's facts -- that is the mechanism, not an accident.
+  ansible.builtin.include_tasks: compare.yml
+  when: demo_facts_compare | bool
+
 - name: Print the complete fact set
   ansible.builtin.debug:
     var: ansible_facts
