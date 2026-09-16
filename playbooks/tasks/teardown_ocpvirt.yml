@@ -17,6 +17,12 @@
 #   4. Clean up SSH host keys
 #   5. Deregister hosts from AAP inventory
 #
+# STEP 2 IS WHY TEARDOWN IS AAP-ONLY (#638). It delegates over SSH to the
+# guests' in-cluster Service DNS names, which no laptop can resolve, and an
+# UNREACHABLE delegate ends the play before step 3 ever runs. teardown.yml
+# enforces that with a fail-fast guard before it includes this file; the guard
+# is Linux-only because this delegation is.
+#
 # Reads play-level vars: ocpvirt_*, provision_*, aap_env_name, and the
 # group_vars connection values.
 # ===========================================================================
@@ -175,6 +181,10 @@
     # a single `teardown_guests` group would still hold the web farm's guests
     # when this runs again for db, and the db run would try to unregister
     # machines that were already destroyed.
+    #
+    # `item.ansible_host` is <vm>.<namespace>.svc.cluster.local, set by
+    # terraform/ocpvirt/outputs.tf. It resolves from inside the cluster only --
+    # see the AAP-only guard in teardown.yml (#638).
     - name: Add the Linux guests to the in-memory inventory
       ansible.builtin.add_host:
         name: "{{ item.host }}"

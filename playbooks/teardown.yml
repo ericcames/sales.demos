@@ -3,9 +3,12 @@
 # teardown.yml — Phase 3's other half. Destroy the demo VMs and deregister
 # them from AAP, without touching the expensive one-time setup. Issue #6, #238.
 #
-#   ansible-playbook playbooks/teardown.yml -i inventory --limit sandbox \
-#     -e target_env=sandbox \
-#     --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
+# THIS RUNS FROM AAP, NOT FROM A LAPTOP (#638). Launch the "Linux Day 1 -
+# Teardown" or "Windows Day 1 - Teardown" job template. Before destroying, this
+# playbook SSHes into each Linux guest to release its Red Hat subscription and
+# remove its Insights host (#47), at <vm>.<namespace>.svc.cluster.local -- a
+# name only the cluster resolves. A laptop run of the Linux path now stops at a
+# guard below instead of dying half way with a DNS error and destroying nothing.
 #
 # PROVIDER DISPATCH (#238). The `hypervisor` variable selects which teardown
 # task file runs: tasks/teardown_{{ hypervisor }}.yml. Default is `ocpvirt`
@@ -118,6 +121,65 @@
           vm_role '{{ provision_vm_role }}' is not a valid role (1-8 lowercase
           alphanumerics, starting with a letter). To remove every role that has
           state, pass all_roles=true instead.
+        quiet: true
+
+    # --- Teardown runs from AAP, not a laptop (#638) ------------------------
+    # tasks/teardown_ocpvirt.yml reaches into each Linux guest to release its
+    # Red Hat subscription and remove its Insights host BEFORE destroying it
+    # (#47), over SSH to <vm>.<namespace>.svc.cluster.local. That name resolves
+    # only inside the cluster -- an AAP execution environment pod. From a laptop
+    # it cannot, and an UNREACHABLE host is not a FAILED one: Ansible drops the
+    # host and the play ends before `terraform destroy`, leaving the VM, its
+    # state and its AAP host in place while the run exits 4 with failed=0. That
+    # is the whole bug: nothing reports failed, and nothing was destroyed.
+    #
+    # ASK THE RESOLVER; DO NOT INFER THE RUNTIME. An AWX_* environment marker
+    # would say where this is running, not whether the name the deregistration
+    # actually uses can be resolved. `kubernetes.default` is the one
+    # .svc.cluster.local name every cluster has, and it takes the identical
+    # resolver path the guest names take, so this tests the consequence rather
+    # than a proxy for it.
+    #
+    # LINUX ONLY, because the delegation is. The add_host loop in the task file
+    # sources linux_inventory alone and "Windows Day 1 - Teardown" carries no
+    # machine credential, so a Windows teardown never touches an in-cluster
+    # name. It works from a laptop today and stays working.
+    #
+    # ocpvirt-shaped: move it into the provider task file if #238 ever gains a
+    # second hypervisor. Today `provision_hypervisor in ['ocpvirt']` is already
+    # asserted above, so there is only one shape to guard.
+    #
+    # `command`, NOT ansible.builtin.getent, and that is measured rather than
+    # preferred. The module gives no clean boolean either way: `fail_key: false`
+    # returns the key mapped to null and never sets `.failed`, while
+    # `failed_when: false` zeroes `.failed` too -- an assert on it passes on a
+    # laptop, which is how the first cut of this guard silently did nothing. And
+    # on success the module keys `getent_hosts` by the RESOLVED ADDRESS, not by
+    # the name you asked about, so there is no key to look up either. The exit
+    # status survives all of that: 0 resolved, 2 not found. Verified on both
+    # sides -- this laptop returns 2, the EE image has /usr/bin/getent and
+    # returns 0 in cluster.
+    - name: Check whether in-cluster DNS resolves from here
+      when: provision_os_type == 'linux'
+      ansible.builtin.command: getent hosts kubernetes.default.svc.cluster.local
+      register: teardown_cluster_dns
+      failed_when: false
+      changed_when: false
+
+    - name: Tearing down Linux guests runs from AAP, not a laptop
+      when: provision_os_type == 'linux'
+      ansible.builtin.assert:
+        that:
+          - teardown_cluster_dns.rc == 0
+        fail_msg: >-
+          Teardown must run from AAP, not this machine.
+          kubernetes.default.svc.cluster.local does not resolve here, so neither
+          will <vm>.{{ ocpvirt_namespace_resolved }}.svc.cluster.local -- the
+          name this playbook SSHes to in order to release each guest's Red Hat
+          subscription and remove its Insights host before destroying it (#47).
+          Launch the "Linux Day 1 - Teardown" job template in AAP instead; it
+          runs in the cluster and can resolve it. Nothing has been destroyed
+          (#638).
         quiet: true
 
     # --- Every role with state (#393) ---------------------------------------
