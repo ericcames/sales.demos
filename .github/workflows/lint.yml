@@ -161,6 +161,46 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+      # THE FRONTMATTER MUST ACTUALLY PARSE, and the sed pass below cannot tell
+      # you that. It reads `description:` with a regex, so a value that is valid
+      # to sed and invalid to YAML sails through: an unescaped double quote
+      # inside a double-quoted scalar is enough. That shipped once -- the skill
+      # loaded with its description collapsed to its own name, advertising
+      # nothing, while this job reported pass. Parse first, then keep the sed
+      # checks for the portability rules a parser has no opinion about.
+      - name: Skills frontmatter is valid YAML
+        run: |
+          python3 - <<'PY'
+          import glob, sys, yaml
+
+          bad = 0
+          for f in sorted(glob.glob(".claude/skills/*/SKILL.md")):
+              text = open(f, encoding="utf-8").read()
+              if not text.startswith("---"):
+                  print(f"::error::{f} must start with '---' frontmatter")
+                  bad = 1
+                  continue
+              fm = text.split("---", 2)[1]
+              try:
+                  doc = yaml.safe_load(fm)
+              except yaml.YAMLError as e:
+                  detail = str(e).replace("\n", " ")
+                  print(f"::error::{f} frontmatter is not valid YAML: {detail}")
+                  bad = 1
+                  continue
+              if not isinstance(doc, dict):
+                  print(f"::error::{f} frontmatter is not a mapping")
+                  bad = 1
+                  continue
+              # A description that merely repeats the name tells the model
+              # nothing about when to trigger, which is the symptom a broken
+              # scalar produces after a lenient parser recovers from it.
+              name, desc = doc.get("name"), doc.get("description")
+              if desc is not None and name is not None and desc.strip() == name.strip():
+                  print(f"::error::{f} description is just the name")
+                  bad = 1
+          sys.exit(bad)
+          PY
       - name: Skills stay portable across Claude Code and Copilot CLI
         # yamllint is blind to Markdown frontmatter, so nothing else catches a
         # SKILL.md that stops loading. Copilot CLI accepts only name/description/
