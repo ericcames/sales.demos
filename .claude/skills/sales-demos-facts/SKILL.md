@@ -110,8 +110,19 @@ curl -sI "<web_url>/facts.html" | head -1     # HTTP/1.1 200 OK
 curl -s  "<web_url>/facts.json" | head -20
 ```
 
-**Then check they agree.** The virtualization field must read `KVM` / `guest` in
-the page, in `facts.json` and in the Facts tab. A KubeVirt guest reports the
+**They are different snapshots, and that is expected.** `facts.json` is written
+by the *configure* role at step 3; `facts.html` by this role at step 5 and on
+every Day 2 re-gather. Measured on a live pair: `facts.json` said `13:55:00Z`
+while `facts.html` said `14:48:12Z` on the same host. Both are honest about
+themselves. Do not read the difference as a bug, and do not promise a customer
+that curling `facts.json` shows what the report shows — say `facts.json` is the
+provisioning-time snapshot and `facts.html` is current.
+
+This matters most on a drift demo: re-running Gather Facts refreshes the page
+and not the JSON.
+
+**The values must still agree where both carry them.** The virtualization field
+must read `KVM` / `guest` in the page, in `facts.json` and in the Facts tab. A KubeVirt guest reports the
 literal string `"NA"` for both facts, so `| default()` never fires and every
 consumer has to normalise it identically — #160 is what it costs when one of them
 does not, and `utilities/check-fact-normalisation.py` is what now stops it

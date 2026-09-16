@@ -133,7 +133,14 @@
     <p>Collected by Ansible Automation Platform and stored in its database —
     the same values are on this host's <strong>Facts</strong> tab in AAP,
     re-stamped every time the job runs.</p>
-    <p>The machine-readable subset is at <a href="facts.json">facts.json</a>.</p>
+    {# NOT THE SAME SNAPSHOT, and saying so is the point. facts.json is written
+       by the configure role when the guest is built; this page is rewritten on
+       every fact gather. Measured 53 minutes apart on a live host. Calling it
+       "the same data" would be the #160 mistake in a new place -- a page making
+       a claim the artifact it links to does not support. #}
+    <p><a href="facts.json">facts.json</a> carries the same fields in
+    machine-readable form, captured when the guest was configured — so its
+    timestamp is older than this page's by design.</p>
   </footer>
 </div>
 </body>
