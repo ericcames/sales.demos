@@ -511,6 +511,29 @@ Environment secrets.
   A DataVolume's source is immutable, so a changed tag deletes and re-imports
   rather than editing in place.
 
+- **Run logs go to `~/ansible-logs/`, never into this repo**, and the easy way to
+  get that right is `utilities/run-playbook.sh`, which names the log, creates the
+  directory, passes the vault id and prints the path:
+
+  ```bash
+  ./utilities/run-playbook.sh playbooks/config.yml --limit sandbox -e target_env=sandbox
+  ```
+
+  The rule is not new — `.gitignore` states it and every skill sets
+  `ANSIBLE_LOG_PATH`. What was missing is a rule for an **ad-hoc**
+  `ansible-playbook` run, which belongs to no skill and so met the convention
+  nowhere. Ten stray logs accumulated in `logs/` and `run-logs/` before anyone
+  noticed, because the same `.gitignore` that states the rule also hides every
+  breach of it. Do not recreate either directory.
+
+  **CI cannot catch this**, and that is why the answer is a wrapper rather than a
+  check: CI checks out a clean tree, so a job asserting "no `logs/` here" passes
+  on every run and means nothing.
+
+  Never pipe a run through `tee` — in a pipeline the exit status comes from
+  `tee`, so a failed run reports success. The wrapper redirects and reports the
+  real status.
+
 - **Document before fixing** — open a GitHub issue before making code changes.
 - **Always label new issues** — run `gh label list --repo ericcames/sales.demos`
   and apply every label that genuinely fits.
@@ -601,6 +624,13 @@ Environment secrets.
     **Adding or renaming a CI job means updating this list**, or PRs will either
     wait forever on a check that never reports, or merge without one that should
     have run.
+
+    **A ninth job exists and is NOT yet required: `fact-normalisation-agrees`**
+    (#647). It runs on every PR, but requiring a check is a branch-protection
+    setting rather than a tracked file, so adding the job did not make it
+    mandatory — the same invisibility that put this whole list here. Add it in
+    the repository settings and move it into the sentence above; until then a PR
+    can merge with it red.
   - **It applies to admins.** Anything less would not have prevented what
     prompted it: a commit went straight to `main` because a `git checkout -b`
     failed on an existing branch and `|| true` swallowed the error. Admin bypass

@@ -83,6 +83,7 @@ nothing, and nothing deploys from CI.
 | [`/sales-demos-windows-image`](.claude/skills/sales-demos-windows-image/SKILL.md) | `link_windows_image.yml` | Point CNV at the published Windows golden image |
 | [`/sales-demos-rhel9-image`](.claude/skills/sales-demos-rhel9-image/SKILL.md) | `link_rhel9_image.yml` | Point CNV at the published RHEL 9 CIS L1 golden image |
 | [`/sales-demos-ocpvirt-demo`](.claude/skills/sales-demos-ocpvirt-demo/SKILL.md) | `repair_linux_vm.yml` | Repair an existing Linux VM: register, configure, rescan |
+| [`/sales-demos-facts`](.claude/skills/sales-demos-facts/SKILL.md) | `check_linux_vm.yml`, `check_windows_vm.yml` | Gather, cache and publish a guest's facts: AAP's Facts tab plus `<web_url>/facts.html` |
 | [`/sales-demos-teardown`](.claude/skills/sales-demos-teardown/SKILL.md) | `teardown.yml` | Destroy VMs; keep CNV and the golden images |
 
 📦 **Private Automation Hub**

@@ -1,0 +1,198 @@
+---
+# ===========================================================================
+# demo_facts — build a curated summary, cache it, publish it. Issue #647.
+# ===========================================================================
+
+- name: Decide where this guest serves files from
+  ansible.builtin.set_fact:
+    demo_facts_docroot: >-
+      {{ 'C:\inetpub\wwwroot' if ansible_os_family == 'Windows'
+         else '/var/www/html' }}
+    demo_facts_is_windows: "{{ ansible_os_family == 'Windows' }}"
+
+# ONE DICT TEMPLATE, NOT A DICT OF TEMPLATES. A per-key "{{ ... }}" is a string
+# whatever filter is inside it, so `memory_mb` would reach facts.json as "16144"
+# rather than 16144 and the JSON would lie about its own types. Templating the
+# whole mapping in one expression keeps integers integers.
+#
+# CURATED, NOT A DUMP, and the key names deliberately match the facts.json that
+# linux_configure and windows_configure already publish -- so one parser reads
+# the page, the file and the Facts tab. The full ansible_facts dict is roughly a
+# megabyte, changes shape between runs, and is already in AAP's database.
+#
+# cacheable: true is the difference between a summary that exists only in a job
+# log and one that is queryable from the API beside the raw set. dc1.azure's
+# equivalent is not cacheable, so its readable view vanishes when the job ages
+# out -- the thing worth fixing on the way in.
+- name: Build the curated fact summary
+  # ONE TEMPLATE FOR THE WHOLE MAPPING, not one per key. A per-key quoted
+  # template renders to a string whatever it is filtered through, so memory_mb
+  # would reach facts.html as "16144" rather than 16144 and the report would lie
+  # about its own types. Built as a single dict, the integers stay integers --
+  # the same reasoning as windows_compliance's set_stats.
+  #
+  # CURATED, NOT A DUMP. The full ansible_facts dict is roughly a megabyte,
+  # changes shape between runs, and is already in AAP's database.
+  #
+  # A STRICT SUPERSET OF facts.json, verified by diffing the two live artifacts
+  # rather than by reading both files and hoping. Every key the configure roles
+  # publish appears here with the same name and nesting, so one parser reads the
+  # page, the file and the Facts tab; this adds network, platform, uptime,
+  # os.architecture and provisioning.environment on top.
+  #
+  # golden_image.pipeline is here for exactly that reason -- it was the ONE key
+  # facts.json had and this did not, found by diffing a live guest, and a single
+  # missing key is how "the schemas match" stops being true quietly.
+  #
+  # cacheable: true is the difference between a summary that exists only in a
+  # job log and one that is queryable from the API beside the raw set.
+  # dc1.azure's equivalent is not cacheable, so its readable view vanishes when
+  # the job ages out -- worth fixing on the way in.
+  ansible.builtin.set_fact:
+    cacheable: true
+    demo_facts_summary: >-
+      {{ {
+           'hostname': inventory_hostname,
+           'gathered': ansible_date_time.iso8601 | default(''),
+           'os': {
+             'distribution': ansible_distribution | default('n/a'),
+             'version': ansible_distribution_version | default('n/a'),
+             'kernel': ansible_kernel | default('n/a'),
+             'architecture': ansible_architecture | default('n/a')
+           },
+           'resources': {
+             'vcpus': ansible_processor_vcpus | default(0) | int,
+             'memory_mb': ansible_memtotal_mb | default(0) | int
+           },
+           'virtualization': {
+             'type': demo_facts_virt_type | trim,
+             'role': demo_facts_virt_role | trim
+           },
+           'network': {
+             'addresses': _demo_facts_addresses,
+             'dns_servers': ansible_dns.nameservers | default([]),
+             'domain': ansible_windows_domain | default(ansible_domain | default('n/a'))
+           },
+           'uptime': {
+             'seconds': ansible_uptime_seconds | default(0) | int,
+             'last_boot': _demo_facts_last_boot
+           },
+           'platform': {
+             'selinux': ansible_selinux.status | default('n/a'),
+             'product': ansible_product_name | default('n/a'),
+             'vendor': ansible_system_vendor | default('n/a')
+           },
+           'provisioning': {
+             'vm_size_tier': vm_size_tier | default(none),
+             'instance_type': vm_size_chosen | default(none),
+             'in_cluster_address': ansible_host | default(inventory_hostname),
+             'environment': env_name | default(none),
+             'repository': demo_facts_repo_url
+           },
+           'golden_image': {
+             'source': demo_facts_golden_image_source,
+             'repo': demo_facts_golden_image_repo | trim,
+             'build_date': demo_facts_golden_image_build_date | trim,
+             'cis_level': demo_facts_golden_image_cis_level,
+             'pipeline': demo_facts_golden_image_pipeline
+           }
+         } }}
+  vars:
+    # all_ipv4_addresses on Linux, ip_addresses on Windows -- different fact
+    # names for the same thing, resolved once here rather than twice above.
+    _demo_facts_addresses: >-
+      {{ ansible_ip_addresses | default([])
+         if ansible_os_family == 'Windows'
+         else ansible_all_ipv4_addresses | default([]) }}
+
+    # ansible_lastboot IS A WINDOWS-ONLY FACT. Taking it with a default meant
+    # every Linux guest published "last_boot": "n/a" -- measured on web-lnx-1,
+    # job 200, and it renders as a visibly empty row on the page. Linux has the
+    # same information one subtraction away, so derive it rather than shipping a
+    # field that is blank on half the fleet.
+    # THE FORMAT STRING IS THE INPUT TO strftime, NOT THE EPOCH. Written the
+    # other way round it fails with "Invalid value for epoch value
+    # (%Y-%m-%dT%H:%M:%SZ)" -- which names the format as the bad epoch and is
+    # easy to misread. Measured: job 213.
+    _demo_facts_last_boot: >-
+      {{ ansible_lastboot if ansible_lastboot is defined
+         else '%Y-%m-%dT%H:%M:%SZ' | strftime(
+                (ansible_date_time.epoch | int) - (ansible_uptime_seconds | default(0) | int),
+                utc=True) }}
+
+- name: Print the curated fact summary to the job log
+  ansible.builtin.debug:
+    var: demo_facts_summary
+
+- name: Print the complete fact set
+  ansible.builtin.debug:
+    var: ansible_facts
+  when: demo_facts_show_full | bool
+
+- name: Publish the fact report to the guest
+  when: demo_facts_publish | bool
+  block:
+    - name: Render the fact report on the guest (Linux)
+      # BECOME ON THE TASK, NOT THE PLAY. check_linux_vm.yml is deliberately
+      # unprivileged -- it is a smoke test, it proves a login and reads facts,
+      # and it has never needed root. Adding `become: true` to the play to suit
+      # one task would quietly escalate the whole check.
+      #
+      # /var/www/html is apache:apache, and cloud-user cannot write there, so
+      # without this the task fails with "Destination /var/www/html not
+      # writable" -- measured on a live guest, job 190. configure_linux_vm.yml
+      # never hit it because that play DOES become, which is why facts.json has
+      # always published cleanly from the same docroot.
+      #
+      # Windows needs no counterpart: the WinRM user is a local administrator
+      # and writes C:\inetpub\wwwroot directly.
+      become: true
+      ansible.builtin.template:
+        src: facts.html.j2
+        dest: "{{ demo_facts_docroot }}/facts.html"
+        owner: apache
+        group: apache
+        mode: "0644"
+      when: not demo_facts_is_windows | bool
+
+    - name: Render the fact report on the guest (Windows)
+      ansible.windows.win_template:
+        src: facts.html.j2
+        dest: '{{ demo_facts_docroot }}\facts.html'
+      when: demo_facts_is_windows | bool
+
+# WHERE THE OTHER COPY COMES FROM, said out loud because nothing in this role
+# does it. The full ansible_facts set lands in AAP's database because the JOB
+# TEMPLATE sets use_fact_cache: true -- `gather_facts: true` plus that toggle is
+# the whole mechanism. A reader looking here for the code that writes the cache
+# will not find any, and that is the correct answer rather than a gap.
+- name: Say where each copy of the facts ended up
+  ansible.builtin.debug:
+    msg:
+      - "Curated summary: printed above, and cached in AAP."
+      - >-
+        Full facts for {{ inventory_hostname }} are in AAP's database because
+        this job template sets use_fact_cache. Infrastructure -> Hosts ->
+        {{ inventory_hostname }} -> Facts.
+      - >-
+        {{ ('Fact report: ' ~ web_url ~ '/facts.html')
+           if (web_url | default('', true) | length > 0)
+           else 'Fact report: written to ' ~ demo_facts_docroot ~ ', no web_url host var to link.' }}
+
+- name: Publish the summary as workflow artifacts
+  # ONE DICT TEMPLATE, for the same reason as the summary above -- and this task
+  # got it wrong first, which is why the comment is here twice. A per-key quoted
+  # template renders to a string whatever it contains, so AAP stored
+  # "demo_facts_vcpus": "4" rather than 4, measured on job 201. A downstream
+  # node testing `demo_facts_vcpus > 2` would compare a string and be wrong
+  # without erroring, which is the failure mode worth preventing.
+  ansible.builtin.set_stats:
+    data:
+      demo_facts: >-
+        {{ {
+             'host': inventory_hostname,
+             'vcpus': demo_facts_summary.resources.vcpus | int,
+             'memory_mb': demo_facts_summary.resources.memory_mb | int,
+             'virtualization': demo_facts_summary.virtualization.type,
+             'gathered': demo_facts_summary.gathered
+           } }}

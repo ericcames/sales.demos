@@ -104,7 +104,7 @@ mcp__openshift-<env>__resources_list  kubevirt.io/v1 VirtualMachineInstance
 `WaitForFirstConsumer`, so the disk clones only when the VM first schedules.
 Expect the VM to reach `Running` roughly 45s after apply on a warm environment.
 
-Then confirm AAP can actually reach it — that is what `Linux Day 1 - 5 Check`
+Then confirm AAP can actually reach it — that is what `Linux Day 1 - 5 Check and Gather Facts`
 is for, and it is the difference between "a VM exists" and "the demo will work".
 
 ## Notes worth having before you debug

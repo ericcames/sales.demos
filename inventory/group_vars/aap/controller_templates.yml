@@ -325,8 +325,8 @@ controller_templates_all:
   # Runs against the TARGET inventory with the Machine credential, connecting
   # over in-cluster DNS on port 22. No bastion, no virtctl.
   # ---------------------------------------------------------------------
-  - name: "Linux Day 1 - 5 Check"
-    description: "Smoke test: log in to the provisioned Linux VMs over in-cluster DNS and gather facts."
+  - name: "Linux Day 1 - 5 Check and Gather Facts"
+    description: "Log in to the provisioned Linux VMs over in-cluster DNS, then curate, cache and publish their facts."
     labels:
       - linux
       - day-1
@@ -355,7 +355,43 @@ controller_templates_all:
     # Facts tab and survive the job that collected them (#47). The same
     # information is written to <web_url>/facts.json by linux_configure — this
     # is the controller-side copy, that one is the curl-able copy.
+    #
+    # THE NAME NOW SAYS SO (#647). This flag has been set since #47 and nothing
+    # in the template list mentioned it, so the capability was plumbed and
+    # un-narrated — every Day 1 run was already populating the Facts tab and no
+    # SE had a reason to look. The playbook now also prints a curated summary
+    # and publishes <web_url>/facts.html, which is what the rename describes.
     use_fact_cache: true
+    survey_enabled: true
+    survey_spec:
+      name: ""
+      description: "How much of the fact set to show, and whether to compare against last time"
+      spec:
+        - question_name: Show full facts
+          question_description: >-
+            Also print the entire ansible_facts dict to the job log. Off by
+            default because on Windows it is roughly a megabyte and unreadable
+            on screen. The full set is stored in AAP's database either way —
+            that is what use_fact_cache does, and it is the point being made.
+          variable: demo_facts_show_full
+          type: multiplechoice
+          required: false
+          default: "false"
+          choices:
+            - "false"
+            - "true"
+        - question_name: Compare against the previously cached facts
+          question_description: >-
+            Report what changed since the last run. Off here because a VM this
+            chain has just built has no previous facts to compare against; the
+            Day 2 template defaults it on. Implemented in #648.
+          variable: demo_facts_compare
+          type: multiplechoice
+          required: false
+          default: "false"
+          choices:
+            - "false"
+            - "true"
 
   # ---------------------------------------------------------------------
   # CIS compliance scan (#202). Runs OpenSCAP with the CIS Level 1 Server
@@ -1026,7 +1062,7 @@ controller_templates_all:
   #
   # EVERY ONE CARRIES THE VAULT CREDENTIAL, including the steps that use no
   # secrets, because group_vars/all/secrets.yml is parsed for every play. See
-  # the note on Linux Day 1 - 5 Check above.
+  # the note on Linux Day 1 - 5 Check and Gather Facts above.
   #
   # THESE COULD NOT EXIST BEFORE THE STATE SPLIT. With one state per
   # environment, launching a Windows provision set create_linux=false and
@@ -1315,8 +1351,8 @@ controller_templates_all:
   # guest, and failing there would blame the VM for the network between AAP and
   # the router.
   # ---------------------------------------------------------------------
-  - name: "Windows Day 1 - 5 Check"
-    description: "Smoke test: log in over WinRM, gather facts, and prove the Route serves the page rather than only that IIS is running."
+  - name: "Windows Day 1 - 5 Check and Gather Facts"
+    description: "Log in over WinRM, prove the Route serves the page rather than only that IIS is running, then curate, cache and publish the facts."
     labels:
       - windows
       - day-1
@@ -1333,10 +1369,41 @@ controller_templates_all:
     limit: windemo
     ask_limit_on_launch: true
     # Persist the gathered facts in AAP's database so they appear in the host's
-    # Facts tab, matching Linux Day 1 - 5 Check. The same information is written
-    # to <web_url>/facts.json by windows_configure — this is the controller-side
-    # copy, that one is the curl-able copy.
+    # Facts tab, matching its Linux sibling. The same information is written to
+    # <web_url>/facts.json by windows_configure — this is the controller-side
+    # copy, that one is the curl-able copy. See the Linux entry for why the
+    # name changed (#647).
     use_fact_cache: true
+    survey_enabled: true
+    survey_spec:
+      name: ""
+      description: "How much of the fact set to show, and whether to compare against last time"
+      spec:
+        - question_name: Show full facts
+          question_description: >-
+            Also print the entire ansible_facts dict to the job log. Off by
+            default because on Windows it is roughly a megabyte and unreadable
+            on screen. The full set is stored in AAP's database either way —
+            that is what use_fact_cache does, and it is the point being made.
+          variable: demo_facts_show_full
+          type: multiplechoice
+          required: false
+          default: "false"
+          choices:
+            - "false"
+            - "true"
+        - question_name: Compare against the previously cached facts
+          question_description: >-
+            Report what changed since the last run. Off here because a VM this
+            chain has just built has no previous facts to compare against; the
+            Day 2 template defaults it on. Implemented in #648.
+          variable: demo_facts_compare
+          type: multiplechoice
+          required: false
+          default: "false"
+          choices:
+            - "false"
+            - "true"
 
   # ---------------------------------------------------------------------
   # Off-chain. For a Windows VM that ALREADY EXISTS — a page tweak, a re-run
@@ -1624,6 +1691,134 @@ controller_templates_all:
     organization: "IT Service Automation"
     state: absent
 
+  # ---------------------------------------------------------------------
+  # Day 2 fact gathering, one per OS (#647). SAME PLAYBOOK AS STEP 5, and that
+  # is the naming rule rather than an oversight.
+  #
+  # Day 1 and Day 2 are not properties of the WORK, they are properties of when
+  # you press the button. `Windows Day 1 - 2 Patch` and `Windows Day 2 - Patch`
+  # already run the same patch_windows_vm.yml; #300's taxonomy made that call
+  # once, and repeating it beats inventing a second convention. So a Day 2 entry
+  # is an ALIAS, NOT A FORK -- same playbook, same role, different defaults.
+  #
+  # THE DEFAULT DIFFERENCE IS WHAT EARNS THE SECOND OBJECT, and it is real:
+  # demo_facts_compare is false on the chain step because a VM the chain has
+  # just built has nothing to compare against, and true here because drift is
+  # the entire reason to press this button. Anything that made the two
+  # identical would mean deleting one of them.
+  #
+  # NO NUMBER, because these are off-chain -- the same reason Repair, Teardown
+  # and every other Windows Day 2 template carries none.
+  #
+  # LINUX DAY 2 STARTS HERE. There was no Linux Day 2 family before this.
+  # ---------------------------------------------------------------------
+  - name: "Linux Day 2 - Gather Facts"
+    description: "Re-gather the Linux guest's facts, refresh its Facts tab in AAP and republish <web_url>/facts.html. Read-only."
+    labels:
+      - linux
+      - day-2
+      - read-only
+    job_type: run
+    organization: "IT Service Automation"
+    inventory: "Sales Demo VMs"
+    project: "Sales Demos"
+    playbook: playbooks/check_linux_vm.yml
+    execution_environment: "Sales Demos - OCP Virt EE"
+    credentials:
+      - "Sales Demos - Linux Machine"
+      # Required even though nothing here reads a secret — group_vars/all/
+      # secrets.yml is parsed for every play. See Linux Day 1 - 5 Check and
+      # Gather Facts for the full reasoning.
+      - "Sales Demos - Vault"
+      - "Sales Demos - Env Secrets"
+    limit: linuxweb
+    ask_limit_on_launch: true
+    use_fact_cache: true
+    survey_enabled: true
+    survey_spec:
+      name: ""
+      description: "How much of the fact set to show, and whether to compare against last time"
+      spec:
+        - question_name: Show full facts
+          question_description: >-
+            Also print the entire ansible_facts dict to the job log. The full
+            set is stored in AAP's database either way.
+          variable: demo_facts_show_full
+          type: multiplechoice
+          required: false
+          default: "false"
+          choices:
+            - "false"
+            - "true"
+        - question_name: Compare against the previously cached facts
+          question_description: >-
+            Report what changed since the last run. On by default here — AAP
+            re-stamps the facts every run, and the difference is what a database
+            gives you that a one-off script cannot. Implemented in #648.
+          variable: demo_facts_compare
+          type: multiplechoice
+          required: false
+          default: "true"
+          choices:
+            - "false"
+            - "true"
+
+  - name: "Windows Day 2 - Gather Facts"
+    description: "Re-gather the Windows guest's facts, refresh its Facts tab in AAP and republish <web_url>/facts.html. Read-only."
+    labels:
+      - windows
+      - day-2
+      - read-only
+    job_type: run
+    organization: "IT Service Automation"
+    inventory: "Sales Demo VMs"
+    project: "Sales Demos"
+    playbook: playbooks/check_windows_vm.yml
+    execution_environment: "Sales Demos - OCP Virt EE"
+    credentials:
+      - "Sales Demos - Windows Machine"
+      - "Sales Demos - Vault"
+      - "Sales Demos - Env Secrets"
+    limit: windemo
+    ask_limit_on_launch: true
+    use_fact_cache: true
+    extra_vars:
+      # A DOWN PAGE MUST NOT COST YOU THE FACTS. check_windows_vm.yml fails the
+      # node on a 503 from the Route, which is correct on the Day 1 chain — that
+      # is the failure the node exists to catch. Here it would mean pressing a
+      # read-only reporting button and getting nothing back because of an
+      # unrelated fault. The 503 is still reported by the task above the assert.
+      check_vm_assert_serving: false
+    survey_enabled: true
+    survey_spec:
+      name: ""
+      description: "How much of the fact set to show, and whether to compare against last time"
+      spec:
+        - question_name: Show full facts
+          question_description: >-
+            Also print the entire ansible_facts dict to the job log. Roughly a
+            megabyte on Windows. The full set is stored in AAP's database either
+            way.
+          variable: demo_facts_show_full
+          type: multiplechoice
+          required: false
+          default: "false"
+          choices:
+            - "false"
+            - "true"
+        - question_name: Compare against the previously cached facts
+          question_description: >-
+            Report what changed since the last run. On by default here — AAP
+            re-stamps the facts every run, and the difference is what a database
+            gives you that a one-off script cannot. Implemented in #648.
+          variable: demo_facts_compare
+          type: multiplechoice
+          required: false
+          default: "true"
+          choices:
+            - "false"
+            - "true"
+
   # Retired by #300 — the family-prefix rename.
   - name: "Sales Demos - Provision VM"
     organization: "IT Service Automation"
@@ -1647,5 +1842,13 @@ controller_templates_all:
     organization: "IT Service Automation"
     state: absent
   - name: "Sales Demos - Install Automation Orchestrator"
+    organization: "IT Service Automation"
+    state: absent
+
+  # Retired by #647 — folding fact gathering into step 5 renamed both.
+  - name: "Linux Day 1 - 5 Check"
+    organization: "IT Service Automation"
+    state: absent
+  - name: "Windows Day 1 - 5 Check"
     organization: "IT Service Automation"
     state: absent

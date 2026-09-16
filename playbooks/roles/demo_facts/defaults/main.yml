@@ -1,0 +1,46 @@
+---
+# ===========================================================================
+# demo_facts — gather, curate, cache and publish the guest's Ansible facts.
+# Issue #647.
+# ===========================================================================
+# ONE ROLE FOR BOTH OPERATING SYSTEMS, against this repo's per-OS precedent
+# (linux_configure / windows_configure). Those two differ in substance — httpd
+# against IIS, firewalld against the Windows firewall — and splitting them was
+# right. A fact report does not differ in substance: windows_configure's
+# facts.json.j2 already insists both guests emit the same keys in the same order
+# "so one parser reads both and the two can be diffed". Two roles here would be
+# two copies of one schema, which is how #160 happened.
+#
+# Dispatching on `ansible_os_family` is safe BECAUSE this role runs after fact
+# gathering. dc1.azure's webserver_manage dispatches on group membership instead,
+# and that is not an inconsistency — it runs with `gather_facts: false`, so it
+# has no facts to dispatch on.
+# ===========================================================================
+
+# Also print the entire ansible_facts dict to the job log. Off by default: on
+# Windows it is roughly a megabyte and unreadable on screen, and the full set is
+# stored in AAP's database either way, which is the point the demo is making.
+demo_facts_show_full: false
+
+# Compare against the previously cached facts and report what changed.
+# Implemented in #648; referenced here so the survey variable name exists from
+# the start and the two job templates do not need renaming later. The variable
+# names ARE the contract.
+demo_facts_compare: false
+
+# Publish facts.html to the guest's docroot. The curated summary reaches AAP's
+# Facts tab regardless of this — that copy is the job template's use_fact_cache,
+# not anything this role does.
+demo_facts_publish: true
+
+# Set per OS by tasks/main.yml. Named here so the value has one documented home.
+demo_facts_docroot: ""
+
+# Provisioning metadata, read from the host variables register_hosts.yml sets.
+demo_facts_golden_image_source: "{{ golden_image_source | default('') }}"
+demo_facts_golden_image_cis_level: "{{ golden_image_cis_level | default('') }}"
+demo_facts_repo_url: "https://github.com/ericcames/sales.demos"
+# The producer of the golden image, carried so facts.html and facts.json
+# publish the same provenance. Matches {linux,windows}_configure's
+# *_golden_image_pipeline_url.
+demo_facts_golden_image_pipeline: "https://github.com/ericcames/image.builder.pipeline"

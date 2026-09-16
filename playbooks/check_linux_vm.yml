@@ -24,6 +24,19 @@
 # `hosts: aap`, so it takes no --limit environment and asserts no connection
 # variables. Its inventory is the runtime one, `Sales Demo VMs`, and its
 # credential is `Sales Demos - Linux Machine`.
+#
+# IT ALSO GATHERS AND PUBLISHES THE FACTS, and that is not scope creep (#647).
+# The job template already set `use_fact_cache: true`, so every run of this
+# playbook was ALREADY persisting the guest's facts to AAP's database -- the
+# capability was plumbed and nothing said so, nothing put it on screen, and no
+# template name mentioned it. `demo_facts` gives that existing behaviour a
+# curated summary in the job log and a report at <web_url>/facts.html.
+#
+# WHY HERE RATHER THAN A NEW PLAYBOOK. This is already the last node of
+# `Linux Day 1 - 0 Workflow`, and facts are most useful at the end, once the
+# guest is registered, configured and scanned. A separate `gather_facts.yml`
+# would need its own workflow node, its own template and its own credentials to
+# reach a machine this playbook is already logged in to.
 # ===========================================================================
 
 - name: Check the demo VMs are reachable and healthy
@@ -76,3 +89,11 @@
           means fact gathering did not really complete.
         quiet: true
       when: vm_size_chosen is defined
+
+    - name: Gather, curate, cache and publish the guest's facts
+      # The role prints the summary and writes facts.html. The FULL fact set
+      # reaches AAP's database through the job template's use_fact_cache, not
+      # through anything the role does -- `gather_facts: true` above plus that
+      # toggle is the entire mechanism.
+      ansible.builtin.include_role:
+        name: demo_facts

@@ -1,0 +1,147 @@
+{# ==========================================================================
+   The fact report. Issue #647.
+
+   Styled to match roles/{linux,windows}_configure/templates/index.html.j2 and
+   roles/windows_compliance/templates/report.html.j2, because the demo page
+   links straight here and a jarring change of visual language reads as "this
+   came from somewhere else".
+
+   ONE TEMPLATE FOR BOTH GUESTS. Every value comes from demo_facts_summary,
+   whose keys are identical on RHEL and Windows by construction -- so the two
+   reports can be put side by side and diffed, which is the whole reason the
+   summary is curated rather than dumped.
+
+   Self-contained: no CDN, no webfonts, no images. Same reasoning as the demo
+   page -- it is served from a cluster whose egress you do not control.
+   ========================================================================== #}
+{% set s = demo_facts_summary %}
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ inventory_hostname_short }} — gathered facts</title>
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 2.5rem 1.5rem;
+    font: 16px/1.6 "Red Hat Text", system-ui, -apple-system, sans-serif;
+    background: #f4f4f4; color: #151515;
+    display: flex; justify-content: center;
+  }
+  @media (prefers-color-scheme: dark) {
+    body { background: #151515; color: #e0e0e0; }
+    .card { background: #1f1f1f !important; border-color: #3d3d3d !important; }
+    td, th { border-color: #3d3d3d !important; }
+    .k, .muted { color: #a0a0a0 !important; }
+    h1, h2 { color: #e0e0e0 !important; }
+  }
+  .wrap { width: 100%; max-width: 60rem; }
+  h1 { margin: 0 0 1rem; font-size: 1.5rem; line-height: 1.35; font-weight: 700; color: #151515; }
+  h2 { font-size: 1.1rem; margin: 2rem 0 .75rem; color: #151515; }
+  .bar { height: 4px; background: #ee0000; border-radius: 2px; margin-bottom: 1.5rem; }
+  .host { margin: 0 0 1.25rem; font-size: 1.05rem; font-weight: 600; }
+  .card {
+    background: #fff; border: 1px solid #d2d2d2; border-radius: .4rem;
+    padding: 1.25rem 1.5rem; margin-bottom: 1rem;
+  }
+  table { width: 100%; border-collapse: collapse; }
+  td, th { padding: .5rem .6rem .5rem 0; border-bottom: 1px solid #ebebeb; vertical-align: top; }
+  tr:last-child td { border-bottom: 0; }
+  .k { width: 14rem; color: #6a6e73; }
+  .v, .mono { font-family: "Red Hat Mono", ui-monospace, SFMono-Regular, monospace; word-break: break-all; }
+  .muted { color: #6a6e73; }
+  .band {
+    background: #151515; color: #fff; border-radius: .4rem;
+    padding: 1.5rem; margin-bottom: 1rem; display: flex; flex-wrap: wrap;
+    gap: 2.5rem; align-items: baseline; justify-content: center;
+  }
+  .band .n { font-size: 2rem; font-weight: 700; line-height: 1; }
+  .band .l { font-size: .8rem; text-transform: uppercase; letter-spacing: .04em; color: #b8bbbe; }
+  .band div { text-align: center; }
+  footer { margin-top: 2rem; font-size: .85rem; color: #6a6e73; }
+  a { color: #0066cc; }
+  @media (prefers-color-scheme: dark) { a { color: #73bcf7; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="bar"></div>
+  <h1>Gathered facts</h1>
+  <p class="host mono">{{ s.hostname }}</p>
+
+  {# The band carries the three numbers a customer asks about out loud. Not a
+     verdict: this report makes no pass/fail claim, it reports what is there. #}
+  <div class="band">
+    <div><div class="n">{{ s.resources.vcpus }}</div><div class="l">vCPU</div></div>
+    <div><div class="n">{{ (s.resources.memory_mb / 1024) | round(1) }}</div><div class="l">GiB memory</div></div>
+    <div><div class="n">{{ s.virtualization.type }}</div><div class="l">virtualization</div></div>
+  </div>
+
+  <h2>Operating system</h2>
+  <div class="card"><table>
+    <tr><td class="k">Distribution</td><td class="v">{{ s.os.distribution }} {{ s.os.version }}</td></tr>
+    <tr><td class="k">Kernel / build</td><td class="v">{{ s.os.kernel }}</td></tr>
+    <tr><td class="k">Architecture</td><td class="v">{{ s.os.architecture }}</td></tr>
+    <tr><td class="k">Virtualization</td><td class="v">{{ s.virtualization.type }} ({{ s.virtualization.role }})</td></tr>
+    <tr><td class="k">SELinux</td><td class="v">{{ s.platform.selinux }}</td></tr>
+    <tr><td class="k">Product / vendor</td><td class="v">{{ s.platform.product }} — {{ s.platform.vendor }}</td></tr>
+  </table></div>
+
+  <h2>Network</h2>
+  <div class="card"><table>
+    <tr><td class="k">Addresses</td><td class="v">{{ s.network.addresses | join(', ') if s.network.addresses else 'none reported' }}</td></tr>
+    <tr><td class="k">DNS servers</td><td class="v">{{ s.network.dns_servers | join(', ') if s.network.dns_servers else 'none reported' }}</td></tr>
+    <tr><td class="k">Domain</td><td class="v">{{ s.network.domain }}</td></tr>
+    <tr><td class="k">In-cluster address</td><td class="v">{{ s.provisioning.in_cluster_address }}</td></tr>
+  </table></div>
+
+  <h2>Uptime</h2>
+  <div class="card"><table>
+    {# Integer division throughout. ansible-core 2.19 keeps facts typed, so a
+       float here would render 3.0 days and read as a bug (#641). #}
+    <tr><td class="k">Up for</td><td class="v">
+      {%- set up = s.uptime.seconds | int -%}
+      {{ up // 86400 }}d {{ (up % 86400) // 3600 }}h {{ (up % 3600) // 60 }}m
+    </td></tr>
+    <tr><td class="k">Last boot</td><td class="v">{{ s.uptime.last_boot }}</td></tr>
+    <tr><td class="k">Facts gathered</td><td class="v">{{ s.gathered }}</td></tr>
+  </table></div>
+
+  <h2>How it was built</h2>
+  <div class="card"><table>
+    <tr><td class="k">Size tier</td><td class="v">{{ s.provisioning.vm_size_tier | default('n/a', true) }}</td></tr>
+    <tr><td class="k">Instance type</td><td class="v">{{ s.provisioning.instance_type | default('n/a', true) }}</td></tr>
+    <tr><td class="k">Environment</td><td class="v">{{ s.provisioning.environment | default('n/a', true) }}</td></tr>
+    {% if s.golden_image.repo %}
+    <tr><td class="k">Golden image</td><td class="v">{{ s.golden_image.repo }}</td></tr>
+    <tr><td class="k">Image built</td><td class="v">{{ s.golden_image.build_date }}</td></tr>
+    {% if s.golden_image.cis_level %}
+    <tr><td class="k">Hardening</td><td class="v">CIS Level {{ s.golden_image.cis_level }}</td></tr>
+    {% endif %}
+    {% if s.golden_image.pipeline %}
+    <tr><td class="k">Built by</td><td class="v"><a href="{{ s.golden_image.pipeline }}">{{ s.golden_image.pipeline | replace('https://', '') }}</a></td></tr>
+    {% endif %}
+    {% endif %}
+    <tr><td class="k">Source</td><td class="v"><a href="{{ s.provisioning.repository }}">{{ s.provisioning.repository }}</a></td></tr>
+  </table></div>
+
+  <footer>
+    {# The claim this page exists to make, and it has to survive being checked:
+       AAP holds the SAME facts in its database, re-stamped on every run. #}
+    <p>Collected by Ansible Automation Platform and stored in its database —
+    the same values are on this host's <strong>Facts</strong> tab in AAP,
+    re-stamped every time the job runs.</p>
+    {# NOT THE SAME SNAPSHOT, and saying so is the point. facts.json is written
+       by the configure role when the guest is built; this page is rewritten on
+       every fact gather. Measured 53 minutes apart on a live host. Calling it
+       "the same data" would be the #160 mistake in a new place -- a page making
+       a claim the artifact it links to does not support. #}
+    <p><a href="facts.json">facts.json</a> carries the same fields in
+    machine-readable form, captured when the guest was configured — so its
+    timestamp is older than this page's by design.</p>
+  </footer>
+</div>
+</body>
+</html>

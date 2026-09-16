@@ -1,0 +1,58 @@
+---
+# ===========================================================================
+# vars/main.yml — values derived from gathered facts, defined ONCE per role.
+# ===========================================================================
+# THE SAME NORMALISATION AS linux_configure AND windows_configure, AND THAT IS
+# THREE COPIES OF IT. Deliberate, and guarded rather than trusted.
+#
+# On a KubeVirt guest `ansible_virtualization_type` and `..._role` come back as
+# the literal string "NA" — on RHEL and on Windows, where ansible.windows'
+# setup.ps1 ends its detection with the same literal fallback. `| default()`
+# does not fire, because "NA" is defined. #160 is what happens when one consumer
+# handles that and another does not: a live VM served a page saying
+# "KVM (guest)" while the file it invites you to curl said "NA", same host, same
+# run.
+#
+# facts.html is now a THIRD consumer of the same value, so the same trap is open
+# a third time. The fix #160 reached for was "define it once"; consolidating the
+# two existing roles onto one definition is a refactor of the working Day 1
+# critical path, and it is not what this change is about.
+#
+# So the copy stays and DRIFT IS MADE IMPOSSIBLE INSTEAD:
+# utilities/check-fact-normalisation.py compares the expressions in all three
+# files and fails CI if any one of them moves alone. Same shape as
+# `renderer-matches-role` and `check-env-logos.py` — the desired state is
+# tested, not trusted. Consolidating to a single definition is the follow-up
+# that guard makes safe to defer.
+#
+# vars/ rather than defaults/ on purpose: derived, not configuration. Lazily
+# evaluated, so referencing gathered facts here is safe.
+# ===========================================================================
+
+demo_facts_virt_type: >-
+  {{ (ansible_virtualization_type | default('') | trim)
+     if (ansible_virtualization_type | default('NA')) not in ['NA', '']
+     else 'KVM' }}
+
+demo_facts_virt_role: >-
+  {{ (ansible_virtualization_role | default('') | trim)
+     if (ansible_virtualization_role | default('NA')) not in ['NA', '']
+     else 'guest' }}
+
+# --- Golden image: derived from the source tag ------------------------------
+# Tag format contract from image.builder.pipeline: YYYYMMDD-HHMM, immutable.
+demo_facts_golden_image_repo: >-
+  {{ demo_facts_golden_image_source | regex_replace(':[^:]+$', '')
+     if demo_facts_golden_image_source | length > 0 else '' }}
+
+demo_facts_golden_image_tag: >-
+  {{ demo_facts_golden_image_source | regex_replace('^.*:', '')
+     if demo_facts_golden_image_source | length > 0 else '' }}
+
+demo_facts_golden_image_build_date: >-
+  {{ (demo_facts_golden_image_tag[:4] ~ '-'
+      ~ demo_facts_golden_image_tag[4:6] ~ '-'
+      ~ demo_facts_golden_image_tag[6:8] ~ ' '
+      ~ demo_facts_golden_image_tag[9:11] ~ ':'
+      ~ demo_facts_golden_image_tag[11:13] ~ ' UTC')
+     if demo_facts_golden_image_tag | length >= 13 else demo_facts_golden_image_tag }}
