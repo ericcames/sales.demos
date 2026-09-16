@@ -167,9 +167,19 @@
            else 'Fact report: written to ' ~ demo_facts_docroot ~ ', no web_url host var to link.' }}
 
 - name: Publish the summary as workflow artifacts
+  # ONE DICT TEMPLATE, for the same reason as the summary above -- and this task
+  # got it wrong first, which is why the comment is here twice. A per-key quoted
+  # template renders to a string whatever it contains, so AAP stored
+  # "demo_facts_vcpus": "4" rather than 4, measured on job 201. A downstream
+  # node testing `demo_facts_vcpus > 2` would compare a string and be wrong
+  # without erroring, which is the failure mode worth preventing.
   ansible.builtin.set_stats:
     data:
-      demo_facts_host: "{{ inventory_hostname }}"
-      demo_facts_vcpus: "{{ demo_facts_summary.resources.vcpus }}"
-      demo_facts_memory_mb: "{{ demo_facts_summary.resources.memory_mb }}"
-      demo_facts_virtualization: "{{ demo_facts_summary.virtualization.type }}"
+      demo_facts: >-
+        {{ {
+             'host': inventory_hostname,
+             'vcpus': demo_facts_summary.resources.vcpus | int,
+             'memory_mb': demo_facts_summary.resources.memory_mb | int,
+             'virtualization': demo_facts_summary.virtualization.type,
+             'gathered': demo_facts_summary.gathered
+           } }}
