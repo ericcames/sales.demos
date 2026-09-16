@@ -46,7 +46,25 @@ demo_facts_compare_fields:
   - virtualization.role
   - network.addresses
   - network.dns_servers
-  - network.domain
+  # network.domain IS DELIBERATELY ABSENT, and it took three runs to earn that.
+  # On Linux it comes from ansible_domain, derived from a reverse lookup, and the
+  # guest has several Service DNS records pointing at it -- so which one answers
+  # varies. Measured across jobs 252/258/259 with NOTHING changed on the guest:
+  #   252  web-lnx-1.sales-demos-sandbox.svc.cluster.local
+  #   258  web-lnx-1-web.sales-demos-sandbox.svc.cluster.local
+  #   259  web-lnx-1-web.sales-demos-sandbox.svc.cluster.local
+  # A value that moves while the machine does not is noise, and unlike
+  # uptime.last_boot it cannot be rounded into stability.
+  #
+  # THE COST IS A WINDOWS SIGNAL, and it is worth naming. There the same summary
+  # key carries ansible_windows_domain, which IS stable and meaningful -- a
+  # guest leaving WORKGROUP for a domain is real drift. One key, two facts, so
+  # comparison is all-or-nothing today. If that signal is wanted, split the key
+  # per OS rather than re-adding this one; ansible_windows_domain_member is the
+  # stable fact to compare.
+  #
+  # The field still DISPLAYS on the report either way. This only governs what
+  # the drift comparison claims changed.
   - platform.selinux
   - platform.product
   - platform.vendor
