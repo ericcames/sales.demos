@@ -176,6 +176,12 @@
       when: web_url | default('', true) | length > 0
 
     - name: Fail when the Route is up but serving 503
+      # check_vm_assert_serving EXISTS FOR THE DAY 2 FACT GATHER (#647). On the
+      # Day 1 chain a 503 here is the failure this node is for, and it must fail.
+      # Launched as `Windows Day 2 - Gather Facts` against a guest whose page
+      # happens to be down, failing means you get NO FACTS -- the opposite of
+      # what a read-only reporter should do. That template sets this false, so
+      # the 503 is reported by the task above and the facts are still collected.
       ansible.builtin.assert:
         that:
           - (check_windows_route.status | default(0) | int) != 503
@@ -185,7 +191,9 @@
           blocking — most often the guest's Windows Firewall, which is enabled
           and blocking inbound by default on this CIS-hardened image.
         quiet: true
-      when: web_url | default('', true) | length > 0
+      when:
+        - web_url | default('', true) | length > 0
+        - check_vm_assert_serving | default(true) | bool
 
     - name: Warn when there is no web_url to check
       ansible.builtin.debug:
@@ -194,3 +202,9 @@
           was provisioned before #340 part 1 gave the Windows VM a Route —
           re-provision, or run terraform output -json web_urls by hand.
       when: web_url | default('', true) | length == 0
+
+    - name: Gather, curate, cache and publish the guest's facts
+      # Same role as the Linux sibling, dispatching on ansible_os_family. See
+      # playbooks/roles/demo_facts/defaults/main.yml for why it is one role.
+      ansible.builtin.include_role:
+        name: demo_facts

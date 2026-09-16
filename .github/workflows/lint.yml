@@ -113,6 +113,29 @@ jobs:
         # check at all.
         run: python3 utilities/check-renderer-fixture.py
 
+  fact-normalisation-agrees:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - run: pip install pyyaml
+      - name: All three copies of the KubeVirt fact normalisation still agree
+        # #647, closing the trap #160 left open. A KubeVirt guest reports the
+        # literal string "NA" for its virtualization facts, so `| default()`
+        # never fires and every consumer has to normalise it the same way.
+        # There are three consumers now -- the demo page, facts.json and
+        # facts.html -- and #160 is exactly what one of them drifting costs: a
+        # page claiming "KVM (guest)" beside a file it invites you to curl that
+        # said "NA".
+        #
+        # Consolidating the three definitions is a refactor of the Day 1
+        # critical path. This makes drift impossible instead, which is the same
+        # move as check 2 in check-no-secrets.sh: the desired state is tested,
+        # not trusted.
+        run: python3 utilities/check-fact-normalisation.py
+
   secrets-example-sync:
     runs-on: ubuntu-latest
     steps:

@@ -601,6 +601,13 @@ Environment secrets.
     **Adding or renaming a CI job means updating this list**, or PRs will either
     wait forever on a check that never reports, or merge without one that should
     have run.
+
+    **A ninth job exists and is NOT yet required: `fact-normalisation-agrees`**
+    (#647). It runs on every PR, but requiring a check is a branch-protection
+    setting rather than a tracked file, so adding the job did not make it
+    mandatory — the same invisibility that put this whole list here. Add it in
+    the repository settings and move it into the sentence above; until then a PR
+    can merge with it red.
   - **It applies to admins.** Anything less would not have prevented what
     prompted it: a commit went straight to `main` because a `git checkout -b`
     failed on an existing branch and `|| true` swallowed the error. Admin bypass

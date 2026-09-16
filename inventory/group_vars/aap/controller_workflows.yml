@@ -329,7 +329,7 @@ controller_workflows_all:
         #    merely ran. Caches facts into AAP, where they show on the host.
         - identifier: check
           unified_job_template:
-            name: "Linux Day 1 - 5 Check"
+            name: "Linux Day 1 - 5 Check and Gather Facts"
             type: job_template
             organization:
               name: "IT Service Automation"
@@ -535,7 +535,7 @@ controller_workflows_all:
         #    demo is actually judged on.
         - identifier: check
           unified_job_template:
-            name: "Windows Day 1 - 5 Check"
+            name: "Windows Day 1 - 5 Check and Gather Facts"
             type: job_template
             organization:
               name: "IT Service Automation"

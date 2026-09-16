@@ -266,7 +266,7 @@ credential. Check the credential before debugging the network.
   sysprep unattend sets the password on **first boot only**, so the VM must be
   re-created, not restarted.
 - **Job succeeds but the URL still 503s** — IIS is running and the guest's
-  firewall is blocking port 80. `Windows Day 1 - 5 Check` distinguishes these
+  firewall is blocking port 80. `Windows Day 1 - 5 Check and Gather Facts` distinguishes these
   two on purpose: it asks the guest over loopback *and* asks the Route, because
   loopback is not filtered by Windows Firewall and so proves only IIS.
 - **The compliance node reports controls as "not configured"** — that is a real
