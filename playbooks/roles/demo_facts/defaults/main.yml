@@ -40,3 +40,7 @@ demo_facts_docroot: ""
 demo_facts_golden_image_source: "{{ golden_image_source | default('') }}"
 demo_facts_golden_image_cis_level: "{{ golden_image_cis_level | default('') }}"
 demo_facts_repo_url: "https://github.com/ericcames/sales.demos"
+# The producer of the golden image, carried so facts.html and facts.json
+# publish the same provenance. Matches {linux,windows}_configure's
+# *_golden_image_pipeline_url.
+demo_facts_golden_image_pipeline: "https://github.com/ericcames/image.builder.pipeline"

@@ -31,11 +31,18 @@
   # about its own types. Built as a single dict, the integers stay integers --
   # the same reasoning as windows_compliance's set_stats.
   #
-  # CURATED, NOT A DUMP, and the key names deliberately match the facts.json
-  # that linux_configure and windows_configure already publish, so one parser
-  # reads the page, the file and the Facts tab. The full ansible_facts dict is
-  # roughly a megabyte, changes shape between runs, and is already in AAP's
-  # database.
+  # CURATED, NOT A DUMP. The full ansible_facts dict is roughly a megabyte,
+  # changes shape between runs, and is already in AAP's database.
+  #
+  # A STRICT SUPERSET OF facts.json, verified by diffing the two live artifacts
+  # rather than by reading both files and hoping. Every key the configure roles
+  # publish appears here with the same name and nesting, so one parser reads the
+  # page, the file and the Facts tab; this adds network, platform, uptime,
+  # os.architecture and provisioning.environment on top.
+  #
+  # golden_image.pipeline is here for exactly that reason -- it was the ONE key
+  # facts.json had and this did not, found by diffing a live guest, and a single
+  # missing key is how "the schemas match" stops being true quietly.
   #
   # cacheable: true is the difference between a summary that exists only in a
   # job log and one that is queryable from the API beside the raw set.
@@ -86,7 +93,8 @@
              'source': demo_facts_golden_image_source,
              'repo': demo_facts_golden_image_repo | trim,
              'build_date': demo_facts_golden_image_build_date | trim,
-             'cis_level': demo_facts_golden_image_cis_level
+             'cis_level': demo_facts_golden_image_cis_level,
+             'pipeline': demo_facts_golden_image_pipeline
            }
          } }}
   vars:

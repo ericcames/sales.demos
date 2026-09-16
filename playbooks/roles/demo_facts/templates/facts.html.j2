@@ -120,6 +120,9 @@
     {% if s.golden_image.cis_level %}
     <tr><td class="k">Hardening</td><td class="v">CIS Level {{ s.golden_image.cis_level }}</td></tr>
     {% endif %}
+    {% if s.golden_image.pipeline %}
+    <tr><td class="k">Built by</td><td class="v"><a href="{{ s.golden_image.pipeline }}">{{ s.golden_image.pipeline | replace('https://', '') }}</a></td></tr>
+    {% endif %}
     {% endif %}
     <tr><td class="k">Source</td><td class="v"><a href="{{ s.provisioning.repository }}">{{ s.provisioning.repository }}</a></td></tr>
   </table></div>
