@@ -68,7 +68,7 @@
            },
            'uptime': {
              'seconds': ansible_uptime_seconds | default(0) | int,
-             'last_boot': ansible_lastboot | default('n/a')
+             'last_boot': _demo_facts_last_boot
            },
            'platform': {
              'selinux': ansible_selinux.status | default('n/a'),
@@ -96,6 +96,16 @@
       {{ ansible_ip_addresses | default([])
          if ansible_os_family == 'Windows'
          else ansible_all_ipv4_addresses | default([]) }}
+
+    # ansible_lastboot IS A WINDOWS-ONLY FACT. Taking it with a default meant
+    # every Linux guest published "last_boot": "n/a" -- measured on web-lnx-1,
+    # job 200, and it renders as a visibly empty row on the page. Linux has the
+    # same information one subtraction away, so derive it rather than shipping a
+    # field that is blank on half the fleet.
+    _demo_facts_last_boot: >-
+      {{ ansible_lastboot if ansible_lastboot is defined
+         else ((ansible_date_time.epoch | int) - (ansible_uptime_seconds | default(0) | int))
+              | int | strftime('%Y-%m-%dT%H:%M:%SZ', utc=True) }}
 
 - name: Print the curated fact summary to the job log
   ansible.builtin.debug:
