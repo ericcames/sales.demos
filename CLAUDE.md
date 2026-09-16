@@ -618,19 +618,28 @@ Environment secrets.
     **CODEOWNERS here requests review; it does not gate.**
     `require_code_owner_reviews` is `false`, so a listed owner is auto-requested
     and nothing waits on them. Do not read co-ownership as enforcement.
-  - **All 8 lint checks are required** — `yamllint`, `ansible-lint`,
+  - **All 9 lint checks are required** — `yamllint`, `ansible-lint`,
     `secret-guard`, `secrets-example-sync`, `generated-files`,
-    `skills-frontmatter`, `docs-artifacts-current`, `renderer-matches-role`.
+    `skills-frontmatter`, `docs-artifacts-current`, `renderer-matches-role`,
+    `fact-normalisation-agrees`.
     **Adding or renaming a CI job means updating this list**, or PRs will either
     wait forever on a check that never reports, or merge without one that should
     have run.
 
-    **A ninth job exists and is NOT yet required: `fact-normalisation-agrees`**
-    (#647). It runs on every PR, but requiring a check is a branch-protection
-    setting rather than a tracked file, so adding the job did not make it
-    mandatory — the same invisibility that put this whole list here. Add it in
-    the repository settings and move it into the sentence above; until then a PR
-    can merge with it red.
+    **ADDING THE JOB IS NOT THE SAME AS REQUIRING IT**, and #647 spent a day in
+    the gap. `fact-normalisation-agrees` shipped in that PR, ran green on every
+    push, and could not have blocked anything: required checks are a
+    branch-protection setting, not a tracked file — the same invisibility that
+    put this whole list here. Two steps, every time:
+
+    1. add the job to `.github/workflows/lint.yml` and to the list above;
+    2. `gh api -X PATCH repos/ericcames/sales.demos/branches/main/protection/required_status_checks`
+       with `-F strict=false` and the full `contexts[]` set — **the full set**,
+       because the endpoint replaces rather than appends.
+
+    **The context name must match the job id exactly.** A typo does not error;
+    the PR simply waits for ever on a check that never reports. Confirm on the
+    next PR with `gh pr checks`.
   - **It applies to admins.** Anything less would not have prevented what
     prompted it: a commit went straight to `main` because a `git checkout -b`
     failed on an existing branch and `|| true` swallowed the error. Admin bypass
