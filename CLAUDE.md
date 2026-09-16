@@ -511,6 +511,29 @@ Environment secrets.
   A DataVolume's source is immutable, so a changed tag deletes and re-imports
   rather than editing in place.
 
+- **Run logs go to `~/ansible-logs/`, never into this repo**, and the easy way to
+  get that right is `utilities/run-playbook.sh`, which names the log, creates the
+  directory, passes the vault id and prints the path:
+
+  ```bash
+  ./utilities/run-playbook.sh playbooks/config.yml --limit sandbox -e target_env=sandbox
+  ```
+
+  The rule is not new — `.gitignore` states it and every skill sets
+  `ANSIBLE_LOG_PATH`. What was missing is a rule for an **ad-hoc**
+  `ansible-playbook` run, which belongs to no skill and so met the convention
+  nowhere. Ten stray logs accumulated in `logs/` and `run-logs/` before anyone
+  noticed, because the same `.gitignore` that states the rule also hides every
+  breach of it. Do not recreate either directory.
+
+  **CI cannot catch this**, and that is why the answer is a wrapper rather than a
+  check: CI checks out a clean tree, so a job asserting "no `logs/` here" passes
+  on every run and means nothing.
+
+  Never pipe a run through `tee` — in a pipeline the exit status comes from
+  `tee`, so a failed run reports success. The wrapper redirects and reports the
+  real status.
+
 - **Document before fixing** — open a GitHub issue before making code changes.
 - **Always label new issues** — run `gh label list --repo ericcames/sales.demos`
   and apply every label that genuinely fits.
