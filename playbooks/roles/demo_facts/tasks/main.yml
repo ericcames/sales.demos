@@ -110,6 +110,20 @@
   when: demo_facts_publish | bool
   block:
     - name: Render the fact report on the guest (Linux)
+      # BECOME ON THE TASK, NOT THE PLAY. check_linux_vm.yml is deliberately
+      # unprivileged -- it is a smoke test, it proves a login and reads facts,
+      # and it has never needed root. Adding `become: true` to the play to suit
+      # one task would quietly escalate the whole check.
+      #
+      # /var/www/html is apache:apache, and cloud-user cannot write there, so
+      # without this the task fails with "Destination /var/www/html not
+      # writable" -- measured on a live guest, job 190. configure_linux_vm.yml
+      # never hit it because that play DOES become, which is why facts.json has
+      # always published cleanly from the same docroot.
+      #
+      # Windows needs no counterpart: the WinRM user is a local administrator
+      # and writes C:\inetpub\wwwroot directly.
+      become: true
       ansible.builtin.template:
         src: facts.html.j2
         dest: "{{ demo_facts_docroot }}/facts.html"
