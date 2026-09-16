@@ -139,8 +139,17 @@ knowing on its own — it is why AAP job output never looks like your terminal.
 | `probe_env`, `prepare_env`, `install_cnv`, `mcp_server`, `install_ao` | nothing extra — auth is `K8S_AUTH_*` from vars |
 | `portal` | nothing extra — its kubeconfig is repo-relative (`.kube/<env>.kubeconfig`) and the repo is mounted at its own host path |
 | `provision_vm`, `teardown` | nothing extra, and **this is where it earns most** — the EE pins terraform 1.15.8 and your laptop probably does not |
+| `teardown` with `os_type=linux` | **cannot be verified here — use the job template.** See below |
 | `register_linux_vm`, `configure_linux_vm`, `check_linux_vm`, `repair_linux_vm` | nothing extra — navigator mounts `~/.ssh` itself |
 | `config`, `validate`, `setup`, `sync_hub`, `curate_hub` | `--with-hub-token` |
+
+**A Linux teardown is the one thing this wrapper cannot verify** (#638).
+`teardown.yml` deregisters each Linux guest at `<vm>.<ns>.svc.cluster.local`
+before destroying it, and podman runs on your laptop, so the container shares
+your laptop's resolver and hits the playbook's AAP-only guard exactly as an
+unwrapped run does. The EE run still proves the terraform pin, the collection
+set and the whole Windows path; pass `-e os_type=windows` for that. Verify the
+Linux path by launching `Linux Day 1 - Teardown` in AAP.
 
 The wrapper **refuses** rather than warns on that last row. Without the mount the
 run does not quietly skip the token: it dies with `Invalid filename: 'None'` —

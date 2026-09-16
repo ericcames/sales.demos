@@ -1,6 +1,6 @@
 ---
 name: sales-demos-teardown
-description: "Destroy the demo VMs on OpenShift Virtualization and deregister them from AAP, leaving the expensive one-time setup intact — CNV, the boot-source DataSources including the Windows golden image, and the Terraform state namespace. Runs playbooks/teardown.yml. TRIGGER when: the user asks to tear down, destroy, clean up, or remove demo VMs, wants to free cluster memory before provisioning a different tier, or says a demo is finished. SKIP: if the user wants to remove OpenShift Virtualization itself or rebuild the golden image — this deliberately preserves both — or only wants to stop a VM rather than destroy it."
+description: "Destroy the demo VMs on OpenShift Virtualization and deregister them from AAP, leaving the expensive one-time setup intact — CNV, the boot-source DataSources including the Windows golden image, and the Terraform state namespace. Runs playbooks/teardown.yml from AAP — the "Linux Day 1 - Teardown" and "Windows Day 1 - Teardown" job templates — because the guest deregistration reaches the VMs at a name only the cluster resolves. TRIGGER when: the user asks to tear down, destroy, clean up, or remove demo VMs, wants to free cluster memory before provisioning a different tier, or says a demo is finished. SKIP: if the user wants to remove OpenShift Virtualization itself or rebuild the golden image — this deliberately preserves both — or only wants to stop a VM rather than destroy it."
 ---
 
 # sales-demos-teardown
@@ -30,10 +30,30 @@ The state namespace surviving is load-bearing: it holds the Secret describing
 every VM Terraform tracks, for **both** environments. Deleting it orphans
 everything.
 
+## Teardown runs from AAP, not from a laptop
+
+Before destroying anything, `teardown.yml` SSHes into every Linux guest to
+release its Red Hat subscription and remove its Insights host (#47). It reaches
+them at `<vm>.<namespace>.svc.cluster.local`, the headless Service DNS name,
+which resolves **only from inside the cluster**. An AAP execution environment
+pod runs there; your laptop does not.
+
+That is not a soft limit. An unreachable delegate is not a *failed* task, so
+Ansible drops the host and the play ends **before `terraform destroy`** — the
+run exits 4 with `failed=0` while the VM, its Terraform state and its AAP host
+are all still there (#638).
+
+So the playbook now checks the resolver up front and stops with a message
+naming the job template, having destroyed nothing. Windows is unaffected: its
+teardown never touches an in-cluster name, and still runs from a laptop.
+
 ## Preflight Check
 
 ```bash
 ./utilities/preflight.sh "${ENV:-sandbox}" --terraform
+
+# Will the Linux guard let this run? Exit 0 = in-cluster, exit 2 = laptop.
+getent hosts kubernetes.default.svc.cluster.local
 
 # What is actually running right now
 #    mcp__openshift-<env>__resources_list  kubevirt.io/v1 VirtualMachine  namespace: sales-demos-<env>
@@ -59,33 +79,66 @@ Be especially careful with `demo`: it is the environment customers are shown.
 
 ## Run
 
+Launch the job template in AAP. `Linux Day 1 - Teardown` and
+`Windows Day 1 - Teardown` both run `playbooks/teardown.yml`, and they are the
+only supported entry point for Linux.
+
+```
+mcp__aap-<env>__job_templates_list            name: Linux Day 1 - Teardown
+mcp__aap-<env>__job_templates_launch_create   extra_vars as below
+mcp__aap-<env>__jobs_stdout_retrieve
+```
+
+The template already supplies `target_env`, which is **required** here unlike
+every other playbook in this repo: the shared environment guard only compares it
+against the inventory when it is supplied, so omitting it lets a mistyped limit
+through — an acceptable risk for an apply and not for a destroy.
+
+**Pass the same `vm_role`, `os_type` and `vm_size_tier` the VMs were
+provisioned with**, or Terraform plans against a different shape. `os_type` is
+`linux` or `windows`; `both` was removed in #301, so tear each OS down
+separately. The template defaults are `vm_role: web`, `os_type: linux`,
+`vm_size_tier: small`; override them in the launch's extra vars:
+
+```yaml
+vm_role: db
+os_type: linux
+vm_size_tier: large
+```
+
+**To remove every role at once, pass `all_roles: true`** (#393). The playbook
+lists the Terraform state Secrets for this environment and OS
+(`tfstate-default-<env>-<os>-<role>` in `sales-demos-tfstate`) and tears down
+each role it finds; `vm_role` is ignored.
+
+```yaml
+all_roles: true
+os_type: linux
+```
+
+**The nightly schedules do exactly that**: 6 PM and 10 PM in sandbox, 6 PM only
+in demo, all `America/Phoenix` (no daylight saving, so they never drift). Every
+schedule passes `all_roles: true`, so each sweep removes every role with state
+for its OS. A manual launch removes only the template's `vm_role` unless you add
+it yourself.
+
+Teardown is the only template that runs against `Sales Demo VMs - Control`,
+because it deletes hosts from `Sales Demo VMs` and AAP locks the hosts of the
+inventory a running job is using.
+
+### Windows, from a laptop
+
+A Windows teardown never reaches into a guest, so it has no in-cluster
+dependency and the guard skips. This still works, and is the exception rather
+than the pattern:
+
 ```bash
 ./utilities/run-ansible.sh playbooks/teardown.yml -i inventory --limit sandbox \
-  -e target_env=sandbox \
+  -e target_env=sandbox -e os_type=windows \
   --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
 ```
 
-`-e target_env=` is **required**, unlike every other playbook here. The shared
-environment guard only compares it against the inventory when it is supplied, so
-omitting it lets a mistyped `--limit` through — an acceptable risk for an apply
-and not for a destroy.
-
-Pass the same `vm_role`, `os_type` and `vm_size_tier` the VMs were provisioned
-with, or Terraform plans against a different shape. `os_type` is `linux` or
-`windows`; `both` was removed in #301, so tear each OS down separately:
-
-```bash
-  -e vm_role=db -e os_type=linux -e vm_size_tier=large
-```
-
-**To remove every role at once, pass `-e all_roles=true`** (#393). The playbook
-lists the Terraform state Secrets for this environment and OS
-(`tfstate-default-<env>-<os>-<role>` in `sales-demos-tfstate`) and tears down
-each role it finds; `vm_role` is ignored. The nightly schedules do exactly this.
-
-```bash
-  -e all_roles=true -e os_type=linux
-```
+The same command with `-e os_type=linux` stops at the guard, by design.
 
 ## Verify it in the EE before merging a change
 
@@ -93,9 +146,18 @@ See `/sales-demos-verify-ee` for why and how. The one command:
 
 ```bash
 utilities/run-in-ee.sh playbooks/teardown.yml \
-  -i inventory --limit sandbox -e target_env=sandbox \
+  -i inventory --limit sandbox -e target_env=sandbox -e os_type=windows \
   --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
 ```
+
+**`os_type=windows` is not incidental.** `run-in-ee.sh` is podman *on your
+laptop*: it gives you the EE's collections, python and terraform pin, but it
+shares your laptop's resolver, so a Linux run stops at the same guard an
+unwrapped laptop run does. That is correct behaviour, not a wrapper bug.
+
+So the EE run verifies the terraform pin, the collection set and the whole
+Windows path — but **a Linux teardown can only be verified by launching the job
+template**. Do that before merging a change to this playbook.
 
 ## Verify against the cluster, not the recap
 
@@ -114,23 +176,21 @@ mcp__openshift-<env>__resources_list  v1 Secret  namespace: sales-demos-tfstate
 Expect the first to be empty and the last three to be intact. A green Ansible
 recap only says the tasks ran.
 
-## From AAP
-
-The `Linux Day 1 - Teardown` and `Windows Day 1 - Teardown` job templates do the
-same thing, and run **nightly on a schedule**: 6 PM and 10 PM in sandbox, 6 PM
-only in demo, all `America/Phoenix` (no daylight saving, so they never drift).
-
-**Every schedule passes `all_roles: true`** (#393), so each sweep removes every
-role with state for its OS, not just `web`. A manual launch still removes only
-the template's `vm_role: web`; add `all_roles: true` to the launch's extra vars
-to sweep everything.
-
-It is the only template that runs against `Sales Demo VMs - Control`, because it
-deletes hosts from `Sales Demo VMs` and AAP locks the hosts of the inventory a
-running job is using.
-
 ## If it fails
 
+- **`Tearing down Linux guests runs from AAP, not a laptop`** — the guard did
+  its job (#638). You are outside the cluster, so the guest deregistration could
+  not have reached the VMs and the play stopped before `terraform destroy`.
+  Nothing was destroyed and nothing leaked. Launch `Linux Day 1 - Teardown`
+  instead. `getent hosts kubernetes.default.svc.cluster.local` tells you which
+  side of the line you are on. This also fires under `run-in-ee.sh`, because
+  podman shares your laptop's resolver.
+- **`UNREACHABLE` on `Disconnect the guest from Insights`** — cluster DNS
+  resolved but that particular guest did not answer on port 22: it is stopped,
+  already deleted, or the `Sales Demos - Linux Machine` credential is missing
+  from the template. An unreachable delegate still ends the play before
+  `terraform destroy`, so the VMs survive. Fix the guest or the credential and
+  re-run; it is idempotent.
 - **`terraform init` errors** — the backend needs the same `secret_suffix` the
   provisioning run wrote. Pointing it elsewhere finds an empty state, reports
   success, and leaves every VM running.
