@@ -1,0 +1,143 @@
+---
+# ===========================================================================
+# demo_facts/tasks/compare.yml — what changed since last time. Issue #648.
+# ===========================================================================
+# THE TIMING IS THE WHOLE TRICK, AND IT IS NOT OBVIOUS. AAP writes the fact
+# cache AFTER a job finishes, so a job reading /ansible_facts/ during its own
+# run gets the PREVIOUS run's facts. That is what makes this a real diff rather
+# than a comparison with itself.
+#
+# IT COMPARES CURATED SUMMARY TO CURATED SUMMARY. `demo_facts_summary` is
+# cached with `cacheable: true` (#647), so the previous run's summary is already
+# in AAP's database in exactly the shape this run builds. Diffing raw
+# ansible_facts instead would be a megabyte dominated by timestamps and
+# ephemeral counters, and would report "changed" every single run.
+#
+# /api/controller/v2/, NOT /api/v2/. The legacy standalone-Controller path
+# returns HTML through the 2.7 gateway, so the caller dies on a JSON decode
+# error naming nothing useful. dc1.azure took that 404 live (its AB#111).
+#
+# EVERY FAILURE HERE IS NON-FATAL, deliberately. No credential, no host record,
+# no prior facts, an API that will not answer -- each ends with the role
+# reporting the current summary and saying why there is no comparison. On a
+# freshly built guest "no prior facts" is the correct state, not an error, and a
+# fact reporter that dies for want of something to compare against is worse than
+# one that simply has no comparison.
+# ===========================================================================
+
+- name: Work out how to reach the controller
+  # THE PATTERN provision_vm.yml ALREADY USES: the extra_var the credential
+  # injects, falling back to the environment variable the same credential sets.
+  # Works whether AAP handed this job extra_vars, env, or only one of them.
+  ansible.builtin.set_fact:
+    _demo_facts_api: >-
+      {{ aap_hostname | default(lookup('ansible.builtin.env', 'CONTROLLER_HOST'), true) }}
+    _demo_facts_user: >-
+      {{ aap_username | default(lookup('ansible.builtin.env', 'CONTROLLER_USERNAME'), true) }}
+    _demo_facts_pass: >-
+      {{ aap_password | default(lookup('ansible.builtin.env', 'CONTROLLER_PASSWORD'), true) }}
+  no_log: true
+
+- name: Report that no comparison is possible without a controller credential
+  ansible.builtin.debug:
+    msg: >-
+      Comparison was requested, but this job template has no controller
+      credential attached, so the previously cached facts cannot be read. Add
+      'Sales Demos - Controller' to it. Reporting the current facts only.
+  when: _demo_facts_api | trim | length == 0
+
+- name: Read the previously cached facts back out of AAP
+  when: _demo_facts_api | trim | length > 0
+  delegate_to: localhost
+  vars:
+    # The credential's host field carries a scheme; CONTROLLER_HOST may not.
+    _base: >-
+      {{ _demo_facts_api | trim if _demo_facts_api is search('^https?://')
+         else 'https://' ~ (_demo_facts_api | trim) }}
+  block:
+    - name: Find this guest's host record in the controller
+      ansible.builtin.uri:
+        url: "{{ _base }}/api/controller/v2/hosts/?name={{ inventory_hostname | urlencode }}"
+        method: GET
+        url_username: "{{ _demo_facts_user }}"
+        url_password: "{{ _demo_facts_pass }}"
+        force_basic_auth: true
+        validate_certs: false
+        timeout: 30
+      register: _demo_facts_lookup
+      failed_when: false
+      changed_when: false
+      no_log: true
+
+    - name: Read that host's cached facts
+      ansible.builtin.uri:
+        url: "{{ _base }}/api/controller/v2/hosts/{{ _demo_facts_lookup.json.results[0].id }}/ansible_facts/"
+        method: GET
+        url_username: "{{ _demo_facts_user }}"
+        url_password: "{{ _demo_facts_pass }}"
+        force_basic_auth: true
+        validate_certs: false
+        timeout: 30
+      register: _demo_facts_previous
+      failed_when: false
+      changed_when: false
+      no_log: true
+      when:
+        - (_demo_facts_lookup.status | default(0) | int) == 200
+        - (_demo_facts_lookup.json.results | default([]) | length) > 0
+
+- name: Build the list of fields that changed since the last run
+  # A JINJA LOOP ROUND-TRIPPED THROUGH JSON, because `set_fact` takes an
+  # expression and this needs statements. ansible.utils.to_paths would be
+  # tidier and is NOT in collections/requirements.yml -- reaching for it would
+  # mean an EE rebuild for a nine-key diff, which is not a trade worth making.
+  #
+  # ONLY THE PATHS IN demo_facts_compare_fields ARE COMPARED, and what is left
+  # out matters as much as what is in: `gathered` and `uptime.seconds` change on
+  # EVERY run by definition, so including them would report drift constantly and
+  # train the viewer to ignore the output. `uptime.last_boot` IS included -- a
+  # reboot is exactly the kind of drift worth seeing.
+  ansible.builtin.set_fact:
+    demo_facts_diff: >-
+      {%- set prev = _demo_facts_previous.json.demo_facts_summary | default({}, true) -%}
+      {%- set out = [] -%}
+      {%- for p in demo_facts_compare_fields -%}
+        {%- set k = p.split('.') -%}
+        {%- set was = (prev[k[0]][k[1]] if k | length > 1 else prev[k[0]])
+                      if (k[0] in prev and (k | length == 1 or k[1] in prev[k[0]]))
+                      else '(absent)' -%}
+        {%- set new = (demo_facts_summary[k[0]][k[1]] if k | length > 1 else demo_facts_summary[k[0]])
+                      if (k[0] in demo_facts_summary and (k | length == 1 or k[1] in demo_facts_summary[k[0]]))
+                      else '(absent)' -%}
+        {%- if was != new -%}
+          {%- set _ = out.append({'field': p, 'was': was, 'now': new}) -%}
+        {%- endif -%}
+      {%- endfor -%}
+      {{ out | to_json }}
+    demo_facts_had_previous: >-
+      {{ (_demo_facts_previous.json.demo_facts_summary | default({}, true)) | length > 0 }}
+
+- name: Report what changed
+  ansible.builtin.debug:
+    msg: >-
+      {{
+        ('No previously cached facts for ' ~ inventory_hostname ~ ' — this is the '
+         ~ 'first gather, so there is nothing to compare against yet. Run this '
+         ~ 'template again to see drift.')
+        if not (demo_facts_had_previous | bool)
+        else (
+          ('Nothing changed in ' ~ (demo_facts_compare_fields | length | string)
+           ~ ' compared fields since the last gather.')
+          if (demo_facts_diff | from_json | length) == 0
+          else ((demo_facts_diff | from_json | length | string)
+                ~ ' field(s) changed since the last gather:')
+        )
+      }}
+
+- name: Show each changed field
+  ansible.builtin.debug:
+    msg: "{{ item.field }}: {{ item.was }} -> {{ item.now }}"
+  loop: "{{ demo_facts_diff | from_json }}"
+  loop_control:
+    label: "{{ item.field }}"
+  when: demo_facts_had_previous | bool

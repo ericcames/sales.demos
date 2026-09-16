@@ -114,15 +114,36 @@
     # other way round it fails with "Invalid value for epoch value
     # (%Y-%m-%dT%H:%M:%SZ)" -- which names the format as the bad epoch and is
     # easy to misread. Measured: job 213.
+    #
+    # ROUNDED TO THE MINUTE, AND THAT IS A CORRECTNESS FIX (#648). epoch and
+    # uptime_seconds are sampled a moment apart, so the difference jitters by a
+    # second between runs on an idle guest. Measured on job 252: the drift
+    # report claimed last_boot moved 13:19:55Z -> 13:19:56Z on a host that had
+    # not rebooted. Reported to the second, this field would show false drift on
+    # EVERY run -- the exact noise demo_facts_compare_fields excludes
+    # `uptime.seconds` to avoid.
+    #
+    # Rounding is also the honest presentation: a derived value accurate to
+    # within a second or two should not be printed as though it were exact.
+    # Windows needs none of this -- ansible_lastboot is a recorded value, not a
+    # subtraction, so it is stable and passed through untouched.
     _demo_facts_last_boot: >-
       {{ ansible_lastboot if ansible_lastboot is defined
-         else '%Y-%m-%dT%H:%M:%SZ' | strftime(
-                (ansible_date_time.epoch | int) - (ansible_uptime_seconds | default(0) | int),
+         else '%Y-%m-%dT%H:%M:00Z' | strftime(
+                (((ansible_date_time.epoch | int) - (ansible_uptime_seconds | default(0) | int))
+                 // 60) * 60,
                 utc=True) }}
 
 - name: Print the curated fact summary to the job log
   ansible.builtin.debug:
     var: demo_facts_summary
+
+- name: Compare against the previously cached facts
+  # AFTER the summary is built and BEFORE anything publishes, so facts.html can
+  # carry the diff. See compare.yml for why reading the cache mid-run returns
+  # the PREVIOUS run's facts -- that is the mechanism, not an accident.
+  ansible.builtin.include_tasks: compare.yml
+  when: demo_facts_compare | bool
 
 - name: Print the complete fact set
   ansible.builtin.debug:

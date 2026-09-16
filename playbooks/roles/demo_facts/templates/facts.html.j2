@@ -109,6 +109,29 @@
     <tr><td class="k">Facts gathered</td><td class="v">{{ s.gathered }}</td></tr>
   </table></div>
 
+  {# DRIFT, and only when there is something to say. The section is absent
+     rather than empty on a first gather -- a "Changes: none" box on a machine
+     that has never been compared invites the reader to think a comparison ran
+     and found nothing. #}
+  {% if demo_facts_diff is defined and demo_facts_had_previous | default(false) | bool %}
+  {% set changes = demo_facts_diff | from_json %}
+  <h2>Changed since the last gather</h2>
+  <div class="card">
+  {% if changes | length == 0 %}
+    <p class="muted">Nothing changed in the {{ demo_facts_compare_fields | length }} fields
+    compared. AAP re-stamps this host's facts on every run, so this is a
+    comparison against the previous run, not a claim that nothing ever changes.</p>
+  {% else %}
+    <table>
+      <tr><td class="k">Field</td><td class="k">Was</td><td class="k">Now</td></tr>
+      {% for c in changes %}
+      <tr><td class="v">{{ c.field }}</td><td class="v muted">{{ c.was }}</td><td class="v">{{ c.now }}</td></tr>
+      {% endfor %}
+    </table>
+  {% endif %}
+  </div>
+  {% endif %}
+
   <h2>How it was built</h2>
   <div class="card"><table>
     <tr><td class="k">Size tier</td><td class="v">{{ s.provisioning.vm_size_tier | default('n/a', true) }}</td></tr>

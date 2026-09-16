@@ -347,6 +347,11 @@ controller_templates_all:
       # and it applies to every job template in this repo.
       - "Sales Demos - Vault"
       - "Sales Demos - Env Secrets"
+      # Lets demo_facts read this host's PREVIOUSLY cached facts back out of
+      # the controller (#648). Unused unless comparison is turned on, and
+      # harmless when it is off. controller_credentials.yml explains why the
+      # one extra_var it collides with carries the same value either way.
+      - "Sales Demos - Controller"
     # Defaults to the linuxweb group; ask on launch so the same template can be
     # pointed at one host when a single VM is misbehaving.
     limit: linuxweb
@@ -1366,6 +1371,11 @@ controller_templates_all:
       - "Sales Demos - Windows Machine"
       - "Sales Demos - Vault"
       - "Sales Demos - Env Secrets"
+      # Lets demo_facts read this host's PREVIOUSLY cached facts back out of
+      # the controller (#648). Unused unless comparison is turned on, and
+      # harmless when it is off. controller_credentials.yml explains why the
+      # one extra_var it collides with carries the same value either way.
+      - "Sales Demos - Controller"
     limit: windemo
     ask_limit_on_launch: true
     # Persist the gathered facts in AAP's database so they appear in the host's
@@ -1731,6 +1741,11 @@ controller_templates_all:
       # Gather Facts for the full reasoning.
       - "Sales Demos - Vault"
       - "Sales Demos - Env Secrets"
+      # Lets demo_facts read this host's PREVIOUSLY cached facts back out of
+      # the controller (#648). Unused unless comparison is turned on, and
+      # harmless when it is off. controller_credentials.yml explains why the
+      # one extra_var it collides with carries the same value either way.
+      - "Sales Demos - Controller"
     limit: linuxweb
     ask_limit_on_launch: true
     use_fact_cache: true
@@ -1779,6 +1794,11 @@ controller_templates_all:
       - "Sales Demos - Windows Machine"
       - "Sales Demos - Vault"
       - "Sales Demos - Env Secrets"
+      # Lets demo_facts read this host's PREVIOUSLY cached facts back out of
+      # the controller (#648). Unused unless comparison is turned on, and
+      # harmless when it is off. controller_credentials.yml explains why the
+      # one extra_var it collides with carries the same value either way.
+      - "Sales Demos - Controller"
     limit: windemo
     ask_limit_on_launch: true
     use_fact_cache: true
