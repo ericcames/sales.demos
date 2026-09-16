@@ -102,10 +102,15 @@
     # job 200, and it renders as a visibly empty row on the page. Linux has the
     # same information one subtraction away, so derive it rather than shipping a
     # field that is blank on half the fleet.
+    # THE FORMAT STRING IS THE INPUT TO strftime, NOT THE EPOCH. Written the
+    # other way round it fails with "Invalid value for epoch value
+    # (%Y-%m-%dT%H:%M:%SZ)" -- which names the format as the bad epoch and is
+    # easy to misread. Measured: job 213.
     _demo_facts_last_boot: >-
       {{ ansible_lastboot if ansible_lastboot is defined
-         else ((ansible_date_time.epoch | int) - (ansible_uptime_seconds | default(0) | int))
-              | int | strftime('%Y-%m-%dT%H:%M:%SZ', utc=True) }}
+         else '%Y-%m-%dT%H:%M:%SZ' | strftime(
+                (ansible_date_time.epoch | int) - (ansible_uptime_seconds | default(0) | int),
+                utc=True) }}
 
 - name: Print the curated fact summary to the job log
   ansible.builtin.debug:
