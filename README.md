@@ -15,7 +15,8 @@ and the demo comes back exactly as it was.
 | | |
 |---|---|
 | **For** | Red Hat pre-sales engineers running customer demos |
-| **Produces** | Five repeatable demos across three environments — `sandbox`, `demo`, `edge` |
+| **Docs** | **[Talk tracks, run sheets and reference](https://ericcames.github.io/sales.demos-docs/)** — the words for every demo below |
+| **Produces** | Repeatable demos across three environments — `sandbox`, `demo`, `edge` |
 
 ## 🚀 Getting started
 
@@ -54,6 +55,11 @@ claude .
 | [MCP Servers — Agentic Automation](https://ericcames.github.io/sales.demos-docs/demos/mcp-servers/) | Platform engineers and automation leads | [🎤 Run sheet](https://ericcames.github.io/sales.demos-docs/demos/mcp-servers/run-sheet/) |
 | [Automation Orchestrator](https://ericcames.github.io/sales.demos-docs/demos/automation-orchestrator/) | Automation architects | [🎤 Run sheet](https://ericcames.github.io/sales.demos-docs/demos/automation-orchestrator/run-sheet/) |
 | [Edge / Single Node OpenShift](https://ericcames.github.io/sales.demos-docs/demos/edge-sno/) | Infrastructure and edge architects | [🎤 Run sheet](https://ericcames.github.io/sales.demos-docs/demos/edge-sno/run-sheet/) |
+| [Observability — Grafana Cloud](https://ericcames.github.io/sales.demos-docs/demos/observability/grafana/) | Platform engineers, SREs and automation leads | [🎤 Run sheet](https://ericcames.github.io/sales.demos-docs/demos/observability/grafana/run-sheet/) |
+
+Per-demo status — Ready or Draft — lives in the
+[use-case table](https://ericcames.github.io/sales.demos-docs/demos/), which is
+the one place that tracks it.
 
 ## 🧰 Skills
 
