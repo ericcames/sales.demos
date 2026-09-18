@@ -34,18 +34,45 @@ demo_facts_compare: false
 # to ignore it. `uptime.last_boot` is deliberately IN: a reboot is exactly the
 # kind of change worth seeing, and unlike uptime.seconds it only moves when
 # something actually happened.
+#
+# EACH FIELD CARRIES ITS SEVERITY (#658), decided here and never by anything
+# downstream. It is the same kind of judgement as which fields to compare, so it
+# lives in the same place, with its reason beside it:
+#
+#   investigate  nothing this repo runs should change it; ask who did
+#   notable      a deliberate act changes it -- worth seeing, not alarming
+#   expected     routine Day 2 work (patching, reboots) changes it
+#
+# WHY THIS IS NOT LEFT TO A MODEL: #657 gave two Granite sizes the same drift
+# and the same explicit labelling rules. The 3B model silently dropped a row;
+# the 8B model called an unrequested doubling of RAM EXPECTED and invented a
+# reason. A rule that holds four times in five is not a control. Any narration
+# layered on later explains these labels; it does not set them.
+#
+# A BARE STRING IS STILL ACCEPTED and reads as `notable`, so an override written
+# against the #648 shape (a list of paths) keeps working. An unknown severity
+# fails the comparison rather than being guessed at.
 demo_facts_compare_fields:
-  - hostname
-  - os.distribution
-  - os.version
-  - os.kernel
-  - os.architecture
-  - resources.vcpus
-  - resources.memory_mb
-  - virtualization.type
-  - virtualization.role
-  - network.addresses
-  - network.dns_servers
+  # A guest renaming itself is not something any job here does.
+  - {path: hostname, severity: investigate}
+  # Teardown deregisters the host, so a rebuild starts with no prior facts --
+  # a different OS or architecture under the SAME host record is a replacement
+  # nobody recorded.
+  - {path: os.distribution, severity: investigate}
+  # Patching moves these. That is the Day 2 story working, not drift.
+  - {path: os.version, severity: expected}
+  - {path: os.kernel, severity: expected}
+  - {path: os.architecture, severity: investigate}
+  # Capacity nobody asked for. This is the row #657's 8B model downgraded.
+  - {path: resources.vcpus, severity: investigate}
+  - {path: resources.memory_mb, severity: investigate}
+  # The guest's view of what it runs on; no job here moves it.
+  - {path: virtualization.type, severity: investigate}
+  - {path: virtualization.role, severity: investigate}
+  # Where the guest talks and who it asks for names -- the classic unexplained
+  # change, and the one #657's 3B model called merely notable.
+  - {path: network.addresses, severity: investigate}
+  - {path: network.dns_servers, severity: investigate}
   # network.domain IS DELIBERATELY ABSENT, and it took three runs to earn that.
   # On Linux it comes from ansible_domain, derived from a reverse lookup, and the
   # guest has several Service DNS records pointing at it -- so which one answers
@@ -65,15 +92,24 @@ demo_facts_compare_fields:
   #
   # The field still DISPLAYS on the report either way. This only governs what
   # the drift comparison claims changed.
-  - platform.selinux
-  - platform.product
-  - platform.vendor
-  - uptime.last_boot
-  - provisioning.vm_size_tier
-  - provisioning.instance_type
-  - provisioning.environment
-  - golden_image.source
-  - golden_image.cis_level
+  # SELinux leaving enforcing is a control being switched off.
+  - {path: platform.selinux, severity: investigate}
+  # Firmware strings move when the cluster's virtualization stack is upgraded:
+  # a change to the platform underneath, not to the guest.
+  - {path: platform.product, severity: notable}
+  - {path: platform.vendor, severity: notable}
+  # A reboot. Patching does this on purpose; it is the reason the field is in.
+  - {path: uptime.last_boot, severity: expected}
+  # Registration metadata. It only changes when someone re-registers the host
+  # on purpose -- a resize, a move between environments.
+  - {path: provisioning.vm_size_tier, severity: notable}
+  - {path: provisioning.instance_type, severity: notable}
+  - {path: provisioning.environment, severity: notable}
+  # A repoint to a new golden image tag is a deliberate act (#358).
+  - {path: golden_image.source, severity: notable}
+  # The hardening claim itself. A different level under the same host is a
+  # compliance question before it is anything else.
+  - {path: golden_image.cis_level, severity: investigate}
 
 # Publish facts.html to the guest's docroot. The curated summary reaches AAP's
 # Facts tab regardless of this — that copy is the job template's use_fact_cache,

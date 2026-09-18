@@ -52,6 +52,14 @@
   .k { width: 14rem; color: #6a6e73; }
   .v, .mono { font-family: "Red Hat Mono", ui-monospace, SFMono-Regular, monospace; word-break: break-all; }
   .muted { color: #6a6e73; }
+  .sev {
+    display: inline-block; padding: .05rem .5rem; border-radius: .25rem;
+    font-size: .8rem; font-weight: 600; text-transform: uppercase; letter-spacing: .02em;
+    white-space: nowrap;
+  }
+  .sev-investigate { background: #ee0000; color: #fff; }
+  .sev-notable { background: #f0ab00; color: #151515; }
+  .sev-expected { background: #d2d2d2; color: #151515; }
   .band {
     background: #151515; color: #fff; border-radius: .4rem;
     padding: 1.5rem; margin-bottom: 1rem; display: flex; flex-wrap: wrap;
@@ -123,9 +131,13 @@
     comparison against the previous run, not a claim that nothing ever changes.</p>
   {% else %}
     <table>
-      <tr><td class="k">Field</td><td class="k">Was</td><td class="k">Now</td></tr>
+      {# Severity is decided by demo_facts_compare_fields, not here (#658).
+         Rows arrive investigate-first; `| default` keeps a diff written
+         before #658 rendering rather than failing. #}
+      <tr><td class="k">Severity</td><td class="k">Field</td><td class="k">Was</td><td class="k">Now</td></tr>
       {% for c in changes %}
-      <tr><td class="v">{{ c.field }}</td><td class="v muted">{{ c.was }}</td><td class="v">{{ c.now }}</td></tr>
+      {% set sev = c.severity | default('notable') %}
+      <tr><td><span class="sev sev-{{ sev }}">{{ sev }}</span></td><td class="v">{{ c.field }}</td><td class="v muted">{{ c.was }}</td><td class="v">{{ c.now }}</td></tr>
       {% endfor %}
     </table>
   {% endif %}
