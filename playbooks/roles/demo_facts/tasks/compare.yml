@@ -25,6 +25,27 @@
 # one that simply has no comparison.
 # ===========================================================================
 
+- name: Refuse a compared field whose severity is not one of the three
+  # A TYPO HERE IS A CODE BUG, NOT A RUNTIME CONDITION, so this is the one
+  # failure in this file that is fatal. Guessing a severity for `investgate`
+  # would quietly put a control in the wrong bucket -- the exact failure #658
+  # exists to take away from a model. Bare strings pass: they mean `notable`.
+  vars:
+    _bad: >-
+      {{ demo_facts_compare_fields | select('mapping')
+         | rejectattr('path', 'defined') | list
+         + demo_facts_compare_fields | select('mapping')
+         | rejectattr('severity', 'defined') | list
+         + demo_facts_compare_fields | select('mapping')
+         | selectattr('severity', 'defined')
+         | rejectattr('severity', 'in', ['expected', 'notable', 'investigate']) | list }}
+  ansible.builtin.assert:
+    that: _bad | length == 0
+    fail_msg: >-
+      Every mapping in demo_facts_compare_fields needs a `path` and a severity
+      of expected, notable or investigate. Offending entries: {{ _bad | to_json }}
+    quiet: true
+
 - name: Work out how to reach the controller
   # THE PATTERN provision_vm.yml ALREADY USES: the extra_var the credential
   # injects, falling back to the environment variable the same credential sets.
@@ -97,11 +118,19 @@
   # EVERY run by definition, so including them would report drift constantly and
   # train the viewer to ignore the output. `uptime.last_boot` IS included -- a
   # reboot is exactly the kind of drift worth seeing.
+  #
+  # SEVERITY COMES FROM THE FIELD LIST, NOT FROM HERE (#658). The outer loop
+  # walks the severities most-urgent first, so `investigate` rows lead the
+  # output and field order is kept within each group. A bare-string entry is
+  # the #648 shape and reads as `notable`.
   ansible.builtin.set_fact:
     demo_facts_diff: >-
       {%- set prev = _demo_facts_previous.json.demo_facts_summary | default({}, true) -%}
       {%- set out = [] -%}
-      {%- for p in demo_facts_compare_fields -%}
+      {%- for sev in ['investigate', 'notable', 'expected'] -%}
+      {%- for f in demo_facts_compare_fields -%}
+        {%- set p = f.path if f is mapping else f -%}
+        {%- if (f.severity if f is mapping else 'notable') == sev -%}
         {%- set k = p.split('.') -%}
         {%- set was = (prev[k[0]][k[1]] if k | length > 1 else prev[k[0]])
                       if (k[0] in prev and (k | length == 1 or k[1] in prev[k[0]]))
@@ -110,8 +139,10 @@
                       if (k[0] in demo_facts_summary and (k | length == 1 or k[1] in demo_facts_summary[k[0]]))
                       else '(absent)' -%}
         {%- if was != new -%}
-          {%- set _ = out.append({'field': p, 'was': was, 'now': new}) -%}
+          {%- set _ = out.append({'field': p, 'severity': sev, 'was': was, 'now': new}) -%}
         {%- endif -%}
+        {%- endif -%}
+      {%- endfor -%}
       {%- endfor -%}
       {{ out | to_json }}
     demo_facts_had_previous: >-
@@ -120,24 +151,30 @@
 - name: Report what changed
   ansible.builtin.debug:
     msg: >-
-      {{
-        ('No previously cached facts for ' ~ inventory_hostname ~ ' — this is the '
-         ~ 'first gather, so there is nothing to compare against yet. Run this '
-         ~ 'template again to see drift.')
-        if not (demo_facts_had_previous | bool)
-        else (
-          ('Nothing changed in ' ~ (demo_facts_compare_fields | length | string)
-           ~ ' compared fields since the last gather.')
-          if (demo_facts_diff | from_json | length) == 0
-          else ((demo_facts_diff | from_json | length | string)
-                ~ ' field(s) changed since the last gather:')
-        )
-      }}
+      {%- set changes = demo_facts_diff | from_json -%}
+      {%- if not (demo_facts_had_previous | bool) -%}
+      No previously cached facts for {{ inventory_hostname }} — this is the
+      first gather, so there is nothing to compare against yet. Run this
+      template again to see drift.
+      {%- elif changes | length == 0 -%}
+      Nothing changed in {{ demo_facts_compare_fields | length }} compared
+      fields since the last gather.
+      {%- else -%}
+      {%- set counts = [] -%}
+      {%- for sev in ['investigate', 'notable', 'expected'] -%}
+        {%- set n = changes | selectattr('severity', 'equalto', sev) | list | length -%}
+        {%- if n > 0 -%}{%- set _ = counts.append(n ~ ' ' ~ sev) -%}{%- endif -%}
+      {%- endfor -%}
+      {{ changes | length }} field(s) changed since the last gather
+      ({{ counts | join(', ') }}):
+      {%- endif -%}
 
 - name: Show each changed field
+  # The label leads, in capitals, so an INVESTIGATE row is the thing the eye
+  # lands on in a scrolling job log. Rows arrive most-urgent first.
   ansible.builtin.debug:
-    msg: "{{ item.field }}: {{ item.was }} -> {{ item.now }}"
+    msg: "[{{ item.severity | upper }}] {{ item.field }}: {{ item.was }} -> {{ item.now }}"
   loop: "{{ demo_facts_diff | from_json }}"
   loop_control:
-    label: "{{ item.field }}"
+    label: "{{ item.severity }} {{ item.field }}"
   when: demo_facts_had_previous | bool
