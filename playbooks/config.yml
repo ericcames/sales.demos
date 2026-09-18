@@ -200,7 +200,6 @@
             organization: "IT Service Automation"
             state: disabled
           failed_when: false
-          no_log: true
 
         - name: Create or update the EDA project
           ansible.eda.project:
@@ -214,7 +213,6 @@
             scm_branch: "{{ eda_project_scm_branch }}"
             organization: "IT Service Automation"
             state: present
-          no_log: true
 
         - name: Sync the EDA project
           ansible.eda.project:
@@ -226,7 +224,6 @@
             organization: "IT Service Automation"
             state: present
           register: _eda_project_sync
-          no_log: true
 
         - name: Create the EDA controller credential
           ansible.eda.credential:
@@ -259,7 +256,6 @@
             eda_credentials:
               - "{{ eda_controller_credential_name }}"
             state: present
-          no_log: true
 
         - name: Enable the EDA activation
           ansible.eda.rulebook_activation:
@@ -270,7 +266,6 @@
             name: "{{ eda_rulebook_activation_name }}"
             organization: "IT Service Automation"
             state: enabled
-          no_log: true
 
     - name: Summarize what was applied
       ansible.builtin.debug:
