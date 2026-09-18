@@ -187,32 +187,53 @@
     # ---------------------------------------------------------------
     - name: Configure EDA objects
       when: eda_project_name | default('') | length > 0
+      vars:
+        _eda_host: "https://{{ aap_hostname }}"
       block:
         - name: Disable existing EDA activation (if any)
           ansible.eda.rulebook_activation:
+            controller_host: "{{ _eda_host }}"
+            controller_username: "{{ aap_username }}"
+            controller_password: "{{ aap_password }}"
+            validate_certs: false
             name: "{{ eda_rulebook_activation_name }}"
             organization: "IT Service Automation"
             state: disabled
           failed_when: false
+          no_log: true
 
         - name: Create or update the EDA project
           ansible.eda.project:
+            controller_host: "{{ _eda_host }}"
+            controller_username: "{{ aap_username }}"
+            controller_password: "{{ aap_password }}"
+            validate_certs: false
             name: "{{ eda_project_name }}"
             description: "sales.demos EDA rulebooks — drift-driven remediation"
             url: "{{ eda_project_scm_url }}"
             scm_branch: "{{ eda_project_scm_branch }}"
             organization: "IT Service Automation"
             state: present
+          no_log: true
 
         - name: Sync the EDA project
           ansible.eda.project:
+            controller_host: "{{ _eda_host }}"
+            controller_username: "{{ aap_username }}"
+            controller_password: "{{ aap_password }}"
+            validate_certs: false
             name: "{{ eda_project_name }}"
             organization: "IT Service Automation"
             state: present
           register: _eda_project_sync
+          no_log: true
 
         - name: Create the EDA controller credential
           ansible.eda.credential:
+            controller_host: "{{ _eda_host }}"
+            controller_username: "{{ aap_username }}"
+            controller_password: "{{ aap_password }}"
+            validate_certs: false
             name: "{{ eda_controller_credential_name }}"
             organization: "IT Service Automation"
             credential_type: "Red Hat Ansible Automation Platform"
@@ -226,6 +247,10 @@
 
         - name: Create the EDA rulebook activation
           ansible.eda.rulebook_activation:
+            controller_host: "{{ _eda_host }}"
+            controller_username: "{{ aap_username }}"
+            controller_password: "{{ aap_password }}"
+            validate_certs: false
             name: "{{ eda_rulebook_activation_name }}"
             project: "{{ eda_project_name }}"
             organization: "IT Service Automation"
@@ -234,12 +259,18 @@
             eda_credentials:
               - "{{ eda_controller_credential_name }}"
             state: present
+          no_log: true
 
         - name: Enable the EDA activation
           ansible.eda.rulebook_activation:
+            controller_host: "{{ _eda_host }}"
+            controller_username: "{{ aap_username }}"
+            controller_password: "{{ aap_password }}"
+            validate_certs: false
             name: "{{ eda_rulebook_activation_name }}"
             organization: "IT Service Automation"
             state: enabled
+          no_log: true
 
     - name: Summarize what was applied
       ansible.builtin.debug:
