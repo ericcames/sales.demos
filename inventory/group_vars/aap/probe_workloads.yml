@@ -40,6 +40,20 @@ probe_workloads:
       `oc describe node`. This is the whole platform baseline, not AAP alone —
       it includes OpenShift, ODF and CNV on a single-node cluster.
 
+  - name: "OpenShift Virtualization (openshift-cnv namespace)"
+    installed: true
+    cpu: 1.21
+    memory: 4.47
+    source: >-
+      MEASURED on sandbox/cluster-v9n68 2026-09-18: 30 running pods in
+      openshift-cnv requesting 1205m CPU / 4798 MiB memory, using the same
+      max(sum(containers), max(initContainers)) accounting as probe_env.yml.
+      This footprint is already inside the platform baseline entry above, so
+      both carry `installed: true` and neither is double-counted. The entry
+      exists so the cost of CNV is visible on its own — and on a cluster
+      where CNV is not yet installed, removing `installed: true` makes it a
+      candidate in the capacity arithmetic.
+
   - name: "AAP MCP server (AnsibleMCPServer/aap-mcp)"
     installed: true
     cpu: 0.1

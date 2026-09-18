@@ -306,6 +306,63 @@
              | selectattr('key', 'equalto', 'devices.kubevirt.io/kvm')
              | map(attribute='value') | list | first | default('absent') }}
 
+    - name: Collect instance types from node labels
+      ansible.builtin.set_fact:
+        probe_instance_types: >-
+          {%- set ns = namespace(items=[]) -%}
+          {%- for n in probe_nodes.resources | default([]) -%}
+            {%- set labels = (n.metadata.labels | default({})) | dict2items -%}
+            {%- set matches = labels | selectattr('key', 'equalto', 'node.kubernetes.io/instance-type')
+                                     | map(attribute='value') | list -%}
+            {%- set ns.items = ns.items + [matches | first | default('')] -%}
+          {%- endfor -%}
+          {{ ns.items }}
+
+    - name: Classify the platform
+      ansible.builtin.set_fact:
+        probe_platform: >-
+          {%- set typed = probe_instance_types | reject('equalto', '') | list -%}
+          {%- if typed | length == probe_instance_types | length -%}
+          virtualized{%- elif typed | length == 0 -%}
+          bare-metal{%- else -%}
+          mixed{%- endif -%}
+        probe_instance_type_summary: >-
+          {%- set typed = probe_instance_types | reject('equalto', '') | list -%}
+          {%- if typed -%}
+          {{ typed | unique | sort | join(', ') }}{%- else -%}
+          no instance-type label{%- endif -%}
+
+    - name: Summarise GPU accelerators
+      ansible.builtin.set_fact:
+        probe_gpu_summary: >-
+          {%- set ns = namespace(total=0, nodes=0, product='', memory='') -%}
+          {%- for n in probe_nodes.resources | default([]) -%}
+            {%- set alloc = (n.status.allocatable | default({})) | dict2items -%}
+            {%- set gpu_items = alloc | selectattr('key', 'equalto', 'nvidia.com/gpu')
+                                      | map(attribute='value') | list -%}
+            {%- set gpu_count = (gpu_items | first | default('0')) | int -%}
+            {%- set ns.total = ns.total + gpu_count -%}
+            {%- if gpu_count > 0 -%}
+              {%- set ns.nodes = ns.nodes + 1 -%}
+              {%- set labels = (n.metadata.labels | default({})) | dict2items -%}
+              {%- if not ns.product -%}
+                {%- set p = labels | selectattr('key', 'equalto', 'nvidia.com/gpu.product')
+                                   | map(attribute='value') | list -%}
+                {%- set ns.product = p | first | default('') -%}
+              {%- endif -%}
+              {%- if not ns.memory -%}
+                {%- set m = labels | selectattr('key', 'equalto', 'nvidia.com/gpu.memory')
+                                   | map(attribute='value') | list -%}
+                {%- set ns.memory = m | first | default('') -%}
+              {%- endif -%}
+            {%- endif -%}
+          {%- endfor -%}
+          {%- if ns.total > 0 -%}
+          {{ ns.total }} nvidia.com/gpu across {{ ns.nodes }} node(s){{ (' — ' ~ ns.product) if ns.product else '' }}{{ (', ' ~ ns.memory ~ ' MiB') if ns.memory else '' }}
+          {%- else -%}
+          absent
+          {%- endif -%}
+
     # -----------------------------------------------------------------------
     # Report.
     # -----------------------------------------------------------------------
@@ -315,6 +372,8 @@
           - "═══ {{ aap_env_name }} — probed {{ ansible_date_time.iso8601 | default('now') }} ═══"
           - "OpenShift:   {{ probe_clusterversion.resources[0].status.desired.version | default('unknown') }}"
           - "Nodes:       {{ probe_nodes.resources | default([]) | length }}"
+          - "Platform:    {{ probe_platform }} ({{ probe_instance_type_summary }})"
+          - "GPUs:        {{ probe_gpu_summary }}"
           - "Storage:     {{ cnv_effective_storage_class }}"
           - "CNV:         {{ probe_cnv_state }}"
           - "KVM device:  {{ probe_kvm_capacity }}"
