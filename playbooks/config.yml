@@ -233,7 +233,7 @@
             validate_certs: false
             name: "{{ eda_controller_credential_name }}"
             organization: "IT Service Automation"
-            credential_type: "Red Hat Ansible Automation Platform"
+            credential_type_name: "Red Hat Ansible Automation Platform"
             inputs:
               host: "https://{{ aap_hostname }}/api/controller/"
               username: "{{ aap_username }}"
