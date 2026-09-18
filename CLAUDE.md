@@ -80,46 +80,19 @@ Only placeholder lines and the audit pattern itself may match.
 **vault-encrypted and local only — never tracked** — and lives in the `all` group
 directory so it loads for every host: both environments, *and the demo VMs*.
 
-**It used to be committed, and untracking it in #130 is what makes this repo
-reusable.** A public repo that ships one person's encrypted credentials hands
-everyone else a blob they cannot decrypt, cannot replace without diverging from
-upstream, and that conflicts on every pull. `secrets.yml.example` is the contract
-now; each machine builds its own real file from it. On a fresh clone the file
-does not exist and you create it — that is the point, not a gap.
-
-**This is why #129 exists.** AAP job templates used to receive the vaulted file
-in the project's SCM checkout and decrypt it with the "Sales Demos - Vault"
-credential. With nothing to decrypt, they get their credentials from the
-"Sales Demos - Env Secrets" custom credential type instead, injected as
-`extra_vars`. Untracking the file without that credential type breaks every job
-template — the two changes belong together.
-
-It was `group_vars/aap/` until #5, which is scoped to hosts in the `aap` group.
-That was invisible until a playbook targeted something else: `repair_linux_vm.yml` runs
-against `linuxweb`, so the guests never received the registration credentials and
-failed an assert that looked like a missing Vault credential. `all` is the only
-scope that covers every play without a second secrets file.
+Untracking it in #130 is what makes this repo reusable — `secrets.yml.example`
+is the contract now. #129's custom credential type replaced the vault-decrypt
+approach for AAP job templates. It was `group_vars/aap/` until #5 moved it to
+`all/` to cover every play. See [conventions
+rationale](https://ericcames.github.io/sales.demos-docs/reference/conventions-rationale/#why-secretsyml-is-untracked-and-in-all)
+for the full design history.
 
 **It sits beside the PLAYBOOKS, not the inventory, and that is not cosmetic.**
-Ansible loads `group_vars/` adjacent to the playbook as well as adjacent to the
-inventory, so it resolves identically either way. What differs is AAP: a job
-template's inventory is synced from `inventory/hosts.yml` by an SCM inventory
-source, and that sync runs `ansible-inventory`, which parses every `group_vars`
-file next to the inventory. Three things follow, all verified against a live
-AAP 2.6 (#4):
-
-- With the vaulted file under `inventory/group_vars/`, the sync dies with
-  `ERROR! Attempting to decrypt but no vault secrets found`.
-- It cannot be given the password: AAP rejects Vault credentials on SCM
-  inventory sources outright — *"Credentials of type insights and vault are
-  disallowed for scm inventory sources."*
-- Smuggling the password in via a custom credential type **would** work and is
-  the wrong thing to do: the sync would then write `env_secrets` and the SSH
-  private key into AAP's inventory variables in plaintext, visible in the UI.
-
-Keeping secrets out of the inventory tree is what lets the sync parse
-`connection.yml` freely while the credentials stay encrypted and arrive at run
-time through the job template's Vault credential. Do not move it back.
+AAP's SCM inventory sync runs `ansible-inventory` against files next to the
+inventory and would expose credentials in three different ways. Do not move it
+back. See [conventions
+rationale](https://ericcames.github.io/sales.demos-docs/reference/conventions-rationale/#why-secrets-sit-beside-playbooks-not-inventory)
+for the verification against a live AAP instance (#4).
 
 ```bash
 ansible-vault edit playbooks/group_vars/all/secrets.yml \
@@ -155,18 +128,12 @@ ansible-vault edit playbooks/group_vars/all/secrets.yml \
   manage many AAPs from one codebase.
 
   **`local.yml` IS the answer to the AAP job-template question**, and the
-  mechanism is `config.yml`. Gitignored files are invisible to AAP's SCM
-  checkout — that part is still true. But `config.yml` runs locally with
-  `local.yml`, resolves the effective values (including the override), and
-  populates the AAP inventory host variables via the API. AAP job templates read
-  those host vars, not `connection.yml` from the SCM checkout. So `local.yml`
-  reaches AAP, through `config.yml`, without ever being committed.
-
-  This replaced the earlier design where `connection.yml` had to be committed
-  for AAP to see the new cluster (#166). That design required every repoint to
-  go through a PR, and a stale `connection.yml` was a real defect. The current
-  design treats `connection.yml` as the upstream reference for fresh clones and
-  `local.yml` as the operational input — the distinction SEs need to learn.
+  mechanism is `config.yml`. `config.yml` runs locally with `local.yml`, resolves
+  the effective values, and populates AAP inventory host variables via the API.
+  So `local.yml` reaches AAP, through `config.yml`, without ever being committed.
+  See [conventions
+  rationale](https://ericcames.github.io/sales.demos-docs/reference/conventions-rationale/#the-localyml-overlay-and-what-it-replaced)
+  for the earlier design this replaced (#166).
 
   **The name is load-bearing.** `connection.local.yml` sorts *before*
   `connection.yml` and loses; it would be read, silently overridden, and leave
@@ -208,18 +175,10 @@ ansible-vault edit playbooks/group_vars/all/secrets.yml \
   3. a tracked `secrets.yml`, if one exists anyway, still begins with
      `$ANSIBLE_VAULT`
 
-  **Check 2 is the answer to a real objection, not a replacement for one.** The
-  rule here used to say an ignore rule hides the file instead of verifying it,
-  and that was correct: gitignoring the file and keeping the old loop would have
-  been *silent*. `git ls-files` returns nothing, the loop never iterates, `fail`
-  stays `0`, and the script prints "passed" — and because every other pattern in
-  it also pipes from `git ls-files`, a plaintext untracked `secrets.yml` full of
-  live tokens would be invisible to all of them too. So the ignore rule is not
-  trusted; it is *verified*. Deleting it fails the build.
-
-  Check 1 must run **before** check 2, and the order is load-bearing: git reports
-  a tracked file as "not ignored" whatever `.gitignore` says, so testing
-  check-ignore first blames `.gitignore` for a rule that is present and correct.
+  Check 1 must run **before** check 2, and the order is load-bearing. See
+  [conventions
+  rationale](https://ericcames.github.io/sales.demos-docs/reference/conventions-rationale/#why-check-no-secretssh-has-three-ordered-checks)
+  for why.
 
 ## Environments
 
@@ -405,43 +364,19 @@ Environment secrets.
 - **Always clean up tokens** — any playbook creating a token must delete it in an
   `always:` block so stale tokens do not accumulate.
 
-  **The exception is a token that IS the deliverable**, and there are two. A
-  credential created so that something else can keep using it cannot be deleted
-  in an `always:` block without destroying the thing it was created for. The rule
-  still holds without exception for every token created *incidentally*, to get a
-  playbook's own work done.
+  **The exception is a token that IS the deliverable**, and there are two:
 
   **1. The AAP MCP client token** (#102, #515), created by
-  `utilities/make-aap-mcp.sh` on a laptop. It is never committed — the token
-  is written to a gitignored file in `.aap/` and read at launch by the stdio
-  bridge in `.mcp.json`. **It is retired by hand**; the script prints cleanup
-  instructions, and you should say so out loud when handing this to anyone.
+  `utilities/make-aap-mcp.sh`. Never committed; retired by hand — the script
+  prints cleanup instructions.
 
-  **2. The PAH Galaxy token** (#69), created by `playbooks/link_hub.yml`. This
-  one **is** created by a playbook — the rule's earlier wording said no playbook
-  creates such a token, and that stopped being true here rather than being
-  wrong before. Three things keep it from being a hole:
+  **2. The PAH Galaxy token** (#69), created by `playbooks/link_hub.yml`.
+  Minted from environment credentials, never stored. The playbook retires its
+  own previous token. `-e hub_galaxy_link_state=absent` is the proven cleanup.
 
-  - **It is minted, never stored.** It comes from `aap_username` /
-    `aap_password`, which already rotate with the environment, so a rebuilt
-    cluster reconstructs it with nothing to go stale. That is the whole answer
-    to #69's gate 3: ask how long the *environment* lives before designing
-    anything that stores a credential from it.
-  - **The playbook retires its own.** Gateway tokens *accumulate* (unlike the
-    galaxy_ng endpoint, which resets), so `link_hub.yml` deletes the tokens it
-    minted on earlier runs before minting a fresh one, matched on description.
-    Exactly one should ever exist.
-  - **There is a real cleanup path, and it is proven.**
-    `-e hub_galaxy_link_state=absent` unassigns the credential, deletes it, and
-    deletes the token. This is the half that makes the exception narrow, and it
-    ships in the same PR as the link.
-
-  Both **inherit the creating user's permissions** — Red Hat's words, not a
-  paraphrase — so making one as `admin` gives the holder admin. For MCP the
-  environment's `aap_mcp_allow_write_operations` is a second gate, not the only
-  one. For the Galaxy token the mitigation is scope: `read`, verified sufficient
-  against the hub index before it was chosen, because a project sync only ever
-  downloads.
+  Both inherit the creating user's permissions. See [conventions
+  rationale](https://ericcames.github.io/sales.demos-docs/reference/conventions-rationale/#token-cleanup-exceptions)
+  for the full safety analysis.
 - **Never ship a project-local `ansible.cfg`** — Ansible picks one cfg file and
   does not merge. A local one shadows `~/.ansible.cfg`, which holds the working
   Automation Hub token, and breaks `ansible-galaxy collection install` for Red
@@ -490,26 +425,12 @@ Environment secrets.
   imports via an explicit DataVolume (#224). Tags are immutable, so **repoint —
   never overwrite**; `20260905-1826` keeps the defect for ever.
 
-  **Those steps were correct and did not work, for two days** (#358). The
-  playbook decided whether to import from whether the `win2k22` DataSource was
-  *Ready* — never from *which image* it served. After the first successful
-  import every environment is Ready for ever, so a changed `quay_windows_image`
-  patched the HCO cron template (which imports nothing on a private registry,
-  #224), skipped the DataVolume, skipped the repoint, passed a verification
-  that only asked "Ready?" and "Bound?", and printed success. Sandbox
-  advertised `win2k22-cis-l1-golden:20260907-0516` while every clone booted
-  `win2k22-golden:20260906-0300` — the repo the producer publishes its
-  **unhardened** build to, imported 26 hours before the hardened image was
-  built. The demo guest scored 9 of 27 CIS controls and the talk track was
-  inviting customers to read that report.
-
   **The import decision is now identity, not readiness**, and the identity is
   re-read from the cluster and asserted on every run, including runs that
-  import nothing. Ready and Bound are both true of the wrong image; that is the
-  whole lesson, and it is the same one as check 2 in
-  `utilities/check-no-secrets.sh` — desired state is tested, not trusted.
-  A DataVolume's source is immutable, so a changed tag deletes and re-imports
-  rather than editing in place.
+  import nothing. A DataVolume's source is immutable, so a changed tag deletes
+  and re-imports rather than editing in place. See [conventions
+  rationale](https://ericcames.github.io/sales.demos-docs/reference/conventions-rationale/#windows-golden-image-identity-not-readiness)
+  for the #358 incident that drove this.
 
 - **Run logs go to `~/ansible-logs/`, never into this repo**, and the easy way to
   get that right is `utilities/run-playbook.sh`, which names the log, creates the
@@ -542,12 +463,6 @@ Environment secrets.
 - **Additive only** — do not remove working capability until the replacement is
   proven.
 - **There is no `CHANGELOG.md`, and adding one back is not the fix** (#432).
-  It never had a release to anchor it — 5,386 of its 5,394 lines sat under a
-  single `[Unreleased]` heading in a file that also claimed to follow Semantic
-  Versioning, 60 of the last 60 commits touched it, and nothing was ever
-  deleted from it. The same prose was written three times: issue, commit
-  message, entry. A one-line-per-PR version would have transcribed
-  `git log --oneline`, because the commit subjects here already read that way.
 
   | Question | Where the answer lives |
   |---|---|
@@ -556,9 +471,9 @@ Environment secrets.
   | What is planned | `ROADMAP.md` |
   | What happened before 2026-09-10 | the [archive](https://ericcames.github.io/sales.demos-docs/reference/history/) in `sales.demos-docs` |
 
-  **No per-PR artifact replaced it.** Writing a decision record every merge
-  would rename the work rather than retire it. Durable conventions come here,
-  deliberately and rarely, which is what this file already is.
+  See [conventions
+  rationale](https://ericcames.github.io/sales.demos-docs/reference/conventions-rationale/#why-there-is-no-changelogmd)
+  for the full reasoning.
 - **Branch from `main`; never commit to it directly.** Name the branch
   `<type>-<issue>-<slug>` — `fix-86-preflight-vault-lookup`,
   `docs-94-network-mcp-plan`. `<type>` is `fix`, `docs`, or the area being
@@ -571,125 +486,64 @@ Environment secrets.
   `origin/<branch>`. That is a repository setting, not a tracked file, so it is
   recorded here — it cannot be seen by reading the tree (#97).
 
-  **The local branch survives the merge, and this note used to say it did not**
-  (#177). It read "no manual pruning is needed", which is true of the remote and
-  false of the clone you are standing in, so leftovers accumulated silently —
-  the note told you not to look. Delete the local copy when you merge:
+  **The local branch survives the merge.** Delete it when you merge:
 
   ```bash
   git checkout main && git pull && git branch -d <branch>
   ```
 
-  **`git branch --merged main` misses squash-merged branches** (#197).
-  A finder that works under both merge strategies:
+  **`git branch --merged main` misses squash-merged branches.** Use:
 
   ```bash
   gh pr list --state merged --limit 30 --json headRefName -q '.[].headRefName' \
     | while read -r b; do git show-ref -q --verify "refs/heads/$b" && echo "$b"; done
   ```
 
-  **Use `-d` by default.** With an upstream set (every branch here has one via
-  `git push -u`), `-d` checks "pushed to upstream", not "merged into HEAD".
-  After a squash merge it prints a warning about "not yet merged to HEAD" —
-  **that is expected and means nothing**. `-d` still catches unpushed work,
-  which is the loss that actually matters.
-
-  **Once the upstream is gone, `-D` is correct** (#571). After
-  `delete_branch_on_merge` and a `fetch --prune`, `-d` falls back to HEAD and
-  refuses *every* squash-merged branch. Confirm `gh pr view <n>` says MERGED
-  and `git status` is clean in any worktree on it, then `-D`.
+  Use `-d` by default; once the upstream is gone after `delete_branch_on_merge`
+  and `fetch --prune`, `-D` is correct after confirming `gh pr view <n>` says
+  MERGED. See [conventions
+  rationale](https://ericcames.github.io/sales.demos-docs/reference/conventions-rationale/#branch-cleanup-under-squash-merge)
+  for the squash-merge edge cases (#177, #197, #571).
 
   **`main` is now protected, and the rule above is enforced rather than
   trusted.** Recorded here for the same reason as the line above: it is a
   repository setting and invisible in the tree.
 
   - **A pull request is required**, with **0 required approvals**. Zero is
-    deliberate, not laziness: a PR should not block on a second person being
-    around. Zero still forces the branch-and-PR flow, which is the part that
-    matters.
-
-    **This used to be justified by "there is one collaborator", and that stopped
-    being true** (#435). @mlowcher61 has `write` on all three repos and now
-    co-owns every path in `.github/CODEOWNERS`, so requiring an approval is
-    possible where it once would have deadlocked. It is still not wanted, for
-    the reason above — the decision outlived its original argument, which is
-    exactly the kind of thing worth re-reading rather than inheriting.
-
-    **CODEOWNERS here requests review; it does not gate.**
-    `require_code_owner_reviews` is `false`, so a listed owner is auto-requested
-    and nothing waits on them. Do not read co-ownership as enforcement.
+    deliberate: a PR should not block on a second person being around.
+  - **CODEOWNERS requests review; it does not gate.**
+    `require_code_owner_reviews` is `false`.
   - **All 9 lint checks are required** — `yamllint`, `ansible-lint`,
     `secret-guard`, `secrets-example-sync`, `generated-files`,
     `skills-frontmatter`, `docs-artifacts-current`, `renderer-matches-role`,
     `fact-normalisation-agrees`.
-    **Adding or renaming a CI job means updating this list**, or PRs will either
-    wait forever on a check that never reports, or merge without one that should
-    have run.
-
-    **ADDING THE JOB IS NOT THE SAME AS REQUIRING IT**, and #647 spent a day in
-    the gap. `fact-normalisation-agrees` shipped in that PR, ran green on every
-    push, and could not have blocked anything: required checks are a
-    branch-protection setting, not a tracked file — the same invisibility that
-    put this whole list here. Two steps, every time:
+    **Adding or renaming a CI job means updating this list** and the branch
+    protection API — two steps, every time:
 
     1. add the job to `.github/workflows/lint.yml` and to the list above;
     2. `gh api -X PATCH repos/ericcames/sales.demos/branches/main/protection/required_status_checks`
        with `-F strict=false` and the full `contexts[]` set — **the full set**,
        because the endpoint replaces rather than appends.
 
-    **The context name must match the job id exactly.** A typo does not error;
-    the PR simply waits for ever on a check that never reports. Confirm on the
-    next PR with `gh pr checks`.
-  - **It applies to admins.** Anything less would not have prevented what
-    prompted it: a commit went straight to `main` because a `git checkout -b`
-    failed on an existing branch and `|| true` swallowed the error. Admin bypass
-    would have let that through, since the push already carried admin rights.
-    Turning enforcement off for a genuine emergency is two clicks — doing that
-    deliberately is a different thing from doing it by accident.
+    The context name must match the job id exactly — a typo does not error; the
+    PR waits forever. Confirm on the next PR with `gh pr checks`.
+  - **It applies to admins.**
   - Force pushes and branch deletion on `main` are blocked, and PR conversations
     must be resolved before merging.
 
+  See [conventions
+  rationale](https://ericcames.github.io/sales.demos-docs/reference/conventions-rationale/#branch-protection-and-ci-check-registration)
+  for the incidents behind these settings (#435, #647).
+
 - **This working tree is shared by more than one Claude session at a time, and
-  the branch can change under you.** Recorded here for the same reason as the two
-  notes above: it is invisible from reading the tree, and every session otherwise
-  assumes it is alone in the checkout.
-
-  On 2026-09-04, between a `git checkout -b` and the commit at the end of that
-  same task, another session had merged two PRs, advanced `main`, and checked out
-  its own branch. The commit landed on **theirs**.
-
-  What that breaks, in order of nastiness:
-
-  - The commit goes on someone else's branch, so their PR carries your change and
-    **one concern per PR is violated without either session noticing**.
-  - `git add -A` can stage their uncommitted work in flight.
-  - `git push -u origin <your-branch>` pushes the *stale* ref you created
-    earlier, not your commit — it looks successful and publishes nothing.
-  - `gh pr create` uses the current branch, which is theirs.
-
-  The habits that survive it:
-
-  - Re-run `git branch --show-current` **immediately before** `git add` and
-    `git commit`, not once at the start of the task. This is the whole rule; the
-    rest follows from it.
-  - Prefer `git add <explicit paths>` over `git add -A` here.
-  - `gh pr create --head <branch>` rather than relying on the checkout.
-  - `git show --stat <sha>` after committing, to confirm only your files are in it.
-
-  **Recovering without damage:** `git branch -f <your-branch> <sha>` claims your
-  commit onto the right branch and touches nothing else. Do **not** force-push or
-  rewrite a branch another session has already pushed — that is theirs to fix;
-  say so and let the user decide.
+  the branch can change under you.** See [conventions
+  rationale](https://ericcames.github.io/sales.demos-docs/reference/conventions-rationale/#the-worktree-mandate)
+  for the 2026-09-04 incident that proved this.
 
   **Always use an isolated worktree for code changes.** Do not create branches,
   edit files, or commit in the main checkout — treat it as read-only. The main
   checkout stays on `main` and serves as the stable home base for MCP queries,
   `oc get`, log tailing, and other read-only work.
-
-  A worktree is a second checkout of the same repo in a sibling directory,
-  sharing one `.git` object store. Each session gets its own branch, index, and
-  working tree — the cross-session failures above become impossible, and Git
-  enforces that no two worktrees can be on the same branch.
 
   ```bash
   # Create — sibling directory, descriptive suffix
@@ -709,18 +563,16 @@ Environment secrets.
   the worktree auto-cleans if the agent makes no changes; otherwise the path and
   branch come back in the result.
 
-  **This is mandatory, not a suggestion.** The conditional rule ("use a worktree
-  when multiple sessions are running") failed in practice — every session
-  assumes it is alone until another one switches the branch underneath it. The
-  unconditional rule ("always use a worktree for code changes") eliminates the
-  assumption entirely. The main checkout never moves off `main`, so there is
-  nothing to collide with.
+  **This is mandatory, not a suggestion.** The unconditional rule ("always use a
+  worktree for code changes") eliminates the assumption that you are alone in the
+  checkout. The main checkout never moves off `main`, so there is nothing to
+  collide with.
 
   **What worktrees do not solve: cluster conflicts.** Two sessions modifying the
   same OpenShift namespace, AAP objects, or Grafana resources can still collide.
   Coordinate by giving each session a different scope — different playbooks,
   different namespaces, or different environments via `--limit`.
 
-  The defensive habits above (re-check branch, explicit `git add`, `--head` on
-  PR create) stay as a safety net — they protect against races within a single
-  worktree and are still correct even with worktrees.
+  The defensive habits (re-check branch before commit, explicit `git add`,
+  `--head` on PR create, `git show --stat` after committing) stay as a safety
+  net.
