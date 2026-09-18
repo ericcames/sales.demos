@@ -1894,7 +1894,6 @@ controller_templates_all:
     credentials:
       - "Sales Demos - Vault"
       - "Sales Demos - Env Secrets"
-    limit: localhost
     ask_variables_on_launch: true
 
   - name: "Linux Day 2 - Fix SELinux"
