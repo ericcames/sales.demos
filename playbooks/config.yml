@@ -175,6 +175,72 @@
       ansible.builtin.include_role:
         name: infra.aap_configuration.dispatch
 
+    # ---------------------------------------------------------------
+    # EDA — Event-Driven Ansible objects (#665)
+    #
+    # dispatch covers controller objects only; EDA has its own API.
+    # Following dc1.azure's disable → create/sync → re-enable pattern
+    # because a running activation locks the rulebook.
+    #
+    # Graceful degradation: skip the whole block when eda_project_name
+    # is not set, so environments without EDA config stay green.
+    # ---------------------------------------------------------------
+    - name: Configure EDA objects
+      when: eda_project_name | default('') | length > 0
+      block:
+        - name: Disable existing EDA activation (if any)
+          ansible.eda.rulebook_activation:
+            name: "{{ eda_rulebook_activation_name }}"
+            organization: "IT Service Automation"
+            state: disabled
+          failed_when: false
+
+        - name: Create or update the EDA project
+          ansible.eda.project:
+            name: "{{ eda_project_name }}"
+            description: "sales.demos EDA rulebooks — drift-driven remediation"
+            url: "{{ eda_project_scm_url }}"
+            scm_branch: "{{ eda_project_scm_branch }}"
+            organization: "IT Service Automation"
+            state: present
+
+        - name: Sync the EDA project
+          ansible.eda.project:
+            name: "{{ eda_project_name }}"
+            organization: "IT Service Automation"
+            state: present
+          register: _eda_project_sync
+
+        - name: Create the EDA controller credential
+          ansible.eda.credential:
+            name: "{{ eda_controller_credential_name }}"
+            organization: "IT Service Automation"
+            credential_type: "Red Hat Ansible Automation Platform"
+            inputs:
+              host: "https://{{ aap_hostname }}/api/controller/"
+              username: "{{ aap_username }}"
+              password: "{{ aap_password }}"
+              verify_ssl: false
+            state: present
+          no_log: true
+
+        - name: Create the EDA rulebook activation
+          ansible.eda.rulebook_activation:
+            name: "{{ eda_rulebook_activation_name }}"
+            project: "{{ eda_project_name }}"
+            organization: "IT Service Automation"
+            rulebook: drift_remediation.yml
+            decision_environment: "{{ eda_decision_environment }}"
+            eda_credentials:
+              - "{{ eda_controller_credential_name }}"
+            state: present
+
+        - name: Enable the EDA activation
+          ansible.eda.rulebook_activation:
+            name: "{{ eda_rulebook_activation_name }}"
+            organization: "IT Service Automation"
+            state: enabled
+
     - name: Summarize what was applied
       ansible.builtin.debug:
         msg:
@@ -188,3 +254,7 @@
                if (hub_token_live is defined and not (hub_token_live | bool))
                else ('Hub sync: started, not awaited — /pah-sync waits and verifies.'
                      if (hub_sync_enabled | default(true) | bool) else 'Hub sync: not requested.') }}
+          - >-
+            {{ 'EDA: ' ~ eda_rulebook_activation_name ~ ' activation configured and enabled.'
+               if (eda_project_name | default('') | length > 0)
+               else 'EDA: skipped (eda_project_name not set).' }}

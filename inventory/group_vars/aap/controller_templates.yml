@@ -1865,6 +1865,58 @@ controller_templates_all:
     organization: "IT Service Automation"
     state: absent
 
+  # -------------------------------------------------------------------
+  # AGENTIC OPS — DRIFT REMEDIATION (#665)
+  #
+  # The decide step reads workflow artifacts (demo_facts_diff) and looks
+  # up the first investigate-severity row in the allow-list. It runs on
+  # localhost — no inventory host needed — and publishes the proposed
+  # template name for the approval node to display.
+  #
+  # The fix step is a real remediation, targeted at linuxweb. One
+  # template per remediation; the allow-list maps drift → template.
+  # -------------------------------------------------------------------
+  - name: "Linux Day 2 - Decide Remediation"
+    description: >-
+      Rule-table decide step: reads the drift diff, looks up the first
+      investigate-severity row in the allow-list, and proposes a
+      remediation. Publishes the template name as a workflow artifact.
+    labels:
+      - linux
+      - day-2
+      - agentic
+    job_type: run
+    organization: "IT Service Automation"
+    inventory: "Sales Demo VMs"
+    project: "Sales Demos"
+    playbook: playbooks/decide_remediation.yml
+    execution_environment: "Sales Demos - OCP Virt EE"
+    credentials:
+      - "Sales Demos - Vault"
+      - "Sales Demos - Env Secrets"
+    limit: localhost
+    ask_variables_on_launch: true
+
+  - name: "Linux Day 2 - Fix SELinux"
+    description: >-
+      Set SELinux to enforcing on the Linux guests. Idempotent — re-running
+      on an already-enforcing host is a no-op.
+    labels:
+      - linux
+      - day-2
+      - agentic
+    job_type: run
+    organization: "IT Service Automation"
+    inventory: "Sales Demo VMs"
+    project: "Sales Demos"
+    playbook: playbooks/remediate_selinux.yml
+    execution_environment: "Sales Demos - OCP Virt EE"
+    credentials:
+      - "Sales Demos - Linux Machine"
+      - "Sales Demos - Vault"
+      - "Sales Demos - Env Secrets"
+    limit: linuxweb
+
   # Retired by #647 — folding fact gathering into step 5 renamed both.
   - name: "Linux Day 1 - 5 Check"
     organization: "IT Service Automation"

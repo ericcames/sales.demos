@@ -189,3 +189,20 @@
   loop_control:
     label: "{{ item.severity }} {{ item.field }}"
   when: demo_facts_had_previous | bool
+
+- name: Notify EDA of investigate-severity drift
+  ansible.builtin.uri:
+    url: "{{ demo_facts_eda_webhook_url }}"
+    method: POST
+    body_format: json
+    body:
+      has_investigate: true
+      host: "{{ inventory_hostname }}"
+    status_code: [200, 202]
+    timeout: 10
+  delegate_to: localhost
+  failed_when: false
+  when:
+    - demo_facts_eda_webhook_url | default('') | length > 0
+    - demo_facts_had_previous | bool
+    - (demo_facts_diff | from_json | selectattr('severity', 'equalto', 'investigate') | list | length) > 0

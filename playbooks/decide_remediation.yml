@@ -1,0 +1,62 @@
+---
+# ===========================================================================
+# decide_remediation.yml — pick a fix from the allow-list. Issue #665.
+#
+# Reads demo_facts_diff (a workflow artifact from the gather step) and looks
+# up the first investigate-severity row in demo_facts_remediation_map.  If a
+# match exists, publishes the template name and reason via set_stats so the
+# downstream approval node can show them.  If not, publishes an empty string
+# and the workflow ends cleanly.
+#
+# IN 5a THIS IS A FIXED RULE TABLE.  In 5c the model replaces it; the
+# inputs and outputs stay the same.
+#
+#   hosts: localhost — this play reads workflow artifacts, not VMs.
+# ===========================================================================
+
+- name: Decide which remediation to propose
+  hosts: localhost
+  gather_facts: false
+  connection: local
+
+  tasks:
+    - name: Assert the diff artifact arrived
+      ansible.builtin.assert:
+        that: demo_facts_diff is defined and demo_facts_diff | length > 0
+        fail_msg: >-
+          demo_facts_diff was not passed to this node.  The gather step must
+          run with demo_facts_compare: true and publish via set_stats.
+        quiet: true
+
+    - name: Parse the diff
+      ansible.builtin.set_fact:
+        _diff: "{{ demo_facts_diff | from_json if demo_facts_diff is string else demo_facts_diff }}"
+
+    - name: Find the first investigate row that has a remediation
+      ansible.builtin.set_fact:
+        _match: >-
+          {%- set ns = namespace(found={}) -%}
+          {%- for row in _diff if row.severity == 'investigate' and not ns.found -%}
+            {%- for entry in demo_facts_remediation_map | default([]) -%}
+              {%- if entry.field == row.field and not ns.found -%}
+                {%- set ns.found = {'template': entry.template, 'reason': entry.reason,
+                                    'field': row.field, 'was': row.was, 'now': row.now} -%}
+              {%- endif -%}
+            {%- endfor -%}
+          {%- endfor -%}
+          {{ ns.found }}
+
+    - name: Report the decision
+      ansible.builtin.debug:
+        msg: >-
+          {%- if _match -%}
+          PROPOSING: {{ _match.template }} — {{ _match.reason }}
+          ({{ _match.field }}: {{ _match.was }} -> {{ _match.now }}){%- else -%}
+          No remediation found on the allow-list for the current drift.{%- endif -%}
+
+    - name: Publish the decision as workflow artifacts
+      ansible.builtin.set_stats:
+        data:
+          remediation_template: "{{ _match.template | default('') }}"
+          remediation_reason: "{{ _match.reason | default('') }}"
+          remediation_field: "{{ _match.field | default('') }}"

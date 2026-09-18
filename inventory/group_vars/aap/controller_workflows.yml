@@ -652,6 +652,89 @@ controller_workflows_all:
     organization: "IT Service Automation"
     state: absent
 
+  # -------------------------------------------------------------------
+  # AGENTIC OPS — DRIFT REMEDIATION (#665)
+  #
+  # Four nodes: gather → decide → approve → remediate. The gather step
+  # detects drift, the decide step proposes a fix from the allow-list,
+  # the approval node pauses for a human, and the remediate step runs the
+  # fix. EDA launches this workflow when it receives a webhook POST with
+  # has_investigate: true.
+  #
+  # ask_variables_on_launch: true so EDA can pass extra_vars. Survey
+  # defaults demo_facts_compare: true so the gather step runs comparison.
+  # -------------------------------------------------------------------
+  - name: "Linux Day 2 - Drift Remediation"
+    description: >-
+      Agentic drift remediation: gather facts, decide on a fix from the
+      allow-list, pause for human approval, then remediate. Triggered by
+      EDA when investigate-severity drift is detected.
+    organization: "IT Service Automation"
+    labels:
+      - linux
+      - day-2
+      - agentic
+    destroy_current_nodes: true
+    inventory: "Sales Demo VMs"
+    ask_variables_on_launch: true
+    survey_enabled: true
+    survey_spec:
+      name: ""
+      description: "Drift remediation workflow settings"
+      spec:
+        - question_name: Compare against the previously cached facts
+          question_description: >-
+            The gather step must compare to detect drift. On by default;
+            turning it off means the decide step has no diff to read.
+          variable: demo_facts_compare
+          type: multiplechoice
+          required: false
+          default: "true"
+          choices:
+            - "false"
+            - "true"
+
+    related:
+      workflow_nodes:
+        - identifier: gather
+          unified_job_template:
+            name: "Linux Day 2 - Gather Facts"
+            type: job_template
+            organization:
+              name: "IT Service Automation"
+          related:
+            success_nodes:
+              - identifier: decide
+
+        - identifier: decide
+          unified_job_template:
+            name: "Linux Day 2 - Decide Remediation"
+            type: job_template
+            organization:
+              name: "IT Service Automation"
+          related:
+            success_nodes:
+              - identifier: approve
+
+        - identifier: approve
+          unified_job_template:
+            name: "Drift Remediation Approval"
+            type: workflow_approval
+            timeout: 3600
+            description: >-
+              A remediation has been proposed for investigate-severity
+              drift. Review the decide step's output and approve or deny.
+          related:
+            success_nodes:
+              - identifier: remediate
+
+        - identifier: remediate
+          unified_job_template:
+            name: "Linux Day 2 - Fix SELinux"
+            type: job_template
+            organization:
+              name: "IT Service Automation"
+
   # Retired by #303 — `Linux Day 1 Workflow` sorted last in its own family.
   - name: "Linux Day 1 Workflow"
     organization: "IT Service Automation"

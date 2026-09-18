@@ -1,0 +1,23 @@
+---
+# ===========================================================================
+# drift_remediation.yml — EDA rulebook for agentic drift remediation (#665).
+#
+# Webhook source, following dc1.azure's pattern. The gather job POSTs to
+# this webhook when it detects investigate-severity drift; the rulebook
+# launches the remediation workflow.
+# ===========================================================================
+
+- name: Listen for drift events requiring remediation
+  hosts: all
+  sources:
+    - ansible.eda.webhook:
+        host: 0.0.0.0
+        port: 5000
+
+  rules:
+    - name: Launch drift remediation when investigate rows exist
+      condition: event.payload.has_investigate == true
+      action:
+        run_workflow_template:
+          name: "Linux Day 2 - Drift Remediation"
+          organization: "IT Service Automation"

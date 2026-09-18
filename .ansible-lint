@@ -73,6 +73,14 @@ mock_modules:
   - ansible.controller.job_wait
   # Guest configuration (Phase 4, playbooks/run_demo.yml).
   - ansible.posix.firewalld
+  # Agentic drift remediation (#665, playbooks/remediate_selinux.yml).
+  - ansible.posix.selinux
+  # EDA config-as-code (#665, playbooks/config.yml). ansible.eda modules
+  # manage EDA-side objects (project, credential, rulebook activation);
+  # dispatch covers controller objects only.
+  - ansible.eda.project
+  - ansible.eda.credential
+  - ansible.eda.rulebook_activation
   # Windows Day 1 (#340). ansible.windows is pinned in
   # collections/requirements.yml and already ships in the execution
   # environment, but CI installs nothing, so every module the Windows roles
