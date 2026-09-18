@@ -38,12 +38,16 @@
          | rejectattr('severity', 'defined') | list
          + demo_facts_compare_fields | select('mapping')
          | selectattr('severity', 'defined')
-         | rejectattr('severity', 'in', ['expected', 'notable', 'investigate']) | list }}
+         | rejectattr('severity', 'in', ['expected', 'notable', 'investigate']) | list
+         + demo_facts_compare_fields | select('mapping')
+         | selectattr('tolerance_pct', 'defined')
+         | rejectattr('tolerance_pct', 'number') | list }}
   ansible.builtin.assert:
     that: _bad | length == 0
     fail_msg: >-
       Every mapping in demo_facts_compare_fields needs a `path` and a severity
-      of expected, notable or investigate. Offending entries: {{ _bad | to_json }}
+      of expected, notable or investigate, and a `tolerance_pct`, where given,
+      must be a number. Offending entries: {{ _bad | to_json }}
     quiet: true
 
 - name: Work out how to reach the controller
@@ -138,7 +142,14 @@
         {%- set new = (demo_facts_summary[k[0]][k[1]] if k | length > 1 else demo_facts_summary[k[0]])
                       if (k[0] in demo_facts_summary and (k | length == 1 or k[1] in demo_facts_summary[k[0]]))
                       else '(absent)' -%}
-        {%- if was != new -%}
+        {#- tolerance_pct (#663): two numbers within it are the same value.
+            `is number` excludes '(absent)', so a field appearing or vanishing
+            is always a change. Booleans are numbers to Jinja; none are
+            compared, and none carry a tolerance. -#}
+        {%- set tol = (f.tolerance_pct | default(0)) if f is mapping else 0 -%}
+        {%- set within = tol > 0 and was is number and new is number
+                         and ((was - new) | abs) <= ((was | abs) * tol / 100) -%}
+        {%- if was != new and not within -%}
           {%- set _ = out.append({'field': p, 'severity': sev, 'was': was, 'now': new}) -%}
         {%- endif -%}
         {%- endif -%}

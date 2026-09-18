@@ -52,6 +52,10 @@ demo_facts_compare: false
 # A BARE STRING IS STILL ACCEPTED and reads as `notable`, so an override written
 # against the #648 shape (a list of paths) keeps working. An unknown severity
 # fails the comparison rather than being guessed at.
+#
+# `tolerance_pct` IS OPTIONAL, for a number that moves when nothing real did
+# (#663). Within it, the field does not count as changed. The report still
+# shows the exact values; only the drift claim is loosened.
 demo_facts_compare_fields:
   # A guest renaming itself is not something any job here does.
   - {path: hostname, severity: investigate}
@@ -65,7 +69,14 @@ demo_facts_compare_fields:
   - {path: os.architecture, severity: investigate}
   # Capacity nobody asked for. This is the row #657's 8B model downgraded.
   - {path: resources.vcpus, severity: investigate}
-  - {path: resources.memory_mb, severity: investigate}
+  # memory_mb IS MemTotal: RAM minus what the kernel reserves, and a new kernel
+  # reserves a different amount. Measured in #663: a reboot into a patched
+  # kernel moved it 15706 -> 15708 on an untouched 16 GiB guest, and every
+  # patch cycle raised an INVESTIGATE row -- the noise that teaches a viewer
+  # to skip the label that matters. 10% because the tiers are 4/8/16 GiB, so
+  # the smallest real resize is +/-50%; even a 192 MiB crashkernel reservation
+  # appearing on the 4 GiB tier is under 5%.
+  - {path: resources.memory_mb, severity: investigate, tolerance_pct: 10}
   # The guest's view of what it runs on; no job here moves it.
   - {path: virtualization.type, severity: investigate}
   - {path: virtualization.role, severity: investigate}
