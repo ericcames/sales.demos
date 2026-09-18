@@ -76,6 +76,14 @@ controller_labels_all:
   - name: read-only
     organization: "IT Service Automation"
 
+  # --- autonomy --------------------------------------------------------
+  # A SIXTH AXIS (#665). "Agentic" means a workflow where the system proposes
+  # the next action and a human approves — drift remediation today, model-driven
+  # decisions later. The label answers "which templates participate in an
+  # AI-assisted loop?" and it is the filter an SE uses to find the new demo.
+  - name: agentic
+    organization: "IT Service Automation"
+
   # --- entry point ----------------------------------------------------
   # A FIFTH AXIS, AND IT ANSWERS A QUESTION NONE OF THE OTHERS CAN (#242).
   # Domain says what a template acts on, phase says when in the lifecycle,
