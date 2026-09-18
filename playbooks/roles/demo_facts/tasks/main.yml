@@ -78,7 +78,7 @@
              'last_boot': _demo_facts_last_boot
            },
            'platform': {
-             'selinux': ansible_selinux.status | default('n/a'),
+             'selinux': ansible_selinux.mode | default(ansible_selinux.status) | default('n/a'),
              'product': ansible_product_name | default('n/a'),
              'vendor': ansible_system_vendor | default('n/a')
            },
