@@ -117,7 +117,7 @@ BUILTINS = set(
     strftime to_datetime human_readable human_to_bytes json_query mandatory type_debug comment indent
     truncate wordwrap capitalize title center format count reverse defined undefined equalto match
     search version subelements product zip lookup query range enumerate length dict vars item
-    mapping sequence iterable callable sameas escaped divisibleby even odd upper lower""".split()
+    mapping sequence iterable callable sameas escaped divisibleby even odd upper lower number""".split()
 )
 GLOBALS = set(
     """hostvars inventory_hostname inventory_hostname_short groups group_names inventory_dir
