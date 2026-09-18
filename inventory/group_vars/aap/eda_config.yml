@@ -1,0 +1,27 @@
+---
+# ===========================================================================
+# group_vars/aap/eda_config.yml — EDA object definitions (#665).
+#
+# Variables consumed by the EDA tasks in playbooks/config.yml. EDA objects
+# are created via ansible.eda modules directly, NOT through
+# infra.aap_configuration.dispatch — dispatch covers controller objects
+# only. Following dc1.azure's pattern.
+#
+# NO EVENT STREAM CREDENTIAL NEEDED. The webhook is triggered internally
+# by the gather playbook's uri call, not by an external system like
+# ServiceNow. If an external trigger is wanted later, the event stream
+# pattern from dc1.azure ports directly.
+# ===========================================================================
+
+# Variable names for the EDA objects. Named once here, referenced by
+# config.yml's EDA section.
+eda_project_name: "Sales Demos - EDA"
+eda_rulebook_activation_name: "Sales Demos - Drift Remediation"
+eda_decision_environment: "Default Decision Environment"
+eda_controller_credential_name: "Sales Demos - EDA Controller"
+
+# The EDA project syncs this repo's rulebooks/ directory.
+eda_project_scm_url: >-
+  {{ sales_demos_scm_url
+     | default('https://github.com/ericcames/sales.demos.git', true) }}
+eda_project_scm_branch: "{{ sales_demos_branch | default('main', true) }}"

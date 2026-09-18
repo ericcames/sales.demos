@@ -130,6 +130,22 @@ demo_facts_publish: true
 # Set per OS by tasks/main.yml. Named here so the value has one documented home.
 demo_facts_docroot: ""
 
+# THE ALLOW-LIST FOR AGENTIC REMEDIATION (#665). Maps drift conditions to
+# remediation job templates. The decide step looks up each investigate-severity
+# diff row here; a match proposes the named template, a miss proposes nothing.
+# The allow-list IS the safety boundary — only templates named here can ever be
+# proposed, and the approval node sits between the proposal and the execution.
+demo_facts_remediation_map:
+  - field: platform.selinux
+    expected: enforcing
+    template: "Linux Day 2 - Fix SELinux"
+    reason: "SELinux is not enforcing"
+
+# The EDA webhook endpoint for drift notification. When non-empty, the compare
+# step POSTs to it after finding investigate-severity rows. When empty (the
+# default), no notification is sent — graceful degradation per #661.
+demo_facts_eda_webhook_url: ""
+
 # Provisioning metadata, read from the host variables register_hosts.yml sets.
 demo_facts_golden_image_source: "{{ golden_image_source | default('') }}"
 demo_facts_golden_image_cis_level: "{{ golden_image_cis_level | default('') }}"

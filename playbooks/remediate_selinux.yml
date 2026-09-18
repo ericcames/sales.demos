@@ -1,0 +1,34 @@
+---
+# ===========================================================================
+# remediate_selinux.yml — set SELinux to enforcing. Issue #665.
+#
+# Idempotent: re-running on an already-enforcing host is a no-op.
+# This is the first entry in demo_facts_remediation_map.
+#
+#   ansible-playbook playbooks/remediate_selinux.yml -i inventory \
+#     --limit sandbox -e target_env=sandbox \
+#     --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
+# ===========================================================================
+
+- name: Remediate SELinux
+  hosts: linuxweb
+  gather_facts: true
+  become: true
+
+  tasks:
+    - name: Guard the environment selector
+      ansible.builtin.include_tasks: tasks/assert_target_environment.yml
+
+    - name: Set SELinux to enforcing
+      ansible.posix.selinux:
+        policy: targeted
+        state: enforcing
+      register: _selinux_result
+
+    - name: Report the result
+      ansible.builtin.debug:
+        msg: >-
+          SELinux on {{ inventory_hostname }}:
+          {{ 'was already enforcing — no change.'
+             if not _selinux_result.changed
+             else 'set to enforcing (was ' ~ _selinux_result.msg | default('permissive') ~ ').' }}

@@ -217,3 +217,11 @@
              'virtualization': demo_facts_summary.virtualization.type,
              'gathered': demo_facts_summary.gathered
            } }}
+
+- name: Publish the drift diff as a workflow artifact
+  ansible.builtin.set_stats:
+    data:
+      demo_facts_diff: "{{ demo_facts_diff }}"
+      demo_facts_has_investigate: >-
+        {{ (demo_facts_diff | from_json | selectattr('severity', 'equalto', 'investigate') | list | length) > 0 }}
+  when: demo_facts_compare | bool
