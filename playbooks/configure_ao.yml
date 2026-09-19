@@ -519,11 +519,37 @@
       delay: 20
       until: ao_integration_result.status in [200, 201]
 
+    - name: Set the AAP integration ID
+      ansible.builtin.set_fact:
+        ao_aap_integration_id: >-
+          {{ ao_integration_result.json.id | trim
+             if not (ao_aap_integration_exists | bool)
+             else (ao_integrations.json.resources
+                   | selectattr('integration_type', 'equalto', 'ansible_automation_platform')
+                   | map(attribute='id') | first) }}
+
     - name: Report integration status
       ansible.builtin.debug:
         msg: >-
           AAP integration:
           {{ 'already exists — skipped' if (ao_aap_integration_exists | bool) else 'created' }}
+
+    - name: Validate the AAP integration
+      ansible.builtin.uri:
+        url: "{{ ao_url }}/api/v1/integrations/{{ ao_aap_integration_id | trim }}/validate"
+        method: POST
+        headers: "{{ ao_auth_header }}"
+        validate_certs: false
+        status_code: [200, 201, 202]
+      register: ao_aap_validate
+
+    - name: Warn if AAP integration validation failed
+      when: not (ao_aap_validate.json.success | default(false) | bool)
+      ansible.builtin.debug:
+        msg: >-
+          AAP integration validation returned:
+          {{ ao_aap_validate.json.error | default('unknown error') }}.
+          Proceeding — step 8 will verify the proxy path independently.
 
     # -----------------------------------------------------------------
     # 8. Validate — can AO see AAP's job templates?
@@ -561,5 +587,5 @@
             SSRF allowlist:  ConfigMap {{ ao_admin_settings_configmap }} {{ 'written, components restarted' if (ao_settings_cm.changed) else 'already current' }}; ao-worker verified
             OIDC provider:   {{ 'already configured' if (ao_oidc_exists | bool) else 'created' }}
             AAP credential:  {{ 'already exists' if (ao_aap_cred_exists | bool) else 'created' }}
-            AAP integration: {{ 'already exists' if (ao_aap_integration_exists | bool) else 'created' }}
+            AAP integration: {{ 'already exists' if (ao_aap_integration_exists | bool) else 'created' }} ({{ 'validated' if (ao_aap_validate.json.success | default(false) | bool) else 'validation failed' }})
             Job templates:   {{ ao_proxy_jts.json.results | default([]) | length }} visible
