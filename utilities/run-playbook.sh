@@ -51,12 +51,20 @@ mkdir -p "$LOG_DIR"
 VAULT_ARGS=()
 [ -f "$VAULT_PASS" ] && VAULT_ARGS=(--vault-id "sales.demos@$VAULT_PASS")
 
+INVENTORY_ARGS=()
+has_inventory=false
+for arg in "$@"; do
+  case "$arg" in -i|-i?*|--inventory|--inventory=*) has_inventory=true;; esac
+done
+$has_inventory || INVENTORY_ARGS=(-i inventory)
+
 echo "playbook : $PLAYBOOK"
+$has_inventory || echo "inventory: inventory (auto-added)"
 echo "log      : $LOG"
 echo
 
 set +e
-ansible-playbook "$PLAYBOOK" "${VAULT_ARGS[@]}" "$@" > "$LOG" 2>&1
+ansible-playbook "$PLAYBOOK" "${VAULT_ARGS[@]}" "${INVENTORY_ARGS[@]}" "$@" > "$LOG" 2>&1
 rc=$?
 set -e
 
