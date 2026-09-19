@@ -38,7 +38,7 @@
     K8S_AUTH_VERIFY_SSL: "{{ openshift_validate_certs | default(false) | bool }}"
 
   vars:
-    serve_model_id: "ibm-granite/granite-3.3-8b-instruct"
+    serve_model_id: "ibm-granite/granite-3.3-8b-instruct-FP8"
     serve_model_name: >-
       {{ serve_model_id | split('/') | last | lower | regex_replace('[^a-z0-9]+', '-') | regex_replace('^-|-$', '') }}
     serve_namespace: "granite-serving"

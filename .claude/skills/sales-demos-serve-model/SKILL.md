@@ -46,7 +46,7 @@ python3 -c "import ansible; from ansible.utils.collection_loader import AnsibleC
 | Variable | Default | Description |
 |---|---|---|
 | `target_env` | — | **Required.** Which AAP environment receives the credential (`sandbox` or `demo`). |
-| `serve_model_id` | `ibm-granite/granite-3.3-8b-instruct` | HuggingFace model ID. |
+| `serve_model_id` | `ibm-granite/granite-3.3-8b-instruct-FP8` | HuggingFace model ID. FP8 is the default — 72% faster than fp16 on the L4 (#686). |
 | `serve_runtime_extra_args` | `[]` | Extra vLLM args (Phase 5 sets `--enable-auto-tool-choice --tool-call-parser granite`). |
 
 ## Run
