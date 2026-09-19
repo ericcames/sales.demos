@@ -182,15 +182,20 @@ ansible-vault edit playbooks/group_vars/all/secrets.yml \
 
 ## Environments
 
-`sandbox` (building against), `demo` (showing customers), and `edge`
-(bare-metal SNO on a NUC — on-prem / edge demo). There is no `golden`
-environment — proven-good config is `main` plus a release tag, not a connection
-target.
+`sandbox` (building against), `demo` (showing customers), `edge`
+(bare-metal SNO on a NUC — on-prem / edge demo), and `gpu` (RHDP "Red Hat
+OpenShift AI" — model serving only). There is no `golden` environment —
+proven-good config is `main` plus a release tag, not a connection target.
 
 `edge` differs from the RHDP environments: it is a persistent bare-metal
 cluster on a home network, not an ephemeral RHDP provisioning. DNS is local
 (dnsmasq, not a public domain). The same playbooks target it via `--limit edge`.
 Its SNO installer is produced by `image.builder.pipeline` Phase 5 (#86).
+
+`gpu` differs from every other group: it is NOT a child of `aap` in
+`hosts.yml`. It has no `aap_hostname`, no CNV, and no VMs — it exists solely to
+serve an inference model via RHOAI/KServe. See the GPU/AI inference section
+below for the conventions this creates.
 
 ## Skills and playbooks
 
@@ -386,6 +391,45 @@ Environment secrets.
   patterns. The [Red Hat Automation COP](https://github.com/redhat-cop/infra.aap_configuration)
   maintains it; sales.demos aligns its bootstrap patterns with this collection's
   approach (laptop bootstraps AAP, then AAP handles day-2).
+
+## GPU/AI inference
+
+The `gpu` inventory group targets a separate RHDP "Red Hat OpenShift AI"
+cluster that serves an inference model via vLLM/RHOAI/KServe. The AAP
+environments (`sandbox`/`demo`) consume the endpoint. Issue
+[#661](https://github.com/ericcames/sales.demos/issues/661) tracks the work.
+
+- **The `gpu` group is NOT a child of `aap`.** It has no `aap_hostname`.
+  Playbooks targeting it use `--limit gpu` (single-host plays) or
+  `--limit gpu,sandbox` (two-host plays that span both clusters).
+- **Two-host play pattern.** `serve_model.yml` and `teardown_model.yml` run two
+  plays: `hosts: gpu` then `hosts: aap`. Values pass between plays via
+  `set_fact` + `hostvars`. `benchmark_model.yml` is single-host (`hosts: gpu`).
+- **Top-level vault keys.** GPU credentials are `gpu_admin_password` and
+  `gpu_openshift_api_token`, NOT under `env_secrets`. A cluster with no AAP, no
+  VMs, and no per-environment passwords would force dummy keys for credentials
+  that do not exist.
+- **The credential type is imperative.** `serve_model.yml` creates
+  "Sales Demos - Inference Endpoint" (type + credential) on each run. It is not
+  in `controller_credential_types.yml` or `controller_credentials.yml`. The
+  credential contents rotate with the GPU cluster; the type must exist before
+  CaC templates can reference it. Three templates consume it: `Linux Day 2 -
+  Gather Facts`, `Windows Day 2 - Gather Facts`, and `Linux Day 2 - Decide
+  Remediation`.
+- **Three laptop-only playbooks** — `serve_model.yml`, `teardown_model.yml`,
+  and `benchmark_model.yml` have no AAP job template. Same structural constraint
+  as `pah-sync`: the target has no AAP, so there is nothing to create a template
+  on. `teardown_model.yml` is documented in the `sales-demos-serve-model` skill;
+  `benchmark_model.yml` is a one-off development tool. Neither needs its own
+  skill.
+- **No `openshift-gpu` MCP server.** `make-kubeconfig.sh` reads tokens from
+  `env_secrets[ENV_NAME]` and targets the `aap` group; `gpu` uses neither. The
+  GPU cluster hosts only the `granite-serving` namespace, so MCP adds no
+  operational value today. Revisit if Phase 4 (Lightspeed) needs cluster
+  interaction.
+- **Rotating the GPU cluster** means updating `inventory/group_vars/gpu/local.yml`
+  and re-running `serve_model.yml`, which re-creates the credential on AAP. The
+  AAP templates that consume inference do not change.
 
 ## Terraform
 
