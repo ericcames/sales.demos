@@ -226,7 +226,7 @@
              'gathered': demo_facts_summary.gathered
            } }}
 
-- name: Publish the drift diff as a workflow artifact
+- name: Publish the drift diff and full summary as workflow artifacts
   ansible.builtin.set_stats:
     data:
       demo_facts_diff: "{{ demo_facts_diff }}"
@@ -235,4 +235,5 @@
       demo_facts_investigate_count: >-
         {{ (demo_facts_diff | from_json | selectattr('severity', 'equalto', 'investigate') | list | length) | int }}
       demo_facts_narration: "{{ demo_facts_narration | default('') }}"
+      demo_facts_summary: "{{ demo_facts_summary | to_json }}"
   when: demo_facts_compare | bool

@@ -52,6 +52,7 @@
         quiet: true
       vars:
         ao_wf_jt_nodes: "{{ ao_wf.nodes | selectattr('type', 'equalto', 'aap_job_template') | list }}"
+        ao_wf_agentic_nodes: "{{ ao_wf.nodes | selectattr('type', 'equalto', 'agentic') | list }}"
         ao_wf_missing: >-
           {{
             (ao_wf_jt_nodes | map(attribute='job_template') | reject('in', ao_jt_ids)
@@ -60,6 +61,12 @@
                | map('regex_replace', '^', 'AO credential: ') | list)
             + (ao_wf_jt_nodes | map(attribute='integration') | reject('in', ao_integration_ids)
                | map('regex_replace', '^', 'AO integration: ') | list)
+            + (ao_wf_agentic_nodes | map(attribute='llm_integration') | reject('in', ao_integration_ids)
+               | map('regex_replace', '^', 'LLM integration: ') | list)
+            + (ao_wf_agentic_nodes | map(attribute='llm_credential') | reject('in', ao_credential_ids)
+               | map('regex_replace', '^', 'LLM credential: ') | list)
+            + (ao_wf_agentic_nodes | map(attribute='llm_integration') | reject('in', ao_model_ids | default({}))
+               | map('regex_replace', '^', 'LLM model (no models discovered for integration): ') | list)
             | unique
           }}
 
@@ -119,11 +126,18 @@
                   if ao_node.type == 'aap_job_template' else
                   ({'parameters': {'condition': ao_node.condition}}
                    if ao_node.type == 'condition' else
-                   {'settings': {},
-                    'parameters': {
-                      'prompt': ao_node.prompt | trim,
-                      'approver_users': ao_wf_approver_usernames,
-                      'fallback_decision': ao_node.fallback_decision | default('reject')}})
+                   ({'parameters':
+                       {'prompt': ao_node.prompt | trim,
+                        'llm_model_id': ao_model_ids[ao_node.llm_integration],
+                        'credential_id': ao_credential_ids[ao_node.llm_credential]}
+                       | combine({'responseSchema': ao_node.response_schema}
+                                 if ao_node.response_schema is defined else {})}
+                    if ao_node.type == 'agentic' else
+                    {'settings': {},
+                     'parameters': {
+                       'prompt': ao_node.prompt | trim,
+                       'approver_users': ao_wf_approver_usernames,
+                       'fallback_decision': ao_node.fallback_decision | default('reject')}}))
                 )
             ]
           }}

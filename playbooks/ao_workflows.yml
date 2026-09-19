@@ -115,6 +115,51 @@
           {{ ao_lookups.results[5].json.resources | rejectattr('is_builtin') | list
              | items2dict(key_name='name', value_name='id') }}
 
+    # Agentic nodes need model IDs from LLM Provider integrations. Only
+    # query if at least one selected workflow has an agentic node.
+    - name: Discover LLM models for agentic nodes
+      when: ao_selected_workflows | map(attribute='nodes') | flatten
+            | selectattr('type', 'equalto', 'agentic') | list | length > 0
+      block:
+        - name: Collect the LLM integrations referenced by agentic nodes
+          ansible.builtin.set_fact:
+            ao_llm_integration_names: >-
+              {{ ao_selected_workflows | map(attribute='nodes') | flatten
+                 | selectattr('type', 'equalto', 'agentic')
+                 | map(attribute='llm_integration') | unique | list }}
+
+        - name: Query models from each LLM integration
+          ansible.builtin.uri:
+            url: "{{ ao_url }}/api/v1/integrations/{{ ao_integration_ids[item] }}/models"
+            headers: "{{ ao_auth_header }}"
+            validate_certs: false
+            status_code: 200
+          loop: "{{ ao_llm_integration_names }}"
+          register: ao_llm_model_lookups
+
+        - name: Build integration-name-to-first-model-ID map
+          ansible.builtin.set_fact:
+            ao_model_ids: >-
+              {% set result = {} -%}
+              {% for idx in range(ao_llm_integration_names | length) -%}
+                {% set models = ao_llm_model_lookups.results[idx].json.resources | default([]) -%}
+                {% if models | length > 0 -%}
+                  {% set _ = result.update({ao_llm_integration_names[idx]: models[0].id}) -%}
+                {% endif -%}
+              {% endfor -%}
+              {{ result }}
+
+        - name: Assert every referenced LLM integration has at least one model
+          ansible.builtin.assert:
+            that:
+              - ao_llm_integration_names | reject('in', ao_model_ids) | list | length == 0
+            fail_msg: >-
+              These LLM integrations have no models:
+              {{ ao_llm_integration_names | reject('in', ao_model_ids) | list }}.
+              Has serve_model.yml been run? The integration must discover at
+              least one model from the vLLM endpoint.
+            quiet: true
+
     - name: Apply each workflow
       ansible.builtin.include_tasks: tasks/ao_workflow_apply.yml
       loop: "{{ ao_selected_workflows }}"
