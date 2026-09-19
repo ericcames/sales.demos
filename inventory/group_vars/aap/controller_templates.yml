@@ -1878,9 +1878,9 @@ controller_templates_all:
   # -------------------------------------------------------------------
   - name: "Linux Day 2 - Decide Remediation"
     description: >-
-      Rule-table decide step: reads the drift diff, looks up the first
-      investigate-severity row in the allow-list, and proposes a
-      remediation. Publishes the template name as a workflow artifact.
+      Decide step: asks the model (if available) or the rule table which
+      remediation to propose for investigate-severity drift. Publishes
+      the template name as a workflow artifact.
     labels:
       - linux
       - day-2
@@ -1894,6 +1894,7 @@ controller_templates_all:
     credentials:
       - "Sales Demos - Vault"
       - "Sales Demos - Env Secrets"
+      - "Sales Demos - Inference Endpoint"
     limit: ""
     ask_variables_on_launch: true
 
