@@ -17,6 +17,17 @@
 # Repair wrapper -- is protected by the same gate.
 # ===========================================================================
 
+- name: Clear a pending reboot inherited from an earlier step
+  # Job 466 (2026-09-19): win_updates refused to install KB5122882 because
+  # the guest already had a pending reboot from provision or configure. The
+  # role assumed a clean slate; this gate makes that true.
+  ansible.windows.win_reboot:
+  when: ansible_reboot_pending | default(false)
+
+- name: Re-gather facts after the reboot
+  ansible.builtin.setup:
+  when: ansible_reboot_pending | default(false)
+
 - name: Search Windows Update
   # ALWAYS A SEARCH FIRST, WHATEVER THE MODE, and it is cheap: ~2 minutes of
   # the 36+ a full install took. It is what lets the node report how far behind
