@@ -214,8 +214,8 @@ ao_workflows:
         type: approval
         position: {x: -300, y: -141}
         prompt: >-
-          AI drift analysis: ${activity_decide.output.reason}.
-          Proposed fix: ${activity_decide.output.template}.
+          AI drift analysis: ${activity_decide.output.result.content.reason}.
+          Proposed fix: ${activity_decide.output.result.content.template}.
           Approve remediation?
         approvers_sso:
           - "{{ aap_username }}"
