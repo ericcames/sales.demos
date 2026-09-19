@@ -1746,13 +1746,16 @@ controller_templates_all:
       # harmless when it is off. controller_credentials.yml explains why the
       # one extra_var it collides with carries the same value either way.
       - "Sales Demos - Controller"
+      # Lets demo_facts narrate drift diffs with the model (#682). Unused
+      # unless narration is turned on, and harmless when it is off.
+      - "Sales Demos - Inference Endpoint"
     limit: linuxweb
     ask_limit_on_launch: true
     use_fact_cache: true
     survey_enabled: true
     survey_spec:
       name: ""
-      description: "How much of the fact set to show, and whether to compare against last time"
+      description: "How much of the fact set to show, whether to compare, and whether to narrate"
       spec:
         - question_name: Show full facts
           question_description: >-
@@ -1774,6 +1777,18 @@ controller_templates_all:
           type: multiplechoice
           required: false
           default: "true"
+          choices:
+            - "false"
+            - "true"
+        - question_name: Narrate drift with the model
+          question_description: >-
+            Ask the inference model to explain WHY each drift item matters and
+            what to do next. Requires the inference endpoint to be reachable.
+            Falls back silently if it is not. Implemented in #682.
+          variable: demo_facts_narrate
+          type: multiplechoice
+          required: false
+          default: "false"
           choices:
             - "false"
             - "true"
@@ -1799,6 +1814,9 @@ controller_templates_all:
       # harmless when it is off. controller_credentials.yml explains why the
       # one extra_var it collides with carries the same value either way.
       - "Sales Demos - Controller"
+      # Lets demo_facts narrate drift diffs with the model (#682). Unused
+      # unless narration is turned on, and harmless when it is off.
+      - "Sales Demos - Inference Endpoint"
     limit: windemo
     ask_limit_on_launch: true
     use_fact_cache: true
@@ -1812,7 +1830,7 @@ controller_templates_all:
     survey_enabled: true
     survey_spec:
       name: ""
-      description: "How much of the fact set to show, and whether to compare against last time"
+      description: "How much of the fact set to show, whether to compare, and whether to narrate"
       spec:
         - question_name: Show full facts
           question_description: >-
@@ -1835,6 +1853,18 @@ controller_templates_all:
           type: multiplechoice
           required: false
           default: "true"
+          choices:
+            - "false"
+            - "true"
+        - question_name: Narrate drift with the model
+          question_description: >-
+            Ask the inference model to explain WHY each drift item matters and
+            what to do next. Requires the inference endpoint to be reachable.
+            Falls back silently if it is not. Implemented in #682.
+          variable: demo_facts_narrate
+          type: multiplechoice
+          required: false
+          default: "false"
           choices:
             - "false"
             - "true"

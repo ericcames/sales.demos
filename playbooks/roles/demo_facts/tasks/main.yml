@@ -145,6 +145,14 @@
   ansible.builtin.include_tasks: compare.yml
   when: demo_facts_compare | bool
 
+- name: Narrate the drift with the model
+  # AFTER the table prints and BEFORE facts.html renders. The narration is
+  # commentary on the diff, not a source of truth -- it never sets severity.
+  ansible.builtin.include_tasks: narrate.yml
+  when:
+    - demo_facts_compare | bool
+    - demo_facts_narrate | bool
+
 - name: Print the complete fact set
   ansible.builtin.debug:
     var: ansible_facts
@@ -224,4 +232,5 @@
       demo_facts_diff: "{{ demo_facts_diff }}"
       demo_facts_has_investigate: >-
         {{ (demo_facts_diff | from_json | selectattr('severity', 'equalto', 'investigate') | list | length) > 0 }}
+      demo_facts_narration: "{{ demo_facts_narration | default('') }}"
   when: demo_facts_compare | bool

@@ -1,0 +1,74 @@
+---
+# ===========================================================================
+# demo_facts/tasks/narrate.yml — AI narration of drift diffs. Issue #682.
+# ===========================================================================
+# Posts the classified diff to the inference endpoint and asks WHY the drift
+# matters and what to do next. NEVER asks the model to set severity — that is
+# Ansible's job (#658, measured in #657).
+#
+# EVERY FAILURE IS NON-FATAL. No credential, no endpoint, unreachable model,
+# timeout, unparseable response — each ends with no narration and the job stays
+# green. The drift table is the authoritative output; narration is commentary.
+# ===========================================================================
+
+- name: Narrate the drift with the model
+  when:
+    - inference_url | default('') | length > 0
+    - demo_facts_diff is defined
+    - (demo_facts_diff | from_json | length) > 0
+  delegate_to: localhost
+  block:
+    - name: Call the model for narration
+      ansible.builtin.uri:
+        url: "{{ inference_url }}/v1/chat/completions"
+        method: POST
+        headers:
+          Authorization: "Bearer {{ inference_token }}"
+          Content-Type: "application/json"
+        body_format: json
+        body:
+          model: "{{ inference_model | default('granite-3-3-8b-instruct') }}"
+          messages:
+            - role: system
+              content: >-
+                You are a systems administrator reviewing a drift report for
+                a managed host. Each item has a field name, the previous value
+                (was), the current value (now), and a severity that Ansible
+                has already assigned (investigate, notable, or expected).
+
+                DO NOT reassign severity — it is authoritative.
+
+                For each changed field, explain in one or two sentences:
+                (1) why this change matters in a production environment, and
+                (2) what an operator should do next.
+
+                Keep it concise — this appears in a job log. Use plain
+                language, not jargon. Address the operator directly.
+            - role: user
+              content: >-
+                Host: {{ inventory_hostname }}.
+                Drift report: {{ demo_facts_diff }}
+          max_tokens: 512
+        validate_certs: false
+        return_content: true
+        timeout: 30
+      register: _demo_facts_narrate_response
+
+    - name: Extract the narration
+      ansible.builtin.set_fact:
+        demo_facts_narration: "{{ _demo_facts_narrate_response.json.choices[0].message.content }}"
+
+    - name: Print the narration to the job log
+      ansible.builtin.debug:
+        msg: "{{ demo_facts_narration }}"
+
+  rescue:
+    - name: Narration failed — continuing without it
+      ansible.builtin.debug:
+        msg: >-
+          Model narration skipped: {{ ansible_failed_result.msg | default('unknown error') }}.
+          The drift table above is the authoritative output.
+
+    - name: Clear narration on failure
+      ansible.builtin.set_fact:
+        demo_facts_narration: ""
