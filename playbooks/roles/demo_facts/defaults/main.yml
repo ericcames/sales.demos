@@ -141,6 +141,20 @@ demo_facts_remediation_map:
     template: "Linux Day 2 - Fix SELinux"
     reason: "SELinux is not enforcing"
 
+# OPTIONAL AI NARRATION (#682, #661 Phase 2). When true AND the inference
+# endpoint is reachable, the diff is sent to the model for a human-readable
+# explanation of WHY the drift matters and what to do next. The model NEVER
+# sets severity — that is Ansible's job (#658). On any failure the narration
+# is silently skipped and the job stays green.
+demo_facts_narrate: false
+
+# Inference endpoint for narration and for decide_remediation.yml (#680).
+# Injected by the "Sales Demos - Inference Endpoint" credential type. Empty
+# defaults satisfy the secrets-example-sync checker and mean "no endpoint."
+# The names match the credential type injectors and cannot be prefixed.
+inference_url: ""  # noqa: var-naming[no-role-prefix]
+inference_token: ""  # noqa: var-naming[no-role-prefix]
+
 # The EDA webhook endpoint for drift notification. When non-empty, the compare
 # step POSTs to it after finding investigate-severity rows. When empty (the
 # default), no notification is sent — graceful degradation per #661.
