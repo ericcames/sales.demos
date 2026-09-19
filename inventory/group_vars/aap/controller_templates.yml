@@ -1213,22 +1213,18 @@ controller_templates_all:
         # installing is one click away here for when patching IS the story.
         - question_name: What to do
           question_description: >-
-            Report only (~2 min) tells you how far behind the machine is without
-            changing it. One (the default) installs a single update, so the demo
-            shows a real change without the wait. Install applies everything and
-            took over 45 minutes on a fresh guest -- opt into it deliberately.
+            Report only (~2 min, the default) tells you how far behind the
+            machine is without changing it. One installs a single update so
+            the demo shows a real change, but the OS cumulative update takes
+            ~30 min. Install applies everything -- opt into it deliberately.
           variable: windows_patching_state
-          # `one` HERE, MATCHING THE ROLE'S OWN DEFAULT. It read `searched` for
-          # one commit and the two disagreed, which is worse than either value:
-          # a survey default always wins over a role default, so the shipped
-          # behaviour was report-only while the role, the CHANGELOG and the
-          # docs all said it installed one. Measured on job 435 -- "Mode:
-          # searched" in the output against `windows_patching_state: one` in
-          # defaults/main.yml. The survey values ARE the contract; when they
-          # drift from the role the role loses silently.
+          # `searched` HERE, MATCHING THE ROLE'S OWN DEFAULT (#728). The two
+          # must agree -- a survey default always wins over a role default, so
+          # a mismatch means the shipped behaviour is whatever the survey says,
+          # regardless of what the role documents.
           type: multiplechoice
           required: true
-          default: one
+          default: searched
           # `one` MUST BE IN THIS LIST, and it was not: AAP rejects the whole
           # survey with "Default choice must be answered from the choices
           # listed" and config.yml fails. The mode was added to the role and the

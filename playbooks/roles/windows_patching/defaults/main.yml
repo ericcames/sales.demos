@@ -43,11 +43,11 @@
 # Installing everything is still available and is still right when patching IS
 # the story and nobody is watching -- see the raised ceiling below.
 #
-# WHY NOT REPORT-ONLY BY DEFAULT. It was, for one commit. A report is fast but
-# it changes nothing, and "watch us actually fix one, live" is a better beat
-# than "here is a list". `one` keeps a real change in the demo while bounding
-# it.
-windows_patching_state: one
+# REPORT-ONLY BY DEFAULT (#728). The single cumulative update takes ~30 min
+# to install even in `one` mode, and the golden image is already CIS-patched
+# at build time. `searched` reports how far behind the guest is in ~2 min;
+# the `one` and `installed` modes remain available via the survey.
+windows_patching_state: searched
 
 # HOW MANY TO INSTALL when windows_patching_state is `one`. Named for what it
 # does rather than fixed at 1, so "show me two" needs no code change.
