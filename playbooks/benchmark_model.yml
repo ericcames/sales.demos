@@ -1,0 +1,135 @@
+---
+# ===========================================================================
+# benchmark_model.yml — measure inference throughput and quality. Issue #686,
+# Phase 3 of #661.
+#
+#   ./utilities/run-playbook.sh playbooks/benchmark_model.yml --limit gpu
+#
+# Reads the endpoint details from the GPU cluster and runs
+# utilities/benchmark-inference.py against the currently deployed model.
+# serve_model.yml must have run first — this playbook does not deploy
+# anything.
+#
+# Output goes to the job log (markdown tables) and to the Ansible log file.
+# Paste the markdown into the issue.
+# ===========================================================================
+
+- name: Benchmark the inference endpoint
+  hosts: gpu
+  gather_facts: false
+
+  environment:
+    K8S_AUTH_HOST: "{{ openshift_api_url }}"
+    K8S_AUTH_API_KEY: "{{ openshift_api_token }}"
+    K8S_AUTH_VERIFY_SSL: "{{ openshift_validate_certs | default(false) | bool }}"
+
+  vars:
+    serve_namespace: "granite-serving"
+    serve_sa_name: "aap-inference-client"
+    benchmark_ttft_n: 20
+    benchmark_skip_concurrent: false
+
+  tasks:
+    - name: Assert connection variables
+      ansible.builtin.assert:
+        that:
+          - openshift_api_url | default('') | length > 0
+          - openshift_api_token | default('') | length > 0
+          - openshift_apps_domain | default('') | length > 0
+        fail_msg: >-
+          GPU cluster connection variables not set. Check
+          inventory/group_vars/gpu/local.yml.
+        quiet: true
+
+    # ------------------------------------------------------------------
+    # Discover the deployed model from the cluster.
+    # ------------------------------------------------------------------
+    - name: Find InferenceServices in the serving namespace
+      kubernetes.core.k8s_info:
+        api_version: serving.kserve.io/v1beta1
+        kind: InferenceService
+        namespace: "{{ serve_namespace }}"
+      register: _bench_isvcs
+
+    - name: Assert a model is deployed
+      ansible.builtin.assert:
+        that: _bench_isvcs.resources | length > 0
+        fail_msg: >-
+          No InferenceService found in {{ serve_namespace }}. Run
+          serve_model.yml first.
+        quiet: true
+
+    - name: Identify the deployed model
+      ansible.builtin.set_fact:
+        _bench_model_name: "{{ _bench_isvcs.resources[0].metadata.name }}"
+
+    - name: Look up Routes in the serving namespace
+      kubernetes.core.k8s_info:
+        api_version: route.openshift.io/v1
+        kind: Route
+        namespace: "{{ serve_namespace }}"
+      register: _bench_routes
+
+    - name: Assert at least one Route exists
+      ansible.builtin.assert:
+        that: _bench_routes.resources | length > 0
+        fail_msg: "No Route found in {{ serve_namespace }}. Was serve_model.yml run?"
+        quiet: true
+
+    - name: Pick the Route that points at the predictor service
+      ansible.builtin.set_fact:
+        _bench_route_resource: >-
+          {{ _bench_routes.resources
+             | selectattr('spec.to.name', 'search', 'predictor')
+             | first
+             | default(_bench_routes.resources[0]) }}
+
+    - name: Read the SA token
+      kubernetes.core.k8s_info:
+        api_version: v1
+        kind: Secret
+        name: "{{ serve_sa_name }}-token"
+        namespace: "{{ serve_namespace }}"
+      register: _bench_token_secret
+
+    - name: Assert the token Secret exists
+      ansible.builtin.assert:
+        that:
+          - _bench_token_secret.resources | length > 0
+          - _bench_token_secret.resources[0].data.token is defined
+        fail_msg: "Token secret {{ serve_sa_name }}-token not found in {{ serve_namespace }}."
+        quiet: true
+
+    - name: Build endpoint variables
+      ansible.builtin.set_fact:
+        _bench_url: "https://{{ _bench_route_resource.spec.host }}"
+        _bench_token: "{{ _bench_token_secret.resources[0].data.token | b64decode }}"
+
+    - name: Print what we are benchmarking
+      ansible.builtin.debug:
+        msg:
+          - "Model: {{ _bench_model_name }}"
+          - "Endpoint: {{ _bench_url }}"
+          - "TTFT samples: {{ benchmark_ttft_n }}"
+          - "Concurrent tests: {{ 'skip' if benchmark_skip_concurrent else '4/8/16' }}"
+
+    # ------------------------------------------------------------------
+    # Run the benchmark script on the controller (localhost).
+    # ------------------------------------------------------------------
+    - name: Run the benchmark
+      delegate_to: localhost
+      ansible.builtin.command:
+        cmd: >-
+          python3 {{ playbook_dir }}/../utilities/benchmark-inference.py
+          --url '{{ _bench_url }}'
+          --model '{{ _bench_model_name }}'
+          --ttft-n {{ benchmark_ttft_n }}
+          {{ '--skip-concurrent' if benchmark_skip_concurrent else '' }}
+      environment:
+        INFERENCE_TOKEN: "{{ _bench_token }}"
+      register: _bench_output
+      changed_when: false
+
+    - name: Print benchmark results
+      ansible.builtin.debug:
+        msg: "{{ _bench_output.stdout }}"
