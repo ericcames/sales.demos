@@ -460,12 +460,31 @@
       register: _serve_route
 
     # ------------------------------------------------------------------
-    # Direct Route — edge TLS to vLLM's HTTP port (8080), bypassing the
-    # OAuth proxy sidecar.  AO's LLM Provider validate and discovery do
-    # not send the credential's bearer token, so the OAuth proxy blocks
-    # them (#712).  This Route lets AO reach vLLM without auth.
+    # Direct access — a second Service + Route to vLLM's HTTP port
+    # (8080), bypassing the OAuth proxy sidecar on 8443.  AO's LLM
+    # Provider validate and discovery don't send the credential's bearer
+    # token, so the OAuth proxy blocks them (#712).  The KServe Service
+    # only exposes 8443; this Service exposes 8080 directly.
     # ------------------------------------------------------------------
-    - name: Create the direct (no-auth) Route for AO
+    - name: Create the direct Service for AO
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: v1
+          kind: Service
+          metadata:
+            name: "{{ serve_model_name }}-direct"
+            namespace: "{{ serve_namespace }}"
+          spec:
+            selector:
+              serving.kserve.io/inferenceservice: "{{ serve_model_name }}"
+            ports:
+              - name: http
+                port: 8080
+                targetPort: 8080
+                protocol: TCP
+
+    - name: Create the direct Route for AO
       kubernetes.core.k8s:
         state: present
         definition:
@@ -477,7 +496,7 @@
           spec:
             to:
               kind: Service
-              name: "{{ serve_model_name }}-predictor"
+              name: "{{ serve_model_name }}-direct"
             port:
               targetPort: http
             tls:
