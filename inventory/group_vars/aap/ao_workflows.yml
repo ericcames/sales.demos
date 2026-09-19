@@ -230,8 +230,19 @@ ao_workflows:
         credential: "AAP Admin"
         integration: "Ansible Automation Platform"
         limit: linuxweb
+
+      - id: activity_verify
+        name: verify
+        type: aap_job_template
+        position: {x: 850, y: -121}
+        job_template: "Linux Day 2 - Gather Facts"
+        organization: "IT Service Automation"
+        credential: "AAP Admin"
+        integration: "Ansible Automation Platform"
+        limit: linuxweb
     edges:
       - {from: activity_trigger, to: activity_gather}
       - {from: activity_gather, to: activity_decide}
       - {from: activity_decide, to: activity_approval}
       - {from: activity_approval, from_port: approved, to: activity_remediate}
+      - {from: activity_remediate, to: activity_verify}
