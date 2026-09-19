@@ -1,13 +1,15 @@
 # Roadmap
 
-Three use cases plus two platform capabilities. Full detail and rationale in the
-six [Design Plans](https://ericcames.github.io/sales.demos-docs/plan/ocpvirt-demo-plan/)
+Three use cases plus three platform capabilities. Full detail and rationale in
+the [Design Plans](https://ericcames.github.io/sales.demos-docs/plan/ocpvirt-demo-plan/)
 — `ocpvirt-demo-plan`, `pah-plan`, `network-mcp-plan`, `platform-addons-plan`,
 `automation-orchestrator-plan` and `grafana-plan`.
 
 Each phase ships two entry points — a Claude Code skill and an AAP job template —
-both driving the same playbook. `pah-sync` is the one documented exception; see
-below.
+both driving the same playbook. Two exceptions: `pah-sync` (the Red Hat offline
+token has no EE equivalent — see below) and the GPU playbooks (`serve_model`,
+`teardown_model`, `benchmark_model`) — the GPU cluster has no AAP, so there is
+nothing to create a job template on.
 
 **The tables no longer carry Skill and Playbook columns, deliberately**
 ([#652](https://github.com/ericcames/sales.demos/issues/652)). They used to, and
@@ -54,6 +56,31 @@ infrastructure questions through the Grafana MCP server. Full detail in
 | Deploy Alloy | DaemonSet in `grafana-alloy` namespace. Prometheus federation from `prometheus-k8s`, AAP controller scrape via the gateway (`/api/controller/v2/metrics/`), and Kubernetes API log streaming for four namespaces. ~2,098 series of the 10k free-tier budget. Reversible with `-e alloy_state=absent`. | **Done on `sandbox`** ([#265](https://github.com/ericcames/sales.demos/issues/265)) |
 | Dashboard as code | Cluster-health dashboard deployed from the repo rather than clicked together, so the panel set is reviewable in a PR. | **Done on `sandbox`**, shipped 2026-09-15 ([#275](https://github.com/ericcames/sales.demos/issues/275)) |
 | Alert rules as code | Alert rules deployed the same way, behind `AAP Observability - 3 Deploy Alerts`. | **Done on `sandbox`**, shipped 2026-09-15 ([#629](https://github.com/ericcames/sales.demos/issues/629)) |
+
+## GPU/AI inference
+
+Self-hosted model serving so the demo platform can narrate drift, make agentic
+remediation decisions, and (Phase 4) power AAP Lightspeed — all from a Granite
+model the team controls. The GPU cluster is a separate RHDP "Red Hat OpenShift
+AI" environment: standalone OCP with RHOAI pre-installed and an NVIDIA L4 GPU
+node. It has no AAP, no CNV, and no VMs. Two-cluster architecture: the GPU
+cluster serves the model, and the AAP cluster (`sandbox` or `demo`) consumes the
+inference endpoint via a credential bridge.
+
+| Phase | Outcome | Status |
+| --- | --- | --- |
+| 0 | Environment research. RHDP RHOAI catalog item, two-cluster architecture, no AAP on the GPU cluster. | **Done** ([#661](https://github.com/ericcames/sales.demos/issues/661)) |
+| 1 | `serve_model.yml`: namespace, weights PVC, download job, vLLM ServingRuntime, InferenceService with OAuth proxy auth, SA token, Route, smoke test. Publishes "Sales Demos - Inference Endpoint" credential to AAP. `teardown_model.yml` reverses it. Skill: [`/sales-demos-serve-model`](https://github.com/ericcames/sales.demos/blob/main/.claude/skills/sales-demos-serve-model/SKILL.md). | **Done** ([#677](https://github.com/ericcames/sales.demos/issues/677)) |
+| 2 | AI narration of drift diffs. The model explains WHY each drift item matters and what to do next. Severity is Ansible's job, never the model's — tested on two Granite sizes in [#657](https://github.com/ericcames/sales.demos/issues/657); both failed to follow labelling rules. Every failure is non-fatal: no endpoint, no credential, timeout — the job stays green and the drift table is the authoritative output. | **Done** ([#682](https://github.com/ericcames/sales.demos/issues/682)) |
+| 3 | Benchmark. `benchmark_model.yml` + `utilities/benchmark-inference.py` measure TTFT, single-stream and concurrent throughput, and drift-narration quality. FP8 quantisation is 72% faster than fp16 (25.9 vs 15.1 tok/s) at identical quality (5/5 drift fields). Default model changed to `ibm-granite/granite-3.3-8b-instruct-FP8`. | **Done** ([#686](https://github.com/ericcames/sales.demos/issues/686)) |
+| 5 | Agentic drift remediation. `decide_remediation.yml` asks the model to pick a fix from the allow-list (`demo_facts_remediation_map`), with a deterministic rule-table fallback on any model failure. EDA rulebook catches investigate-severity drift, AO orchestrates gather → condition → human approval → remediate. Three products in one workflow: EDA catches, AO orchestrates, AAP executes. | **Done** ([#665](https://github.com/ericcames/sales.demos/issues/665), [#680](https://github.com/ericcames/sales.demos/issues/680), [#684](https://github.com/ericcames/sales.demos/issues/684)) |
+| 4 | AAP Lightspeed on the self-hosted Granite endpoint. | Not started |
+
+**`serve_model`, `teardown_model` and `benchmark_model` have no job template, on
+purpose.** The GPU cluster has no AAP — same structural constraint as `pah-sync`,
+different cause. The credential type ("Sales Demos - Inference Endpoint") is
+created imperatively by `serve_model.yml` because its contents rotate with the
+GPU cluster and the type must exist before CaC templates can reference it.
 
 ## Use case 3 — Network MCP servers
 
