@@ -232,5 +232,7 @@
       demo_facts_diff: "{{ demo_facts_diff }}"
       demo_facts_has_investigate: >-
         {{ (demo_facts_diff | from_json | selectattr('severity', 'equalto', 'investigate') | list | length) > 0 }}
+      demo_facts_investigate_count: >-
+        {{ (demo_facts_diff | from_json | selectattr('severity', 'equalto', 'investigate') | list | length) | int }}
       demo_facts_narration: "{{ demo_facts_narration | default('') }}"
   when: demo_facts_compare | bool

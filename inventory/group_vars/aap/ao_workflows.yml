@@ -129,3 +129,79 @@ ao_workflows:
       - {from: logic_compliance_check, from_port: "true", to: activity_security_approval}
       - {from: activity_security_approval, from_port: approved, to: activity_fix}
       - {from: activity_fix, to: activity_rescan}
+
+  # =====================================================================
+  # LINUX DAY 2: DRIFT REMEDIATION (#684) — EDA catches, AO orchestrates,
+  # AAP executes. The three-product demo.
+  #
+  # The same job templates the AAP "Linux Day 2 - Drift Remediation"
+  # workflow uses, but orchestrated from AO so the canvas, condition, and
+  # approval are AO-native. The AAP workflow remains for the two-product
+  # demo (EDA + AAP directly).
+  #
+  # EDA → launcher JT → AO API → this workflow. The launcher is
+  # "Linux Day 2 - Trigger AO Remediation"; the rulebook calls it
+  # with run_job_template instead of run_workflow_template.
+  #
+  # INVESTIGATE_COUNT IS AN INTEGER BECAUSE AO NEEDS NUMBERS, not
+  # booleans. The gather step publishes both demo_facts_has_investigate
+  # (boolean, for the AAP workflow) and demo_facts_investigate_count
+  # (integer, for this condition).
+  # =====================================================================
+  - name: "Linux Day 2 - Drift Remediation (as code)"
+    description: >-
+      EDA-triggered: gather facts and compare against cached baseline; if
+      investigate-severity drift exists, pause for human approval, then
+      remediate. Three products: EDA catches the event, AO orchestrates
+      the response, AAP executes the fix. #684 demo.
+    project: "default"
+    publish: false
+    triggers:
+      - id: activity_trigger
+        name: "Drift remediation"
+        type: manual_trigger
+        position: {x: -1200, y: -138}
+        parameters: {}
+    nodes:
+      - id: activity_gather
+        name: gather
+        type: aap_job_template
+        position: {x: -900, y: -186}
+        job_template: "Linux Day 2 - Gather Facts"
+        organization: "IT Service Automation"
+        credential: "AAP Admin"
+        integration: "Ansible Automation Platform"
+        limit: linuxweb
+
+      - id: logic_has_investigate
+        name: has_investigate
+        type: condition
+        position: {x: -600, y: -172}
+        condition: "${activity_gather.artifacts.demo_facts_investigate_count} > 0"
+
+      - id: activity_approval
+        name: security_approval
+        type: approval
+        position: {x: -300, y: -141}
+        prompt: >-
+          Investigate-severity drift detected on the Linux demo guest.
+          ${activity_gather.artifacts.demo_facts_investigate_count} item(s)
+          require attention. Approve SELinux remediation?
+        approvers_sso:
+          - "{{ aap_username }}"
+        fallback_decision: reject
+
+      - id: activity_remediate
+        name: remediate
+        type: aap_job_template
+        position: {x: 0, y: -121}
+        job_template: "Linux Day 2 - Fix SELinux"
+        organization: "IT Service Automation"
+        credential: "AAP Admin"
+        integration: "Ansible Automation Platform"
+        limit: linuxweb
+    edges:
+      - {from: activity_trigger, to: activity_gather}
+      - {from: activity_gather, to: logic_has_investigate}
+      - {from: logic_has_investigate, from_port: "true", to: activity_approval}
+      - {from: activity_approval, from_port: approved, to: activity_remediate}

@@ -1,0 +1,104 @@
+---
+# ===========================================================================
+# trigger_ao_remediation.yml — start the AO drift remediation workflow (#684).
+#
+#   ansible-playbook playbooks/trigger_ao_remediation.yml -i inventory \
+#     --limit sandbox -e target_env=sandbox \
+#     --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
+#
+# Called by the EDA rulebook via "Linux Day 2 - Trigger AO Remediation" JT.
+# Connects to AO, finds the workflow by name, and starts an execution.
+#
+# Following the ao_rehearse.yml pattern (lines 382-395) for starting a
+# workflow via POST /api/v1/executions.
+# ===========================================================================
+
+- name: Trigger AO drift remediation workflow
+  hosts: aap
+  gather_facts: false
+
+  environment:
+    K8S_AUTH_HOST: "{{ openshift_api_url }}"
+    K8S_AUTH_API_KEY: "{{ openshift_api_token }}"
+    K8S_AUTH_VERIFY_SSL: "{{ openshift_validate_certs | default(false) | bool }}"
+
+  vars:
+    ao_namespace: "automation-orchestrator"
+    ao_route_name: "ao"
+    ao_api_retries: 30
+    ao_api_delay: 10
+    ao_trigger_workflow: "Linux Day 2 - Drift Remediation (as code)"
+
+  tasks:
+    - name: Assert the environment is unambiguous
+      ansible.builtin.include_tasks: tasks/assert_target_environment.yml
+
+    - name: Assert the required inputs are set
+      ansible.builtin.assert:
+        that:
+          - openshift_api_url | default('') | length > 0
+          - openshift_api_token | default('') | length > 0
+          - aap_password | default('') | length > 0
+        fail_msg: >-
+          openshift_api_url, openshift_api_token and aap_password are required
+          (secrets.yml on a laptop, the "Sales Demos - Env Secrets" credential
+          from AAP).
+        quiet: true
+
+    - name: Connect to Automation Orchestrator
+      ansible.builtin.include_tasks: tasks/ao_connect.yml
+
+    - name: List AO workflows
+      ansible.builtin.uri:
+        url: "{{ ao_url }}/api/v1/workflows?limit=100"
+        headers: "{{ ao_auth_header }}"
+        validate_certs: false
+        status_code: 200
+      register: _ao_workflows
+
+    - name: Find the drift remediation workflow
+      ansible.builtin.set_fact:
+        _ao_wf_match: >-
+          {{ _ao_workflows.json.resources
+             | selectattr('name', 'equalto', ao_trigger_workflow) | list }}
+
+    - name: Assert the workflow exists
+      ansible.builtin.assert:
+        that:
+          - _ao_wf_match | length == 1
+        fail_msg: >-
+          AO has no single workflow named '{{ ao_trigger_workflow }}'.
+          Load it with /sales-demos-orchestrator-workflow first.
+        quiet: true
+
+    - name: Read the workflow to get its trigger node
+      ansible.builtin.uri:
+        url: "{{ ao_url }}/api/v1/workflows/{{ _ao_wf_match[0].id }}"
+        headers: "{{ ao_auth_header }}"
+        validate_certs: false
+        status_code: 200
+      register: _ao_wf
+
+    - name: Start the workflow
+      ansible.builtin.uri:
+        url: "{{ ao_url }}/api/v1/executions"
+        method: POST
+        body_format: json
+        body:
+          workflow_id: "{{ _ao_wf.json.id }}"
+          trigger_node_id: "{{ _ao_wf.json.version.workflow_definition.triggers[0].id }}"
+          use_published: false
+          input_data: {}
+        headers: "{{ ao_auth_header }}"
+        validate_certs: false
+        status_code: [200, 201, 202]
+      register: _ao_execution
+      changed_when: true
+
+    - name: Report
+      ansible.builtin.debug:
+        msg:
+          - "AO drift remediation workflow started."
+          - "Execution ID: {{ _ao_execution.json.id }}"
+          - "Workflow: {{ ao_trigger_workflow }}"
+          - "AO URL: {{ ao_url }}"

@@ -189,4 +189,5 @@
           remediation_template: "{{ _final_match.template | default('') }}"
           remediation_reason: "{{ _final_match.reason | default('') }}"
           remediation_field: "{{ _final_match.field | default('') }}"
+          remediation_proposed: "{{ 1 if (_final_match | length > 0) else 0 }}"
           remediation_source: "{{ 'model' if (_model_used | default(false)) and (_final_match | length > 0) else 'rule_table' }}"

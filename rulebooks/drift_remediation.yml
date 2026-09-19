@@ -1,10 +1,14 @@
 ---
 # ===========================================================================
-# drift_remediation.yml — EDA rulebook for agentic drift remediation (#665).
+# drift_remediation.yml — EDA rulebook for agentic drift remediation.
 #
 # Webhook source, following dc1.azure's pattern. The gather job POSTs to
-# this webhook when it detects investigate-severity drift; the rulebook
-# launches the remediation workflow.
+# this webhook when it detects investigate-severity drift.
+#
+# #684 changed the action from run_workflow_template (AAP workflow) to
+# run_job_template targeting the AO launcher. EDA catches, AO orchestrates,
+# AAP executes — the three-product demo. The AAP workflow
+# "Linux Day 2 - Drift Remediation" still exists for direct use.
 # ===========================================================================
 
 - name: Listen for drift events requiring remediation
@@ -15,9 +19,9 @@
         port: 5000
 
   rules:
-    - name: Launch drift remediation when investigate rows exist
+    - name: Launch drift remediation via AO when investigate rows exist
       condition: event.payload.has_investigate == true
       action:
-        run_workflow_template:
-          name: "Linux Day 2 - Drift Remediation"
+        run_job_template:
+          name: "Linux Day 2 - Trigger AO Remediation"
           organization: "IT Service Automation"
