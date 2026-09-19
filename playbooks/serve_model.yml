@@ -460,6 +460,39 @@
       register: _serve_route
 
     # ------------------------------------------------------------------
+    # Direct Route — edge TLS to vLLM's HTTP port (8080), bypassing the
+    # OAuth proxy sidecar.  AO's LLM Provider validate and discovery do
+    # not send the credential's bearer token, so the OAuth proxy blocks
+    # them (#712).  This Route lets AO reach vLLM without auth.
+    # ------------------------------------------------------------------
+    - name: Create the direct (no-auth) Route for AO
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: route.openshift.io/v1
+          kind: Route
+          metadata:
+            name: "{{ serve_model_name }}-direct"
+            namespace: "{{ serve_namespace }}"
+          spec:
+            to:
+              kind: Service
+              name: "{{ serve_model_name }}-predictor"
+            port:
+              targetPort: http
+            tls:
+              termination: edge
+              insecureEdgeTerminationPolicy: Redirect
+
+    - name: Look up the direct Route hostname
+      kubernetes.core.k8s_info:
+        api_version: route.openshift.io/v1
+        kind: Route
+        name: "{{ serve_model_name }}-direct"
+        namespace: "{{ serve_namespace }}"
+      register: _serve_direct_route
+
+    # ------------------------------------------------------------------
     # Smoke test — hit /v1/models with the SA token.
     # ------------------------------------------------------------------
     - name: Smoke test the inference endpoint
@@ -481,10 +514,11 @@
           - "Endpoint: https://{{ _serve_route.resources[0].spec.host }}"
           - "Test: curl -sk -H 'Authorization: Bearer <token>' https://{{ _serve_route.resources[0].spec.host }}/v1/models"
 
-    # Pass values to Play 2 via host facts.
+    # Pass values to Play 2 and 3 via host facts.
     - name: Store endpoint details for the credential play
       ansible.builtin.set_fact:
         _serve_endpoint_url: "https://{{ _serve_route.resources[0].spec.host }}"
+        _serve_endpoint_direct_url: "https://{{ _serve_direct_route.resources[0].spec.host }}"
         _serve_endpoint_token: "{{ _serve_token_secret.resources[0].data.token | b64decode }}"
         _serve_endpoint_model: "{{ serve_model_name }}"
 
@@ -676,6 +710,7 @@
   vars:
     _gpu_host: "{{ groups['gpu'][0] }}"
     _inference_url: "{{ hostvars[_gpu_host]._serve_endpoint_url }}"
+    _inference_direct_url: "{{ hostvars[_gpu_host]._serve_endpoint_direct_url }}"
     _inference_token: "{{ hostvars[_gpu_host]._serve_endpoint_token }}"
     _inference_model: "{{ hostvars[_gpu_host]._serve_endpoint_model }}"
     ao_namespace: "automation-orchestrator"
@@ -883,7 +918,7 @@
           configuration:
             integration_type: llm_provider
             provider_hint: red_hat_ai
-            base_url: "{{ _inference_url }}"
+            base_url: "{{ _inference_direct_url }}"
             insecure_skip_tls_verify: true
           management_credential_id: "{{ _ao_llm_cred_id | trim }}"
         headers: "{{ ao_auth_header }}"
@@ -907,7 +942,7 @@
           configuration:
             integration_type: llm_provider
             provider_hint: red_hat_ai
-            base_url: "{{ _inference_url }}"
+            base_url: "{{ _inference_direct_url }}"
             insecure_skip_tls_verify: true
           management_credential_id: "{{ _ao_llm_cred_id | trim }}"
         headers: "{{ ao_auth_header }}"
