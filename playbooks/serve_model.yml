@@ -940,7 +940,7 @@
           configuration:
             integration_type: llm_provider
             provider_hint: red_hat_ai
-            base_url: "{{ _inference_direct_url }}"
+            base_url: "{{ _inference_direct_url }}/v1"
             insecure_skip_tls_verify: true
           management_credential_id: "{{ _ao_llm_cred_id | trim }}"
         headers: "{{ ao_auth_header }}"
@@ -964,7 +964,7 @@
           configuration:
             integration_type: llm_provider
             provider_hint: red_hat_ai
-            base_url: "{{ _inference_direct_url }}"
+            base_url: "{{ _inference_direct_url }}/v1"
             insecure_skip_tls_verify: true
           management_credential_id: "{{ _ao_llm_cred_id | trim }}"
         headers: "{{ ao_auth_header }}"
