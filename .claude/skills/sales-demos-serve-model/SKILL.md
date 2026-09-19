@@ -48,12 +48,21 @@ python3 -c "import ansible; from ansible.utils.collection_loader import AnsibleC
 | `target_env` | — | **Required.** Which AAP environment receives the credential (`sandbox` or `demo`). |
 | `serve_model_id` | `ibm-granite/granite-3.3-8b-instruct-FP8` | HuggingFace model ID. FP8 is the default — 72% faster than fp16 on the L4 (#686). |
 | `serve_runtime_extra_args` | `[]` | Extra vLLM args (Phase 5 sets `--enable-auto-tool-choice --tool-call-parser granite`). |
+| `serve_model_enable_lightspeed` | `false` | Enable the AAP Lightspeed intelligent assistant pointing at this model (#704). |
 
 ## Run
 
 ```bash
 ./utilities/run-playbook.sh playbooks/serve_model.yml \
   --limit gpu,sandbox -e target_env=sandbox
+```
+
+To also enable Lightspeed (Phase 4, #704):
+
+```bash
+./utilities/run-playbook.sh playbooks/serve_model.yml \
+  --limit gpu,sandbox -e target_env=sandbox \
+  -e serve_model_enable_lightspeed=true
 ```
 
 To swap models:
@@ -93,5 +102,6 @@ Verify the credential exists on AAP:
   --limit gpu,sandbox -e target_env=sandbox
 ```
 
-Removes the `granite-serving` namespace (all K8s resources) and the AAP
-credential. The credential TYPE is preserved.
+Removes the `granite-serving` namespace (all K8s resources), disables
+Lightspeed, deletes the chatbot Secret, and removes the AAP credential.
+The credential TYPE is preserved.

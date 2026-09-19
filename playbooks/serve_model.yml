@@ -25,6 +25,11 @@
 # DOES NOT create AAP job templates — those belong in controller_templates.yml
 # and arrive via config.yml. This playbook creates the CREDENTIAL that those
 # templates consume.
+#
+# LIGHTSPEED (Phase 4, #704). Pass -e serve_model_enable_lightspeed=true to
+# create the chatbot config Secret and enable the Lightspeed intelligent
+# assistant on the AAP gateway. Same three endpoint values, different
+# consumer. The operator is bundled with AAP 2.7 — just needs flipping on.
 # ===========================================================================
 
 # ===================== Play 1: deploy on the GPU cluster ==================
@@ -488,11 +493,19 @@
   hosts: aap
   gather_facts: false
 
+  environment:
+    K8S_AUTH_HOST: "{{ openshift_api_url }}"
+    K8S_AUTH_API_KEY: "{{ openshift_api_token }}"
+    K8S_AUTH_VERIFY_SSL: "{{ openshift_validate_certs | default(false) | bool }}"
+
   vars:
     _gpu_host: "{{ groups['gpu'][0] }}"
     _inference_url: "{{ hostvars[_gpu_host]._serve_endpoint_url }}"
     _inference_token: "{{ hostvars[_gpu_host]._serve_endpoint_token }}"
     _inference_model: "{{ hostvars[_gpu_host]._serve_endpoint_model }}"
+    serve_model_enable_lightspeed: false
+    _lightspeed_secret_name: "chatbot-granite-config"
+    _lightspeed_namespace: "aap"
 
   tasks:
     - name: Assert the environment is unambiguous
@@ -569,3 +582,82 @@
           - "Model: {{ _inference_model }}"
           - "URL: {{ _inference_url }}"
           - "Attach this credential to any job template that needs inference."
+
+    # ------------------------------------------------------------------
+    # Lightspeed — chatbot Secret + AAP CR patch (#704, Phase 4 of #661).
+    # The operator is bundled with AAP 2.7 and already running; this
+    # block flips it on and points it at the self-hosted Granite endpoint.
+    # ------------------------------------------------------------------
+    - name: Create or update the Lightspeed chatbot config Secret
+      when: serve_model_enable_lightspeed | bool
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: v1
+          kind: Secret
+          metadata:
+            name: "{{ _lightspeed_secret_name }}"
+            namespace: "{{ _lightspeed_namespace }}"
+            labels:
+              app.kubernetes.io/part-of: sales-demos
+          type: Opaque
+          stringData:
+            chatbot_url: "{{ _inference_url }}/v1"
+            chatbot_token: "{{ _inference_token }}"
+            chatbot_model: "{{ _inference_model }}"
+      register: _lightspeed_secret
+      no_log: true
+
+    - name: Enable Lightspeed on the AAP CR
+      when: serve_model_enable_lightspeed | bool
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: aap.ansible.com/v1alpha1
+          kind: AnsibleAutomationPlatform
+          metadata:
+            name: aap
+            namespace: "{{ _lightspeed_namespace }}"
+          spec:
+            lightspeed:
+              disabled: false
+              chatbot_config_secret_name: "{{ _lightspeed_secret_name }}"
+      register: _lightspeed_cr
+
+    - name: Bounce lightspeed pods if the Secret changed
+      when:
+        - serve_model_enable_lightspeed | bool
+        - _lightspeed_secret.changed
+      kubernetes.core.k8s:
+        state: absent
+        api_version: v1
+        kind: Pod
+        namespace: "{{ _lightspeed_namespace }}"
+        label_selectors:
+          - "app.kubernetes.io/component=lightspeed"
+        delete_all: true
+
+    - name: Wait for Lightspeed deployment to be ready
+      when: serve_model_enable_lightspeed | bool
+      kubernetes.core.k8s_info:
+        api_version: apps/v1
+        kind: Deployment
+        namespace: "{{ _lightspeed_namespace }}"
+        label_selectors:
+          - "app.kubernetes.io/component=lightspeed"
+      register: _lightspeed_deploy
+      retries: 60
+      delay: 10
+      until: >-
+        _lightspeed_deploy.resources | length > 0 and
+        (_lightspeed_deploy.resources[0].status.readyReplicas | default(0) | int)
+        == (_lightspeed_deploy.resources[0].spec.replicas | default(1) | int)
+
+    - name: Report Lightspeed status
+      when: serve_model_enable_lightspeed | bool
+      ansible.builtin.debug:
+        msg:
+          - "Lightspeed enabled on {{ aap_env_name }}."
+          - "Chatbot Secret: {{ _lightspeed_secret_name }} ({{ 'updated' if _lightspeed_secret.changed else 'unchanged' }})"
+          - "Model: {{ _inference_model }}"
+          - "Open the AAP gateway to use the intelligent assistant."
