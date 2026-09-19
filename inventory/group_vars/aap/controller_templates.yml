@@ -1948,6 +1948,27 @@ controller_templates_all:
       - "Sales Demos - Env Secrets"
     limit: linuxweb
 
+  - name: "Linux Day 2 - Trigger AO Remediation"
+    description: >-
+      EDA launcher: connects to Automation Orchestrator and starts the
+      "Linux Day 2 - Drift Remediation (as code)" AO workflow. The AO
+      workflow then orchestrates gather → condition → approval → remediate.
+      Three products: EDA catches, AO orchestrates, AAP executes (#684).
+    labels:
+      - linux
+      - day-2
+      - agentic
+    job_type: run
+    organization: "IT Service Automation"
+    inventory: "Sales Demo VMs"
+    project: "Sales Demos"
+    playbook: playbooks/trigger_ao_remediation.yml
+    execution_environment: "Sales Demos - OCP Virt EE"
+    credentials:
+      - "Sales Demos - Vault"
+      - "Sales Demos - Env Secrets"
+    limit: ""
+
   # Retired by #647 — folding fact gathering into step 5 renamed both.
   - name: "Linux Day 1 - 5 Check"
     organization: "IT Service Automation"

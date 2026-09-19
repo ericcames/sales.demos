@@ -106,14 +106,16 @@
               {'id': ao_node.id, 'name': ao_node.name, 'type': ao_node.type,
                'position': ao_node.position | default({'x': 0, 'y': 0})}
               | combine(
-                  {'parameters': {
-                     'limit': ao_node.limit | default(''),
-                     'diff_mode': false,
-                     'credential_id': ao_credential_ids[ao_node.credential],
-                     'integration_id': ao_integration_ids[ao_node.integration],
-                     'job_template_id': ao_jt_ids[ao_node.job_template],
-                     'job_template_name': ao_node.job_template,
-                     'organization_name': ao_node.organization}}
+                  {'parameters':
+                     {'limit': ao_node.limit | default(''),
+                      'diff_mode': false,
+                      'credential_id': ao_credential_ids[ao_node.credential],
+                      'integration_id': ao_integration_ids[ao_node.integration],
+                      'job_template_id': ao_jt_ids[ao_node.job_template],
+                      'job_template_name': ao_node.job_template,
+                      'organization_name': ao_node.organization}
+                     | combine({'extra_vars': ao_node.extra_vars | to_json}
+                               if ao_node.extra_vars is defined else {})}
                   if ao_node.type == 'aap_job_template' else
                   ({'parameters': {'condition': ao_node.condition}}
                    if ao_node.type == 'condition' else
