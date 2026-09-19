@@ -22,6 +22,10 @@
   gather_facts: false
   connection: local
 
+  vars:
+    inference_url: ""
+    inference_token: ""
+
   tasks:
     - name: Load the remediation allow-list
       ansible.builtin.include_vars:
