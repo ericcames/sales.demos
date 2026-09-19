@@ -575,7 +575,7 @@
         state: present
       no_log: true
 
-    - name: Report credential
+    - name: Report AAP credential
       ansible.builtin.debug:
         msg:
           - "Published 'Sales Demos - Inference Endpoint' to {{ aap_env_name }}."
@@ -661,3 +661,208 @@
           - "Chatbot Secret: {{ _lightspeed_secret_name }} ({{ 'updated' if _lightspeed_secret.changed else 'unchanged' }})"
           - "Model: {{ _inference_model }}"
           - "Open the AAP gateway to use the intelligent assistant."
+
+# ============= Play 3: publish LLM integration to Automation Orchestrator ===
+- name: Publish the LLM integration to Automation Orchestrator
+  hosts: aap
+  gather_facts: false
+
+  environment:
+    K8S_AUTH_HOST: "{{ openshift_api_url }}"
+    K8S_AUTH_API_KEY: "{{ openshift_api_token }}"
+    K8S_AUTH_VERIFY_SSL: "{{ openshift_validate_certs | default(false) | bool }}"
+
+  vars:
+    _gpu_host: "{{ groups['gpu'][0] }}"
+    _inference_url: "{{ hostvars[_gpu_host]._serve_endpoint_url }}"
+    _inference_token: "{{ hostvars[_gpu_host]._serve_endpoint_token }}"
+    _inference_model: "{{ hostvars[_gpu_host]._serve_endpoint_model }}"
+    ao_namespace: "automation-orchestrator"
+    ao_route_name: "ao"
+    ao_api_retries: 30
+    ao_api_delay: 10
+
+  tasks:
+    - name: Assert the environment is unambiguous
+      ansible.builtin.include_tasks: tasks/assert_target_environment.yml
+
+    - name: Connect to Automation Orchestrator
+      ansible.builtin.include_tasks: tasks/ao_connect.yml
+
+    - name: Look up the LLM Provider credential type
+      ansible.builtin.uri:
+        url: "{{ ao_url }}/api/v1/credential_types"
+        headers: "{{ ao_auth_header }}"
+        validate_certs: false
+        status_code: 200
+      register: _ao_cred_types
+
+    - name: Find the LLM Provider credential type ID
+      ansible.builtin.set_fact:
+        _ao_llm_cred_type_id: >-
+          {{ _ao_cred_types.json.resources
+             | selectattr('name', 'equalto', 'LLM Provider')
+             | map(attribute='id') | first }}
+
+    - name: Look up the default project
+      ansible.builtin.uri:
+        url: "{{ ao_url }}/api/v1/projects"
+        headers: "{{ ao_auth_header }}"
+        validate_certs: false
+        status_code: 200
+      register: _ao_projects
+
+    - name: Find the default project ID
+      ansible.builtin.set_fact:
+        _ao_default_project_id: >-
+          {{ _ao_projects.json.resources
+             | selectattr('name', 'equalto', 'default')
+             | map(attribute='id') | first }}
+
+    - name: Check for an existing LLM credential
+      ansible.builtin.uri:
+        url: "{{ ao_url }}/api/v1/credentials"
+        headers: "{{ ao_auth_header }}"
+        validate_certs: false
+        status_code: 200
+      register: _ao_existing_creds
+
+    - name: Find existing LLM credential if any
+      ansible.builtin.set_fact:
+        _ao_llm_cred_existing: >-
+          {{ _ao_existing_creds.json.resources
+             | selectattr('name', 'equalto', 'LLM Inference Token')
+             | list }}
+
+    - name: Create the LLM credential
+      when: _ao_llm_cred_existing | length == 0
+      ansible.builtin.uri:
+        url: "{{ ao_url }}/api/v1/credentials"
+        method: POST
+        body_format: json
+        body:
+          name: "LLM Inference Token"
+          description: >-
+            vLLM bearer token for {{ _inference_model }} on the GPU cluster.
+            Created by serve_model.yml (#702). Re-run to refresh.
+          credential_type_id: "{{ _ao_llm_cred_type_id | trim }}"
+          project_id: "{{ _ao_default_project_id | trim }}"
+          inputs:
+            api_key: "{{ _inference_token }}"
+        headers: "{{ ao_auth_header }}"
+        validate_certs: false
+        status_code: [200, 201]
+      register: _ao_llm_cred_created
+      no_log: true
+
+    - name: Update the existing LLM credential
+      when: _ao_llm_cred_existing | length > 0
+      ansible.builtin.uri:
+        url: "{{ ao_url }}/api/v1/credentials/{{ _ao_llm_cred_existing[0].id }}"
+        method: PATCH
+        body_format: json
+        body:
+          description: >-
+            vLLM bearer token for {{ _inference_model }} on the GPU cluster.
+            Updated by serve_model.yml (#702).
+          inputs:
+            api_key: "{{ _inference_token }}"
+        headers: "{{ ao_auth_header }}"
+        validate_certs: false
+        status_code: 200
+      no_log: true
+
+    - name: Set the LLM credential ID
+      ansible.builtin.set_fact:
+        _ao_llm_cred_id: >-
+          {{ _ao_llm_cred_created.json.id | trim
+             if _ao_llm_cred_existing | length == 0
+             else _ao_llm_cred_existing[0].id }}
+
+    - name: Check for an existing LLM integration
+      ansible.builtin.uri:
+        url: "{{ ao_url }}/api/v1/integrations"
+        headers: "{{ ao_auth_header }}"
+        validate_certs: false
+        status_code: 200
+      register: _ao_existing_integrations
+
+    - name: Find existing LLM integration if any
+      ansible.builtin.set_fact:
+        _ao_llm_integration_existing: >-
+          {{ _ao_existing_integrations.json.resources
+             | selectattr('name', 'equalto', 'GPU Inference (Granite)')
+             | list }}
+
+    - name: Create the LLM Provider integration
+      when: _ao_llm_integration_existing | length == 0
+      ansible.builtin.uri:
+        url: "{{ ao_url }}/api/v1/integrations"
+        method: POST
+        body_format: json
+        body:
+          name: "GPU Inference (Granite)"
+          description: >-
+            {{ _inference_model }} served via vLLM on the GPU cluster.
+            Created by serve_model.yml (#702).
+          integration_type: llm_provider
+          configuration:
+            integration_type: llm_provider
+            provider_hint: red_hat_ai
+            base_url: "{{ _inference_url }}"
+            insecure_skip_tls_verify: true
+          management_credential_id: "{{ _ao_llm_cred_id | trim }}"
+        headers: "{{ ao_auth_header }}"
+        validate_certs: false
+        status_code: [200, 201]
+      register: _ao_llm_integration_created
+      retries: 5
+      delay: 20
+      until: _ao_llm_integration_created.status in [200, 201]
+
+    - name: Update the existing LLM Provider integration
+      when: _ao_llm_integration_existing | length > 0
+      ansible.builtin.uri:
+        url: "{{ ao_url }}/api/v1/integrations/{{ _ao_llm_integration_existing[0].id }}"
+        method: PATCH
+        body_format: json
+        body:
+          description: >-
+            {{ _inference_model }} served via vLLM on the GPU cluster.
+            Updated by serve_model.yml (#702).
+          configuration:
+            integration_type: llm_provider
+            provider_hint: red_hat_ai
+            base_url: "{{ _inference_url }}"
+            insecure_skip_tls_verify: true
+          management_credential_id: "{{ _ao_llm_cred_id | trim }}"
+        headers: "{{ ao_auth_header }}"
+        validate_certs: false
+        status_code: 200
+
+    - name: Set the LLM integration ID
+      ansible.builtin.set_fact:
+        _ao_llm_integration_id: >-
+          {{ _ao_llm_integration_created.json.id | trim
+             if _ao_llm_integration_existing | length == 0
+             else _ao_llm_integration_existing[0].id }}
+
+    - name: Verify model discovery
+      ansible.builtin.uri:
+        url: "{{ ao_url }}/api/v1/integrations/{{ _ao_llm_integration_id | trim }}/models"
+        headers: "{{ ao_auth_header }}"
+        validate_certs: false
+        status_code: 200
+      register: _ao_llm_models
+      retries: 5
+      delay: 10
+      until: _ao_llm_models.json.resources | default([]) | length > 0
+
+    - name: Report AO integration
+      ansible.builtin.debug:
+        msg:
+          - "Published 'GPU Inference (Granite)' LLM integration to AO."
+          - "Model: {{ _inference_model }}"
+          - "URL: {{ _inference_url }}"
+          - "Models discovered: {{ _ao_llm_models.json.resources | map(attribute='name') | list }}"
+          - "Credential: LLM Inference Token ({{ 'created' if _ao_llm_cred_existing | length == 0 else 'updated' }})"

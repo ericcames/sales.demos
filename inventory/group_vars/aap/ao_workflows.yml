@@ -131,27 +131,29 @@ ao_workflows:
       - {from: activity_fix, to: activity_rescan}
 
   # =====================================================================
-  # LINUX DAY 2: DRIFT REMEDIATION (#684) — EDA catches, AO orchestrates,
-  # AAP executes. The three-product demo.
+  # LINUX DAY 2: DRIFT REMEDIATION (#684, #702) — five-product demo:
+  # auditd (CIS sensor) → EDA catches → AO orchestrates → AI decides
+  # (native agentic node) → human approves → AAP executes.
   #
   # The same job templates the AAP "Linux Day 2 - Drift Remediation"
-  # workflow uses, but orchestrated from AO so the canvas and approval
-  # are AO-native. The AAP workflow remains for the two-product demo
-  # (EDA + AAP directly).
+  # workflow uses, but orchestrated from AO so the canvas, AI decision,
+  # and approval are AO-native. The AAP workflow remains for the
+  # two-product demo (EDA + AAP directly).
   #
   # EDA → launcher JT → AO API → this workflow:
-  # trigger → gather → approval → remediate.
+  # trigger → gather → decide (AI) → approval → remediate.
   #
-  # The condition node that checked demo_facts_investigate_count was
-  # removed (#689): the triggering gather already cached the drifted
-  # state, so the AO workflow's re-gather always sees no drift. EDA
-  # already validated the drift before launching this workflow.
+  # The agentic node compares raw fact values against baselines in its
+  # prompt. This sidesteps the timing gap (#689): even when the gather
+  # step sees no diff (baseline was cached by the triggering gather),
+  # the raw values still show the current state. Works for both the
+  # auditd push path (#696) and the manual-gather path.
   # =====================================================================
   - name: "Linux Day 2 - Drift Remediation (as code)"
     description: >-
-      EDA-triggered: gather facts, pause for human approval, then
-      remediate. Three products: EDA catches the event, AO orchestrates
-      the response, AAP executes the fix. #684 demo.
+      EDA-triggered: gather facts, ask AI to analyse drift, pause for
+      human approval, then remediate. Five products: auditd detects,
+      EDA catches, AO orchestrates, AI decides, AAP fixes. #684, #702.
     project: "default"
     publish: false
     triggers:
@@ -171,13 +173,50 @@ ao_workflows:
         integration: "Ansible Automation Platform"
         limit: linuxweb
 
+      - id: activity_decide
+        name: decide
+        type: agentic
+        position: {x: -600, y: -186}
+        prompt: >-
+          You are a drift remediation assistant for a RHEL Linux host.
+          The following facts were gathered from host
+          ${activity_gather.artifacts.demo_facts.host}:
+
+          ${activity_gather.artifacts.demo_facts_summary}
+
+          Expected baselines:
+          - platform.selinux should be "enforcing"
+
+          Compare the gathered facts to the baselines. If any fact
+          deviates, recommend the matching remediation template from
+          this list:
+          - SELinux not enforcing: template "Linux Day 2 - Fix SELinux"
+
+          If nothing deviates from the baselines, respond with template
+          "none" and explain that the host is compliant.
+        response_schema:
+          type: object
+          properties:
+            template:
+              type: string
+              description: "AAP job template name to run, or 'none'"
+            reason:
+              type: string
+              description: "Brief explanation of the drift and recommended fix"
+          required:
+            - template
+            - reason
+        llm_integration: "GPU Inference (Granite)"
+        llm_credential: "LLM Inference Token"
+
       - id: activity_approval
         name: security_approval
         type: approval
         position: {x: -300, y: -141}
         prompt: >-
-          EDA detected investigate-severity drift on the Linux demo
-          guest. Approve SELinux remediation?
+          AI drift analysis: ${activity_decide.result.reason}.
+          Proposed fix: ${activity_decide.result.template}.
+          Approve remediation?
         approvers_sso:
           - "{{ aap_username }}"
         fallback_decision: reject
@@ -193,5 +232,6 @@ ao_workflows:
         limit: linuxweb
     edges:
       - {from: activity_trigger, to: activity_gather}
-      - {from: activity_gather, to: activity_approval}
+      - {from: activity_gather, to: activity_decide}
+      - {from: activity_decide, to: activity_approval}
       - {from: activity_approval, from_port: approved, to: activity_remediate}
