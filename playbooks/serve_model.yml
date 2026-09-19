@@ -747,11 +747,14 @@
     # The GPU inference endpoint is on a different RHDP cluster. AO's
     # SSRF policy blocks outbound calls to URLs not in
     # APP_INTEGRATION_URL_ALLOWED_HOSTS (#621). configure_ao.yml only
-    # adds aap_hostname; this block adds the GPU Route hostname so the
-    # LLM integration can reach the inference endpoint at run time.
-    - name: Add the GPU inference hostname to the SSRF allowlist
+    # adds aap_hostname; this block adds BOTH GPU Route hostnames — the
+    # OAuth-protected one (for the credential) and the direct one (for
+    # AO model discovery, #712).
+    - name: Add GPU inference hostnames to the SSRF allowlist
       vars:
-        _inference_hostname: "{{ _inference_url | urlsplit('hostname') }}"
+        _inference_hostnames:
+          - "{{ _inference_url | urlsplit('hostname') }}"
+          - "{{ _inference_direct_url | urlsplit('hostname') }}"
         _ao_admin_settings_configmap: "ao-admin-settings"
       block:
         - name: Read the current SSRF allowlist
@@ -769,8 +772,8 @@
                   | default('[]') | from_json)
                  if _ao_ssrf_cm.resources | length > 0 else [] }}
 
-        - name: Update the ConfigMap with the GPU hostname
-          when: _inference_hostname not in _ao_ssrf_current
+        - name: Update the ConfigMap with the GPU hostnames
+          when: _inference_hostnames | difference(_ao_ssrf_current) | length > 0
           kubernetes.core.k8s:
             state: present
             definition:
@@ -781,7 +784,7 @@
                 namespace: "{{ ao_namespace }}"
               data:
                 APP_INTEGRATION_URL_ALLOWED_HOSTS: >-
-                  {{ (_ao_ssrf_current + [_inference_hostname]) | unique | to_json }}
+                  {{ (_ao_ssrf_current + _inference_hostnames) | unique | to_json }}
                 APP_OIDC_ALLOW_PRIVATE_NETWORKS: "true"
           register: _ao_ssrf_cm_updated
 
