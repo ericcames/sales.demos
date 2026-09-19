@@ -151,8 +151,9 @@ demo_facts_narrate: false
 # Inference endpoint for narration and for decide_remediation.yml (#680).
 # Injected by the "Sales Demos - Inference Endpoint" credential type. Empty
 # defaults satisfy the secrets-example-sync checker and mean "no endpoint."
-inference_url: ""
-inference_token: ""
+# The names match the credential type injectors and cannot be prefixed.
+inference_url: ""  # noqa: var-naming[no-role-prefix]
+inference_token: ""  # noqa: var-naming[no-role-prefix]
 
 # The EDA webhook endpoint for drift notification. When non-empty, the compare
 # step POSTs to it after finding investigate-severity rows. When empty (the
