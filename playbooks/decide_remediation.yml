@@ -1,15 +1,18 @@
 ---
 # ===========================================================================
-# decide_remediation.yml — pick a fix from the allow-list. Issue #665.
+# decide_remediation.yml — pick a fix from the allow-list. Issue #665, #680.
 #
-# Reads demo_facts_diff (a workflow artifact from the gather step) and looks
-# up the first investigate-severity row in demo_facts_remediation_map.  If a
-# match exists, publishes the template name and reason via set_stats so the
-# downstream approval node can show them.  If not, publishes an empty string
-# and the workflow ends cleanly.
+# Reads demo_facts_diff (a workflow artifact from the gather step) and
+# proposes a remediation from demo_facts_remediation_map.
 #
-# IN 5a THIS IS A FIXED RULE TABLE.  In 5c the model replaces it; the
-# inputs and outputs stay the same.
+# TWO PATHS, SAME OUTPUT CONTRACT:
+#   1. Model path — if inference_url is set and reachable, ask the model
+#      to pick from the allow-list. The model's choice is validated.
+#   2. Rule-table path — fixed first-match lookup, the 5a original.
+#
+# The model path falls back to the rule table on: no credential, unreachable
+# endpoint, timeout, unparseable response, or a choice not on the list.
+# The workflow stays green either way.
 #
 #   hosts: localhost — this play reads workflow artifacts, not VMs.
 # ===========================================================================
@@ -20,6 +23,10 @@
   connection: local
 
   tasks:
+    - name: Load the remediation allow-list
+      ansible.builtin.include_vars:
+        file: roles/demo_facts/defaults/main.yml
+
     - name: Assert the diff artifact arrived
       ansible.builtin.assert:
         that: demo_facts_diff is defined and demo_facts_diff | length > 0
@@ -32,31 +39,154 @@
       ansible.builtin.set_fact:
         _diff: "{{ demo_facts_diff | from_json if demo_facts_diff is string else demo_facts_diff }}"
 
-    - name: Find the first investigate row that has a remediation
+    - name: Filter to investigate-severity rows
       ansible.builtin.set_fact:
-        _match: >-
-          {%- set ns = namespace(found={}) -%}
-          {%- for row in _diff if row.severity == 'investigate' and not ns.found -%}
-            {%- for entry in demo_facts_remediation_map | default([]) -%}
-              {%- if entry.field == row.field and not ns.found -%}
-                {%- set ns.found = {'template': entry.template, 'reason': entry.reason,
-                                    'field': row.field, 'was': row.was, 'now': row.now} -%}
-              {%- endif -%}
-            {%- endfor -%}
-          {%- endfor -%}
-          {{ ns.found }}
+        _investigate_rows: "{{ _diff | selectattr('severity', 'equalto', 'investigate') | list }}"
+
+    # ==================================================================
+    # Model path — ask the LLM to pick from the allow-list
+    # ==================================================================
+    - name: Try model-based decision
+      when:
+        - inference_url | default('') | length > 0
+        - _investigate_rows | length > 0
+      block:
+        - name: Build the allowed-fixes prompt
+          ansible.builtin.set_fact:
+            _allowed_fixes_prompt: >-
+              {% for entry in demo_facts_remediation_map | default([]) -%}
+              - {{ entry.field | replace('.', '_') }}_fix: {{ entry.reason }}. Runs template: {{ entry.template }}
+              {% endfor %}
+
+        - name: Build the tool-name-to-entry lookup
+          ansible.builtin.set_fact:
+            _tool_lookup: >-
+              {% set lookup = {} -%}
+              {% for entry in demo_facts_remediation_map | default([]) -%}
+                {% set tool_name = entry.field | replace('.', '_') ~ '_fix' -%}
+                {% set _ = lookup.update({tool_name: entry}) -%}
+              {% endfor -%}
+              {{ lookup }}
+
+        - name: Call the model
+          ansible.builtin.uri:
+            url: "{{ inference_url }}/v1/chat/completions"
+            method: POST
+            headers:
+              Authorization: "Bearer {{ inference_token }}"
+              Content-Type: "application/json"
+            body_format: json
+            body:
+              model: "{{ inference_model | default('granite-3-3-8b-instruct') }}"
+              messages:
+                - role: system
+                  content: >-
+                    You are a drift remediation assistant. Given a list of
+                    drift items, pick the SINGLE most important one with
+                    severity "investigate" and choose the matching fix from
+                    the ALLOWED FIXES list below. Respond with ONLY a JSON
+                    object: {"tool": "<tool_name>", "reason": "<brief reason>"}.
+                    If no fix matches, respond:
+                    {"tool": "no_action", "reason": "<why>"}.
+
+                    ALLOWED FIXES:
+                    {{ _allowed_fixes_prompt }}
+                - role: user
+                  content: "{{ _investigate_rows | to_json }}"
+              max_tokens: 256
+            validate_certs: false
+            return_content: true
+            timeout: 30
+          register: _model_response
+
+        - name: Extract the model's JSON response
+          ansible.builtin.set_fact:
+            _model_answer: >-
+              {% set content = _model_response.json.choices[0].message.content -%}
+              {% set start = content.find('{') -%}
+              {% set end = content.rfind('}') + 1 -%}
+              {% if start >= 0 and end > start -%}
+                {{ content[start:end] | from_json }}
+              {%- else -%}
+                {{ {} }}
+              {%- endif %}
+
+        - name: Validate the model's choice against the allow-list
+          ansible.builtin.set_fact:
+            _model_match: >-
+              {% set tool_name = _model_answer.tool | default('') -%}
+              {% if tool_name and tool_name != 'no_action' -%}
+                {% set entry = _tool_lookup.get(tool_name, {}) -%}
+                {% if entry -%}
+                  {% set row = _investigate_rows | selectattr('field', 'equalto', entry.field) | first | default({}) -%}
+                  {{ {'template': entry.template,
+                      'reason': _model_answer.reason | default(entry.reason),
+                      'field': entry.field,
+                      'was': row.was | default(''),
+                      'now': row.now | default('')} }}
+                {%- else -%}
+                  {{ {} }}
+                {%- endif -%}
+              {%- else -%}
+                {{ {} }}
+              {%- endif %}
+            _model_used: true
+
+        - name: Log model response
+          ansible.builtin.debug:
+            msg: "Model chose: {{ _model_answer.tool | default('?') }} — {{ _model_answer.reason | default('') }}"
+
+      rescue:
+        - name: Model path failed — will fall back to rule table
+          ansible.builtin.debug:
+            msg: "Model call failed: {{ ansible_failed_result.msg | default('unknown error') }}. Falling back to rule table."
+
+        - name: Clear model state on failure
+          ansible.builtin.set_fact:
+            _model_match: {}
+            _model_used: false
+
+    # ==================================================================
+    # Rule-table fallback
+    # ==================================================================
+    - name: Fall back to rule table
+      when: _model_match | default({}) | length == 0
+      block:
+        - name: Find the first investigate row that has a remediation
+          ansible.builtin.set_fact:
+            _match: >-
+              {%- set ns = namespace(found={}) -%}
+              {%- for row in _diff if row.severity == 'investigate' and not ns.found -%}
+                {%- for entry in demo_facts_remediation_map | default([]) -%}
+                  {%- if entry.field == row.field and not ns.found -%}
+                    {%- set ns.found = {'template': entry.template, 'reason': entry.reason,
+                                        'field': row.field, 'was': row.was, 'now': row.now} -%}
+                  {%- endif -%}
+                {%- endfor -%}
+              {%- endfor -%}
+              {{ ns.found }}
+
+        - name: Set the decision source
+          ansible.builtin.set_fact:
+            _model_used: false
+
+    - name: Resolve the final decision
+      ansible.builtin.set_fact:
+        _final_match: "{{ _model_match | default({}) if (_model_match | default({}) | length > 0) else (_match | default({})) }}"
 
     - name: Report the decision
       ansible.builtin.debug:
         msg: >-
-          {%- if _match -%}
-          PROPOSING: {{ _match.template }} — {{ _match.reason }}
-          ({{ _match.field }}: {{ _match.was }} -> {{ _match.now }}){%- else -%}
-          No remediation found on the allow-list for the current drift.{%- endif -%}
+          {%- if _final_match -%}
+          [{{ 'MODEL' if (_model_used | default(false)) else 'RULE TABLE' }}]
+          PROPOSING: {{ _final_match.template }} — {{ _final_match.reason }}
+          ({{ _final_match.field }}: {{ _final_match.was }} -> {{ _final_match.now }}){%- else -%}
+          No remediation found for the current drift.{%- endif -%}
 
     - name: Publish the decision as workflow artifacts
       ansible.builtin.set_stats:
         data:
-          remediation_template: "{{ _match.template | default('') }}"
-          remediation_reason: "{{ _match.reason | default('') }}"
-          remediation_field: "{{ _match.field | default('') }}"
+          remediation_template: "{{ _final_match.template | default('') }}"
+          remediation_reason: "{{ _final_match.reason | default('') }}"
+          remediation_field: "{{ _final_match.field | default('') }}"
+          remediation_source: "{{ 'model' if (_model_used | default(false)) and (_final_match | length > 0) else 'rule_table' }}"
