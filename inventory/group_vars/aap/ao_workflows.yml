@@ -160,13 +160,13 @@ ao_workflows:
       - id: activity_trigger
         name: "Drift remediation"
         type: manual_trigger
-        position: {x: -1200, y: -138}
+        position: {x: -1400, y: -138}
         parameters: {}
     nodes:
       - id: activity_gather
         name: gather
         type: aap_job_template
-        position: {x: -900, y: -186}
+        position: {x: -950, y: -186}
         job_template: "Linux Day 2 - Gather Facts"
         organization: "IT Service Automation"
         credential: "AAP Admin"
@@ -176,7 +176,7 @@ ao_workflows:
       - id: activity_decide
         name: decide
         type: agentic
-        position: {x: -600, y: -186}
+        position: {x: -500, y: -186}
         prompt: >-
           You are a drift remediation assistant for a RHEL Linux host.
           The following facts were gathered from host
@@ -212,7 +212,7 @@ ao_workflows:
       - id: activity_approval
         name: security_approval
         type: approval
-        position: {x: -300, y: -141}
+        position: {x: -50, y: -141}
         prompt: >-
           AI drift analysis: ${activity_decide.result.content.reason}.
           Proposed fix: ${activity_decide.result.content.template}.
@@ -224,7 +224,7 @@ ao_workflows:
       - id: activity_remediate
         name: remediate
         type: aap_job_template
-        position: {x: 0, y: -121}
+        position: {x: 400, y: -121}
         job_template: "Linux Day 2 - Fix SELinux"
         organization: "IT Service Automation"
         credential: "AAP Admin"
