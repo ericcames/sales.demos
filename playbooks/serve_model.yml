@@ -921,6 +921,78 @@
              if _ao_llm_integration_existing | length == 0
              else _ao_llm_integration_existing[0].id }}
 
+    # Validate → discover → enable. Creating an LLM Provider integration
+    # does not trigger model discovery (#708). The built-in "Integration
+    # Resource Discovery" workflow handles this on a schedule, but we need
+    # models available immediately so ao_workflows.yml can reference them.
+    - name: Validate the integration (connectivity ping)
+      ansible.builtin.uri:
+        url: "{{ ao_url }}/api/v1/integrations/{{ _ao_llm_integration_id | trim }}/validate"
+        method: POST
+        headers: "{{ ao_auth_header }}"
+        validate_certs: false
+        status_code: 200
+      register: _ao_llm_validate
+
+    - name: Assert the integration validated successfully
+      ansible.builtin.assert:
+        that:
+          - _ao_llm_validate.json.success | bool
+        fail_msg: >-
+          GPU Inference (Granite) integration failed validation:
+          {{ _ao_llm_validate.json.error | default('unknown error') }}.
+          Is the GPU cluster reachable? Is the SSRF allowlist up to date?
+        quiet: true
+
+    - name: Find the Integration Resource Discovery workflow
+      ansible.builtin.uri:
+        url: "{{ ao_url }}/api/v1/workflows?limit=50"
+        headers: "{{ ao_auth_header }}"
+        validate_certs: false
+        status_code: 200
+      register: _ao_discovery_workflows
+
+    - name: Extract the discovery workflow ID
+      ansible.builtin.set_fact:
+        _ao_discovery_wf_id: >-
+          {{ _ao_discovery_workflows.json.resources
+             | selectattr('name', 'equalto', 'Integration Resource Discovery')
+             | map(attribute='id') | first }}
+
+    - name: Read the discovery workflow to get its trigger node
+      ansible.builtin.uri:
+        url: "{{ ao_url }}/api/v1/workflows/{{ _ao_discovery_wf_id | trim }}"
+        headers: "{{ ao_auth_header }}"
+        validate_certs: false
+        status_code: 200
+      register: _ao_discovery_wf
+
+    - name: Trigger model discovery
+      ansible.builtin.uri:
+        url: "{{ ao_url }}/api/v1/executions"
+        method: POST
+        body_format: json
+        body:
+          workflow_id: "{{ _ao_discovery_wf_id | trim }}"
+          trigger_node_id: >-
+            {{ _ao_discovery_wf.json.version.workflow_definition.triggers[0].id }}
+          use_published: true
+        headers: "{{ ao_auth_header }}"
+        validate_certs: false
+        status_code: [200, 201]
+      register: _ao_discovery_execution
+
+    - name: Wait for discovery to complete
+      ansible.builtin.uri:
+        url: "{{ ao_url }}/api/v1/executions/{{ _ao_discovery_execution.json.id }}"
+        headers: "{{ ao_auth_header }}"
+        validate_certs: false
+        status_code: 200
+      register: _ao_discovery_status
+      retries: 12
+      delay: 10
+      until: _ao_discovery_status.json.status in ['completed', 'failed']
+
     - name: Verify model discovery
       ansible.builtin.uri:
         url: "{{ ao_url }}/api/v1/integrations/{{ _ao_llm_integration_id | trim }}/models"
@@ -928,9 +1000,23 @@
         validate_certs: false
         status_code: 200
       register: _ao_llm_models
-      retries: 5
-      delay: 10
+      retries: 3
+      delay: 5
       until: _ao_llm_models.json.resources | default([]) | length > 0
+
+    - name: Enable all discovered models
+      when: _ao_llm_models.json.resources | selectattr('enabled', 'equalto', false) | list | length > 0
+      ansible.builtin.uri:
+        url: "{{ ao_url }}/api/v1/integrations/{{ _ao_llm_integration_id | trim }}/models/bulk_update"
+        method: PATCH
+        body_format: json
+        body:
+          model_ids: "{{ _ao_llm_models.json.resources | map(attribute='id') | list }}"
+          enabled: true
+        headers: "{{ ao_auth_header }}"
+        validate_certs: false
+        status_code: 200
+      register: _ao_llm_models_enabled
 
     - name: Report AO integration
       ansible.builtin.debug:
@@ -938,5 +1024,7 @@
           - "Published 'GPU Inference (Granite)' LLM integration to AO."
           - "Model: {{ _inference_model }}"
           - "URL: {{ _inference_url }}"
+          - "Validated: {{ _ao_llm_validate.json.success }}"
           - "Models discovered: {{ _ao_llm_models.json.resources | map(attribute='name') | list }}"
+          - "Models enabled: {{ _ao_llm_models.json.resources | length }}"
           - "Credential: LLM Inference Token ({{ 'created' if _ao_llm_cred_existing | length == 0 else 'updated' }})"

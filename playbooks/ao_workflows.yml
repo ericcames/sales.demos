@@ -137,14 +137,16 @@
           loop: "{{ ao_llm_integration_names }}"
           register: ao_llm_model_lookups
 
-        - name: Build integration-name-to-first-model-ID map
+        - name: Build integration-name-to-first-enabled-model-ID map
           ansible.builtin.set_fact:
             ao_model_ids: >-
               {% set result = {} -%}
               {% for idx in range(ao_llm_integration_names | length) -%}
-                {% set models = ao_llm_model_lookups.results[idx].json.resources | default([]) -%}
-                {% if models | length > 0 -%}
-                  {% set _ = result.update({ao_llm_integration_names[idx]: models[0].id}) -%}
+                {% set all_models = ao_llm_model_lookups.results[idx].json.resources | default([]) -%}
+                {% set enabled = all_models | selectattr('enabled', 'equalto', true) | list -%}
+                {% set pick = enabled if enabled | length > 0 else all_models -%}
+                {% if pick | length > 0 -%}
+                  {% set _ = result.update({ao_llm_integration_names[idx]: pick[0].id}) -%}
                 {% endif -%}
               {% endfor -%}
               {{ result }}
@@ -156,8 +158,9 @@
             fail_msg: >-
               These LLM integrations have no models:
               {{ ao_llm_integration_names | reject('in', ao_model_ids) | list }}.
-              Has serve_model.yml been run? The integration must discover at
-              least one model from the vLLM endpoint.
+              Has serve_model.yml been run? It validates the integration,
+              triggers the Integration Resource Discovery workflow, and
+              enables the discovered models.
             quiet: true
 
     - name: Apply each workflow
