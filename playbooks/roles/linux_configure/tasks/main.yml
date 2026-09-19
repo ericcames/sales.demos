@@ -276,3 +276,40 @@
       - >-
         {{ 'Log in:   ' ~ ssh_command if (ssh_command | default('', true) | length > 0)
            else 'Log in:   run `terraform output -json ssh_commands`; re-provision to have it printed here.' }}
+
+# --- auditd drift reporter (#696) -------------------------------------------
+# The CIS L1 image already runs auditd. This adds an audisp plugin that POSTs
+# to the EDA webhook when SELinux is switched to permissive, making drift
+# detection push-based rather than poll-based.
+- name: Deploy the auditd drift reporter
+  when: linux_configure_eda_webhook_url | default('') | length > 0
+  block:
+    - name: Ensure audispd-plugins is installed
+      ansible.builtin.dnf:
+        name: audispd-plugins
+        state: present
+        install_weak_deps: false
+
+    - name: Deploy the audisp plugin config
+      ansible.builtin.template:
+        src: eda-drift-reporter.conf.j2
+        dest: /etc/audit/plugins.d/eda-drift-reporter.conf
+        owner: root
+        group: root
+        mode: "0640"
+      notify: Restart auditd
+
+    - name: Deploy the dispatcher script
+      ansible.builtin.template:
+        src: eda-drift-reporter.sh.j2
+        dest: /usr/local/bin/eda-drift-reporter.sh
+        owner: root
+        group: root
+        mode: "0755"
+      notify: Restart auditd
+
+    - name: Ensure auditd is running
+      ansible.builtin.systemd_service:
+        name: auditd
+        state: started
+        enabled: true

@@ -90,3 +90,8 @@ ocpvirt_namespace: "sales-demos-sandbox"
 # that is too small merely refuses tiers the cluster could run, while one that is
 # too large admits a plan that will not schedule.
 available_memory_gb: 67
+
+# auditd drift reporter (#696) — push SELinux changes to EDA.
+# FQDN because the guest is in sales-demos-sandbox, the EDA service is in aap.
+linux_configure_eda_webhook_url: >-
+  http://sales-demos---drift-remediation.aap.svc.cluster.local:5000/endpoint

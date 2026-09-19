@@ -10,3 +10,10 @@
   ansible.builtin.systemd_service:
     name: sshd
     state: reloaded
+
+# auditd on RHEL does not support normal systemctl restart — the unit is
+# marked RefuseManualStop=yes. `service auditd restart` uses the legacy
+# SysV path that auditd's own initscript still honours.
+- name: Restart auditd
+  ansible.builtin.command: service auditd restart
+  changed_when: true

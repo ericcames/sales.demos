@@ -98,3 +98,14 @@ linux_configure_compliance_url: >-
 linux_configure_golden_image_source: "{{ golden_image_source | default('') }}"
 linux_configure_golden_image_cis_level: "{{ golden_image_cis_level | default('') }}"
 linux_configure_golden_image_pipeline_url: "https://github.com/ericcames/image.builder.pipeline"
+
+# --- auditd drift reporter (#696) -------------------------------------------
+# When non-empty, deploy an audisp plugin that POSTs to this EDA webhook URL
+# whenever auditd sees a MAC_STATUS event with enforcing=0 (SELinux switched
+# to permissive). The CIS L1 image already runs auditd — this just wires it
+# to EDA so drift detection is push-based, not poll-based.
+#
+# The URL must be a K8s Service FQDN reachable from the guest. The guest VM
+# is in sales-demos-<env>, the EDA service is in the aap namespace, so use:
+#   http://sales-demos---drift-remediation.aap.svc.cluster.local:5000/endpoint
+linux_configure_eda_webhook_url: ""
