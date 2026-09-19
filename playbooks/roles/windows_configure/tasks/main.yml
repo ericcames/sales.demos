@@ -74,6 +74,15 @@
       $ErrorActionPreference = 'Stop'
       $Ansible.Changed = $false
 
+      # After an IIS-triggered reboot the CIM provider for MSFT_NetFirewallRule
+      # may not be registered yet (#725). Wait for mpssvc rather than guessing a
+      # sleep duration.
+      $svc = Get-Service -Name mpssvc -ErrorAction SilentlyContinue
+      if ($svc -and $svc.Status -ne 'Running') {
+          $svc | Start-Service
+          $svc.WaitForStatus('Running', '00:01:00')
+      }
+
       $rule = Get-NetFirewallRule -DisplayName $RuleName -ErrorAction SilentlyContinue
       if ($null -eq $rule) {
           New-NetFirewallRule -DisplayName $RuleName -Direction Inbound `
