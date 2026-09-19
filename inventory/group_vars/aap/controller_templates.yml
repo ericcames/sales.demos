@@ -1752,6 +1752,8 @@ controller_templates_all:
     limit: linuxweb
     ask_limit_on_launch: true
     use_fact_cache: true
+    extra_vars:
+      demo_facts_eda_webhook_url: "http://sales-demos---drift-remediation:5000/endpoint"
     survey_enabled: true
     survey_spec:
       name: ""
@@ -1952,7 +1954,7 @@ controller_templates_all:
     description: >-
       EDA launcher: connects to Automation Orchestrator and starts the
       "Linux Day 2 - Drift Remediation (as code)" AO workflow. The AO
-      workflow then orchestrates gather → condition → approval → remediate.
+      workflow then orchestrates gather → approval → remediate.
       Three products: EDA catches, AO orchestrates, AAP executes (#684).
     labels:
       - linux
@@ -1967,7 +1969,7 @@ controller_templates_all:
     credentials:
       - "Sales Demos - Vault"
       - "Sales Demos - Env Secrets"
-    limit: ""
+    limit: sandbox
 
   # Retired by #647 — folding fact gathering into step 5 renamed both.
   - name: "Linux Day 1 - 5 Check"
