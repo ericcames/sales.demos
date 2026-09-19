@@ -8,7 +8,8 @@
 #
 # Two plays:
 #   1. hosts: gpu  — delete the serving namespace (removes everything).
-#   2. hosts: aap  — delete the inference credential from AAP.
+#   2. hosts: aap  — disable Lightspeed (#704), delete the inference
+#      credential.
 #
 # Deleting the namespace is the right granularity because the namespace
 # contains only resources this playbook created. It releases the GPU, the
@@ -57,9 +58,18 @@
         msg: "Namespace {{ serve_namespace }} deleted. GPU is released."
 
 # ===================== Play 2: remove credential from AAP =================
-- name: Remove the inference credential from AAP
+- name: Remove the inference credential and disable Lightspeed
   hosts: aap
   gather_facts: false
+
+  environment:
+    K8S_AUTH_HOST: "{{ openshift_api_url }}"
+    K8S_AUTH_API_KEY: "{{ openshift_api_token }}"
+    K8S_AUTH_VERIFY_SSL: "{{ openshift_validate_certs | default(false) | bool }}"
+
+  vars:
+    _lightspeed_secret_name: "chatbot-granite-config"
+    _lightspeed_namespace: "aap"
 
   tasks:
     - name: Assert the environment is unambiguous
@@ -77,6 +87,33 @@
           secrets.yml for the target environment.
         quiet: true
 
+    # ------------------------------------------------------------------
+    # Disable Lightspeed (#704) — patch the CR and delete the Secret.
+    # Runs unconditionally: if Lightspeed was never enabled, both are
+    # no-ops (the CR field is already true, the Secret does not exist).
+    # ------------------------------------------------------------------
+    - name: Disable Lightspeed on the AAP CR
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: aap.ansible.com/v1alpha1
+          kind: AnsibleAutomationPlatform
+          metadata:
+            name: aap
+            namespace: "{{ _lightspeed_namespace }}"
+          spec:
+            lightspeed:
+              disabled: true
+      failed_when: false
+
+    - name: Delete the Lightspeed chatbot config Secret
+      kubernetes.core.k8s:
+        state: absent
+        api_version: v1
+        kind: Secret
+        name: "{{ _lightspeed_secret_name }}"
+        namespace: "{{ _lightspeed_namespace }}"
+
     - name: Delete the inference credential
       ansible.controller.credential:
         name: "Sales Demos - Inference Endpoint"
@@ -90,4 +127,6 @@
 
     - name: Report removal
       ansible.builtin.debug:
-        msg: "Inference credential removed from {{ aap_env_name }}."
+        msg:
+          - "Lightspeed disabled, chatbot Secret deleted."
+          - "Inference credential removed from {{ aap_env_name }}."
