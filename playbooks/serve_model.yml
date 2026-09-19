@@ -634,7 +634,7 @@
         kind: Pod
         namespace: "{{ _lightspeed_namespace }}"
         label_selectors:
-          - "app.kubernetes.io/component=lightspeed"
+          - "app.kubernetes.io/managed-by=ansible-lightspeed-operator"
         delete_all: true
 
     - name: Wait for Lightspeed deployment to be ready
@@ -644,14 +644,15 @@
         kind: Deployment
         namespace: "{{ _lightspeed_namespace }}"
         label_selectors:
-          - "app.kubernetes.io/component=lightspeed"
+          - "app.kubernetes.io/managed-by=ansible-lightspeed-operator"
       register: _lightspeed_deploy
       retries: 60
       delay: 10
       until: >-
-        _lightspeed_deploy.resources | length > 0 and
-        (_lightspeed_deploy.resources[0].status.readyReplicas | default(0) | int)
-        == (_lightspeed_deploy.resources[0].spec.replicas | default(1) | int)
+        _lightspeed_deploy.resources | length > 0
+        and _lightspeed_deploy.resources
+            | map(attribute='status.availableReplicas', default=0)
+            | reject('gt', 0) | list | length == 0
 
     - name: Report Lightspeed status
       when: serve_model_enable_lightspeed | bool
