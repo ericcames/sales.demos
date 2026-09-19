@@ -11,9 +11,9 @@
     name: sshd
     state: reloaded
 
-# auditd on RHEL has RefuseManualStop=yes — ansible.builtin.service
-# routes through the SysV initscript, which honours restart.
+# auditd on RHEL has RefuseManualStop=yes — systemctl restart fails, and
+# ansible.builtin.service still routes through systemd on a systemd host.
+# Only `service auditd restart` (SysV initscript) works.
 - name: Restart auditd
-  ansible.builtin.service:
-    name: auditd
-    state: restarted
+  ansible.builtin.command: service auditd restart  # noqa: command-instead-of-module
+  changed_when: true
