@@ -689,6 +689,79 @@
     - name: Connect to Automation Orchestrator
       ansible.builtin.include_tasks: tasks/ao_connect.yml
 
+    # The GPU inference endpoint is on a different RHDP cluster. AO's
+    # SSRF policy blocks outbound calls to URLs not in
+    # APP_INTEGRATION_URL_ALLOWED_HOSTS (#621). configure_ao.yml only
+    # adds aap_hostname; this block adds the GPU Route hostname so the
+    # LLM integration can reach the inference endpoint at run time.
+    - name: Add the GPU inference hostname to the SSRF allowlist
+      vars:
+        _inference_hostname: "{{ _inference_url | urlsplit('hostname') }}"
+        _ao_admin_settings_configmap: "ao-admin-settings"
+      block:
+        - name: Read the current SSRF allowlist
+          kubernetes.core.k8s_info:
+            api_version: v1
+            kind: ConfigMap
+            namespace: "{{ ao_namespace }}"
+            name: "{{ _ao_admin_settings_configmap }}"
+          register: _ao_ssrf_cm
+
+        - name: Parse the existing allowed hosts
+          ansible.builtin.set_fact:
+            _ao_ssrf_current: >-
+              {{ (_ao_ssrf_cm.resources[0].data.APP_INTEGRATION_URL_ALLOWED_HOSTS
+                  | default('[]') | from_json)
+                 if _ao_ssrf_cm.resources | length > 0 else [] }}
+
+        - name: Update the ConfigMap with the GPU hostname
+          when: _inference_hostname not in _ao_ssrf_current
+          kubernetes.core.k8s:
+            state: present
+            definition:
+              apiVersion: v1
+              kind: ConfigMap
+              metadata:
+                name: "{{ _ao_admin_settings_configmap }}"
+                namespace: "{{ ao_namespace }}"
+              data:
+                APP_INTEGRATION_URL_ALLOWED_HOSTS: >-
+                  {{ (_ao_ssrf_current + [_inference_hostname]) | unique | to_json }}
+                APP_OIDC_ALLOW_PRIVATE_NETWORKS: "true"
+          register: _ao_ssrf_cm_updated
+
+        - name: Restart AO components so they read the updated ConfigMap
+          when: _ao_ssrf_cm_updated.changed | default(false)
+          kubernetes.core.k8s:
+            state: absent
+            api_version: v1
+            kind: Pod
+            namespace: "{{ ao_namespace }}"
+            label_selectors:
+              - "app.kubernetes.io/component={{ item }}"
+          loop:
+            - ao-backend
+            - ao-worker
+            - ao-background-worker
+          changed_when: true
+
+        - name: Wait for the AO backend to be ready after restart
+          when: _ao_ssrf_cm_updated.changed | default(false)
+          kubernetes.core.k8s_info:
+            api_version: apps/v1
+            kind: Deployment
+            namespace: "{{ ao_namespace }}"
+            name: ao-backend
+            wait: true
+            wait_condition:
+              type: Available
+              status: "True"
+            wait_timeout: 120
+
+        - name: Re-login to AO after restart
+          when: _ao_ssrf_cm_updated.changed | default(false)
+          ansible.builtin.include_tasks: tasks/ao_connect.yml
+
     - name: Look up the LLM Provider credential type
       ansible.builtin.uri:
         url: "{{ ao_url }}/api/v1/credential_types"
