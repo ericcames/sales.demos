@@ -288,6 +288,8 @@ controller_templates_all:
       - "Sales Demos - Env Secrets"
     limit: linuxweb
     ask_limit_on_launch: true
+    extra_vars:
+      linux_configure_eda_webhook_url: "http://sales-demos---drift-remediation.aap.svc.cluster.local:5000/endpoint"
 
   # ---------------------------------------------------------------------
   # Phase 4 (#5) — the demo itself. Registers the guest to the Red Hat CDN,
@@ -317,6 +319,8 @@ controller_templates_all:
     limit: linuxweb
     # So a single misbehaving VM can be targeted without editing the template.
     ask_limit_on_launch: true
+    extra_vars:
+      linux_configure_eda_webhook_url: "http://sales-demos---drift-remediation.aap.svc.cluster.local:5000/endpoint"
 
   # ---------------------------------------------------------------------
   # Reach the VMs. This is the one that proves AAP can run playbooks AGAINST
