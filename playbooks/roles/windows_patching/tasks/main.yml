@@ -28,6 +28,29 @@
   ansible.builtin.setup:
   when: ansible_reboot_pending | default(false)
 
+- name: Wait for Windows Update Agent to initialize
+  # After a reboot the WUA COM objects can throw E_INVALIDARG (0x80070057)
+  # before the service is fully ready (#734). Same class of bug as #725.
+  ansible.windows.win_powershell:
+    script: |
+      $ErrorActionPreference = 'Stop'
+      $svc = Get-Service -Name wuauserv -ErrorAction SilentlyContinue
+      if ($svc -and $svc.Status -ne 'Running') {
+          Start-Service wuauserv
+          (Get-Service wuauserv).WaitForStatus('Running', '00:02:00')
+      }
+      for ($i = 0; $i -lt 6; $i++) {
+          try {
+              $session = New-Object -ComObject Microsoft.Update.Session
+              $null = $session.CreateUpdateSearcher()
+              return
+          } catch {
+              if ($i -eq 5) { throw }
+              Start-Sleep -Seconds 10
+          }
+      }
+  changed_when: false
+
 - name: Search Windows Update
   # ALWAYS A SEARCH FIRST, WHATEVER THE MODE, and it is cheap: ~2 minutes of
   # the 36+ a full install took. It is what lets the node report how far behind
