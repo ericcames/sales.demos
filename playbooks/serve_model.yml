@@ -1,0 +1,571 @@
+---
+# ===========================================================================
+# serve_model.yml — deploy a model on the GPU cluster and publish the
+# endpoint to AAP. Issue #677, Phase 1 of #661.
+#
+#   ./utilities/run-playbook.sh playbooks/serve_model.yml \
+#     --limit gpu,sandbox -e target_env=sandbox
+#
+# Two plays:
+#   1. hosts: gpu  — namespace, weights PVC, download Job, ServingRuntime,
+#      InferenceService (with auth), SA+Role, token Secret, Route, smoke test.
+#   2. hosts: aap  — credential type + credential on the AAP environment
+#      named by --limit, so the inference endpoint is available to job
+#      templates.
+#
+# IDEMPOTENT. Re-running with the same model_id is a no-op on every
+# resource. Changing model_id requires teardown_model.yml first — two
+# models cannot share one GPU on a g6.xlarge.
+#
+# MODEL SWAP. On a single-GPU node the default RollingUpdate strategy
+# deadlocks (the new pod needs the GPU the old pod holds). The playbook
+# sets the deployment strategy to Recreate and deletes the predictor pod
+# to force the swap. See #657 gotcha 6.
+#
+# DOES NOT create AAP job templates — those belong in controller_templates.yml
+# and arrive via config.yml. This playbook creates the CREDENTIAL that those
+# templates consume.
+# ===========================================================================
+
+# ===================== Play 1: deploy on the GPU cluster ==================
+- name: Serve a model on the GPU cluster
+  hosts: gpu
+  gather_facts: false
+
+  environment:
+    K8S_AUTH_HOST: "{{ openshift_api_url }}"
+    K8S_AUTH_API_KEY: "{{ openshift_api_token }}"
+    K8S_AUTH_VERIFY_SSL: "{{ openshift_validate_certs | default(false) | bool }}"
+
+  vars:
+    serve_model_id: "ibm-granite/granite-3.3-8b-instruct"
+    serve_model_name: >-
+      {{ serve_model_id | split('/') | last | lower | regex_replace('[^a-z0-9]+', '-') | regex_replace('^-|-$', '') }}
+    serve_namespace: "granite-serving"
+    serve_runtime_name: "vllm-cuda-runtime"
+    serve_runtime_extra_args: []
+    serve_max_model_len: 8192
+    serve_gpu_memory_utilization: "0.90"
+    serve_weights_storage_size: "30Gi"
+    serve_sa_name: "aap-inference-client"
+
+    # Resources sized for a g6.xlarge (4 vCPU / 16 GiB). The model uses
+    # VRAM, not system RAM, so generous memory requests buy nothing and
+    # crowd out the oauth-proxy sidecar (#657 gotcha 7).
+    serve_resources_requests:
+      cpu: "1"
+      memory: "6Gi"
+      nvidia.com/gpu: "1"
+    serve_resources_limits:
+      cpu: "3"
+      memory: "12Gi"
+      nvidia.com/gpu: "1"
+
+  tasks:
+    - name: Assert required connection variables
+      ansible.builtin.assert:
+        that:
+          - openshift_api_url | default('') | length > 0
+          - openshift_api_token | default('') | length > 0
+          - openshift_apps_domain | default('') | length > 0
+        fail_msg: >-
+          GPU cluster connection variables are not set. Check
+          inventory/group_vars/gpu/connection.yml or create a local.yml
+          overlay. Run /sales-demos-first-time to build secrets.yml.
+        quiet: true
+
+    # ------------------------------------------------------------------
+    # GPU precheck — confirm the cluster has what this playbook needs.
+    # ------------------------------------------------------------------
+    - name: Check for GPU nodes
+      kubernetes.core.k8s_info:
+        api_version: v1
+        kind: Node
+        label_selectors:
+          - "nvidia.com/gpu.present=true"
+      register: _serve_gpu_nodes
+
+    - name: Assert at least one GPU node exists
+      ansible.builtin.assert:
+        that: _serve_gpu_nodes.resources | length > 0
+        fail_msg: >-
+          No nodes with label nvidia.com/gpu.present=true found. The GPU
+          Operator may not be installed, or no GPU node has joined.
+        quiet: true
+
+    - name: Check RHOAI is installed
+      kubernetes.core.k8s_info:
+        api_version: v1
+        kind: Namespace
+        name: redhat-ods-applications
+      register: _serve_rhoai_ns
+
+    - name: Assert RHOAI namespace exists
+      ansible.builtin.assert:
+        that: _serve_rhoai_ns.resources | length > 0
+        fail_msg: >-
+          Namespace redhat-ods-applications not found. Red Hat OpenShift AI
+          (RHOAI) must be installed on this cluster.
+        quiet: true
+
+    # ------------------------------------------------------------------
+    # Look up the shipped ServingRuntime template to get the digest-pinned
+    # image. RHOAI ships these in redhat-ods-applications; reading it at
+    # runtime means the playbook always uses the version RHOAI installed.
+    # ------------------------------------------------------------------
+    - name: Look up the vLLM CUDA ServingRuntime template
+      kubernetes.core.k8s_info:
+        api_version: serving.kserve.io/v1alpha1
+        kind: ServingRuntime
+        name: "{{ serve_runtime_name }}"
+        namespace: redhat-ods-applications
+      register: _serve_shipped_runtime
+      failed_when: false
+
+    - name: Look up the vLLM CUDA runtime template (Template API)
+      kubernetes.core.k8s_info:
+        api_version: template.openshift.io/v1
+        kind: Template
+        name: vllm-cuda-runtime-template
+        namespace: redhat-ods-applications
+      register: _serve_shipped_template
+      when: _serve_shipped_runtime.resources | default([]) | length == 0
+
+    - name: Resolve the runtime image
+      ansible.builtin.set_fact:
+        _serve_runtime_image: >-
+          {% if (_serve_shipped_runtime.resources | default([])) | length > 0 -%}
+            {{ _serve_shipped_runtime.resources[0].spec.containers
+               | selectattr('name', 'equalto', 'kserve-container')
+               | map(attribute='image') | first }}
+          {%- elif (_serve_shipped_template.resources | default([])) | length > 0 -%}
+            {{ _serve_shipped_template.resources[0].objects[0].spec.containers
+               | selectattr('name', 'equalto', 'kserve-container')
+               | map(attribute='image') | first }}
+          {%- else -%}
+            registry.redhat.io/rhoai/odh-vllm-cuda-rhel9:rhoai-2.25
+          {%- endif %}
+
+    # ------------------------------------------------------------------
+    # Namespace
+    # ------------------------------------------------------------------
+    - name: Create the serving namespace
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: v1
+          kind: Namespace
+          metadata:
+            name: "{{ serve_namespace }}"
+            labels:
+              opendatahub.io/dashboard: "true"
+
+    # ------------------------------------------------------------------
+    # Weights PVC — pre-populated so the InferenceService starts without
+    # fetching from HuggingFace. No HF dependency mid-demo.
+    # ------------------------------------------------------------------
+    - name: Create the weights PVC
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: v1
+          kind: PersistentVolumeClaim
+          metadata:
+            name: "{{ serve_model_name }}-weights"
+            namespace: "{{ serve_namespace }}"
+          spec:
+            accessModes: ["ReadWriteOnce"]
+            resources:
+              requests:
+                storage: "{{ serve_weights_storage_size }}"
+
+    - name: Check if weights are already downloaded
+      kubernetes.core.k8s_info:
+        api_version: batch/v1
+        kind: Job
+        name: "download-{{ serve_model_name }}"
+        namespace: "{{ serve_namespace }}"
+      register: _serve_download_job
+
+    - name: Download model weights to the PVC
+      when: >-
+        _serve_download_job.resources | length == 0 or
+        (_serve_download_job.resources[0].status.succeeded | default(0) | int) == 0
+      block:
+        - name: Delete any failed download job
+          kubernetes.core.k8s:
+            state: absent
+            api_version: batch/v1
+            kind: Job
+            name: "download-{{ serve_model_name }}"
+            namespace: "{{ serve_namespace }}"
+            wait: true
+            wait_timeout: 60
+          when: _serve_download_job.resources | length > 0
+
+        - name: Create the download job
+          kubernetes.core.k8s:
+            state: present
+            definition:
+              apiVersion: batch/v1
+              kind: Job
+              metadata:
+                name: "download-{{ serve_model_name }}"
+                namespace: "{{ serve_namespace }}"
+              spec:
+                backoffLimit: 2
+                template:
+                  spec:
+                    restartPolicy: Never
+                    # Schedule on the GPU node so the PVC binds in the same
+                    # AZ as the node that will serve. EBS volumes are
+                    # AZ-pinned (#657).
+                    nodeSelector:
+                      nvidia.com/gpu.present: "true"
+                    tolerations:
+                      - key: nvidia.com/gpu
+                        operator: Equal
+                        value: "True"
+                        effect: NoSchedule
+                    containers:
+                      - name: download
+                        image: "registry.redhat.io/ubi9/python-311:latest"
+                        command: ["bash", "-c"]
+                        args:
+                          - >-
+                            pip install -q huggingface-hub &&
+                            python3 -c "from huggingface_hub import snapshot_download; snapshot_download('{{ serve_model_id }}', local_dir='/models')" &&
+                            echo "Download complete: $(du -sh /models)"
+                        volumeMounts:
+                          - name: models
+                            mountPath: /models
+                        resources:
+                          requests:
+                            cpu: "1"
+                            memory: "4Gi"
+                          limits:
+                            cpu: "2"
+                            memory: "8Gi"
+                    volumes:
+                      - name: models
+                        persistentVolumeClaim:
+                          claimName: "{{ serve_model_name }}-weights"
+
+        - name: Wait for model download to complete
+          kubernetes.core.k8s_info:
+            api_version: batch/v1
+            kind: Job
+            name: "download-{{ serve_model_name }}"
+            namespace: "{{ serve_namespace }}"
+          register: _serve_download_status
+          until: >-
+            (_serve_download_status.resources[0].status.succeeded | default(0) | int) > 0
+          retries: 120
+          delay: 15
+
+    # ------------------------------------------------------------------
+    # ServingRuntime — the vLLM container definition. The InferenceService
+    # below references it by name.
+    # ------------------------------------------------------------------
+    - name: Build the vLLM args list
+      ansible.builtin.set_fact:
+        _serve_vllm_args: >-
+          {{ ['--port=8080',
+              '--model=/mnt/models',
+              '--served-model-name=' ~ serve_model_name,
+              '--max-model-len=' ~ (serve_max_model_len | string),
+              '--gpu-memory-utilization=' ~ serve_gpu_memory_utilization,
+              '--trust-remote-code'] + (serve_runtime_extra_args | default([])) }}
+
+    - name: Create the ServingRuntime
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: serving.kserve.io/v1alpha1
+          kind: ServingRuntime
+          metadata:
+            name: "{{ serve_runtime_name }}"
+            namespace: "{{ serve_namespace }}"
+          spec:
+            supportedModelFormats:
+              - name: vLLM
+                autoSelect: true
+            multiModel: false
+            containers:
+              - name: kserve-container
+                image: "{{ _serve_runtime_image }}"
+                command: ["python", "-m", "vllm.entrypoints.openai.api_server"]
+                args: "{{ _serve_vllm_args }}"
+                ports:
+                  - containerPort: 8080
+                    protocol: TCP
+
+    # ------------------------------------------------------------------
+    # InferenceService — the model deployment itself.
+    # ------------------------------------------------------------------
+    - name: Create the InferenceService
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: serving.kserve.io/v1beta1
+          kind: InferenceService
+          metadata:
+            name: "{{ serve_model_name }}"
+            namespace: "{{ serve_namespace }}"
+            annotations:
+              serving.kserve.io/deploymentMode: RawDeployment
+              security.opendatahub.io/enable-auth: "true"
+          spec:
+            predictor:
+              minReplicas: 1
+              maxReplicas: 1
+              tolerations:
+                - key: nvidia.com/gpu
+                  operator: Equal
+                  value: "True"
+                  effect: NoSchedule
+              model:
+                modelFormat:
+                  name: vLLM
+                runtime: "{{ serve_runtime_name }}"
+                storageUri: "pvc://{{ serve_model_name }}-weights"
+                resources:
+                  requests: "{{ serve_resources_requests }}"
+                  limits: "{{ serve_resources_limits }}"
+
+    - name: Wait for InferenceService to be ready
+      kubernetes.core.k8s_info:
+        api_version: serving.kserve.io/v1beta1
+        kind: InferenceService
+        name: "{{ serve_model_name }}"
+        namespace: "{{ serve_namespace }}"
+      register: _serve_isvc
+      until: >-
+        _serve_isvc.resources | length > 0 and
+        (_serve_isvc.resources[0].status.conditions | default([])
+         | selectattr('type', 'equalto', 'Ready')
+         | selectattr('status', 'equalto', 'True')
+         | list | length > 0)
+      retries: 60
+      delay: 15
+
+    # ------------------------------------------------------------------
+    # Auth — SA, Role, RoleBinding, token Secret.
+    # ------------------------------------------------------------------
+    - name: Create the inference client ServiceAccount
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: v1
+          kind: ServiceAccount
+          metadata:
+            name: "{{ serve_sa_name }}"
+            namespace: "{{ serve_namespace }}"
+
+    - name: Create the inference client Role
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: rbac.authorization.k8s.io/v1
+          kind: Role
+          metadata:
+            name: "{{ serve_sa_name }}"
+            namespace: "{{ serve_namespace }}"
+          rules:
+            - apiGroups: ["serving.kserve.io"]
+              resources: ["inferenceservices"]
+              resourceNames: ["{{ serve_model_name }}"]
+              verbs: ["get"]
+
+    - name: Create the inference client RoleBinding
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: rbac.authorization.k8s.io/v1
+          kind: RoleBinding
+          metadata:
+            name: "{{ serve_sa_name }}"
+            namespace: "{{ serve_namespace }}"
+          roleRef:
+            apiGroup: rbac.authorization.k8s.io
+            kind: Role
+            name: "{{ serve_sa_name }}"
+          subjects:
+            - kind: ServiceAccount
+              name: "{{ serve_sa_name }}"
+              namespace: "{{ serve_namespace }}"
+
+    # Long-lived token Secret — Kubernetes auto-populates the token field.
+    # Does not expire, unlike `oc create token --duration=`.
+    - name: Create the long-lived token Secret
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: v1
+          kind: Secret
+          metadata:
+            name: "{{ serve_sa_name }}-token"
+            namespace: "{{ serve_namespace }}"
+            annotations:
+              kubernetes.io/service-account.name: "{{ serve_sa_name }}"
+          type: kubernetes.io/service-account-token
+
+    - name: Read the token value
+      kubernetes.core.k8s_info:
+        api_version: v1
+        kind: Secret
+        name: "{{ serve_sa_name }}-token"
+        namespace: "{{ serve_namespace }}"
+      register: _serve_token_secret
+      until: >-
+        _serve_token_secret.resources | length > 0 and
+        _serve_token_secret.resources[0].data.token is defined
+      retries: 12
+      delay: 5
+
+    # ------------------------------------------------------------------
+    # Route — passthrough TLS to the oauth-proxy sidecar (port 8443),
+    # NOT to vLLM's 8080. Edge termination will not work; the sidecar
+    # terminates TLS itself (#657 gotcha 5).
+    # ------------------------------------------------------------------
+    - name: Create the passthrough Route
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: route.openshift.io/v1
+          kind: Route
+          metadata:
+            name: "{{ serve_model_name }}"
+            namespace: "{{ serve_namespace }}"
+          spec:
+            to:
+              kind: Service
+              name: "{{ serve_model_name }}-predictor"
+            port:
+              targetPort: https
+            tls:
+              termination: passthrough
+
+    - name: Look up the Route hostname
+      kubernetes.core.k8s_info:
+        api_version: route.openshift.io/v1
+        kind: Route
+        name: "{{ serve_model_name }}"
+        namespace: "{{ serve_namespace }}"
+      register: _serve_route
+
+    # ------------------------------------------------------------------
+    # Smoke test — hit /v1/models with the SA token.
+    # ------------------------------------------------------------------
+    - name: Smoke test the inference endpoint
+      ansible.builtin.uri:
+        url: "https://{{ _serve_route.resources[0].spec.host }}/v1/models"
+        headers:
+          Authorization: "Bearer {{ _serve_token_secret.resources[0].data.token | b64decode }}"
+        validate_certs: false
+        return_content: true
+      register: _serve_smoke
+      until: _serve_smoke.status | default(0) == 200
+      retries: 30
+      delay: 10
+
+    - name: Report the endpoint
+      ansible.builtin.debug:
+        msg:
+          - "Model {{ serve_model_id }} is serving as {{ serve_model_name }}."
+          - "Endpoint: https://{{ _serve_route.resources[0].spec.host }}"
+          - "Test: curl -sk -H 'Authorization: Bearer <token>' https://{{ _serve_route.resources[0].spec.host }}/v1/models"
+
+    # Pass values to Play 2 via host facts.
+    - name: Store endpoint details for the credential play
+      ansible.builtin.set_fact:
+        _serve_endpoint_url: "https://{{ _serve_route.resources[0].spec.host }}"
+        _serve_endpoint_token: "{{ _serve_token_secret.resources[0].data.token | b64decode }}"
+        _serve_endpoint_model: "{{ serve_model_name }}"
+
+# ===================== Play 2: publish credential to AAP ==================
+- name: Publish the inference endpoint to AAP
+  hosts: aap
+  gather_facts: false
+
+  vars:
+    _gpu_host: "{{ groups['gpu'][0] }}"
+    _inference_url: "{{ hostvars[_gpu_host]._serve_endpoint_url }}"
+    _inference_token: "{{ hostvars[_gpu_host]._serve_endpoint_token }}"
+    _inference_model: "{{ hostvars[_gpu_host]._serve_endpoint_model }}"
+
+  tasks:
+    - name: Assert the environment is unambiguous
+      ansible.builtin.include_tasks: tasks/assert_target_environment.yml
+
+    - name: Assert AAP connection variables are set
+      ansible.builtin.assert:
+        that:
+          - aap_hostname | default('') | length > 0
+          - aap_username | default('') | length > 0
+          - aap_password | default('') | length > 0
+        fail_msg: >-
+          AAP connection variables are not set for
+          '{{ aap_env_name | default("?") }}'. Check connection.yml and
+          secrets.yml for the target environment.
+        quiet: true
+
+    - name: Create the inference credential type
+      ansible.controller.credential_type:
+        name: "Sales Demos - Inference Endpoint"
+        description: "GPU-served model endpoint. Created by serve_model.yml (#677)."
+        kind: cloud
+        inputs:
+          fields:
+            - id: inference_url
+              type: string
+              label: "Inference URL"
+              help_text: "OpenAI-compatible endpoint (https://route-host). Changes when the GPU environment is re-ordered."
+            - id: inference_token
+              type: string
+              label: "Inference token"
+              secret: true
+              help_text: "Bearer token for the SA scoped to this model's InferenceService."
+            - id: inference_model
+              type: string
+              label: "Model name"
+              help_text: "The --served-model-name, used in API requests."
+          required:
+            - inference_url
+            - inference_token
+            - inference_model
+        injectors:
+          extra_vars:
+            inference_url: "{  { inference_url }}"
+            inference_token: "{  { inference_token }}"
+            inference_model: "{  { inference_model }}"
+        controller_host: "https://{{ aap_hostname }}"
+        controller_username: "{{ aap_username }}"
+        controller_password: "{{ aap_password }}"
+        validate_certs: "{{ aap_validate_certs | default(false) | bool }}"
+        state: present
+
+    - name: Create or update the inference credential
+      ansible.controller.credential:
+        name: "Sales Demos - Inference Endpoint"
+        description: "{{ _inference_model }} on the GPU cluster. Re-run serve_model.yml to refresh."
+        organization: "IT Service Automation"
+        credential_type: "Sales Demos - Inference Endpoint"
+        inputs:
+          inference_url: "{{ _inference_url }}"
+          inference_token: "{{ _inference_token }}"
+          inference_model: "{{ _inference_model }}"
+        controller_host: "https://{{ aap_hostname }}"
+        controller_username: "{{ aap_username }}"
+        controller_password: "{{ aap_password }}"
+        validate_certs: "{{ aap_validate_certs | default(false) | bool }}"
+        state: present
+      no_log: true
+
+    - name: Report credential
+      ansible.builtin.debug:
+        msg:
+          - "Published 'Sales Demos - Inference Endpoint' to {{ aap_env_name }}."
+          - "Model: {{ _inference_model }}"
+          - "URL: {{ _inference_url }}"
+          - "Attach this credential to any job template that needs inference."

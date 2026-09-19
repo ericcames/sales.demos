@@ -111,6 +111,12 @@ nothing, and nothing deploys from CI.
 | [`/sales-demos-alloy`](.claude/skills/sales-demos-alloy/SKILL.md) | `deploy_alloy.yml` | Deploy Grafana Alloy for metrics and logs to Grafana Cloud |
 | [`/sales-demos-dashboard`](.claude/skills/sales-demos-dashboard/SKILL.md) | `deploy_dashboard.yml` | Push Grafana Cloud dashboards (dashboard-as-code) |
 
+🤖 **GPU / AI serving**
+
+| Skill | Playbook | Does |
+|---|---|---|
+| [`/sales-demos-serve-model`](.claude/skills/sales-demos-serve-model/SKILL.md) | `serve_model.yml` | Deploy a model on the GPU cluster; publish the inference credential to AAP |
+
 🔧 **Repo maintenance** skills have no playbook, deliberately — they touch your
 laptop or a registry, never a demo environment, so they must never run from AAP:
 
