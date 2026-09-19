@@ -1,0 +1,93 @@
+---
+# ===========================================================================
+# teardown_model.yml — remove the served model and its AAP credential.
+# Issue #677, Phase 1 of #661.
+#
+#   ./utilities/run-playbook.sh playbooks/teardown_model.yml \
+#     --limit gpu,sandbox -e target_env=sandbox
+#
+# Two plays:
+#   1. hosts: gpu  — delete the serving namespace (removes everything).
+#   2. hosts: aap  — delete the inference credential from AAP.
+#
+# Deleting the namespace is the right granularity because the namespace
+# contains only resources this playbook created. It releases the GPU, the
+# PVC, the Route, and the SA in one operation.
+#
+# The credential TYPE is left in place — removing it would break any
+# other environment that still has a credential of this type.
+# ===========================================================================
+
+# ===================== Play 1: remove from the GPU cluster ================
+- name: Remove the served model
+  hosts: gpu
+  gather_facts: false
+
+  environment:
+    K8S_AUTH_HOST: "{{ openshift_api_url }}"
+    K8S_AUTH_API_KEY: "{{ openshift_api_token }}"
+    K8S_AUTH_VERIFY_SSL: "{{ openshift_validate_certs | default(false) | bool }}"
+
+  vars:
+    serve_namespace: "granite-serving"
+
+  tasks:
+    - name: Assert required connection variables
+      ansible.builtin.assert:
+        that:
+          - openshift_api_url | default('') | length > 0
+          - openshift_api_token | default('') | length > 0
+        fail_msg: >-
+          GPU cluster connection variables are not set. Check
+          inventory/group_vars/gpu/connection.yml or create a local.yml
+          overlay.
+        quiet: true
+
+    - name: Delete the serving namespace
+      kubernetes.core.k8s:
+        state: absent
+        api_version: v1
+        kind: Namespace
+        name: "{{ serve_namespace }}"
+        wait: true
+        wait_timeout: 120
+
+    - name: Report removal
+      ansible.builtin.debug:
+        msg: "Namespace {{ serve_namespace }} deleted. GPU is released."
+
+# ===================== Play 2: remove credential from AAP =================
+- name: Remove the inference credential from AAP
+  hosts: aap
+  gather_facts: false
+
+  tasks:
+    - name: Assert the environment is unambiguous
+      ansible.builtin.include_tasks: tasks/assert_target_environment.yml
+
+    - name: Assert AAP connection variables are set
+      ansible.builtin.assert:
+        that:
+          - aap_hostname | default('') | length > 0
+          - aap_username | default('') | length > 0
+          - aap_password | default('') | length > 0
+        fail_msg: >-
+          AAP connection variables are not set for
+          '{{ aap_env_name | default("?") }}'. Check connection.yml and
+          secrets.yml for the target environment.
+        quiet: true
+
+    - name: Delete the inference credential
+      ansible.controller.credential:
+        name: "Sales Demos - Inference Endpoint"
+        organization: "IT Service Automation"
+        credential_type: "Sales Demos - Inference Endpoint"
+        controller_host: "https://{{ aap_hostname }}"
+        controller_username: "{{ aap_username }}"
+        controller_password: "{{ aap_password }}"
+        validate_certs: "{{ aap_validate_certs | default(false) | bool }}"
+        state: absent
+
+    - name: Report removal
+      ansible.builtin.debug:
+        msg: "Inference credential removed from {{ aap_env_name }}."

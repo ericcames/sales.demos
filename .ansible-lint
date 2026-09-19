@@ -60,6 +60,10 @@ mock_modules:
   # habit: projects are a controller concept and ansible.platform ships no
   # equivalent, the same reasoning as the three lines above.
   - ansible.controller.project_update
+  # Credential type and credential lifecycle (serve_model.yml, #677).
+  # ansible.platform ships no credential module as of 2.7.20260604.
+  - ansible.controller.credential_type
+  - ansible.controller.credential
   # Firing a workflow from the self-service portal's launcher job template
   # (#242, playbooks/launch_workflow.yml). ansible.controller for the third
   # time and for the same reason as the four lines above, not from habit:
