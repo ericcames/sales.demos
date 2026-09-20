@@ -562,7 +562,7 @@
       ansible.builtin.set_fact:
         current_app_config: "{{ app_config_cm.resources[0].data['app-config.yaml'] | from_yaml }}"
 
-    - name: Build updated app-config with current AAP orgs, fast sync, and open permissions
+    - name: Build updated app-config with current AAP orgs, fast sync, open permissions, dark mode, and EE page
       ansible.builtin.set_fact:
         updated_app_config: >-
           {{ current_app_config | combine(
@@ -574,7 +574,9 @@
                   'jobTemplates': {'enabled': true, 'schedule': {'frequency': {'minutes': 1}}}
                 }
               }}}},
-              'permission': {'enabled': false}
+              'permission': {'enabled': false},
+              'app': {'branding': {'theme': {'defaultMode': 'dark'}}},
+              'dynamicPlugins': {'frontend': {'default.main-menu-items': {'menuItems': {'default.ee': {'enabled': true}}}}}
             },
             recursive=True
           ) }}
