@@ -443,6 +443,7 @@
             name: "{{ serve_model_name }}-secure"
             namespace: "{{ serve_namespace }}"
           spec:
+            host: "{{ serve_model_name }}-{{ serve_namespace }}.{{ openshift_apps_domain }}"
             to:
               kind: Service
               name: "{{ serve_model_name }}-predictor"
