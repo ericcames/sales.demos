@@ -45,6 +45,9 @@ mock_modules:
   # configure_ao.yml asks an ao-worker pod for its SSRF allowlist (#621) —
   # the ConfigMap existing proves nothing about a pod started before it.
   - kubernetes.core.k8s_exec
+  # serve_model.yml reads the Lightspeed chatbot pod log after a bounce to
+  # assert the model registered successfully (#738).
+  - kubernetes.core.k8s_log
   # OpenShift Virtualization — VM lifecycle (Phases 1-4).
   - redhat.openshift_virtualization.kubevirt_vm
   - redhat.openshift_virtualization.kubevirt_vm_info
