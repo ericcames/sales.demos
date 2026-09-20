@@ -246,6 +246,181 @@
                 github-token: ""
                 gitlab-token: ""
 
+        - name: Derive the AO hostname from the cluster domain
+          ansible.builtin.set_fact:
+            portal_ao_hostname: "ao-automation-orchestrator.{{ aap_hostname.split('.', 1)[1] }}"
+
+        - name: Create API catalog ConfigMap (#767)
+          kubernetes.core.k8s:
+            state: present
+            definition:
+              apiVersion: v1
+              kind: ConfigMap
+              metadata:
+                name: portal-api-catalog
+                namespace: "{{ portal_namespace }}"
+              data:
+                apis.yaml: |
+                  ---
+                  apiVersion: backstage.io/v1alpha1
+                  kind: API
+                  metadata:
+                    name: aap-controller-api
+                    title: AAP Controller API
+                    description: >-
+                      Ansible Automation Platform Controller REST API.
+                      Manages inventories, job templates, credentials,
+                      projects, and automation execution.
+                    links:
+                      - url: https://{{ aap_hostname }}/api/v2/
+                        title: API Browser
+                  spec:
+                    type: openapi
+                    lifecycle: production
+                    owner: group:default/aap-admins
+                    definition: |
+                      openapi: "3.0.0"
+                      info:
+                        title: AAP Controller API
+                        version: "4.8"
+                        description: Ansible Automation Platform Controller REST API
+                      servers:
+                        - url: https://{{ aap_hostname }}/api/v2/
+                  ---
+                  apiVersion: backstage.io/v1alpha1
+                  kind: API
+                  metadata:
+                    name: aap-gateway-api
+                    title: AAP Gateway API
+                    description: >-
+                      Ansible Automation Platform 2.7 unified gateway API.
+                      Handles authentication, organisations, service
+                      discovery, and platform-level settings.
+                    links:
+                      - url: https://{{ aap_hostname }}/api/gateway/v1/
+                        title: API Browser
+                  spec:
+                    type: openapi
+                    lifecycle: production
+                    owner: group:default/aap-admins
+                    definition: |
+                      openapi: "3.0.0"
+                      info:
+                        title: AAP Gateway API
+                        version: "2.7"
+                        description: AAP 2.7 unified gateway REST API
+                      servers:
+                        - url: https://{{ aap_hostname }}/api/gateway/v1/
+                  ---
+                  apiVersion: backstage.io/v1alpha1
+                  kind: API
+                  metadata:
+                    name: pah-galaxy-api
+                    title: Private Automation Hub API
+                    description: >-
+                      Galaxy NG content management API. Manages collections,
+                      execution environment images, namespaces, repositories,
+                      and content synchronisation.
+                    links:
+                      - url: https://{{ aap_hostname }}/api/galaxy/
+                        title: API Browser
+                  spec:
+                    type: openapi
+                    lifecycle: production
+                    owner: group:default/aap-admins
+                    definition: |
+                      openapi: "3.0.0"
+                      info:
+                        title: Private Automation Hub API
+                        version: "3"
+                        description: Galaxy NG content management REST API
+                      servers:
+                        - url: https://{{ aap_hostname }}/api/galaxy/
+                  ---
+                  apiVersion: backstage.io/v1alpha1
+                  kind: API
+                  metadata:
+                    name: automation-orchestrator-api
+                    title: Automation Orchestrator API
+                    description: >-
+                      Automation Orchestrator workflow API. Manages workflow
+                      definitions, executions, approvals, integrations, and
+                      credential proxying to AAP.
+                    links:
+                      - url: https://{{ portal_ao_hostname }}/api/docs/
+                        title: API Documentation
+                  spec:
+                    type: openapi
+                    lifecycle: production
+                    owner: group:default/aap-admins
+                    definition: |
+                      openapi: "3.0.0"
+                      info:
+                        title: Automation Orchestrator API
+                        version: "1.0"
+                        description: Automation Orchestrator workflow REST API
+                      servers:
+                        - url: https://{{ portal_ao_hostname }}/api/v1/
+                  ---
+                  apiVersion: backstage.io/v1alpha1
+                  kind: API
+                  metadata:
+                    name: granite-inference-api
+                    title: Granite Inference API
+                    description: >-
+                      OpenAI-compatible inference endpoint served by vLLM on
+                      Red Hat OpenShift AI. The live endpoint URL is stored in
+                      the AAP credential "Sales Demos - Inference Endpoint"
+                      and rotates with the GPU cluster.
+                  spec:
+                    type: openapi
+                    lifecycle: production
+                    owner: group:default/aap-admins
+                    definition: |
+                      openapi: "3.0.0"
+                      info:
+                        title: Granite Inference API (OpenAI-compatible)
+                        version: "1.0"
+                        description: vLLM inference endpoint — OpenAI chat completions format
+                      paths:
+                        /v1/chat/completions:
+                          post:
+                            summary: Create a chat completion
+                            requestBody:
+                              required: true
+                              content:
+                                application/json:
+                                  schema:
+                                    type: object
+                                    required: [model, messages]
+                                    properties:
+                                      model:
+                                        type: string
+                                        example: granite-3.3-8b-instruct
+                                      messages:
+                                        type: array
+                                        items:
+                                          type: object
+                                          properties:
+                                            role:
+                                              type: string
+                                              enum: [system, user, assistant]
+                                            content:
+                                              type: string
+                                      temperature:
+                                        type: number
+                                      max_tokens:
+                                        type: integer
+                            responses:
+                              '200':
+                                description: Chat completion response
+                        /v1/models:
+                          get:
+                            summary: List available models
+                            responses:
+                              '200':
+                                description: Model list
+
       rescue:
         - name: Delete portal service token on failure
           ansible.platform.token:
@@ -432,6 +607,13 @@
                         disabled: false
                 upstream:
                   backstage:
+                    extraVolumes:
+                      - name: api-catalog
+                        configMap:
+                          name: portal-api-catalog
+                    extraVolumeMounts:
+                      - name: api-catalog
+                        mountPath: /opt/app-root/src/api-catalog
                     appConfig:
                       integrations:
                         github: []
@@ -562,18 +744,24 @@
       ansible.builtin.set_fact:
         current_app_config: "{{ app_config_cm.resources[0].data['app-config.yaml'] | from_yaml }}"
 
-    - name: Build updated app-config with current AAP orgs, fast sync, open permissions, dark mode, Settings, EE page, Learning Paths, Home, APIs, and feedback (#765)
+    - name: Build updated app-config with orgs, sync, permissions, branding, menu items, API catalog, and feedback (#767)
       ansible.builtin.set_fact:
         updated_app_config: >-
           {{ current_app_config | combine(
             {
-              'catalog': {'providers': {'rhaap': {'production': {
-                'orgs': aap_org_names,
-                'sync': {
-                  'orgsUsersTeams': {'schedule': {'frequency': {'minutes': 1}}},
-                  'jobTemplates': {'enabled': true, 'schedule': {'frequency': {'minutes': 1}}}
-                }
-              }}}},
+              'catalog': {
+                'providers': {'rhaap': {'production': {
+                  'orgs': aap_org_names,
+                  'sync': {
+                    'orgsUsersTeams': {'schedule': {'frequency': {'minutes': 1}}},
+                    'jobTemplates': {'enabled': true, 'schedule': {'frequency': {'minutes': 1}}}
+                  }
+                }}},
+                'locations': current_app_config.catalog.locations | default([]) + [
+                  {'type': 'file', 'target': '/opt/app-root/src/api-catalog/apis.yaml',
+                   'rules': [{'allow': ['API']}]}
+                ]
+              },
               'permission': {'enabled': false},
               'ansible': {'feedback': {'enabled': true}},
               'app': {'branding': {'theme': {'defaultMode': 'dark'}}, 'sidebar': {'settings': true}},
