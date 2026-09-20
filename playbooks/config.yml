@@ -175,6 +175,22 @@
       ansible.builtin.include_role:
         name: infra.aap_configuration.dispatch
 
+    # -------------------------------------------------------------------
+    # Application Links — external shortcuts in the gateway sidebar (#773)
+    # -------------------------------------------------------------------
+    - name: Create the OpenShift Console application link
+      ansible.platform.application:
+        aap_hostname: "https://{{ aap_hostname }}"
+        aap_username: "{{ aap_username }}"
+        aap_password: "{{ aap_password }}"
+        aap_validate_certs: "{{ aap_validate_certs | default(false) | bool }}"
+        name: OpenShift Console
+        organization: Default
+        authorization_grant_type: authorization-code
+        client_type: confidential
+        app_url: "https://console-openshift-console.{{ openshift_apps_domain }}"
+        state: present
+
     # ---------------------------------------------------------------
     # EDA — Event-Driven Ansible objects (#665)
     #
@@ -273,6 +289,7 @@
           - "Applied to {{ aap_env_name }}."
           - "Organization:  {{ aap_organizations_all | map(attribute='name') | join(', ') }}"
           - "Sign-in banner and environment-badged logo set on the gateway."
+          - "OpenShift Console application link set on the gateway."
           - "Automation Analytics settings applied."
           - "The sign-in logo shows on the LOGIN page only — log out to see it."
           - >-
