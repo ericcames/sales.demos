@@ -312,6 +312,20 @@
     # KServe does not restart the predictor when only the ServingRuntime
     # changes — and on a single-GPU node the default RollingUpdate
     # strategy deadlocks (new pod needs the GPU the old pod holds).
+    - name: Set Recreate strategy on predictor Deployment
+      when: _serve_runtime_result.changed
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: apps/v1
+          kind: Deployment
+          metadata:
+            name: "{{ serve_model_name }}-predictor"
+            namespace: "{{ serve_namespace }}"
+          spec:
+            strategy:
+              type: Recreate
+
     - name: Bounce the predictor pod if the ServingRuntime changed
       when: _serve_runtime_result.changed
       kubernetes.core.k8s:
