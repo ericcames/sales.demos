@@ -555,6 +555,7 @@
   vars:
     _gpu_host: "{{ groups['gpu'][0] }}"
     _inference_url: "{{ hostvars[_gpu_host]._serve_endpoint_url }}"
+    _inference_direct_url: "{{ hostvars[_gpu_host]._serve_endpoint_direct_url }}"
     _inference_token: "{{ hostvars[_gpu_host]._serve_endpoint_token }}"
     _inference_model: "{{ hostvars[_gpu_host]._serve_endpoint_model }}"
     serve_model_enable_lightspeed: false
@@ -645,10 +646,7 @@
     - name: Verify the inference endpoint is still reachable
       when: serve_model_enable_lightspeed | bool
       ansible.builtin.uri:
-        url: "{{ _inference_url }}/v1/models"
-        headers:
-          Authorization: "Bearer {{ _inference_token }}"
-        validate_certs: false
+        url: "{{ _inference_direct_url }}/v1/models"
         return_content: true
       register: _inference_recheck
       until: _inference_recheck.status | default(0) == 200
@@ -669,7 +667,7 @@
               app.kubernetes.io/part-of: sales-demos
           type: Opaque
           stringData:
-            chatbot_url: "{{ _inference_url }}/v1"
+            chatbot_url: "{{ _inference_direct_url }}/v1"
             chatbot_token: "{{ _inference_token }}"
             chatbot_model: "{{ _inference_model }}"
       register: _lightspeed_secret
