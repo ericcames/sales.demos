@@ -637,48 +637,6 @@
                                   - mountPoint: application/listener
                                     importName: VisitListener
                                   - mountPoint: home.page/cards
-                                    importName: OnboardingSection
-                                    config:
-                                      id: rhdh-onboarding-section
-                                      title: Red Hat Developer Hub - Onboarding
-                                      cardLayout:
-                                        width:
-                                          minColumns: 4
-                                          maxColumns: 12
-                                          defaultColumns: 12
-                                        height:
-                                          minRows: 2
-                                          maxRows: 12
-                                          defaultRows: 4
-                                      layouts:
-                                        xl: {w: 12, h: 6}
-                                        lg: {w: 12, h: 6}
-                                        md: {w: 12, h: 7}
-                                        sm: {w: 12, h: 8}
-                                        xs: {w: 12, h: 9}
-                                        xxs: {w: 12, h: 14}
-                                  - mountPoint: home.page/cards
-                                    importName: EntitySection
-                                    config:
-                                      id: rhdh-entity-section
-                                      title: Red Hat Developer Hub - Software Catalog
-                                      cardLayout:
-                                        width:
-                                          minColumns: 4
-                                          maxColumns: 12
-                                          defaultColumns: 12
-                                        height:
-                                          minRows: 2
-                                          maxRows: 12
-                                          defaultRows: 4
-                                      layouts:
-                                        xl: {w: 12, h: 7}
-                                        lg: {w: 12, h: 7}
-                                        md: {w: 12, h: 8}
-                                        sm: {w: 12, h: 9}
-                                        xs: {w: 12, h: 11}
-                                        xxs: {w: 12, h: 15}
-                                  - mountPoint: home.page/cards
                                     importName: TemplateSection
                                     config:
                                       id: rhdh-template-section
