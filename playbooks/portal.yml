@@ -952,6 +952,7 @@
         updated_app_config: >-
           {{ current_app_config | combine(
             {
+              'enableExperimentalRedirectFlow': false,
               'catalog': {
                 'providers': {'rhaap': {'production': {
                   'orgs': aap_org_names,
