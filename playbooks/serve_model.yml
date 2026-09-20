@@ -307,6 +307,21 @@
                 ports:
                   - containerPort: 8080
                     protocol: TCP
+      register: _serve_runtime_result
+
+    # KServe does not restart the predictor when only the ServingRuntime
+    # changes — and on a single-GPU node the default RollingUpdate
+    # strategy deadlocks (new pod needs the GPU the old pod holds).
+    - name: Bounce the predictor pod if the ServingRuntime changed
+      when: _serve_runtime_result.changed
+      kubernetes.core.k8s:
+        state: absent
+        api_version: v1
+        kind: Pod
+        namespace: "{{ serve_namespace }}"
+        label_selectors:
+          - "serving.kserve.io/inferenceservice={{ serve_model_name }}"
+        delete_all: true
 
     # ------------------------------------------------------------------
     # InferenceService — the model deployment itself.
