@@ -670,6 +670,19 @@
           - "URL: {{ _inference_url }}"
           - "Attach this credential to any job template that needs inference."
 
+    - name: Create the OpenShift AI application link
+      ansible.platform.application:
+        aap_hostname: "https://{{ aap_hostname }}"
+        aap_username: "{{ aap_username }}"
+        aap_password: "{{ aap_password }}"
+        aap_validate_certs: "{{ aap_validate_certs | default(false) | bool }}"
+        name: OpenShift AI
+        organization: Default
+        authorization_grant_type: authorization-code
+        client_type: confidential
+        app_url: "https://console-openshift-console.{{ hostvars[_gpu_host].openshift_apps_domain }}"
+        state: present
+
     # ------------------------------------------------------------------
     # Lightspeed — chatbot Secret + AAP CR patch (#704, Phase 4 of #661).
     # The operator is bundled with AAP 2.7 and already running; this

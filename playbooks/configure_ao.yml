@@ -44,7 +44,8 @@
 # only at start, so a changed ConfigMap restarts the three components.
 #
 # WHY OIDC SETUP IS NOT IDEMPOTENT. `POST setup_aap_oidc` returns 502 if
-# an OAuth2 application named "Syntara" already exists on AAP. The playbook
+# an OAuth2 application named "Syntara" (renamed to "Orchestrator" by this
+# playbook) already exists on AAP. The playbook
 # checks GET /identity_providers first and skips the call if one exists.
 # ===========================================================================
 
@@ -356,6 +357,17 @@
         msg: >-
           OIDC identity provider:
           {{ 'already configured — skipped' if (ao_oidc_exists | bool) else 'created' }}
+
+    - name: Rename AO application link to Orchestrator
+      ansible.platform.application:
+        aap_hostname: "https://{{ aap_hostname }}"
+        aap_username: "{{ aap_username }}"
+        aap_password: "{{ aap_password }}"
+        aap_validate_certs: "{{ aap_validate_certs | default(false) | bool }}"
+        name: Syntara
+        new_name: Orchestrator
+        organization: Default
+        state: present
 
     # -----------------------------------------------------------------
     # 5. Look up AAP credential type and default project

@@ -173,7 +173,7 @@ to build workflows in the UI.
 | Symptom | Cause | Fix |
 |---|---|---|
 | `401` on AO login | AO admin password does not match AAP admin password | Was the environment built before #143? Retrieve with `oc get secret ao-initial-admin-password -n automation-orchestrator -o jsonpath='{.data.password}' \| base64 -d` |
-| `502` on `setup_aap_oidc` | OAuth2 app "Syntara" already exists on AAP | Identity provider already configured — the playbook checks first but if run was interrupted between the AAP-side OAuth2 creation and the AO-side save, delete the "Syntara" app from AAP |
+| `502` on `setup_aap_oidc` | OAuth2 app "Syntara" (renamed to "Orchestrator") already exists on AAP | Identity provider already configured — the playbook checks first but if run was interrupted between the AAP-side OAuth2 creation and the AO-side save, delete the "Orchestrator" app from AAP |
 | `422` on integration create with SSRF error | The backend pods have not restarted onto the ConfigMap yet | Re-run — the playbook restarts the components and waits before creating the integration |
 | "ao-worker pod ... does not have ... in APP_INTEGRATION_URL_ALLOWED_HOSTS" | The worker Deployment no longer loads `ao-admin-settings`, or its pods never restarted | Check the Deployment's `envFrom` still names the ConfigMap; re-run to restart the pods |
 | A workflow's AAP step fails at once: "base_url is not permitted by SSRF policy" | `ao-worker` lacks the allowlist (#621) | Re-run this skill — it writes the ConfigMap, restarts `ao-worker`, and verifies inside the pod |
@@ -189,8 +189,9 @@ UI. To remove the SSRF allowlist, delete the `ao-admin-settings` ConfigMap and
 restart the AO pods — AO then cannot reach AAP at all, so only do this when
 removing the integration too.
 
-To remove the OAuth2 application from AAP, delete the "Syntara" application via
-the AAP API or UI under Administration → Applications.
+To remove the OAuth2 application from AAP, delete the "Orchestrator" application
+(originally named "Syntara" by AO) via the AAP API or UI under
+Administration → Applications.
 
 Never paste a live cluster hostname or token into a commit message, issue, or
 PR. This repo is public — see `CLAUDE.md`.

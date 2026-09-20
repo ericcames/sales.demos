@@ -118,9 +118,32 @@
     # vs POST, giving invalid_client at /o/token/.
     # -------------------------------------------------------------------
 
+    - name: Delete legacy-named OAuth application if present
+      block:
+        - name: Query legacy OAuth application name
+          ansible.builtin.uri:
+            url: "https://{{ aap_hostname }}/api/gateway/v1/applications/?name=aap-selfservice-portal"
+            method: GET
+            url_username: "{{ aap_username }}"
+            url_password: "{{ aap_password }}"
+            force_basic_auth: true
+            validate_certs: "{{ aap_validate_certs }}"
+          register: oauth_legacy_query
+
+        - name: Delete legacy OAuth application
+          ansible.builtin.uri:
+            url: "https://{{ aap_hostname }}/api/gateway/v1/applications/{{ oauth_legacy_query.json.results[0].id }}/"
+            method: DELETE
+            url_username: "{{ aap_username }}"
+            url_password: "{{ aap_password }}"
+            force_basic_auth: true
+            validate_certs: "{{ aap_validate_certs }}"
+            status_code: 204
+          when: oauth_legacy_query.json.count > 0
+
     - name: Query existing gateway OAuth application
       ansible.builtin.uri:
-        url: "https://{{ aap_hostname }}/api/gateway/v1/applications/?name=aap-selfservice-portal"
+        url: "https://{{ aap_hostname }}/api/gateway/v1/applications/?name=Self-Service%20Portal"
         method: GET
         url_username: "{{ aap_username }}"
         url_password: "{{ aap_password }}"
@@ -149,7 +172,7 @@
         validate_certs: "{{ aap_validate_certs }}"
         body_format: json
         body:
-          name: "aap-selfservice-portal"
+          name: "Self-Service Portal"
           organization: 1
           client_type: "confidential"
           authorization_grant_type: "authorization-code"
@@ -870,16 +893,17 @@
     # Update OAuth redirect URI now that we know the portal URL
     # -------------------------------------------------------------------
 
-    - name: Update OAuth application redirect URI
+    - name: Update OAuth application redirect URI and application link
       ansible.platform.application:
         aap_hostname: "https://{{ aap_hostname }}"
         aap_username: "{{ aap_username }}"
         aap_password: "{{ aap_password }}"
         aap_validate_certs: "{{ aap_validate_certs }}"
-        name: aap-selfservice-portal
+        name: Self-Service Portal
         organization: Default
         authorization_grant_type: authorization-code
         client_type: confidential
+        app_url: "{{ portal_url }}"
         redirect_uris:
           - "{{ portal_url }}/api/auth/rhaap/handler/frame"
         state: present
