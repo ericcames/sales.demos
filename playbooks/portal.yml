@@ -607,11 +607,58 @@
                         disabled: false
                 upstream:
                   backstage:
+                    # HELM REPLACES LISTS, IT DOES NOT MERGE THEM (#592, #769).
+                    # The chart's default extraVolumes define the 6 volumes the
+                    # init container needs (dynamic-plugins-root, etc.). Setting
+                    # extraVolumes at all discards that default list, so the
+                    # chart's defaults are carried here verbatim from
+                    # redhat-rhaap-portal 2.1.0, with api-catalog (#767)
+                    # appended.
+                    #
+                    # The ConfigMap/Secret names resolve from the chart's
+                    # janus-idp.name helper, which yields the nameOverride
+                    # "rhaap-portal". A CHART BUMP MUST RE-RENDER THIS LIST:
+                    #   helm template rhaap-portal redhat-rhaap-portal \
+                    #     --repo https://charts.openshift.io/ --version <v> \
+                    #     --set redhat-developer-hub.global.clusterRouterBase=x \
+                    #     --debug | grep -A40 'volumes:'
                     extraVolumes:
+                      - name: dynamic-plugins-root
+                        ephemeral:
+                          volumeClaimTemplate:
+                            spec:
+                              accessModes:
+                                - ReadWriteOnce
+                              resources:
+                                requests:
+                                  storage: 5Gi
+                      - name: dynamic-plugins
+                        configMap:
+                          defaultMode: 420
+                          name: rhaap-portal-dynamic-plugins
+                          optional: true
+                      - name: dynamic-plugins-npmrc
+                        secret:
+                          defaultMode: 420
+                          optional: true
+                          secretName: rhaap-portal-dynamic-plugins-npmrc
+                      - name: dynamic-plugins-registry-auth
+                        secret:
+                          defaultMode: 416
+                          optional: true
+                          secretName: rhaap-portal-dynamic-plugins-registry-auth
+                      - name: npmcacache
+                        emptyDir: {}
+                      - name: temp
+                        emptyDir: {}
                       - name: api-catalog
                         configMap:
                           name: portal-api-catalog
                     extraVolumeMounts:
+                      - name: dynamic-plugins-root
+                        mountPath: /opt/app-root/src/dynamic-plugins-root
+                      - name: temp
+                        mountPath: /tmp
                       - name: api-catalog
                         mountPath: /opt/app-root/src/api-catalog
                     appConfig:
