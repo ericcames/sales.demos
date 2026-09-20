@@ -952,7 +952,6 @@
         updated_app_config: >-
           {{ current_app_config | combine(
             {
-              'enableExperimentalRedirectFlow': false,
               'catalog': {
                 'providers': {'rhaap': {'production': {
                   'orgs': aap_org_names,
@@ -974,7 +973,7 @@
                 'default.learning-path': {'enabled': true, 'title': 'Learning Paths'},
                 'default.home': {'title': 'Home', 'to': '/home', 'priority': 130},
                 'default.mycatalog': {'title': ''},
-                'default.apis': {'title': 'APIs', 'to': '/catalog'}
+                'default.apis': {'title': ''}
               }}}}
             },
             recursive=True
