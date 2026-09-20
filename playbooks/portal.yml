@@ -947,8 +947,9 @@
               'dynamicPlugins': {'frontend': {'default.main-menu-items': {'menuItems': {
                 'default.ee': {'enabled': true},
                 'default.learning-path': {'enabled': true, 'title': 'Learning Paths'},
-                'default.home': {'title': 'Home', 'to': '/home'},
-                'default.apis': {'title': 'APIs', 'to': '/catalog?filters[kind]=api'}
+                'default.home': {'title': 'Home', 'to': '/home', 'priority': 130},
+                'default.mycatalog': {'title': ''},
+                'default.apis': {'title': 'APIs', 'to': '/catalog'}
               }}}}
             },
             recursive=True
