@@ -407,7 +407,7 @@
                       - package: ./dynamic-plugins/dist/red-hat-developer-hub-backstage-plugin-catalog-backend-module-marketplace-dynamic
                         disabled: true
                       - package: ./dynamic-plugins/dist/red-hat-developer-hub-backstage-plugin-quickstart
-                        disabled: true
+                        disabled: false
                       - package: ./dynamic-plugins/dist/red-hat-developer-hub-backstage-plugin-adoption-insights
                         disabled: true
                       - package: ./dynamic-plugins/dist/red-hat-developer-hub-backstage-plugin-adoption-insights-backend-dynamic
@@ -562,7 +562,7 @@
       ansible.builtin.set_fact:
         current_app_config: "{{ app_config_cm.resources[0].data['app-config.yaml'] | from_yaml }}"
 
-    - name: Build updated app-config with current AAP orgs, fast sync, open permissions, dark mode, Settings, EE page, Learning Paths, and feedback (#761)
+    - name: Build updated app-config with current AAP orgs, fast sync, open permissions, dark mode, Settings, EE page, Learning Paths, Home, and feedback (#763)
       ansible.builtin.set_fact:
         updated_app_config: >-
           {{ current_app_config | combine(
@@ -579,7 +579,8 @@
               'app': {'branding': {'theme': {'defaultMode': 'dark'}}, 'sidebar': {'settings': true}},
               'dynamicPlugins': {'frontend': {'default.main-menu-items': {'menuItems': {
                 'default.ee': {'enabled': true},
-                'default.learning-path': {'enabled': true}
+                'default.learning-path': {'enabled': true, 'title': 'Learning Paths'},
+                'default.home': {'title': 'Home'}
               }}}}
             },
             recursive=True
