@@ -562,7 +562,7 @@
       ansible.builtin.set_fact:
         current_app_config: "{{ app_config_cm.resources[0].data['app-config.yaml'] | from_yaml }}"
 
-    - name: Build updated app-config with current AAP orgs, fast sync, open permissions, dark mode, Settings, EE page, Learning Paths, Home, and feedback (#763)
+    - name: Build updated app-config with current AAP orgs, fast sync, open permissions, dark mode, Settings, EE page, Learning Paths, Home, APIs, and feedback (#765)
       ansible.builtin.set_fact:
         updated_app_config: >-
           {{ current_app_config | combine(
@@ -580,7 +580,8 @@
               'dynamicPlugins': {'frontend': {'default.main-menu-items': {'menuItems': {
                 'default.ee': {'enabled': true},
                 'default.learning-path': {'enabled': true, 'title': 'Learning Paths'},
-                'default.home': {'title': 'Home'}
+                'default.home': {'title': 'Home'},
+                'default.apis': {'title': 'APIs'}
               }}}}
             },
             recursive=True
