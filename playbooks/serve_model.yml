@@ -440,7 +440,7 @@
           apiVersion: route.openshift.io/v1
           kind: Route
           metadata:
-            name: "{{ serve_model_name }}"
+            name: "{{ serve_model_name }}-secure"
             namespace: "{{ serve_namespace }}"
           spec:
             to:
@@ -455,7 +455,7 @@
       kubernetes.core.k8s_info:
         api_version: route.openshift.io/v1
         kind: Route
-        name: "{{ serve_model_name }}"
+        name: "{{ serve_model_name }}-secure"
         namespace: "{{ serve_namespace }}"
       register: _serve_route
 
@@ -641,6 +641,19 @@
     # The operator is bundled with AAP 2.7 and already running; this
     # block flips it on and points it at the self-hosted Granite endpoint.
     # ------------------------------------------------------------------
+    - name: Verify the inference endpoint is still reachable
+      when: serve_model_enable_lightspeed | bool
+      ansible.builtin.uri:
+        url: "{{ _inference_url }}/v1/models"
+        headers:
+          Authorization: "Bearer {{ _inference_token }}"
+        validate_certs: false
+        return_content: true
+      register: _inference_recheck
+      until: _inference_recheck.status | default(0) == 200
+      retries: 6
+      delay: 10
+
     - name: Create or update the Lightspeed chatbot config Secret
       when: serve_model_enable_lightspeed | bool
       kubernetes.core.k8s:
@@ -706,6 +719,32 @@
         and _lightspeed_deploy.resources
             | map(attribute='status.availableReplicas', default=0)
             | reject('gt', 0) | list | length == 0
+
+    - name: Check chatbot pod logs for model registration failure
+      when:
+        - serve_model_enable_lightspeed | bool
+        - _lightspeed_secret.changed
+      kubernetes.core.k8s_log:
+        api_version: v1
+        kind: Pod
+        namespace: "{{ _lightspeed_namespace }}"
+        label_selectors:
+          - "app.kubernetes.io/managed-by=ansible-lightspeed-operator"
+        since_seconds: 120
+      register: _chatbot_log
+
+    - name: Assert the chatbot registered its model successfully
+      when:
+        - serve_model_enable_lightspeed | bool
+        - _lightspeed_secret.changed
+      ansible.builtin.assert:
+        that:
+          - "'list_provider_model_ids() failed' not in _chatbot_log.log"
+        fail_msg: >-
+          The Lightspeed chatbot failed to register its inference model.
+          The GPU endpoint may be unreachable — check the Route on the GPU
+          cluster. Pod log excerpt:
+          {{ _chatbot_log.log | default('') | truncate(500) }}
 
     - name: Report Lightspeed status
       when: serve_model_enable_lightspeed | bool
