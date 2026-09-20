@@ -589,8 +589,140 @@
                         disabled: true
                       - package: ./dynamic-plugins/dist/red-hat-developer-hub-backstage-plugin-analytics-module-adoption-insights-dynamic
                         disabled: true
+                      # HELM REPLACES LISTS, IT DOES NOT MERGE THEM (#592, #771).
+                      # Adding pluginConfig replaces the chart's default config
+                      # for this plugin entirely. The full default is carried
+                      # here from dynamic-plugins.default.yaml (RHDH 1.8), with
+                      # only dynamicRoutes[0].path changed from / to /home so
+                      # DynamicHomePage does not collide with LandingPage.
+                      #
+                      # A CHART BUMP MUST RE-COPY THIS CONFIG:
+                      #   kubectl exec deploy/rhaap-portal -n aap-portal \
+                      #     -c backstage-backend -- cat \
+                      #     /opt/app-root/src/dynamic-plugins.default.yaml \
+                      #     | grep -A200 'dynamic-home-page'
                       - package: ./dynamic-plugins/dist/red-hat-developer-hub-backstage-plugin-dynamic-home-page
                         disabled: false
+                        pluginConfig:
+                          dynamicPlugins:
+                            frontend:
+                              red-hat-developer-hub.backstage-plugin-dynamic-home-page:
+                                dynamicRoutes:
+                                  - path: /home
+                                    importName: DynamicHomePage
+                                mountPoints:
+                                  - mountPoint: application/listener
+                                    importName: VisitListener
+                                  - mountPoint: home.page/cards
+                                    importName: OnboardingSection
+                                    config:
+                                      id: rhdh-onboarding-section
+                                      title: Red Hat Developer Hub - Onboarding
+                                      cardLayout:
+                                        width:
+                                          minColumns: 4
+                                          maxColumns: 12
+                                          defaultColumns: 12
+                                        height:
+                                          minRows: 2
+                                          maxRows: 12
+                                          defaultRows: 4
+                                      layouts:
+                                        xl: {w: 12, h: 6}
+                                        lg: {w: 12, h: 6}
+                                        md: {w: 12, h: 7}
+                                        sm: {w: 12, h: 8}
+                                        xs: {w: 12, h: 9}
+                                        xxs: {w: 12, h: 14}
+                                  - mountPoint: home.page/cards
+                                    importName: EntitySection
+                                    config:
+                                      id: rhdh-entity-section
+                                      title: Red Hat Developer Hub - Software Catalog
+                                      cardLayout:
+                                        width:
+                                          minColumns: 4
+                                          maxColumns: 12
+                                          defaultColumns: 12
+                                        height:
+                                          minRows: 2
+                                          maxRows: 12
+                                          defaultRows: 4
+                                      layouts:
+                                        xl: {w: 12, h: 7}
+                                        lg: {w: 12, h: 7}
+                                        md: {w: 12, h: 8}
+                                        sm: {w: 12, h: 9}
+                                        xs: {w: 12, h: 11}
+                                        xxs: {w: 12, h: 15}
+                                  - mountPoint: home.page/cards
+                                    importName: TemplateSection
+                                    config:
+                                      id: rhdh-template-section
+                                      title: Red Hat Developer Hub - Explore templates
+                                      cardLayout:
+                                        width:
+                                          minColumns: 4
+                                          maxColumns: 12
+                                          defaultColumns: 12
+                                        height:
+                                          minRows: 2
+                                          maxRows: 12
+                                          defaultRows: 4
+                                      layouts:
+                                        xl: {w: 12, h: 5}
+                                        lg: {w: 12, h: 5}
+                                        md: {w: 12, h: 5}
+                                        sm: {w: 12, h: 5}
+                                        xs: {w: 12, h: 7.5}
+                                        xxs: {w: 12, h: 13.5}
+                                  - mountPoint: home.page/cards
+                                    importName: QuickAccessCard
+                                    config:
+                                      id: quickaccess-card
+                                      title: Quick Access Card
+                                  - mountPoint: home.page/cards
+                                    importName: SearchBar
+                                    config:
+                                      id: searchbar
+                                      title: Search
+                                      cardLayout:
+                                        width:
+                                          minColumns: 4
+                                          maxColumns: 12
+                                          defaultColumns: 12
+                                        height:
+                                          minRows: 1
+                                          maxRows: 2
+                                          defaultRows: 2
+                                  - mountPoint: home.page/cards
+                                    importName: CatalogStarredEntitiesCard
+                                    config:
+                                      id: catalog-starred-entities-card
+                                      title: Starred catalog entities
+                                  - mountPoint: home.page/cards
+                                    importName: RecentlyVisitedCard
+                                    config:
+                                      id: recently-visited-card
+                                      title: Recently visited
+                                  - mountPoint: home.page/cards
+                                    importName: TopVisitedCard
+                                    config:
+                                      id: top-visited-card
+                                      title: Top visited
+                                  - mountPoint: home.page/cards
+                                    importName: FeaturedDocsCard
+                                    config:
+                                      id: featured-docs-card
+                                      title: Featured docs
+                                  - mountPoint: home.page/cards
+                                    importName: JokeCard
+                                    config:
+                                      id: joke-card
+                                      title: Random joke
+                                translationResources:
+                                  - importName: homepageTranslations
+                                    ref: homepageTranslationRef
                       - package: ./dynamic-plugins/dist/red-hat-developer-hub-backstage-plugin-marketplace
                         disabled: true
                       - package: ./dynamic-plugins/dist/red-hat-developer-hub-backstage-plugin-marketplace-backend-dynamic
@@ -815,8 +947,8 @@
               'dynamicPlugins': {'frontend': {'default.main-menu-items': {'menuItems': {
                 'default.ee': {'enabled': true},
                 'default.learning-path': {'enabled': true, 'title': 'Learning Paths'},
-                'default.home': {'title': 'Home'},
-                'default.apis': {'title': 'APIs'}
+                'default.home': {'title': 'Home', 'to': '/home'},
+                'default.apis': {'title': 'APIs', 'to': '/catalog?filters[kind]=api'}
               }}}}
             },
             recursive=True
