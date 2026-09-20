@@ -52,7 +52,7 @@
       - "--enable-auto-tool-choice"
       - "--tool-call-parser"
       - "granite"
-    serve_max_model_len: 8192
+    serve_max_model_len: 16384
     serve_gpu_memory_utilization: "0.90"
     serve_weights_storage_size: "30Gi"
     serve_sa_name: "aap-inference-client"
