@@ -97,6 +97,11 @@
     # "Report what was found in state" task below prints "(none -- nothing to
     # destroy)" for exactly this case; read it before believing a teardown.
     #
+    # IT NO LONGER COSTS A DESTROY, AND NO LONGER LEAVES A KEY BEHIND (#783).
+    # An empty state now skips `terraform destroy` and the state key is removed
+    # at the end of the run. Both halves are needed -- see the two comment
+    # blocks below for what was measured.
+    #
     # A FACT, NOT AN INLINE STRING (#402), and the same fact name
     # terraform_ocpvirt.yml sets. tasks/terraform_lock_check.yml prints it in
     # its remediation commands; when this was built inline, that task had
@@ -128,6 +133,44 @@
         msg: >-
           terraform init exited {{ tf_init_result.rc }}:
           {{ tf_init_result.stderr | default(tf_init_result.stdout) | default('no output') }}
+
+    # WHAT THE STATE ACTUALLY HOLDS, NOT WHAT IT REMEMBERS OUTPUTTING (#783).
+    # `terraform state list` is a state read: no provider refresh, no cluster
+    # calls, no measurable time. It is deliberately NOT derived from
+    # `teardown_hosts` below -- that fact reflects stored *outputs*, and a
+    # partially failed destroy can leave real resources whose outputs are
+    # already gone. Gating a destroy on outputs would then skip resources that
+    # still exist.
+    - name: List the resources Terraform is tracking for this role
+      ansible.builtin.command:
+        argv: [terraform, state, list]
+        chdir: "{{ ocpvirt_terraform_dir }}"
+      changed_when: false
+      failed_when: false
+      register: tf_state_list
+
+    # "EMPTY" MUST MEAN "WE ASKED AND IT SAID NOTHING", NOT "WE DID NOT FIND
+    # OUT". `failed_when: false` above turns a failed `state list` into rc != 0
+    # with empty stdout, and a naive emptiness test reads that as "no
+    # resources" -- which would skip the destroy AND collect the key for a
+    # state holding live VMs. Requiring rc == 0 makes an unreadable state fall
+    # through to the destroy, which is the safe direction.
+    - name: Decide whether this state key holds anything
+      ansible.builtin.set_fact:
+        tf_state_is_empty: >-
+          {{ (tf_state_list.rc | default(1) | int) == 0
+             and (tf_state_list.stdout | default('') | trim | length) == 0 }}
+
+    - name: Report the resource count in state
+      ansible.builtin.debug:
+        msg: >-
+          {{ tf_state_list.stdout_lines | default([]) | length }} resource(s) in
+          state for {{ ocpvirt_state_suffix }}{{
+            ' — skipping terraform destroy and removing the empty state key'
+            if (tf_state_is_empty | bool)
+            else (' — state unreadable (rc='
+                  ~ (tf_state_list.rc | default('?')) ~ '), destroying anyway'
+                  if (tf_state_list.rc | default(1) | int) != 0 else '') }}
 
     - name: Read the Terraform outputs BEFORE destroying
       ansible.builtin.command:
@@ -271,6 +314,15 @@
       changed_when: "'0 destroyed' not in (tf_destroy_result.stdout | default(''))"
       register: tf_destroy_result
       ignore_errors: true
+      # A state holding nothing has nothing to destroy, and the init plus
+      # destroy against it is pure cost -- the nightly Linux sweep was paying
+      # it three times a night for one live role (#783). Skipping keeps
+      # `tf_destroy_result` a skipped result, on which `is failed` is false, so
+      # the three tasks below no-op exactly as they do on a clean destroy.
+      #
+      # The gate is "not positively empty", so an unreadable state still gets
+      # destroyed -- see the fact above.
+      when: not (tf_state_is_empty | bool)
 
     - name: Show the Terraform error
       when: tf_destroy_result is failed
@@ -346,10 +398,77 @@
           ansible.builtin.debug:
             msg: "Host Metrics cleanup failed — entries may need manual removal."
 
+    # --- Garbage-collect a state key that holds nothing (#783) -------------
+    # MEASURED ON SANDBOX 2026-09-21, not assumed. `terraform init` ALONE --
+    # no apply -- creates both `tfstate-default-<suffix>` and
+    # `lock-tfstate-default-<suffix>`, and the Secret it writes carries
+    # `tfstate=true`: the exact label teardown.yml's all_roles derivation
+    # selects on. So a manual teardown left at the template's default role,
+    # against an environment that never built that role, mints a state key
+    # which the nightly sweep then re-inits and re-destroys every night for
+    # ever. Two such keys had accumulated on sandbox before anyone noticed.
+    #
+    # THAT IS WHY GC ALONE WOULD NOT HAVE WORKED. Delete the key without this
+    # task's companion skip above and the next sweep simply recreates it.
+    #
+    # THE LEASE GOES TOO. It is created by the same init and outlives the
+    # Secret -- four orphan `lock-tfstate-*` Leases were left behind when the
+    # two empty Secrets were removed by hand. Remove one and not the other and
+    # the namespace just accumulates a different object.
+    #
+    # THE CONDITION IS "HOLDS NOTHING", NOT "WE CREATED IT". An empty state is
+    # empty whoever made it, and terraform recreates the key on the next init,
+    # so removing it costs nothing. One condition therefore clears both the
+    # stray keys already there and the loop that makes more.
+    #
+    # IT ONLY RUNS ON A SUCCESSFUL TEARDOWN. "Fail if the destroy failed" above
+    # stops the play otherwise, so a half-destroyed state is never collected.
+    - name: Re-read the Terraform state after destroying
+      ansible.builtin.command:
+        argv: [terraform, state, list]
+        chdir: "{{ ocpvirt_terraform_dir }}"
+      changed_when: false
+      failed_when: false
+      register: tf_state_after
+
+    - name: Remove the state Secret and its lock Lease when the state is empty
+      # FIRST kubernetes.core TASK IN THIS FILE, so it carries its own
+      # `environment:` rather than inheriting one (#313). teardown.yml:197 is
+      # the same block; they must not disagree.
+      kubernetes.core.k8s:
+        state: absent
+        api_version: "{{ item.api_version }}"
+        kind: "{{ item.kind }}"
+        name: "{{ item.name }}"
+        namespace: "{{ ocpvirt_state_namespace }}"
+      environment:
+        K8S_AUTH_HOST: "{{ ocpvirt_api_url }}"
+        K8S_AUTH_API_KEY: "{{ ocpvirt_api_token }}"
+        K8S_AUTH_VERIFY_SSL: "{{ openshift_validate_certs | default(false) | bool }}"
+      loop:
+        - api_version: v1
+          kind: Secret
+          name: "tfstate-default-{{ ocpvirt_state_suffix }}"
+        - api_version: coordination.k8s.io/v1
+          kind: Lease
+          name: "lock-tfstate-default-{{ ocpvirt_state_suffix }}"
+      loop_control:
+        label: "{{ item.kind }}/{{ item.name }}"
+      # rc == 0 for the same reason as the fact above: a `state list` that
+      # could not run must never be read as "the state is empty, collect it".
+      when:
+        - (tf_state_after.rc | default(1) | int) == 0
+        - (tf_state_after.stdout | default('') | trim | length) == 0
+
     - name: Summarize
       ansible.builtin.debug:
         msg:
-          - "Destroyed the '{{ provision_vm_role }}' {{ provision_os_type }} VMs in {{ ocpvirt_namespace_resolved }} on {{ aap_env_name }}."
+          - >-
+            {{ "Destroyed the '" ~ provision_vm_role ~ "' " ~ provision_os_type ~
+               " VMs in " ~ ocpvirt_namespace_resolved ~ " on " ~ aap_env_name ~ "."
+               if not (tf_state_is_empty | bool)
+               else "Nothing to destroy for '" ~ provision_vm_role ~ "' " ~ provision_os_type ~
+                    " on " ~ aap_env_name ~ " — the state held no resources and the key was removed (#783)." }}
           - "Deregistered {{ teardown_hosts | length }} host(s) from '{{ provision_aap_inventory }}'."
           - >-
             Left intact: OpenShift Virtualization, the boot-source DataSources,
