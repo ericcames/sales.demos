@@ -370,12 +370,23 @@ PORTAL_TOKEN=$(cat .portal/$ENV.token)
 
 curl -sk -o /dev/null -w '%{http_code}\n' -X POST "$PORTAL_URL" \
   -H 'Content-Type: application/json' \
+  -H 'Accept: application/json, text/event-stream' \
   -H "Authorization: Bearer $PORTAL_TOKEN" \
   -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"verify","version":"0"}}}'
 ```
 
-`200` is the pass. The portal is read-only — it exposes the software catalog and
-TechDocs, not mutating operations.
+`200` is the pass, with `"serverInfo":{"name":"backstage"}` in the body. The
+portal is read-only — it exposes the software catalog and TechDocs, not mutating
+operations.
+
+**The `Accept` header is not optional**, and it is the line this block used to
+be missing (#789). The endpoint is Streamable HTTP and rejects a request that
+does not name *both* content types, so without it a perfectly healthy server
+answers `406 Not Acceptable` and the documented check cannot pass. A `401
+Illegal token` is the failure this check is actually for — the token in
+`.portal/<env>.token` no longer matches the `portal-mcp-token` Secret, which is
+what happens when the portal is redeployed. Both are "not 200" and only one is
+a real problem, so read the body, not just the number.
 
 ### Automation Orchestrator
 
@@ -465,7 +476,8 @@ claude mcp list
 | AAP MCP write tools missing | `aap_mcp_allow_write_operations` is false for this environment | Intentional on `demo`. Changing it needs a delete-and-recreate — re-run `mcp_server.yml`, which handles that |
 | `npx: command not found` | Node not installed | See preflight; a standalone binary is the alternative |
 | `no aap-mcp route` from make-aap-mcp.sh | MCP server not deployed | Run `/sales-demos-setup` or `playbooks/mcp_server.yml` first |
-| Portal MCP returns `401` | Token mismatch or Secret missing | Re-run `portal.yml` to regenerate, then `bash utilities/make-portal-mcp.sh <env>` |
+| Portal MCP returns `401 Illegal token` | Stored token no longer matches the `portal-mcp-token` Secret — usual cause is the portal being redeployed | `bash utilities/make-portal-mcp.sh <env>` re-reads the Secret; only re-run `portal.yml` if the Secret itself is missing |
+| Portal MCP returns `406 Not Acceptable` | The request omitted `Accept: application/json, text/event-stream` — the server is fine (#789) | Fix the command, not the server. Use the Verify → Portal block as written |
 | `no portal route` from make-portal-mcp.sh | Portal not deployed | Run `/sales-demos-setup` or `playbooks/portal.yml` first |
 | Portal MCP `no such host` | RHDP environment expired | Same as OpenShift — repoint and re-bootstrap |
 | Grafana `grafana_cloud_url not set` | Vault keys missing or still CHANGEME | `ansible-vault edit` and add real values — see the [grafana plan](https://ericcames.github.io/sales.demos-docs/plan/grafana-plan/) |
