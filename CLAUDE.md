@@ -464,16 +464,20 @@ environments (`sandbox`/`demo`) consume the endpoint. Issue
 
   **To repoint to a new image tag**, set `quay_windows_image` in
   `inventory/group_vars/{sandbox,demo}/connection.yml`, re-run
-  `playbooks/link_windows_image.yml`, then clone as usual. That playbook already
-  creates the private-repo pull secret, adds the `DataImportCron` template and
-  imports via an explicit DataVolume (#224). Tags are immutable, so **repoint —
-  never overwrite**; `20260905-1826` keeps the defect for ever.
+  `playbooks/link_windows_image.yml`, then clone as usual. That playbook
+  creates the private-repo pull secret and patches HCO with a
+  `DataImportCron` template; the cron imports, creates a VolumeSnapshot,
+  and manages the DataSource (#794 retired the earlier explicit DataVolume).
+  Tags are immutable, so **repoint — never overwrite**; `20260905-1826`
+  keeps the defect for ever.
 
   **The import decision is now identity, not readiness**, and the identity is
   re-read from the cluster and asserted on every run, including runs that
-  import nothing. A DataVolume's source is immutable, so a changed tag deletes
-  and re-imports rather than editing in place. See [conventions
-  rationale](https://ericcames.github.io/sales.demos-docs/reference/conventions-rationale/#windows-golden-image-identity-not-readiness)
+  import nothing. The DataImportCron's source URL is read back from the
+  cluster and asserted against `quay_windows_image`; combined with `UpToDate`,
+  this proves the cron has completed an import of the right image. A changed
+  tag triggers the cron to re-import and garbage-collect the old volume. See
+  [conventions rationale](https://ericcames.github.io/sales.demos-docs/reference/conventions-rationale/#windows-golden-image-identity-not-readiness)
   for the #358 incident that drove this.
 
 - **Run logs go to `~/ansible-logs/`, never into this repo**, and the easy way to
