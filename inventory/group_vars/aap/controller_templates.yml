@@ -701,6 +701,31 @@ controller_templates_all:
     extra_vars:
       target_env: "{{ aap_env_name }}"
 
+  # UNNUMBERED, for the same reason Probe Capacity is: it is not part of the
+  # build chain. It is a one-off cluster hygiene fix that converges on re-run.
+  #
+  # NOT read-only, and NOT safe mid-demo — unlike Probe Capacity, which is the
+  # template it otherwise resembles. It restarts Prometheus, which blips Alloy
+  # federation (#273) and can fire `sales-demos-alloy-federation-down`.
+  - name: "Cluster Day 0 - Persist Monitoring Storage"
+    description: "Move the cluster Prometheus TSDB off the node's root disk onto a PersistentVolume and cap its size (#793). Restarts Prometheus — do not run during a demo."
+    labels:
+      - cluster
+      - day-0
+      - ocpvirt
+    job_type: run
+    organization: "IT Service Automation"
+    inventory: "Sales Demo VMs"
+    project: "Sales Demos"
+    playbook: playbooks/configure_monitoring.yml
+    execution_environment: "Sales Demos - OCP Virt EE"
+    credentials:
+      - "Sales Demos - Vault"
+      - "Sales Demos - Env Secrets"
+    limit: "{{ aap_env_name }}"
+    extra_vars:
+      target_env: "{{ aap_env_name }}"
+
   # =====================================================================
   # AAP OBSERVABILITY (#318). Instrument the platform, then visualise it.
   #

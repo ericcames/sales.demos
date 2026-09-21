@@ -1,0 +1,391 @@
+---
+# ===========================================================================
+# configure_monitoring.yml — move the cluster Prometheus TSDB off the node's
+# root disk onto a PersistentVolume, and cap how large it may grow. Issue #793.
+#
+#   ansible-playbook playbooks/configure_monitoring.yml -i inventory \
+#     --limit sandbox -e target_env=sandbox \
+#     --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
+#
+# AND THE REVERSAL:
+#
+#   ansible-playbook playbooks/configure_monitoring.yml -i inventory \
+#     --limit sandbox -e target_env=sandbox -e monitoring_state=absent \
+#     --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
+#
+# WHAT THIS DOES. Creates the `cluster-monitoring-config` ConfigMap in
+# openshift-monitoring with a `prometheusK8s` block that gives Prometheus a
+# volumeClaimTemplate and a retentionSize. The cluster-monitoring-operator
+# picks it up, rewrites the Prometheus CR, and the prometheus-operator
+# replaces the pod with one whose TSDB lives on the storage class instead of
+# on the node.
+#
+# THIS IS A DISK FIX, NOT AN OBSERVABILITY FEATURE, and that is why it is its
+# own playbook rather than a block in deploy_alloy.yml. Measured on sandbox
+# 2026-09-21, stock OpenShift defaults with no cluster-monitoring-config at
+# all:
+#
+#     prometheus-k8s-0  volume prometheus-k8s-db -> emptyDir
+#     du -sh /prometheus                          -> 9.4G
+#     kubelet ephemeral accounting                -> 10.09 GB
+#     node /dev/vda4                              -> 89.38 / 106.77 GB = 83.7%
+#     spec.retention 15d, spec.retentionSize unset, spec.storage unset
+#
+# So 9.4% of a single node's only disk is monitoring data, on the same
+# filesystem whose 85% eviction threshold killed jobs 591, 593 and 638 (#782),
+# and 15 days of it with no size cap at all. Nothing in this repo asked for
+# that — it is what OpenShift ships. It is simply the wrong default for a
+# single-node cluster with one 107 GB disk.
+#
+# TUNING IMAGE GC IS NOT THE ALTERNATIVE. Of the 50 images on that node, 48
+# (48.19 GB) are referenced by a running pod and only 1.81 GB is GC-eligible,
+# against the 4.78 GB the kubelet tried and failed to free. There is almost
+# nothing to reclaim. Moving Prometheus is the only change that returns real
+# headroom rather than redistributing it. See #793 for the full arithmetic.
+#
+# THE EXISTING HISTORY IS LOST ON THE FIRST RUN, and that is unavoidable: an
+# emptyDir cannot be migrated to a PVC, the pod is replaced, and the old
+# volume dies with it. Grafana Cloud holds the federated copy of what Alloy
+# forwards (#273), not everything. Alloy federates from this Prometheus, so
+# expect a short gap and possibly `sales-demos-alloy-federation-down`
+# (`for: 5m`). Run it away from a demo. Re-runs are free — once the PVC
+# exists, the ConfigMap converges and nothing restarts.
+#
+# THE STORAGE CLASS IS DISCOVERED, NOT HARDCODED. tasks/resolve_storage_class.yml
+# already owns that question for install_cnv.yml and prepare_env.yml, so this
+# reuses it rather than carrying a second copy that drifts. sandbox and demo
+# resolve `ocs-external-storagecluster-ceph-rbd` — external Ceph, genuinely
+# off-node. `edge` resolves its LVMS class, which is local: there the data
+# moves out of /var onto its own logical volume rather than off the machine.
+# That is a smaller win, but the retentionSize cap — the part that stops
+# unbounded growth — applies identically, so edge is not special-cased.
+# Pin a different class with `-e monitoring_storage_class=<name>`.
+#
+# THE CONFIGMAP IS MERGED, NOT OVERWRITTEN. cluster-monitoring-config is a
+# single `config.yaml` document covering every monitoring component —
+# alertmanagerMain, thanosQuerier, telemeterClient and more. Writing this
+# playbook's block as the whole file would silently delete anyone else's.
+# The existing document is read, parsed, and combined with only the three keys
+# below; the reversal removes those three keys and deletes the ConfigMap only
+# if nothing else is left in it.
+# ===========================================================================
+
+- name: Persist the cluster monitoring stack's Prometheus storage
+  hosts: aap
+  gather_facts: false
+
+  environment:
+    K8S_AUTH_HOST: "{{ openshift_api_url }}"
+    K8S_AUTH_API_KEY: "{{ openshift_api_token }}"
+    K8S_AUTH_VERIFY_SSL: "{{ openshift_validate_certs | default(false) | bool }}"
+
+  vars:
+    monitoring_state: "present"
+    monitoring_namespace: "openshift-monitoring"
+    monitoring_configmap: "cluster-monitoring-config"
+
+    # Empty means "discover the default" — see tasks/resolve_storage_class.yml.
+    # Named monitoring_storage_class rather than reusing cnv_storage_class so
+    # a cluster can put its monitoring somewhere other than its VM disks.
+    monitoring_storage_class: ""
+
+    # RETENTION IS UNCHANGED AT THE OPENSHIFT DEFAULT. 15 days is what the
+    # cluster already keeps and what the Grafana dashboards' longest range
+    # expects; shortening it would be a second, separable decision. What
+    # changes is that it is now bounded by size as well as by age.
+    monitoring_retention: "15d"
+
+    # 15GB against a 20Gi claim. Deliberately not equal: Prometheus needs
+    # working room to compact, and retentionSize is enforced on the blocks
+    # rather than the filesystem, so a claim sized to the cap fills up during
+    # compaction. 15e9 bytes is ~13.97 GiB — about 70% of the volume.
+    monitoring_retention_size: "15GB"
+    monitoring_volume_size: "20Gi"
+
+    # The PVC is provisioned, Prometheus restarts and replays its WAL. Ten
+    # minutes of headroom on a WaitForFirstConsumer class.
+    monitoring_wait_retries: 60
+    monitoring_wait_delay: 10
+
+    # The prometheus-operator derives both from the Prometheus CR's name.
+    monitoring_prometheus_pod: "prometheus-k8s-0"
+    monitoring_volume_name: "prometheus-k8s-db"
+    monitoring_pvc_name: "prometheus-k8s-db-prometheus-k8s-0"
+
+  tasks:
+    - name: Confirm the inventory resolved to the environment you meant
+      ansible.builtin.include_tasks: tasks/assert_target_environment.yml
+
+    - name: Assert the required connection variables are set
+      ansible.builtin.assert:
+        that:
+          - openshift_api_url is defined
+          - openshift_api_url | length > 0
+          - openshift_api_token is defined
+          - openshift_api_token | length > 0
+        fail_msg: >-
+          openshift_api_url and openshift_api_token are required.
+        quiet: true
+
+    - name: Assert the requested state is valid
+      ansible.builtin.assert:
+        that:
+          - monitoring_state in ['present', 'absent']
+        fail_msg: >-
+          monitoring_state must be 'present' or 'absent', not
+          '{{ monitoring_state }}'.
+        quiet: true
+
+    - name: Resolve the StorageClass to put the TSDB on
+      ansible.builtin.include_tasks: tasks/resolve_storage_class.yml
+      vars:
+        cnv_storage_class: "{{ monitoring_storage_class }}"
+      when: monitoring_state == 'present'
+
+    - name: Read the existing monitoring ConfigMap
+      # It does not exist on a stock cluster, and that is the normal case.
+      kubernetes.core.k8s_info:
+        api_version: v1
+        kind: ConfigMap
+        name: "{{ monitoring_configmap }}"
+        namespace: "{{ monitoring_namespace }}"
+      register: monitoring_cm
+
+    - name: Parse whatever config.yaml it already holds
+      ansible.builtin.set_fact:
+        monitoring_existing_config: >-
+          {{ ((monitoring_cm.resources | default([]) | first | default({}))
+              .data | default({})).get('config.yaml', '') | from_yaml
+             | default({}, true) }}
+
+    - name: Say what is about to happen
+      ansible.builtin.debug:
+        msg: >-
+          {{ (monitoring_state == 'present')
+             | ternary('PERSISTING', 'REVERTING') }}
+          the cluster Prometheus TSDB on {{ aap_env_name }}
+          {{ (monitoring_state == 'present')
+             | ternary('onto ' ~ (cnv_effective_storage_class | default(''))
+                       ~ ' (' ~ monitoring_volume_size ~ ', cap '
+                       ~ monitoring_retention_size ~ ')',
+                       'back to the node-local emptyDir default') }}.
+          Prometheus restarts, so Alloy federation gaps for a minute or two.
+
+    # =======================================================================
+    # FORWARD PATH — monitoring_state=present
+    # =======================================================================
+    - name: Give Prometheus a PersistentVolume and a size cap
+      when: monitoring_state == 'present'
+      block:
+        - name: Merge the prometheusK8s block into the monitoring config
+          # combine(recursive=True) so a prometheusK8s block that already
+          # carries other keys — resources, nodeSelector, externalLabels —
+          # keeps them.
+          ansible.builtin.set_fact:
+            monitoring_desired_config: >-
+              {{ monitoring_existing_config | combine({
+                   'prometheusK8s': {
+                     'retention': monitoring_retention,
+                     'retentionSize': monitoring_retention_size,
+                     'volumeClaimTemplate': {
+                       'spec': {
+                         'storageClassName': cnv_effective_storage_class,
+                         'resources': {
+                           'requests': {'storage': monitoring_volume_size},
+                         },
+                       },
+                     },
+                   },
+                 }, recursive=True) }}
+
+        - name: Apply the cluster monitoring ConfigMap
+          kubernetes.core.k8s:
+            state: present
+            apply: true
+            definition:
+              apiVersion: v1
+              kind: ConfigMap
+              metadata:
+                name: "{{ monitoring_configmap }}"
+                namespace: "{{ monitoring_namespace }}"
+              data:
+                config.yaml: "{{ monitoring_desired_config | to_nice_yaml(indent=2) }}"
+
+        - name: Wait for the operator to rewrite the Prometheus CR
+          # The cluster-monitoring-operator owns this CR and reconciles the
+          # ConfigMap into it. Waiting here rather than going straight to the
+          # pod separates "the operator never read my ConfigMap" from "the
+          # volume would not provision" — two very different failures.
+          kubernetes.core.k8s_info:
+            api_version: monitoring.coreos.com/v1
+            kind: Prometheus
+            name: k8s
+            namespace: "{{ monitoring_namespace }}"
+          register: monitoring_prom_cr
+          retries: "{{ monitoring_wait_retries }}"
+          delay: "{{ monitoring_wait_delay }}"
+          until:
+            - monitoring_prom_cr.resources | default([]) | length > 0
+            - >-
+              ((monitoring_prom_cr.resources[0].spec.storage | default({}))
+               .volumeClaimTemplate | default({})) | length > 0
+
+        - name: Wait for the TSDB to actually be on the PersistentVolume
+          # ASK THE TARGET, DO NOT TRUST THE RECAP. Readiness alone proves
+          # nothing here: for the first ~30 seconds after the ConfigMap lands
+          # the OLD emptyDir pod is still running and still Ready under the
+          # same name. The condition that cannot be satisfied by the old pod
+          # is the volume's own kind, so that is what is waited on — together
+          # with Ready, because a pod stuck Pending on an unprovisionable
+          # claim also has a PVC-shaped volume.
+          kubernetes.core.k8s_info:
+            api_version: v1
+            kind: Pod
+            name: "{{ monitoring_prometheus_pod }}"
+            namespace: "{{ monitoring_namespace }}"
+          register: monitoring_prom_pod
+          retries: "{{ monitoring_wait_retries }}"
+          delay: "{{ monitoring_wait_delay }}"
+          until:
+            - monitoring_prom_pod.resources | default([]) | length > 0
+            - >-
+              monitoring_prom_pod.resources[0].spec.volumes
+              | selectattr('name', 'equalto', monitoring_volume_name)
+              | selectattr('persistentVolumeClaim', 'defined')
+              | list | length > 0
+            - >-
+              monitoring_prom_pod.resources[0].status.conditions | default([])
+              | selectattr('type', 'equalto', 'Ready')
+              | selectattr('status', 'equalto', 'True')
+              | list | length > 0
+
+        - name: Read the bound claim
+          kubernetes.core.k8s_info:
+            api_version: v1
+            kind: PersistentVolumeClaim
+            name: "{{ monitoring_pvc_name }}"
+            namespace: "{{ monitoring_namespace }}"
+          register: monitoring_pvc
+
+        - name: Assert the claim is bound
+          ansible.builtin.assert:
+            that:
+              - monitoring_pvc.resources | default([]) | length > 0
+              - monitoring_pvc.resources[0].status.phase == 'Bound'
+            fail_msg: >-
+              {{ monitoring_pvc_name }} is
+              {{ (monitoring_pvc.resources | default([]) | length > 0)
+                 | ternary((monitoring_pvc.resources | default([{}]) | first)
+                           .status.phase | default('missing'), 'missing') }},
+              not Bound. Prometheus is running but its data is not on
+              {{ cnv_effective_storage_class }}.
+            quiet: true
+
+        - name: Report the new state
+          ansible.builtin.debug:
+            msg:
+              - "Prometheus TSDB persisted on {{ aap_env_name }}."
+              - "Claim:      {{ monitoring_pvc_name }} ({{ monitoring_pvc.resources[0].status.phase }})"
+              - "Class:      {{ cnv_effective_storage_class }}"
+              - "Size:       {{ monitoring_volume_size }}, capped at {{ monitoring_retention_size }}"
+              - "Retention:  {{ monitoring_retention }}"
+              - "The node's root disk no longer carries the monitoring stack."
+              - "Re-measure with: playbooks/probe_env.yml"
+              - "Reverse with: -e monitoring_state=absent"
+
+    # =======================================================================
+    # REVERSAL PATH — monitoring_state=absent
+    #
+    # Removes only the three keys this playbook sets, then drops the whole
+    # ConfigMap if that emptied it. The PVC is deleted last and only after
+    # Prometheus has let go of it — deleting it first would block on the
+    # mount and leave the cluster mid-change.
+    # =======================================================================
+    - name: Return Prometheus to the node-local default
+      when: monitoring_state == 'absent'
+      block:
+        - name: Strip the prometheusK8s keys this playbook owns
+          ansible.builtin.set_fact:
+            monitoring_desired_config: >-
+              {{ monitoring_existing_config | combine({
+                   'prometheusK8s':
+                     (monitoring_existing_config.prometheusK8s | default({}))
+                     | dict2items
+                     | rejectattr('key', 'in',
+                         ['retention', 'retentionSize', 'volumeClaimTemplate'])
+                     | list | items2dict,
+                 }) }}
+
+        - name: Drop the prometheusK8s block if stripping emptied it
+          # Only this one key, by name. A blanket "reject empty values" would
+          # also delete a legitimate falsy setting such as
+          # `enableUserWorkload: false` that belongs to someone else.
+          ansible.builtin.set_fact:
+            monitoring_desired_config: >-
+              {{ monitoring_desired_config
+                 | dict2items
+                 | rejectattr('key', 'equalto', 'prometheusK8s')
+                 | list | items2dict }}
+          when: monitoring_desired_config.prometheusK8s | default({}) | length == 0
+
+        - name: Delete the ConfigMap when nothing else was in it
+          kubernetes.core.k8s:
+            state: absent
+            api_version: v1
+            kind: ConfigMap
+            name: "{{ monitoring_configmap }}"
+            namespace: "{{ monitoring_namespace }}"
+          when: monitoring_desired_config | length == 0
+
+        - name: Rewrite the ConfigMap with the other components' settings
+          kubernetes.core.k8s:
+            state: present
+            apply: true
+            definition:
+              apiVersion: v1
+              kind: ConfigMap
+              metadata:
+                name: "{{ monitoring_configmap }}"
+                namespace: "{{ monitoring_namespace }}"
+              data:
+                config.yaml: "{{ monitoring_desired_config | to_nice_yaml(indent=2) }}"
+          when: monitoring_desired_config | length > 0
+
+        - name: Wait for Prometheus to come back on an emptyDir
+          kubernetes.core.k8s_info:
+            api_version: v1
+            kind: Pod
+            name: "{{ monitoring_prometheus_pod }}"
+            namespace: "{{ monitoring_namespace }}"
+          register: monitoring_prom_pod
+          retries: "{{ monitoring_wait_retries }}"
+          delay: "{{ monitoring_wait_delay }}"
+          until:
+            - monitoring_prom_pod.resources | default([]) | length > 0
+            - >-
+              monitoring_prom_pod.resources[0].spec.volumes
+              | selectattr('name', 'equalto', monitoring_volume_name)
+              | selectattr('emptyDir', 'defined')
+              | list | length > 0
+            - >-
+              monitoring_prom_pod.resources[0].status.conditions | default([])
+              | selectattr('type', 'equalto', 'Ready')
+              | selectattr('status', 'equalto', 'True')
+              | list | length > 0
+
+        - name: Delete the orphaned claim
+          # A StatefulSet never reclaims its own PVCs, so without this the
+          # cluster keeps paying for a volume nothing mounts.
+          kubernetes.core.k8s:
+            state: absent
+            api_version: v1
+            kind: PersistentVolumeClaim
+            name: "{{ monitoring_pvc_name }}"
+            namespace: "{{ monitoring_namespace }}"
+
+        - name: Report the reversal
+          ansible.builtin.debug:
+            msg:
+              - "Prometheus returned to the stock emptyDir on {{ aap_env_name }}."
+              - "Claim {{ monitoring_pvc_name }} deleted; its history is gone."
+              - "The node's root disk carries the monitoring stack again."

@@ -7,55 +7,63 @@
 #     -e target_env=sandbox \
 #     --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
 #
-# Twelve stages, in this order:
+# Thirteen stages, in this order:
 #
-#   1. install_cnv.yml             Install OpenShift Virtualization on the
+#   1. configure_monitoring.yml    Move the cluster Prometheus TSDB off the
+#                                  node's root disk onto a PersistentVolume and
+#                                  cap its size (#793). FIRST, because it costs
+#                                  seconds on a fresh cluster whose TSDB is
+#                                  still small, and every stage after it then
+#                                  installs onto a node that is not already
+#                                  carrying ~10 GB it does not need to.
+#                                  Skippable: `-e configure_monitoring=false`.
+#   2. install_cnv.yml             Install OpenShift Virtualization on the
 #                                  cluster and wait until the rhel9 boot source
 #                                  is genuinely ready.
-#   2. link_rhel9_image.yml        Link the CIS-hardened RHEL 9 golden image
+#   3. link_rhel9_image.yml        Link the CIS-hardened RHEL 9 golden image
 #                                  from image.builder.pipeline (#202). Creates a
 #                                  DataImportCron for rhel9-cis-l1 alongside the
 #                                  stock rhel9. Skippable:
 #                                  `-e link_rhel9_image=false`.
-#   3. link_windows_image.yml      Link the CIS-hardened Windows golden image
+#   4. link_windows_image.yml      Link the CIS-hardened Windows golden image
 #                                  from image.builder.pipeline (#3). Creates a
 #                                  DataImportCron for win2k22 and imports via
 #                                  an explicit DataVolume. Skippable:
 #                                  `-e link_windows_image=false`.
-#   4. ensure_shared_objects.yml   Create the VM namespace, the Terraform state
+#   5. ensure_shared_objects.yml   Create the VM namespace, the Terraform state
 #                                  namespace, and the sd1.* instance type catalog
 #                                  (#351, #530). Without this, the nightly
 #                                  teardown schedules fail on a new cluster.
-#   5. config.yml                  Apply the AAP objects — organization, project,
+#   6. config.yml                  Apply the AAP objects — organization, project,
 #                                  credentials, inventories, job templates,
 #                                  schedules, the execution environment mirrored
 #                                  into this environment's Private Automation
 #                                  Hub, and (#68) PAH's own collection remotes
 #                                  and repositories.
-#   6. mcp_server.yml              Deploy the AAP MCP server, so a new
+#   7. mcp_server.yml              Deploy the AAP MCP server, so a new
 #                                  environment arrives with it already on rather
 #                                  than needing a second visit. Its write posture
 #                                  comes from the environment's own group_vars
 #                                  and is deliberately not defaulted (#102).
-#   7. install_ao.yml              Install Automation Orchestrator and the
+#   8. install_ao.yml              Install Automation Orchestrator and the
 #                                  PostgreSQL it cannot run without, via
 #                                  CloudNativePG. Default on, skipped with
 #                                  `-e install_ao=false` (#141).
-#   8. configure_ao.yml            Connect AO to AAP — OIDC SSO and the AAP
+#   9. configure_ao.yml            Connect AO to AAP — OIDC SSO and the AAP
 #                                  integration so AO can see job templates.
 #                                  Gated on install_ao (#457).
-#   9. portal.yml                  Deploy the self-service portal — Helm chart,
+#  10. portal.yml                  Deploy the self-service portal — Helm chart,
 #                                  OAuth app, org sync. Default on, skipped with
 #                                  `-e install_portal=false` (#547).
-#  10. generate_env_urls.yml       Regenerate the environment URL reference file
+#  11. generate_env_urls.yml       Regenerate the environment URL reference file
 #                                  with credentials (laptop-only). Runs
 #                                  automatically since the vault is always
 #                                  available during setup.
-#  11. probe_env.yml               Measure the cluster now that everything is
+#  12. probe_env.yml               Measure the cluster now that everything is
 #                                  installed — CPU, memory, storage, and
 #                                  recommend available_memory_gb. Strictly
 #                                  read-only (#100).
-#  12. prepare_env.yml             Prove it. Checks the boot source, the storage
+#  13. prepare_env.yml             Prove it. Checks the boot source, the storage
 #                                  clone strategy and ingress, then builds one
 #                                  real VM, times it, and destroys it.
 #
@@ -109,15 +117,17 @@
 # environment has no such file.
 #
 # EACH STAGE STAYS RUNNABLE ON ITS OWN, and that is deliberate — this file is a
-# convenience, not a bottleneck. Run install_cnv.yml when only a cluster needs
+# convenience, not a bottleneck. Run configure_monitoring.yml when only the
+# monitoring storage needs fixing, install_cnv.yml when only a cluster needs
 # CNV, config.yml when only AAP objects changed, portal.yml when only the portal
 # needs redeploying, generate_env_urls.yml when URLs need refreshing,
 # probe_env.yml to re-measure available_memory_gb after adding or removing
 # workloads, prepare_env.yml to re-check an environment that has been idle.
 #
-# EXPECT ROUGHLY 30-35 MINUTES: about 4 for CNV, 1-2 for the RHEL 9 golden
-# image import, about 7-10 for the Windows golden image import, a few for
-# shared objects, several for the AAP objects and the first Hub image mirror,
+# EXPECT ROUGHLY 30-35 MINUTES: about 2 for the monitoring storage switch,
+# about 4 for CNV, 1-2 for the RHEL 9 golden image import, about 7-10 for the
+# Windows golden image import, a few for shared objects, several for the AAP
+# objects and the first Hub image mirror,
 # about 1 for the MCP server, about 5 for Automation Orchestrator and its
 # database, about 2 to configure AO, about 5-10 for the self-service portal
 # (Helm + operator), about 1 for env URLs, about 1 for the probe, and about 1
@@ -126,6 +136,8 @@
 # Pass `-e install_portal=false` to skip the portal.
 # Pass `-e link_rhel9_image=false` to skip the RHEL 9 golden image import.
 # Pass `-e link_windows_image=false` to skip the Windows golden image import.
+# Pass `-e configure_monitoring=false` to leave the cluster Prometheus on its
+# stock node-local emptyDir.
 # A timing summary is printed at the end showing per-stage elapsed times.
 # ===========================================================================
 
@@ -137,7 +149,27 @@
       ansible.builtin.set_fact:
         setup_t_start: "{{ now(utc=true).strftime('%s') | int }}"
 
-- name: Phase 0 (1/12) — install OpenShift Virtualization
+- name: Phase 0 (1/13) — persist the cluster monitoring storage
+  # DEFAULT ON, AND SKIPPABLE. Stock OpenShift puts the Prometheus TSDB on an
+  # emptyDir with 15 days of retention and no size cap, which on a single-node
+  # cluster with one ~107 GB disk grows into ~10 GB of the same filesystem the
+  # 85% eviction threshold watches (#793). This moves it onto the cluster's
+  # storage class and bounds it. Runs first: on a fresh environment the TSDB is
+  # minutes old, so the switch is instant and nothing of value is lost — which
+  # is exactly why doing it here is cheaper than doing it later.
+  # `-e configure_monitoring=false` skips it.
+  ansible.builtin.import_playbook: configure_monitoring.yml
+  when: configure_monitoring | default(true) | bool
+
+- name: "Timer: after monitoring storage"
+  hosts: aap
+  gather_facts: false
+  tasks:
+    - name: Record time after monitoring storage
+      ansible.builtin.set_fact:
+        setup_t_monitoring: "{{ now(utc=true).strftime('%s') | int }}"
+
+- name: Phase 0 (2/13) — install OpenShift Virtualization
   ansible.builtin.import_playbook: install_cnv.yml
 
 - name: "Timer: after CNV"
@@ -148,7 +180,7 @@
       ansible.builtin.set_fact:
         setup_t_cnv: "{{ now(utc=true).strftime('%s') | int }}"
 
-- name: Phase 0 (2/12) — link the RHEL 9 CIS L1 golden image
+- name: Phase 0 (3/13) — link the RHEL 9 CIS L1 golden image
   # DEFAULT ON, AND SKIPPABLE. Needs the HyperConverged CR from stage 1 and the
   # quay credentials in the vault. `-e link_rhel9_image=false` skips it for
   # environments where the quay creds are not configured yet; the stock rhel9
@@ -164,7 +196,7 @@
       ansible.builtin.set_fact:
         setup_t_rhel9: "{{ now(utc=true).strftime('%s') | int }}"
 
-- name: Phase 0 (3/12) — link the Windows golden image
+- name: Phase 0 (4/13) — link the Windows golden image
   # DEFAULT ON, AND SKIPPABLE. Same pattern as RHEL 9, but needs the quay
   # credentials too (the Windows image is in a private repository).
   # `-e link_windows_image=false` skips it for environments where the quay
@@ -181,7 +213,7 @@
       ansible.builtin.set_fact:
         setup_t_windows: "{{ now(utc=true).strftime('%s') | int }}"
 
-- name: Phase 0 (4/12) — ensure shared cluster objects
+- name: Phase 0 (5/13) — ensure shared cluster objects
   # VM namespace, Terraform state namespace, sd1.* instance type catalog.
   # Without this, the nightly teardown schedules fail on a new cluster (#530).
   ansible.builtin.import_playbook: ensure_shared_objects.yml
@@ -194,7 +226,7 @@
       ansible.builtin.set_fact:
         setup_t_shared: "{{ now(utc=true).strftime('%s') | int }}"
 
-- name: Phase 0 (5/12) — apply the AAP configuration
+- name: Phase 0 (6/13) — apply the AAP configuration
   ansible.builtin.import_playbook: config.yml
 
 - name: "Timer: after AAP config"
@@ -205,7 +237,7 @@
       ansible.builtin.set_fact:
         setup_t_config: "{{ now(utc=true).strftime('%s') | int }}"
 
-- name: Phase 0 (6/12) — deploy the AAP MCP server
+- name: Phase 0 (7/13) — deploy the AAP MCP server
   ansible.builtin.import_playbook: mcp_server.yml
 
 - name: "Timer: after MCP server"
@@ -216,7 +248,7 @@
       ansible.builtin.set_fact:
         setup_t_mcp: "{{ now(utc=true).strftime('%s') | int }}"
 
-- name: Phase 0 (7/12) — install Automation Orchestrator and its database
+- name: Phase 0 (8/13) — install Automation Orchestrator and its database
   # DEFAULT ON, AND SKIPPABLE. #141 wants AO in every build, so the default is
   # true rather than an opt-in nobody remembers. The flag exists because this
   # stage installs two operators and a database and is the longest-running
@@ -234,7 +266,7 @@
       ansible.builtin.set_fact:
         setup_t_ao_install: "{{ now(utc=true).strftime('%s') | int }}"
 
-- name: Phase 0 (8/12) — configure Automation Orchestrator
+- name: Phase 0 (9/13) — configure Automation Orchestrator
   # Gated on the same flag as install. If AO was not installed, there is nothing
   # to configure — and configure_ao.yml asserts the Route exists, so it would
   # fail cleanly anyway. A separate `configure_ao` flag is not needed unless
@@ -250,7 +282,7 @@
       ansible.builtin.set_fact:
         setup_t_ao_config: "{{ now(utc=true).strftime('%s') | int }}"
 
-- name: Phase 0 (9/12) — deploy the self-service portal
+- name: Phase 0 (10/13) — deploy the self-service portal
   # DEFAULT ON, AND SKIPPABLE. Same pattern as install_ao: the user always wants
   # it, but `-e install_portal=false` skips it when a hung Helm deploy must not
   # block a build that is otherwise fine. portal.yml stays runnable on its own
@@ -267,7 +299,7 @@
       ansible.builtin.set_fact:
         setup_t_portal: "{{ now(utc=true).strftime('%s') | int }}"
 
-- name: Phase 0 (10/12) — generate the environment URL reference
+- name: Phase 0 (11/13) — generate the environment URL reference
   # Credentials are included by default (#565). setup.yml is always a laptop
   # command and the vault is always available.
   ansible.builtin.import_playbook: generate_env_urls.yml
@@ -280,7 +312,7 @@
       ansible.builtin.set_fact:
         setup_t_env_urls: "{{ now(utc=true).strftime('%s') | int }}"
 
-- name: Phase 0 (11/12) — probe the environment
+- name: Phase 0 (12/13) — probe the environment
   # STRICTLY READ-ONLY. Measures CPU, memory and storage now that everything is
   # installed (AO, portal, MCP server all running). The recommendation for
   # available_memory_gb reflects the cluster's real capacity under full load,
@@ -295,7 +327,7 @@
       ansible.builtin.set_fact:
         setup_t_probe: "{{ now(utc=true).strftime('%s') | int }}"
 
-- name: Phase 0 (12/12) — prove the environment is demo-ready
+- name: Phase 0 (13/13) — prove the environment is demo-ready
   ansible.builtin.import_playbook: prepare_env.yml
 
 - name: "Timer: after verify"
@@ -313,7 +345,8 @@
     - name: Compute per-stage elapsed times
       ansible.builtin.set_fact:
         setup_elapsed:
-          cnv: "{{ (setup_t_cnv | int) - (setup_t_start | int) }}"
+          monitoring: "{{ (setup_t_monitoring | int) - (setup_t_start | int) }}"
+          cnv: "{{ (setup_t_cnv | int) - (setup_t_monitoring | int) }}"
           rhel9_image: "{{ (setup_t_rhel9 | int) - (setup_t_cnv | int) }}"
           windows_image: "{{ (setup_t_windows | int) - (setup_t_rhel9 | int) }}"
           shared_objects: "{{ (setup_t_shared | int) - (setup_t_windows | int) }}"
@@ -332,6 +365,7 @@
         msg:
           - ""
           - "===== Phase 0 timing summary ====="
+          - "  Monitoring storage:       {{ setup_elapsed.monitoring }}s{{ ' (skipped)' if not (configure_monitoring | default(true) | bool) else '' }}"
           - "  Install CNV:              {{ setup_elapsed.cnv }}s"
           - "  Link RHEL 9 image:        {{ setup_elapsed.rhel9_image }}s{{ ' (skipped)' if not (link_rhel9_image | default(true) | bool) else '' }}"
           - "  Link Windows image:       {{ setup_elapsed.windows_image }}s{{ ' (skipped)' if not (link_windows_image | default(true) | bool) else '' }}"

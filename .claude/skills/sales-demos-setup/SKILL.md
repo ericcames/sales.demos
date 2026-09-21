@@ -1,6 +1,6 @@
 ---
 name: sales-demos-setup
-description: "Phase 0 of the sales.demos platform — take a bare RHDP environment to demo-ready in one command. Twelve stages: install OpenShift Virtualization, link the RHEL 9 CIS image, link the Windows CIS image, create shared cluster objects, apply the AAP configuration, deploy the MCP server, install and configure Automation Orchestrator, deploy the self-service portal, generate the environment URL reference, probe the cluster for available_memory_gb, then prove it by building and timing a real VM. Checks prerequisites, confirms the cluster is reachable, then runs playbooks/setup.yml. TRIGGER when: the user has a new or rebuilt RHDP environment, asks to set one up or prepare it for the ocpvirt demo, says OpenShift Virtualization or KubeVirt is missing, hits a missing kubevirt.io API, or asks to install CNV. SKIP: if the environment is already set up and the user wants to create demo VMs — that is sales-demos-provision — or only wants to re-check readiness, which is sales-demos-verify-env."
+description: "Phase 0 of the sales.demos platform — take a bare RHDP environment to demo-ready in one command. Thirteen stages: persist the cluster monitoring storage, install OpenShift Virtualization, link the RHEL 9 CIS image, link the Windows CIS image, create shared cluster objects, apply the AAP configuration, deploy the MCP server, install and configure Automation Orchestrator, deploy the self-service portal, generate the environment URL reference, probe the cluster for available_memory_gb, then prove it by building and timing a real VM. Checks prerequisites, confirms the cluster is reachable, then runs playbooks/setup.yml. TRIGGER when: the user has a new or rebuilt RHDP environment, asks to set one up or prepare it for the ocpvirt demo, says OpenShift Virtualization or KubeVirt is missing, hits a missing kubevirt.io API, or asks to install CNV. SKIP: if the environment is already set up and the user wants to create demo VMs — that is sales-demos-provision — or only wants to re-check readiness, which is sales-demos-verify-env."
 ---
 
 # sales-demos-setup
@@ -22,14 +22,34 @@ Phase 0. Takes a bare RHDP "Ansible Product Demo" environment to demo-ready in
 **one command**.
 
 This skill contains **no logic**. All the work is in
-[`playbooks/setup.yml`](../../../playbooks/setup.yml), which imports twelve
+[`playbooks/setup.yml`](../../../playbooks/setup.yml), which imports thirteen
 playbooks in order. The same playbooks run from AAP job templates with survey
 answers mapped to the same variable names. See `CLAUDE.md` →
 *Skills and playbooks*.
 
 ## What it does
 
-**1. Install OpenShift Virtualization** (`install_cnv.yml`)
+**1. Persist the cluster monitoring storage** (`configure_monitoring.yml`)
+
+Stock OpenShift puts the cluster Prometheus TSDB on an **emptyDir** with 15 days
+of retention and no size cap. On a single-node cluster with one ~107 GB disk
+that grows into ~10 GB of the same filesystem the kubelet's 85% eviction
+threshold watches — measured at 9.4% of the whole disk on sandbox, and the
+reason jobs 591, 593 and 638 were evicted (#782, #793).
+
+Creates the `cluster-monitoring-config` ConfigMap with a `volumeClaimTemplate`
+on the cluster's own StorageClass (discovered at run time, the same way CNV's
+scratch space is) plus a `retentionSize` cap, then waits until the running pod's
+volume is genuinely a PVC rather than trusting the recap.
+
+**Runs first on purpose.** On a fresh environment the TSDB is minutes old, so
+the switch is instant and nothing of value is lost — and every stage after it
+installs onto a node that is not already carrying 10 GB it does not need to. On
+an environment that has been up for a week it costs the existing history, so run
+it away from a demo. Skippable with `-e configure_monitoring=false`. Reversible
+with `-e monitoring_state=absent`.
+
+**2. Install OpenShift Virtualization** (`install_cnv.yml`)
 
 1. Creates the `openshift-cnv` namespace and its OperatorGroup.
 2. Subscribes to `kubevirt-hyperconverged` on the `stable` channel from the
@@ -40,62 +60,62 @@ answers mapped to the same variable names. See `CLAUDE.md` →
 5. Waits for `HyperConverged` to report `Available`, then for the `rhel9`
    boot-source DataSource to be `Ready`.
 
-**2. Link the RHEL 9 CIS L1 golden image** (`link_rhel9_image.yml`)
+**3. Link the RHEL 9 CIS L1 golden image** (`link_rhel9_image.yml`)
 
 Creates a DataImportCron for rhel9-cis-l1 alongside the stock rhel9. Skippable
 with `-e link_rhel9_image=false`.
 
-**3. Link the Windows golden image** (`link_windows_image.yml`)
+**4. Link the Windows golden image** (`link_windows_image.yml`)
 
 Creates a DataImportCron for win2k22 and imports via an explicit DataVolume.
 Needs the quay credentials (private repository). Skippable with
 `-e link_windows_image=false`.
 
-**4. Ensure shared cluster objects** (`ensure_shared_objects.yml`)
+**5. Ensure shared cluster objects** (`ensure_shared_objects.yml`)
 
 VM namespace, Terraform state namespace, and the sd1.* instance type catalog
 (#351, #530). Without this, nightly teardown schedules fail on a new cluster.
 
-**5. Apply the AAP configuration** (`config.yml`)
+**6. Apply the AAP configuration** (`config.yml`)
 
 Organization, project, credentials, both inventories and their sync, the job
 templates and their surveys, the nightly teardown schedules, and the execution
 environment — mirrored from quay into *this environment's* Private Automation
 Hub, so the demo does not depend on quay.io at run time.
 
-**6. Deploy the AAP MCP server** (`mcp_server.yml`)
+**7. Deploy the AAP MCP server** (`mcp_server.yml`)
 
 So a new environment arrives with the MCP server already on rather than needing
 a second visit. Write posture comes from the environment's own group_vars.
 
-**7. Install Automation Orchestrator** (`install_ao.yml`)
+**8. Install Automation Orchestrator** (`install_ao.yml`)
 
 Installs AO and the PostgreSQL it cannot run without, via CloudNativePG. Default
 on, skipped with `-e install_ao=false`.
 
-**8. Configure Automation Orchestrator** (`configure_ao.yml`)
+**9. Configure Automation Orchestrator** (`configure_ao.yml`)
 
 Connects AO to AAP — OIDC SSO and the AAP integration so AO can see job
 templates. Gated on the same `install_ao` flag.
 
-**9. Deploy the self-service portal** (`portal.yml`)
+**10. Deploy the self-service portal** (`portal.yml`)
 
 Helm chart, gateway OAuth app, org sync. Default on, skipped with
-`-e install_portal=false`. Needs AAP configured first (stage 4), does not depend
+`-e install_portal=false`. Needs AAP configured first (stage 6), does not depend
 on AO.
 
-**10. Generate the environment URL reference** (`generate_env_urls.yml`)
+**11. Generate the environment URL reference** (`generate_env_urls.yml`)
 
 Regenerates the env-urls file with credentials included (setup.yml is always a
 laptop command with the vault available).
 
-**11. Probe the environment** (`probe_env.yml`)
+**12. Probe the environment** (`probe_env.yml`)
 
 Measures CPU, memory, and storage now that everything is installed. Recommends
 `available_memory_gb` under full load (AO, portal, MCP server all running).
 Strictly read-only (#100).
 
-**12. Prove it** (`prepare_env.yml`)
+**13. Prove it** (`prepare_env.yml`)
 
 Checks the boot source is genuinely backed by a ready snapshot, that storage
 clones with `csi-clone` rather than copying, and that ingress admits Routes —
@@ -103,7 +123,8 @@ then builds one real VM, times it, and destroys it.
 
 ## How long
 
-**Roughly 30-35 minutes**: about 4 for CNV, 1-2 for the RHEL 9 golden image
+**Roughly 30-35 minutes**: about 2 for the monitoring storage switch,
+about 4 for CNV, 1-2 for the RHEL 9 golden image
 import, about 7-10 for the Windows golden image import, a few for shared
 objects, several for the AAP objects and the first Hub image mirror, about 1
 for the MCP server, about 5 for AO and its database, about 2 to configure AO,
@@ -118,6 +139,7 @@ times and a total.
 
 `setup.yml` is a convenience, not a bottleneck:
 
+- `configure_monitoring.yml` — only the monitoring storage needs fixing
 - `install_cnv.yml` — only a cluster needs CNV
 - `link_rhel9_image.yml` — only the RHEL 9 golden image needs linking
 - `link_windows_image.yml` — only the Windows golden image needs linking
@@ -217,10 +239,11 @@ PY
 | Variable | Default | Meaning |
 |---|---|---|
 | `ENV` (inventory limit) | `sandbox` | Which environment to target — `sandbox`, `demo`, or `edge` |
-| `install_ao` | `true` | Set to `false` to skip both AO stages (7 and 8) |
-| `install_portal` | `true` | Set to `false` to skip the portal deploy (stage 9) |
-| `link_rhel9_image` | `true` | Set to `false` to skip the RHEL 9 golden image import (stage 2) |
-| `link_windows_image` | `true` | Set to `false` to skip the Windows golden image import (stage 3) |
+| `install_ao` | `true` | Set to `false` to skip both AO stages (8 and 9) |
+| `install_portal` | `true` | Set to `false` to skip the portal deploy (stage 10) |
+| `link_rhel9_image` | `true` | Set to `false` to skip the RHEL 9 golden image import (stage 3) |
+| `link_windows_image` | `true` | Set to `false` to skip the Windows golden image import (stage 4) |
+| `configure_monitoring` | `true` | Set to `false` to leave the cluster Prometheus on its stock node-local emptyDir (stage 1) |
 
 Credentials are included in env-urls by default (#565). setup.yml is always a
 laptop command with the vault available, so no extra-var is needed.
