@@ -202,6 +202,86 @@
           }
         }
       ]
+    },
+    {
+      "uid": "sales-demos-node-disk-pressure",
+      "title": "Node under disk pressure",
+      "condition": "C",
+      "for": "0s",
+      "noDataState": "OK",
+      "execErrState": "Error",
+      "labels": {
+        "severity": "critical",
+        "source": "sales-demos"
+      },
+      "annotations": {
+        "summary": "kubelet on {{ $labels.node }} ({{ $labels.cluster }}) is evicting pods for disk",
+        "description": "DiskPressure means kubelet has already started evicting. AAP job pods are BestEffort, so they are among the first taken and a running job dies as 'error' with no output or 'failed' with a shutdown signal. Fires immediately -- the condition often lasts only seconds. See issue #782.",
+        "__dashboardUid__": "sales-demos-cluster-health",
+        "__panelId__": "7"
+      },
+      "data": [
+        {
+          "refId": "A",
+          "datasourceUid": "grafanacloud-prom",
+          "relativeTimeRange": {"from": 600, "to": 0},
+          "model": {
+            "refId": "A",
+            "instant": true,
+            "expr": "max by (cluster, node) (kube_node_status_condition{condition=\"DiskPressure\",status=\"true\"})"
+          }
+        },
+        {
+          "refId": "C",
+          "datasourceUid": "__expr__",
+          "model": {
+            "refId": "C",
+            "type": "threshold",
+            "expression": "A",
+            "conditions": [{"evaluator": {"type": "gt", "params": [0]}}]
+          }
+        }
+      ]
+    },
+    {
+      "uid": "sales-demos-node-disk-headroom",
+      "title": "Node disk approaching the eviction threshold",
+      "condition": "C",
+      "for": "15m",
+      "noDataState": "OK",
+      "execErrState": "Error",
+      "labels": {
+        "severity": "warning",
+        "source": "sales-demos"
+      },
+      "annotations": {
+        "summary": "{{ $labels.cluster }} node /var is {{ $values.A }}% full -- eviction starts at 85%",
+        "description": "The RHDP single-node clusters put RHCOS, etcd, every container image and all pod ephemeral storage on one ~107 GB filesystem. kubelet evicts at imagefs.available<15% and image GC also triggers at 85%, so there is no margin where GC rescues the node before pods die. Provisioning or tearing down VMs concurrently is what pushes it over. See issue #782.",
+        "__dashboardUid__": "sales-demos-cluster-health",
+        "__panelId__": "7"
+      },
+      "data": [
+        {
+          "refId": "A",
+          "datasourceUid": "grafanacloud-prom",
+          "relativeTimeRange": {"from": 600, "to": 0},
+          "model": {
+            "refId": "A",
+            "instant": true,
+            "expr": "max by (cluster) (100 * (1 - node_filesystem_avail_bytes{mountpoint=\"/var\"} / node_filesystem_size_bytes{mountpoint=\"/var\"}))"
+          }
+        },
+        {
+          "refId": "C",
+          "datasourceUid": "__expr__",
+          "model": {
+            "refId": "C",
+            "type": "threshold",
+            "expression": "A",
+            "conditions": [{"evaluator": {"type": "gt", "params": [82]}}]
+          }
+        }
+      ]
     }
   ]
 }
