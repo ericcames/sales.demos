@@ -29,6 +29,18 @@
 # AND IT BUILDS A REAL VM. A playbook that has verified everything except
 # "can this cluster make a VM" is the failure mode this exists to prevent, so it
 # builds one, times it, and destroys it.
+#
+# IT ALSO WARMS THE DEMO PATH (#788). "Ready" and "warm" are different claims,
+# and this playbook now makes both. A cluster can pass every check above and
+# still make the first job of the demo pay two costs the fifth one would not: a
+# 3.06 GB execution-environment pull that kubelet garbage collected between
+# sessions, and an inventory update that cannot get a pod onto the node because
+# that pull just pushed it into DiskPressure. Both were measured on sandbox on
+# 2026-09-21 -- the second turned a 0.1 s inventory parse into a 319 s stall
+# with a demo job waiting behind it. So this asserts the EE keeper is holding
+# the image resident, asserts there is more headroom than a cold pull needs,
+# and syncs both inventory sources deliberately at the end, which resets the
+# 1800 s cache clock so the demo's first job needs no dependency pod at all.
 # ===========================================================================
 
 - name: Phase 0.5 — verify a fresh environment is genuinely demo-ready
@@ -59,6 +71,17 @@
     # The whole point is measuring a WARM build. Anything near the cold figure
     # means the boot source is not really ready, whatever its conditions say.
     prep_warm_threshold_seconds: 120
+    # --- the warm demo path (#788) ---------------------------------------
+    prep_keeper_name: "{{ ee_keeper_daemonset_name | default('sales-demos-ee-keeper') }}"
+    prep_aap_namespace: "{{ aap_namespace | default('aap') }}"
+    # Above the 4.39 GB that was measured being insufficient, not at the
+    # 3.06 GB image size. See the assert for why.
+    prep_min_disk_headroom_gb: 6.0
+    # The inventory warm-up is the one thing here that talks to AAP rather than
+    # to the cluster, so it is separable: -e prep_warm_inventory=false runs the
+    # cluster checks with no AAP credentials in play.
+    prep_warm_inventory: true
+    prep_inventory_sync_timeout: 600
 
   tasks:
     - name: Assert exactly one environment is targeted
@@ -236,6 +259,85 @@
       when: (openshift_apps_domain | default('')) != prep_ingress.resources[0].spec.domain
 
     # --- 5. Actually build one, because everything above is inference -------
+    # -----------------------------------------------------------------------
+    # The demo path is warm, not merely working (#788).
+    #
+    # Everything above asks "can this cluster build a VM". These three ask the
+    # question #788 was opened for: will the FIRST job of the demo pay a cost
+    # that the fifth one would not. Two costs were measured on sandbox:
+    #
+    #   - a 3.06 GB EE pull, 31.5 s, because kubelet had garbage collected the
+    #     image between sessions; and
+    #   - a 319 s inventory update that could not get a pod onto the node,
+    #     because that same pull had just pushed it into DiskPressure.
+    #
+    # Both are demo-time costs with no demo-time cause. Take them now.
+    # -----------------------------------------------------------------------
+    - name: Look up the EE keeper DaemonSet
+      kubernetes.core.k8s_info:
+        api_version: apps/v1
+        kind: DaemonSet
+        name: "{{ prep_keeper_name }}"
+        namespace: "{{ prep_aap_namespace }}"
+      register: prep_keeper
+
+    - name: Assert the EE keeper is Ready on every node
+      # READY IS THE PROOF THE IMAGE IS RESIDENT, and it is a better proof than
+      # reading the image list off the node. kubelet truncates
+      # node.status.images at --node-status-max-images (50 of the 174 images
+      # cri-o actually holds on this node), so absence from that list is not
+      # evidence of absence. A running container, by contrast, cannot exist
+      # without its image, and image GC will not reclaim an image that backs
+      # one. Ready 1/1 therefore answers the question exactly.
+      ansible.builtin.assert:
+        that:
+          - prep_keeper.resources | default([]) | length > 0
+          - (prep_keeper.resources[0].status.desiredNumberScheduled | default(0)) > 0
+          - (prep_keeper.resources[0].status.numberReady | default(0))
+            == (prep_keeper.resources[0].status.desiredNumberScheduled | default(0))
+        fail_msg: >-
+          The EE keeper {{ prep_keeper_name }} is not Ready in
+          {{ prep_aap_namespace }}
+          ({{ prep_keeper.resources[0].status.numberReady | default(0) }}/{{
+             prep_keeper.resources[0].status.desiredNumberScheduled | default(0) }}).
+          Without it the execution environment is garbage collected between
+          sessions and the demo's first job pays a 3.06 GB cold pull that has
+          been measured evicting that same job. Run
+          playbooks/ensure_shared_objects.yml to create it.
+        success_msg: >-
+          EE keeper Ready on
+          {{ prep_keeper.resources[0].status.numberReady }}/{{
+             prep_keeper.resources[0].status.desiredNumberScheduled }} nodes —
+          the EE is pinned resident.
+        quiet: true
+
+    - name: Measure node disk headroom
+      ansible.builtin.include_tasks: tasks/gather_disk_headroom.yml
+
+    - name: Assert there is more headroom than a cold EE pull needs
+      # THE THRESHOLD IS NOT THE IMAGE SIZE, and that is the lesson of #788.
+      # Job 638 started with 4.39 GB of headroom against a 3.06 GB image —
+      # arithmetically sufficient — and was evicted by its own pull anyway,
+      # because a pull is not the only thing moving on the disk while it runs.
+      # So the floor is set ABOVE the figure that was measured failing, not at
+      # the image size. Raise it with -e prep_min_disk_headroom_gb=<n> only
+      # after deciding the risk is acceptable.
+      ansible.builtin.assert:
+        that:
+          - probe_disk | length > 0
+          - probe_disk_pressure_nodes | length == 0
+          - (probe_disk | map(attribute='avail_gb') | map('float') | list | min)
+            - (probe_disk | map(attribute='cap_gb') | map('float') | list | max) * 0.15
+            >= (prep_min_disk_headroom_gb | float)
+        fail_msg: >-
+          Node disk headroom is below {{ prep_min_disk_headroom_gb }} GB.
+          {{ probe_disk_verdict }}
+          {{ probe_disk_lines | join(' ') }}
+          A demo run from here risks kubelet evicting a job mid-demo. See #796
+          for getting /var back under 70%.
+        success_msg: "{{ probe_disk_verdict }} {{ probe_disk_lines | join(' ') }}"
+        quiet: true
+
     - name: Smoke-test a real VM build
       block:
         - name: Create the smoke-test namespace
@@ -379,3 +481,49 @@
             kind: Namespace
             name: "{{ prep_smoke_namespace }}"
             wait: false
+
+
+    # -----------------------------------------------------------------------
+    # Reset the inventory cache clock LAST (#788).
+    # -----------------------------------------------------------------------
+    # Both sources are update_on_launch with update_cache_timeout 1800, and that
+    # configuration is correct — it is what lets a connection.yml edit take
+    # effect without anyone pressing a button, and #788 deliberately does not
+    # change it.
+    #
+    # What it costs is that the first job launched after the cache goes stale
+    # drags a dependency INVENTORY UPDATE behind it, and that update is the one
+    # link in the chain that needs a NEW POD. Project syncs run inside the
+    # control-plane task pod and never queue; the inventory update is the only
+    # thing a disk-pressure taint can block, which is exactly how a 0.1 s parse
+    # became a 319 s stall in front of a demo.
+    #
+    # Running them here, deliberately and blocking, resets the 1800 s clock. The
+    # demo's first job then needs no dependency pod at all.
+    #
+    # BOTH SOURCES, not just the one provisioning uses. Teardown runs against
+    # the control inventory, and a stale cache there stalls it the same way.
+    #
+    # THE NAMES COME FROM THE CONFIG-AS-CODE FILE that defines the sources, so
+    # adding a third source does not silently leave it unwarmed here.
+    #
+    # IT REPORTS `changed`, UNLIKE project_update, which reports `ok` while
+    # doing the same kind of work. Measured on sandbox 2026-09-21: both items
+    # returned changed=true. Noted because config.yml documents the opposite
+    # behaviour a few files away, and the two are easy to conflate -- so a
+    # `changed` here is the expected result and not something to "fix".
+    - name: Sync both inventory sources so the demo's first job needs no dependency pod
+      ansible.controller.inventory_source_update:
+        name: "{{ item.name }}"
+        inventory: "{{ item.inventory }}"
+        organization: "{{ item.organization }}"
+        wait: true
+        timeout: "{{ prep_inventory_sync_timeout | int }}"
+        controller_host: "https://{{ aap_hostname }}"
+        controller_username: "{{ aap_username }}"
+        controller_password: "{{ aap_password }}"
+        validate_certs: "{{ aap_validate_certs | default(false) | bool }}"
+      loop: "{{ controller_inventory_sources_all | default([]) }}"
+      loop_control:
+        label: "{{ item.name }}"
+      when: prep_warm_inventory | bool

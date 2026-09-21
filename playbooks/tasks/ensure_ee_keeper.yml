@@ -1,0 +1,240 @@
+---
+# ===========================================================================
+# ensure_ee_keeper.yml — pin the execution environment image on every node.
+# Issue #788.
+# ===========================================================================
+# CALLER: tasks/ensure_shared_objects.yml, so this runs on Day 0 (setup.yml ->
+# ensure_shared_objects.yml) AND on every provision (terraform_ocpvirt.yml).
+# Needs ocpvirt_api_url and ocpvirt_api_token, which that file already resolves.
+#
+# WHY A DAEMONSET THAT DOES NOTHING. kubelet's image GC never reclaims an image
+# that backs a running container. A container sleeping forever on the EE image
+# is therefore a lock: 3.06 GB stops being a spike that arrives 31 seconds
+# before a demo job needs the node, and becomes a constant the node is always
+# sized for.
+#
+# THE SPIKE IS THE WHOLE DEFECT, measured on sandbox 2026-09-21. Job 638 pulled
+# this image at 22:06:41, kubelet reported NodeHasDiskPressure at 22:07:10, and
+# the job's own pod was evicted at 22:07:12 -- 31 seconds, one job, no other
+# workload involved. The job's own EE pull is what killed the job. Headroom was
+# 4.39 GB against a 3.06 GB image: arithmetically sufficient, and still not
+# enough, because a pull is not the only thing moving on the disk.
+#
+# A TOLERATION WOULD HAVE BEEN WORSE and was explicitly rejected (#788).
+# kubelet's eviction manager refuses pod ADMISSION under DiskPressure for
+# everything except critical pods, and the system-*-critical priority classes
+# are restricted to kube-system. Tolerating the taint would convert a five
+# minute queue into a failed job -- in front of a customer. Keep the node out of
+# DiskPressure; do not sneak past the taint.
+#
+# THIS IS NOT #782. #782 decides who gets evicted once something causes a
+# threshold crossing. This removes the crossing's most frequent cause. Neither
+# replaces the other, and both are needed.
+# ===========================================================================
+
+# --------------------------------------------------------------------------
+# Inputs, resolved once.
+# --------------------------------------------------------------------------
+# EACH TASK HERE CARRIES ITS OWN `environment:` for the same reason
+# ensure_shared_objects.yml does (#313): these sit outside any Terraform block
+# and inherit nothing, and omitting it produces "Invalid kube-config file. No
+# configuration found." A YAML anchor cannot cross a file boundary, so the auth
+# block is a fact rather than the `&ocpvirt_k8s_auth` alias used next door.
+- name: Resolve the EE keeper inputs
+  ansible.builtin.set_fact:
+    ee_keeper_name: "{{ ee_keeper_daemonset_name | default('sales-demos-ee-keeper') }}"
+    ee_keeper_namespace: "{{ aap_namespace | default('aap') }}"
+    ee_keeper_retries: "{{ ee_keeper_ready_retries | default(30) | int }}"
+    ee_keeper_delay: "{{ ee_keeper_ready_delay | default(10) | int }}"
+    ee_keeper_k8s_env:
+      K8S_AUTH_HOST: "{{ ocpvirt_api_url }}"
+      K8S_AUTH_API_KEY: "{{ ocpvirt_api_token }}"
+      K8S_AUTH_VERIFY_SSL: "{{ openshift_validate_certs | default(false) | bool }}"
+
+# --------------------------------------------------------------------------
+# The image, from the one file that already defines it.
+# --------------------------------------------------------------------------
+# FAIL RATHER THAN GUESS. utilities/run-in-ee.sh reads the tag out of
+# controller_execution_environments.yml precisely so a verification run cannot
+# drift from the production image, and refuses to fall back to a hardcoded tag.
+# The keeper has the same requirement for the same reason: a keeper holding
+# v1.1.0 resident while job templates run v1.2.0 would pin the wrong 3 GB and
+# every symptom of #788 would survive, with the dashboard looking fine.
+#
+# Selected by image substring, not by the `name` field, so renaming the AAP
+# object in the UI cannot silently break this.
+- name: Resolve the execution environment image from config-as-code
+  ansible.builtin.set_fact:
+    ee_keeper_candidates: >-
+      {{ controller_execution_environments_all | default([])
+         | selectattr('image', 'defined')
+         | selectattr('image', 'search', 'sales_demos_ee')
+         | list }}
+
+- name: Assert exactly one execution environment image matched
+  ansible.builtin.assert:
+    that:
+      - ee_keeper_candidates | length == 1
+    fail_msg: >-
+      Expected exactly one sales_demos_ee entry in
+      controller_execution_environments_all, found
+      {{ ee_keeper_candidates | length }}
+      ({{ ee_keeper_candidates | map(attribute='image') | list }}).
+      inventory/group_vars/aap/controller_execution_environments.yml is the
+      single source of truth for the image AAP job templates run on, and the
+      keeper must pin that exact image or it pins the wrong 3 GB. Fix that file
+      rather than hardcoding a tag here.
+    success_msg: "EE image resolved: {{ ee_keeper_candidates[0].image }}"
+
+- name: Record the image and the registry it comes from
+  # The registry is derived FROM THE IMAGE, not assumed to be aap_hostname.
+  # They are the same value today -- the image is "{{ aap_hostname }}/..." --
+  # but deriving it keeps the pull-secret lookup honest if that ever changes.
+  ansible.builtin.set_fact:
+    ee_keeper_image: "{{ ee_keeper_candidates[0].image }}"
+    ee_keeper_registry: "{{ ee_keeper_candidates[0].image | split('/') | first }}"
+
+# --------------------------------------------------------------------------
+# The pull secret, DISCOVERED and never created.
+# --------------------------------------------------------------------------
+# PAH requires authentication for container pulls even when the repository is
+# not private, so the keeper needs a credential. It does not need a NEW one:
+# the aap namespace already holds a durable AAP-managed dockerconfigjson secret
+# for this registry (created with the deployment, no owner references, still
+# present 7 days later).
+#
+# Creating our own would mean a second copy of the AAP admin password living in
+# the cluster, rotating independently of the first. Discovering the existing one
+# adds no credential material anywhere.
+#
+# SELECTED BY REGISTRY, NOT BY NAME. The name is generated per environment
+# (`automation-64dbf-image-pull-secret-9` on sandbox today), so a literal here
+# would work on exactly one cluster and fail on every rebuild.
+- name: Find the image pull secrets in the AAP namespace
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: Secret
+    namespace: "{{ ee_keeper_namespace }}"
+  register: ee_keeper_secrets
+  environment: "{{ ee_keeper_k8s_env }}"
+
+- name: Select the pull secret that authenticates to the EE registry
+  ansible.builtin.set_fact:
+    ee_keeper_pull_secrets: >-
+      {%- set ns = namespace(hit=[]) -%}
+      {%- for s in ee_keeper_secrets.resources | default([]) -%}
+        {%- if s.type | default('') == 'kubernetes.io/dockerconfigjson' -%}
+          {%- set raw = (s.data | default({})).get('.dockerconfigjson', '') -%}
+          {%- if raw | length > 0 -%}
+            {%- set auths = (raw | b64decode | from_json).get('auths', {}) -%}
+            {%- if ee_keeper_registry in auths -%}
+              {%- set ns.hit = ns.hit + [s.metadata.name] -%}
+            {%- endif -%}
+          {%- endif -%}
+        {%- endif -%}
+      {%- endfor -%}
+      {{ ns.hit }}
+
+- name: Assert a pull secret for the EE registry was found
+  ansible.builtin.assert:
+    that:
+      - ee_keeper_pull_secrets | length > 0
+    fail_msg: >-
+      No kubernetes.io/dockerconfigjson secret in the
+      {{ ee_keeper_namespace }} namespace authenticates to
+      {{ ee_keeper_registry }}. The keeper discovers this secret rather than
+      creating one, so that the AAP admin password is not copied a second time
+      into the cluster. If AAP has genuinely not created it yet, run this after
+      the platform is up rather than adding a new credential here.
+    success_msg: >-
+      Pull secret for {{ ee_keeper_registry }}:
+      {{ ee_keeper_pull_secrets | first }}
+
+# --------------------------------------------------------------------------
+# The keeper itself.
+# --------------------------------------------------------------------------
+- name: Ensure the EE keeper DaemonSet exists
+  kubernetes.core.k8s:
+    state: present
+    apply: true
+    definition:
+      apiVersion: apps/v1
+      kind: DaemonSet
+      metadata:
+        name: "{{ ee_keeper_name }}"
+        namespace: "{{ ee_keeper_namespace }}"
+        labels: &ee_keeper_labels
+          app.kubernetes.io/name: "{{ ee_keeper_name }}"
+          app.kubernetes.io/part-of: sales-demos
+          app.kubernetes.io/managed-by: sales.demos
+      spec:
+        selector:
+          matchLabels:
+            app.kubernetes.io/name: "{{ ee_keeper_name }}"
+        template:
+          metadata:
+            labels: *ee_keeper_labels
+          spec:
+            # NO TOLERATION FOR node.kubernetes.io/disk-pressure. See the header
+            # -- tolerating it turns a queued job into a failed one. The keeper
+            # is long-running, and an already-running pod is not re-admitted, so
+            # it survives a pressure episode without needing to tolerate it.
+            imagePullSecrets:
+              - name: "{{ ee_keeper_pull_secrets | first }}"
+            containers:
+              - name: keeper
+                image: "{{ ee_keeper_image }}"
+                # The image is the point. The process just has to stay alive.
+                command: ["sleep", "infinity"]
+                resources:
+                  # SMALL, EXPLICIT, AND REQUESTS ONLY -- which makes the pod
+                  # Burstable rather than BestEffort. BestEffort is what puts
+                  # AAP job pods first in the eviction queue (#782); a keeper
+                  # that is itself first to be evicted would release the image
+                  # at exactly the moment the node is under pressure, which is
+                  # the one moment it must not.
+                  #
+                  # No limits: a limit equal to requests would make it
+                  # Guaranteed and reserve capacity this pod never uses.
+                  requests:
+                    cpu: 10m
+                    memory: 32Mi
+                    ephemeral-storage: 64Mi
+                securityContext:
+                  # restricted-v2. The aap namespace annotates
+                  # MinimallySufficientPodSecurityStandard: restricted.
+                  # runAsUser is deliberately NOT set -- OpenShift assigns one
+                  # from the namespace's uid-range, and pinning the image's own
+                  # UID would be rejected by the SCC.
+                  allowPrivilegeEscalation: false
+                  runAsNonRoot: true
+                  capabilities:
+                    drop: ["ALL"]
+                  seccompProfile:
+                    type: RuntimeDefault
+  environment: "{{ ee_keeper_k8s_env }}"
+
+- name: Wait for the EE keeper to be Ready on every node
+  kubernetes.core.k8s_info:
+    api_version: apps/v1
+    kind: DaemonSet
+    name: "{{ ee_keeper_name }}"
+    namespace: "{{ ee_keeper_namespace }}"
+  register: ee_keeper_status
+  until:
+    - ee_keeper_status.resources | default([]) | length > 0
+    - ee_keeper_status.resources[0].status.desiredNumberScheduled | default(0) > 0
+    - (ee_keeper_status.resources[0].status.numberReady | default(0))
+      == ee_keeper_status.resources[0].status.desiredNumberScheduled
+  retries: "{{ ee_keeper_retries }}"
+  delay: "{{ ee_keeper_delay }}"
+  environment: "{{ ee_keeper_k8s_env }}"
+
+- name: Report the keeper state
+  ansible.builtin.debug:
+    msg:
+      - "EE keeper:  {{ ee_keeper_name }} in {{ ee_keeper_namespace }}"
+      - "Image:      {{ ee_keeper_image }}"
+      - "Pull secret: {{ ee_keeper_pull_secrets | first }} (discovered by registry)"
+      - "Ready:      {{ ee_keeper_status.resources[0].status.numberReady | default(0) }}/{{ ee_keeper_status.resources[0].status.desiredNumberScheduled | default(0) }} nodes"
+      - "The image is now pinned resident and will not be garbage collected."

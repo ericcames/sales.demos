@@ -155,3 +155,12 @@
       state namespace {{ ocpvirt_state_namespace }},
       instance types {{ ocpvirt_tier_catalog.tiers.values() | map(attribute='instancetype') | join(', ') }}.
       Teardown leaves these in place.
+
+# KEPT IN ITS OWN FILE because it is a different kind of scaffolding: the
+# objects above are cluster-scoped and live in the VM namespace, whereas the
+# keeper is a workload in the AAP namespace. What it shares with them is the
+# lifecycle -- created on Day 0, re-asserted on every provision, never removed
+# by teardown -- and that lifecycle is the reason it is reached through here
+# rather than bolted onto setup.yml as a fourteenth stage (#788).
+- name: Ensure the execution environment stays resident on every node
+  ansible.builtin.include_tasks: ensure_ee_keeper.yml
