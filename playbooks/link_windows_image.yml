@@ -15,14 +15,31 @@
 #     --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
 #
 # WHAT THIS DOES. Creates a pull secret for the private quay repository holding
-# the Windows containerdisk, adds a DataImportCron template to the
-# HyperConverged CR, and creates a DataVolume to import the image. The
-# DataImportCron is there for future refresh; the DataVolume is the actual
-# import trigger because CDI 4.20's DataImportCron controller cannot
-# authenticate to a private registry for its initial digest check (#224).
-# Once imported, the DataSource `win2k22` is updated to point at the PVC.
-# Terraform already clones that DataSource (terraform/ocpvirt/main.tf) and
-# has been blocked on it since Phase 1.
+# the Windows containerdisk -- in BOTH namespaces that read it, see
+# win_pull_secret_namespaces below -- adds a DataImportCron template to the
+# HyperConverged CR, and creates a DataVolume to import the image. Once
+# imported, the DataSource `win2k22` is updated to point at the PVC. Terraform
+# already clones that DataSource (terraform/ocpvirt/main.tf) and has been
+# blocked on it since Phase 1.
+#
+# THE OLD DIAGNOSIS HERE WAS WRONG, AND IT IS WORTH KNOWING WHY (#785). This
+# file used to say "CDI 4.20's DataImportCron controller cannot authenticate to
+# a private registry for its initial digest check (#224)", and treated the
+# explicit DataVolume as the only workable import path. It never got as far as
+# authenticating: `cdi-source-update-poller` runs in openshift-cnv and resolved
+# `secretRef: windows-golden-pull` there, where the secret did not exist, so the
+# pod died in CreateContainerConfigError before making a single registry call.
+# The cron reported "No source digest", which reads like an auth failure and is
+# not one.
+#
+# The corroboration was in plain sight: rhel9-cis-l1-image-cron is pinned to an
+# immutable tag too and is UpToDate, because its quay repo is public and needs
+# no secret at all. Only the private Windows repo needed auth, and only it
+# failed.
+#
+# THE DataVolume STAYS. It is proven, it is what boots Windows today, and
+# removing it before the cron has demonstrably imported would be trading a
+# working path for an untested one. Retiring it is tracked separately.
 #
 # ---------------------------------------------------------------------------
 # WHY A DataImportCron AND NOT A HAND-CREATED PVC
@@ -82,13 +99,45 @@
     win_cron_name: "win2k22-image-cron"
     win_pull_secret_name: "windows-golden-pull"
 
+    # THE PULL SECRET LIVES IN TWO NAMESPACES, AND THAT IS NOT BELT AND BRACES
+    # (#785). Two different CDI pods read it, and they run in different places:
+    #
+    #   openshift-virtualization-os-images  the importer, and the explicit
+    #                                       DataVolume below, which is where
+    #                                       the DataSource lives
+    #   openshift-cnv                       cdi-source-update-poller, which CDI
+    #                                       schedules in its OWN operand
+    #                                       namespace, not the cron's
+    #
+    # A `secretKeyRef` has no namespace field -- it always resolves in the
+    # pod's own namespace. So the poller, told about the cron's namespace via
+    # `-ns` but reading its credentials locally, could never find a secret that
+    # existed only beside the DataSource. Measured on sandbox 2026-09-21:
+    # `CreateContainerConfigError: secret "windows-golden-pull" not found`,
+    # every 12 hours since the cron was created, with six failed pods left
+    # behind.
+    #
+    # This is the only secret in the repo written to two namespaces. Anything
+    # that "tidies" it back to one will silently stop the cron importing again,
+    # and the symptom is a DataImportCron reporting "No source digest" rather
+    # than an auth error -- which is exactly how this was misdiagnosed for
+    # months.
+    win_pull_secret_namespaces:
+      - "{{ win_datasource_namespace }}"
+      - "{{ win_cnv_namespace }}"
+
     # 60Gi matches windows_min_disk_gb in terraform/ocpvirt/locals.tf. The
     # shipped Linux boot sources are 30Gi; Windows does not fit in that.
     win_image_storage_size: "60Gi"
 
-    # The cadence the shipped crons use. NOTE: with an immutable date tag in
-    # quay_windows_image the poll is a no-op by design — pointing that variable
-    # at a moving tag is what makes the cron actually refresh anything.
+    # The cadence the shipped crons use. AN IMMUTABLE TAG DOES NOT MAKE THE
+    # CRON INERT (#785): the first successful poll records the digest and
+    # triggers the initial import, which is the import that matters. Every
+    # working boot source on this cluster -- including rhel9-cis-l1, also
+    # pinned to a date tag -- was produced exactly that way, ending as a
+    # VolumeSnapshot with the transient PVC garbage-collected. Only subsequent
+    # polls are no-ops, and pointing quay_windows_image at a moving tag is what
+    # would make them do more.
     win_image_schedule: "9 10/12 * * *"
 
     # The manual DataVolume name. Deterministic so re-runs are idempotent.
@@ -175,6 +224,9 @@
       # vars, NOT as a dockerconfigjson. The earlier dockerconfigjson format
       # produced CreateContainerConfigError: "couldn't find key accessKeyId"
       # (#222 → #224).
+      #
+      # Looped over win_pull_secret_namespaces -- see the comment on that
+      # variable for why there are two.
       kubernetes.core.k8s:
         state: present
         definition:
@@ -182,12 +234,25 @@
           kind: Secret
           metadata:
             name: "{{ win_pull_secret_name }}"
-            namespace: "{{ win_datasource_namespace }}"
+            namespace: "{{ item }}"
           type: Opaque
           data:
             accessKeyId: "{{ quay_username | b64encode }}"
             secretKey: "{{ quay_password | b64encode }}"
+      loop: "{{ win_pull_secret_namespaces }}"
       no_log: true
+      when: windows_image_link_state == 'present'
+
+    - name: Report where the pull secret was written
+      # A SEPARATE TASK BECAUSE `no_log` HIDES THE LOOP LABEL TOO. Without
+      # this the run gives no evidence that both namespaces were covered,
+      # which is the whole fix.
+      ansible.builtin.debug:
+        msg: >-
+          {{ win_pull_secret_name }} present in
+          {{ win_pull_secret_namespaces | join(' and ') }}
+          — the DataVolume/importer reads it in the first, CDI's
+          cdi-source-update-poller in the second (#785).
       when: windows_image_link_state == 'present'
 
     # --- The DataImportCron template ---------------------------------------
@@ -256,10 +321,15 @@
             dataImportCronTemplates: "{{ win_desired_crons }}"
 
     # --- Import the image via a manual DataVolume ----------------------------
-    # CDI's DataImportCron controller cannot get the image digest from a
-    # private registry — it fails silently with "No source digest" and never
-    # creates a DataVolume (#224). The cron template stays in HCO for future
-    # CDI versions; this DataVolume is the explicit import trigger.
+    # THIS IS THE PROVEN IMPORT PATH, and it works for the same reason the cron
+    # did not: it runs in win_datasource_namespace, where the secret has always
+    # existed. The cron's poller runs in openshift-cnv and could not see it
+    # (#785) -- the mirror image of this, and why the old note here blamed CDI
+    # for being unable to authenticate against a private registry.
+    #
+    # Both paths now have credentials. This one is kept because it is the one
+    # with a track record; the cron is expected to take over once it has been
+    # observed importing, which is tracked separately.
     - name: Check if the DataSource is already Ready
       kubernetes.core.k8s_info:
         api_version: cdi.kubevirt.io/v1beta1
@@ -488,13 +558,14 @@
         namespace: "{{ win_datasource_namespace }}"
       when: windows_image_link_state == 'absent'
 
-    - name: Remove the pull secret
+    - name: Remove the pull secret from both namespaces
       kubernetes.core.k8s:
         state: absent
         api_version: v1
         kind: Secret
         name: "{{ win_pull_secret_name }}"
-        namespace: "{{ win_datasource_namespace }}"
+        namespace: "{{ item }}"
+      loop: "{{ win_pull_secret_namespaces }}"
       when: windows_image_link_state == 'absent'
 
     - name: Summarize
