@@ -63,6 +63,16 @@ mock_modules:
   # habit: projects are a controller concept and ansible.platform ships no
   # equivalent, the same reasoning as the three lines above.
   - ansible.controller.project_update
+  # Warming the inventory cache before a demo (#788,
+  # playbooks/prepare_env.yml). Both sources are update_on_launch with a 1800 s
+  # cache, so the first job after the cache goes stale drags a dependency
+  # inventory update behind it -- and that update is the only link in the chain
+  # that needs a new pod, which is how a disk-pressure taint turned a 0.1 s
+  # parse into a 319 s stall. Syncing deliberately resets the clock.
+  # ansible.controller for the same reason as project_update directly above:
+  # inventory sources are a controller concept and ansible.platform ships no
+  # equivalent.
+  - ansible.controller.inventory_source_update
   # Credential type and credential lifecycle (serve_model.yml, #677).
   # ansible.platform ships no credential module as of 2.7.20260604.
   - ansible.controller.credential_type

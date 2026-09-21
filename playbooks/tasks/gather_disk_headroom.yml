@@ -1,0 +1,145 @@
+---
+# ===========================================================================
+# gather_disk_headroom.yml — measure node /var against the eviction threshold.
+# Issue #788.
+# ===========================================================================
+# CALLERS: probe_env.yml and prepare_env.yml. Extracted from probe_env.yml,
+# where this arithmetic lived inline, so that prepare_env.yml could assert on
+# disk headroom without growing a second implementation of it. Two readers, one
+# derivation -- the same rule terraform/ocpvirt/tiers.yaml follows.
+#
+# STRICTLY READ-ONLY. Every task is a GET, which is what keeps probe_env.yml
+# safe to run in the middle of a demo. Do not add a write here.
+#
+# SETS, for the caller to report or assert on:
+#   disk_nodes                 the raw node list
+#   probe_disk                 per node: cap_gb, avail_gb, used_pct
+#   probe_disk_worst_pct       the node closest to the line
+#   probe_disk_pressure_nodes  nodes kubelet reports under DiskPressure NOW
+#   probe_disk_lines           rendered per-node report lines
+#   probe_disk_verdict         one sentence
+#
+# The fact names are deliberately unchanged from the inline version, so
+# probe_env.yml's report renders identically and the extraction can be verified
+# by diffing a run against a pre-change one.
+# ===========================================================================
+
+- name: Read the nodes for the disk measurement
+  # Fetched here rather than taking the caller's list, so this file is
+  # self-contained and prepare_env.yml does not have to gather nodes first.
+  # probe_env.yml keeps its own `probe_nodes` for the memory arithmetic; this
+  # is one extra GET and no shared state between the two.
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: Node
+  register: disk_nodes
+
+# -----------------------------------------------------------------------
+# Disk. MEMORY IS NOT THE BINDING CONSTRAINT ON AN RHDP CLUSTER — DISK IS
+# (#782). Measured on cluster-v9n68 2026-09-21: 125 GiB of memory and
+# MemoryPressure never once true since the cluster was built, while /var sat
+# at 80-84% against an eviction threshold of 85% and kubelet evicted two
+# running AAP teardown jobs. A probe that reports "67 GiB free" on a node
+# 1.4 points from evicting your automation is answering the wrong question.
+#
+# WHY THE NODE OBJECT IS NOT ENOUGH. status.allocatable carries
+# ephemeral-storage capacity but not usage, and almost nothing sets
+# ephemeral-storage requests — so the requests arithmetic above cannot see
+# this at all. The kubelet stats summary is the only place the real figure
+# lives. It is a GET, so this stays read-only and safe to run mid-demo.
+#
+# THE THRESHOLD IS NOT A ROUND NUMBER WE PICKED. kubelet evicts at
+# `imagefs.available<15%`, and on these single-disk nodes imagefs and nodefs
+# are the same filesystem — so 85% used is the line. `imageGCHighThreshold`
+# is also 85, which means image GC and pod eviction begin together: there is
+# no band in which GC quietly rescues the node before pods start dying.
+- name: Read each node's filesystem stats from kubelet
+  ansible.builtin.uri:
+    url: "{{ openshift_api_url }}/api/v1/nodes/{{ item }}/proxy/stats/summary"
+    method: GET
+    headers:
+      Authorization: "Bearer {{ openshift_api_token }}"
+    validate_certs: "{{ openshift_validate_certs | default(false) | bool }}"
+    return_content: true
+  loop: "{{ disk_nodes.resources | default([]) | map(attribute='metadata.name') | list }}"
+  register: probe_nodefs_raw
+  # A cluster may refuse the kubelet proxy subresource. That is a missing
+  # measurement, not a failed probe, so carry on and say so in the report.
+  # Tested on `status`, never on `.failed` — `failed_when: false` zeroes
+  # `.failed`, so a check against it could never fire.
+  failed_when: false
+
+- name: Derive the disk figures
+  ansible.builtin.set_fact:
+    probe_disk: >-
+      {%- set ns = namespace(rows=[]) -%}
+      {%- for r in probe_nodefs_raw.results | default([]) -%}
+        {%- if (r.status | default(0)) == 200 -%}
+          {%- set fs = ((r.json | default({})).get('node', {})).get('fs', {}) -%}
+          {%- set cap = fs.get('capacityBytes', 0) | float -%}
+          {%- set avail = fs.get('availableBytes', 0) | float -%}
+          {%- if cap > 0 -%}
+            {%- set ns.rows = ns.rows + [{
+                  'node': r.item,
+                  'cap_gb': (cap / 1000000000) | round(2),
+                  'avail_gb': (avail / 1000000000) | round(2),
+                  'used_pct': ((1 - avail / cap) * 100) | round(2)
+                }] -%}
+          {%- endif -%}
+        {%- endif -%}
+      {%- endfor -%}
+      {{ ns.rows }}
+
+- name: Find the node closest to the eviction threshold
+  ansible.builtin.set_fact:
+    probe_disk_worst_pct: >-
+      {{ (probe_disk | map(attribute='used_pct') | map('float') | list | max)
+         if (probe_disk | length) > 0 else -1 }}
+
+- name: Note which nodes kubelet currently reports under disk pressure
+  # The authoritative signal is the alert in alert-rules.json, which catches
+  # the condition even when it lasts seconds. A probe run minutes later will
+  # almost always show False, and that is not reassurance — see #782.
+  ansible.builtin.set_fact:
+    probe_disk_pressure_nodes: >-
+      {%- set ns = namespace(hit=[]) -%}
+      {%- for n in disk_nodes.resources | default([]) -%}
+        {%- for c in n.status.conditions | default([]) -%}
+          {%- if c.type == 'DiskPressure' and c.status == 'True' -%}
+            {%- set ns.hit = ns.hit + [n.metadata.name] -%}
+          {%- endif -%}
+        {%- endfor -%}
+      {%- endfor -%}
+      {{ ns.hit }}
+
+- name: Render the per-node disk lines
+  ansible.builtin.set_fact:
+    probe_disk_lines: >-
+      {%- set ns = namespace(out=[]) -%}
+      {%- for d in probe_disk -%}
+        {%- set ns.out = ns.out + ['  ' ~ '%-34s' | format(d.node)
+             ~ '%8s' | format(d.used_pct ~ '%') ~ ' used   '
+             ~ d.avail_gb ~ ' GB free of ' ~ d.cap_gb ~ ' GB'
+             ~ '   headroom ' ~ ((85 - d.used_pct) | round(2)) ~ ' points'] -%}
+      {%- endfor -%}
+      {%- if ns.out | length == 0 -%}
+        {{ ['  Not measured — the kubelet stats summary was unreachable.'] }}
+      {%- else -%}
+        {{ ns.out }}
+      {%- endif -%}
+
+- name: Judge the disk headroom
+  ansible.builtin.set_fact:
+    probe_disk_verdict: >-
+      {%- set worst = probe_disk_worst_pct | float -%}
+      {%- if probe_disk_pressure_nodes | length > 0 -%}
+        DISK PRESSURE NOW on {{ probe_disk_pressure_nodes | join(', ') }} — kubelet is evicting pods.
+      {%- elif worst < 0 -%}
+        No reading.
+      {%- elif worst >= 85 -%}
+        OVER THE LINE — kubelet will be evicting. AAP job pods are BestEffort and go first.
+      {%- elif worst >= 82 -%}
+        TIGHT — provisioning or tearing down VMs concurrently can cross 85% and evict running jobs.
+      {%- else -%}
+        Comfortable.
+      {%- endif -%}
