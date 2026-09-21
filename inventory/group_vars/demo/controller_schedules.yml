@@ -41,8 +41,23 @@
 # the split was still hypothetical. Adding an OS means adding its sweep.
 #
 # The teardown job template is idempotent: with no VMs in state, terraform
-# destroy is a no-op, so a schedule firing against an already-clean environment
-# costs nothing and reports success.
+# destroy is skipped outright, so a schedule firing against an already-clean
+# environment reports success having done nothing.
+#
+# "COSTS NOTHING" WAS WRONG, AND THAT IS WHY THE MINUTES BELOW DIFFER (#783).
+# Until #783 an empty state key still got a full `terraform init` plus
+# `terraform destroy`, and two stray empty keys meant the Linux sweep did that
+# three times for one live role. Combined with Linux and Windows firing on the
+# same minute, the 10 PM sweep on 2026-09-21 had four EE pods starting at once
+# on a node with 1.4 points of disk headroom; kubelet evicted jobs 591 and 593
+# mid-run (#782). The sweep now skips empty state and collects the key, and
+# Windows runs fifteen minutes after Linux.
+#
+# THE MINUTE IS THE ONLY THING THAT MOVED. Renaming these schedules would not
+# retime them -- infra.aap_configuration looks a schedule up by `name`, so a
+# new name creates a SECOND schedule and leaves the original firing at the old
+# minute. The names stay as they are, "(6 PM)" and "(10 PM safety net)", and
+# the description carries the exact time.
 #
 # DTSTART is the date the rule starts counting from, not a one-off run date.
 # ============================================================================
@@ -67,8 +82,8 @@ controller_schedules_demo:
 
   - name: "Windows Day 1 - Nightly teardown (6 PM)"
     unified_job_template: "Windows Day 1 - Teardown"
-    description: "Destroy demo Windows demo VMs every day at 6 PM America/Phoenix."
-    rrule: "DTSTART;TZID=America/Phoenix:20260810T180000 RRULE:FREQ=DAILY;INTERVAL=1"
+    description: "Destroy demo Windows demo VMs every day at 6:15 PM America/Phoenix — fifteen minutes after the Linux sweep, so the two never start together (#783)."
+    rrule: "DTSTART;TZID=America/Phoenix:20260810T181500 RRULE:FREQ=DAILY;INTERVAL=1"
     enabled: true
     extra_data:
       all_roles: true
