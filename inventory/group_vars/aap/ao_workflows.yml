@@ -27,8 +27,12 @@
 # `${activity_scan.…}`. Keep the IDs stable: renaming one means updating every
 # expression that references it.
 #
-# COMPARE NUMBERS, NOT BOOLEANS. AO reads a bare `false` in a condition as a
-# reference to a step named "false" and fails at run time. The scan publishes
+# COMPARE NUMBERS OR QUOTED STRINGS, NOT BOOLEANS. ao-worker strips each
+# `${…}` and evaluates what is left as a restricted Python AST
+# (workflow_engine/unified_eval.py, read 2026-09-22). A bare word is a Name
+# looked up as a step, so `false` fails at run time as a step named "false";
+# a quoted "string" is a Constant and compares normally. /workflows/validate
+# accepts both, so it cannot tell you which you wrote. The scan publishes
 # windows_compliance {pass, fail, notconfigured, errors, score, compliant}
 # (#613); branch on `fail`.
 #
@@ -142,7 +146,15 @@ ao_workflows:
   # two-product demo (EDA + AAP directly).
   #
   # EDA → launcher JT → AO API → this workflow:
-  # trigger → gather → decide (AI) → approval → remediate.
+  # trigger → gather → decide (AI) → drift_check → approval → remediate
+  # → verify.
+  #
+  # NO DRIFT, NO APPROVAL (#802). drift_check lets the run reach the
+  # approval only when decide proposed the ONE template the remediate
+  # step runs. "none" (compliant), a misspelling, or an invented name all
+  # take the unconnected false port and the run completes. Matching the
+  # allow-listed name, rather than `!= "none"`, keeps the model from ever
+  # putting an approval for something else in front of a presenter.
   #
   # The agentic node compares raw fact values against baselines in its
   # prompt. This sidesteps the timing gap (#689): even when the gather
@@ -220,12 +232,20 @@ ao_workflows:
         llm_integration: "GPU Inference (Granite)"
         llm_credential: "LLM Inference Token"
 
+      - id: logic_drift_check
+        name: drift_check
+        type: condition
+        position: {x: -275, y: -172}
+        # Must equal activity_remediate's job_template below.
+        condition: '${activity_decide.result.content.template} == "Linux Day 2 - Fix SELinux"'
+
       - id: activity_approval
         name: security_approval
         type: approval
         position: {x: -50, y: -141}
+        # No period after reason: the model ends its own sentence (#802 showed "..").
         prompt: >-
-          AI drift analysis: ${activity_decide.result.content.reason}.
+          AI drift analysis: ${activity_decide.result.content.reason}
           Proposed fix: ${activity_decide.result.content.template}.
           Approve remediation?
         approvers_sso:
@@ -256,6 +276,7 @@ ao_workflows:
     edges:
       - {from: activity_trigger, to: activity_gather}
       - {from: activity_gather, to: activity_decide}
-      - {from: activity_decide, to: activity_approval}
+      - {from: activity_decide, to: logic_drift_check}
+      - {from: logic_drift_check, from_port: "true", to: activity_approval}
       - {from: activity_approval, from_port: approved, to: activity_remediate}
       - {from: activity_remediate, to: activity_verify}
