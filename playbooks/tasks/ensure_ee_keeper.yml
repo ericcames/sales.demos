@@ -187,12 +187,15 @@
                 # The image is the point. The process just has to stay alive.
                 command: ["sleep", "infinity"]
                 resources:
-                  # SMALL, EXPLICIT, AND REQUESTS ONLY -- which makes the pod
-                  # Burstable rather than BestEffort. BestEffort is what puts
-                  # AAP job pods first in the eviction queue (#782); a keeper
-                  # that is itself first to be evicted would release the image
-                  # at exactly the moment the node is under pressure, which is
-                  # the one moment it must not.
+                  # SMALL, EXPLICIT, AND REQUESTS ONLY. Under DiskPressure
+                  # kubelet ranks pods first by ephemeral-storage use above
+                  # their ephemeral-storage REQUEST, not by QoS class. A request
+                  # of zero is what puts AAP job pods early in the eviction
+                  # queue (#782), even though they are Burstable. A keeper that
+                  # is itself first to be evicted would release the image at
+                  # exactly the moment the node is under pressure, which is the
+                  # one moment it must not. It writes nothing, so 64Mi keeps it
+                  # below its request.
                   #
                   # No limits: a limit equal to requests would make it
                   # Guaranteed and reserve capacity this pod never uses.

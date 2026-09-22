@@ -137,7 +137,7 @@
       {%- elif worst < 0 -%}
         No reading.
       {%- elif worst >= 85 -%}
-        OVER THE LINE — kubelet will be evicting. AAP job pods are BestEffort and go first.
+        OVER THE LINE — kubelet will be evicting. AAP job pods request no ephemeral-storage and rank among the first evicted.
       {%- elif worst >= 82 -%}
         TIGHT — provisioning or tearing down VMs concurrently can cross 85% and evict running jobs.
       {%- else -%}
