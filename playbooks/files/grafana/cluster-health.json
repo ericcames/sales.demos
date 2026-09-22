@@ -70,7 +70,7 @@
           "refId": "A"
         },
         {
-          "expr": "count(kube_node_status_condition{cluster=\"$cluster\", condition=\"Ready\"})",
+          "expr": "count(kube_node_status_condition{cluster=\"$cluster\", condition=\"Ready\", status=\"true\"})",
           "legendFormat": "Total",
           "refId": "B"
         }
@@ -414,6 +414,7 @@
     {
       "type": "gauge",
       "title": "Filesystem Usage (/var)",
+      "description": "Every band is a kubelet behaviour, not a round number. RHDP single-node clusters put RHCOS, etcd, all container images and all pod ephemeral storage on one ~107 GB filesystem. Green below 80% is the normal resting range. Yellow 80% = image GC starts reclaiming and trims back to 79% (KubeletConfig sales-demos-disk-tuning, #796) \u2014 the mechanism working, not a problem. Orange 82% = the sales-demos-node-disk-headroom alert fires; GC is not keeping up. Red 85% = kubelet evicts (imagefs.available<15%) and AAP job pods die. The floor is ~65%: container storage alone is ~63 GB and 170 of 174 images are held by running pods, so this never reaches green-empty. This node has two eviction rules on one filesystem \u2014 imagefs.available<15% (85%) and nodefs.available<10% (90%) \u2014 and imagefs always trips first, so 85% is the line. Before #796 the gauge turned red at 90%, which tracked the nodefs rule that cannot fire first on a shared disk \u2014 five points after pods had started dying \u2014 and GC did not begin until 85%, the same instant as eviction, leaving no band to act in.",
       "gridPos": { "h": 8, "w": 8, "x": 16, "y": 6 },
       "datasource": {
         "type": "prometheus",
@@ -435,8 +436,9 @@
             "mode": "absolute",
             "steps": [
               { "color": "green", "value": null },
-              { "color": "yellow", "value": 70 },
-              { "color": "red", "value": 90 }
+              { "color": "yellow", "value": 80 },
+              { "color": "orange", "value": 82 },
+              { "color": "red", "value": 85 }
             ]
           },
           "color": { "mode": "thresholds" }
