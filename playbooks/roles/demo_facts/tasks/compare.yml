@@ -204,5 +204,6 @@
   failed_when: false
   when:
     - demo_facts_eda_webhook_url | default('') | length > 0
+    - demo_facts_notify_eda | bool
     - demo_facts_had_previous | bool
     - (demo_facts_diff | from_json | selectattr('severity', 'equalto', 'investigate') | list | length) > 0

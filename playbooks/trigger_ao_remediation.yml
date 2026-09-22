@@ -9,6 +9,12 @@
 # Called by the EDA rulebook via "Linux Day 2 - Trigger AO Remediation" JT.
 # Connects to AO, finds the workflow by name, and starts an execution.
 #
+# EDA'S LAUNCHER, NOT A PRESENTER'S BUTTON (#804). EDA can only start an AAP
+# job template, so this is how it reaches AO. Launching it by hand after
+# injecting drift starts a second run beside EDA's. To start the workflow
+# without EDA, use Run on the workflow in AO — the canvas the audience is
+# already watching.
+#
 # Following the ao_rehearse.yml pattern (lines 382-395) for starting a
 # workflow via POST /api/v1/executions.
 # ===========================================================================

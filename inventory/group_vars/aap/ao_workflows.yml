@@ -46,7 +46,8 @@
 #   triggers, edges          AO's own shape (edges use from / to / from_port)
 #   nodes[]                  id, name, type, position, plus by type:
 #     aap_job_template       job_template, organization, credential,
-#                            integration, limit
+#                            integration, limit, extra_vars (optional —
+#                            survey answers only, see the drift workflow)
 #     condition              condition
 #     approval               prompt, approvers_sso (list of AAP usernames),
 #                            fallback_decision
@@ -148,6 +149,14 @@ ao_workflows:
   # step sees no diff (baseline was cached by the triggering gather),
   # the raw values still show the current state. Works for both the
   # auditd push path (#696) and the manual-gather path.
+  #
+  # NEITHER GATHER HERE NOTIFIES EDA (#803, #804). Gather Facts POSTs to
+  # the EDA webhook on investigate drift, and both of this workflow's
+  # gathers see some: `gather` sees the drift the run was started for
+  # (enforcing -> permissive), `verify` sees the fix (permissive ->
+  # enforcing). Each POST started another run — one injection produced
+  # three runs, measured from EDA's rule audit. demo_facts_notify_eda is
+  # a survey answer because Gather Facts takes no free-form variables.
   # =====================================================================
   - name: "Linux Day 2 - Drift Remediation (as code)"
     description: >-
@@ -172,6 +181,8 @@ ao_workflows:
         credential: "AAP Admin"
         integration: "Ansible Automation Platform"
         limit: linuxweb
+        extra_vars:
+          demo_facts_notify_eda: "false"
 
       - id: activity_decide
         name: decide
@@ -240,6 +251,8 @@ ao_workflows:
         credential: "AAP Admin"
         integration: "Ansible Automation Platform"
         limit: linuxweb
+        extra_vars:
+          demo_facts_notify_eda: "false"
     edges:
       - {from: activity_trigger, to: activity_gather}
       - {from: activity_gather, to: activity_decide}

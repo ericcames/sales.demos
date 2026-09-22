@@ -702,6 +702,10 @@ controller_workflows_all:
             type: job_template
             organization:
               name: "IT Service Automation"
+          # This gather sees the drift the workflow is here for. Letting it
+          # POST to EDA would start the AO drift workflow on top (#803).
+          extra_data:
+            demo_facts_notify_eda: "false"
           related:
             success_nodes:
               - identifier: decide
