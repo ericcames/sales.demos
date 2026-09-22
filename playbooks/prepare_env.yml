@@ -333,8 +333,9 @@
           Node disk headroom is below {{ prep_min_disk_headroom_gb }} GB.
           {{ probe_disk_verdict }}
           {{ probe_disk_lines | join(' ') }}
-          A demo run from here risks kubelet evicting a job mid-demo. See #796
-          for getting /var back under 70%.
+          A demo run from here risks kubelet evicting a job mid-demo.
+          #796 tuned image GC to act below the 85% eviction line; the node's
+          practical floor is ~65%, so "under 70%" is not the target.
         success_msg: "{{ probe_disk_verdict }} {{ probe_disk_lines | join(' ') }}"
         quiet: true
 

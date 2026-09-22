@@ -1,6 +1,6 @@
 ---
 name: sales-demos-setup
-description: "Phase 0 of the sales.demos platform — take a bare RHDP environment to demo-ready in one command. Thirteen stages: persist the cluster monitoring storage, install OpenShift Virtualization, link the RHEL 9 CIS image, link the Windows CIS image, create shared cluster objects, apply the AAP configuration, deploy the MCP server, install and configure Automation Orchestrator, deploy the self-service portal, generate the environment URL reference, probe the cluster for available_memory_gb, then prove it by building and timing a real VM. Checks prerequisites, confirms the cluster is reachable, then runs playbooks/setup.yml. TRIGGER when: the user has a new or rebuilt RHDP environment, asks to set one up or prepare it for the ocpvirt demo, says OpenShift Virtualization or KubeVirt is missing, hits a missing kubevirt.io API, or asks to install CNV. SKIP: if the environment is already set up and the user wants to create demo VMs — that is sales-demos-provision — or only wants to re-check readiness, which is sales-demos-verify-env."
+description: "Phase 0 of the sales.demos platform — take a bare RHDP environment to demo-ready in one command. Fourteen stages: tune the node's image GC thresholds and container log caps, persist the cluster monitoring storage, install OpenShift Virtualization, link the RHEL 9 CIS image, link the Windows CIS image, create shared cluster objects, apply the AAP configuration, deploy the MCP server, install and configure Automation Orchestrator, deploy the self-service portal, generate the environment URL reference, probe the cluster for available_memory_gb, then prove it by building and timing a real VM. Checks prerequisites, confirms the cluster is reachable, then runs playbooks/setup.yml. TRIGGER when: the user has a new or rebuilt RHDP environment, asks to set one up or prepare it for the ocpvirt demo, says OpenShift Virtualization or KubeVirt is missing, hits a missing kubevirt.io API, or asks to install CNV. SKIP: if the environment is already set up and the user wants to create demo VMs — that is sales-demos-provision — or only wants to re-check readiness, which is sales-demos-verify-env."
 ---
 
 # sales-demos-setup
@@ -22,14 +22,39 @@ Phase 0. Takes a bare RHDP "Ansible Product Demo" environment to demo-ready in
 **one command**.
 
 This skill contains **no logic**. All the work is in
-[`playbooks/setup.yml`](../../../playbooks/setup.yml), which imports thirteen
+[`playbooks/setup.yml`](../../../playbooks/setup.yml), which imports fourteen
 playbooks in order. The same playbooks run from AAP job templates with survey
 answers mapped to the same variable names. See `CLAUDE.md` →
 *Skills and playbooks*.
 
 ## What it does
 
-**1. Persist the cluster monitoring storage** (`configure_monitoring.yml`)
+**1. Tune node disk management** (`configure_node.yml`)
+
+The RHDP single-node clusters put RHCOS, etcd, every container image and all pod
+ephemeral storage on one ~107 GB filesystem. kubelet evicts at
+`imagefs.available<15%` — 85% used — and `imageGCHighThresholdPercent` ships at
+85 too, so image GC and pod eviction begin at the same instant. There is no band
+in which GC rescues the node before pods die. That is the shape of #782 and #788.
+
+Applies a `KubeletConfig` (`sales-demos-disk-tuning`) setting image GC to
+**80/79** and capping container logs at 10Mi × 3 (from a shipped default of
+50Mi × 5 — the default is a 250Mi ceiling, not "uncapped"). Opening that band matters more
+than the bytes it reclaims: measured on sandbox, only **2.26 GB** of the 62.67 GB
+image store is genuinely GC-eligible, because 170 of 174 images are held by
+running containers.
+
+**This reboots the node**, which is why it runs first — on a bare environment
+there is nothing to disturb. It is also why it is laptop-only and has no job
+template: a job running it would kill its own pod. Skip with
+`-e configure_node=false` on any environment you cannot reboot right now.
+
+It deliberately does **not** touch the apiserver audit profile. Disabling audit
+would reclaim a further ~3.36 GB, and that trade — an ephemeral demo cluster's
+API audit trail for disk — was declined (#796). Do not add it back without
+revisiting that decision.
+
+**2. Persist the cluster monitoring storage** (`configure_monitoring.yml`)
 
 Stock OpenShift puts the cluster Prometheus TSDB on an **emptyDir** with 15 days
 of retention and no size cap. On a single-node cluster with one ~107 GB disk
@@ -49,7 +74,7 @@ an environment that has been up for a week it costs the existing history, so run
 it away from a demo. Skippable with `-e configure_monitoring=false`. Reversible
 with `-e monitoring_state=absent`.
 
-**2. Install OpenShift Virtualization** (`install_cnv.yml`)
+**3. Install OpenShift Virtualization** (`install_cnv.yml`)
 
 1. Creates the `openshift-cnv` namespace and its OperatorGroup.
 2. Subscribes to `kubevirt-hyperconverged` on the `stable` channel from the
@@ -60,62 +85,62 @@ with `-e monitoring_state=absent`.
 5. Waits for `HyperConverged` to report `Available`, then for the `rhel9`
    boot-source DataSource to be `Ready`.
 
-**3. Link the RHEL 9 CIS L1 golden image** (`link_rhel9_image.yml`)
+**4. Link the RHEL 9 CIS L1 golden image** (`link_rhel9_image.yml`)
 
 Creates a DataImportCron for rhel9-cis-l1 alongside the stock rhel9. Skippable
 with `-e link_rhel9_image=false`.
 
-**4. Link the Windows golden image** (`link_windows_image.yml`)
+**5. Link the Windows golden image** (`link_windows_image.yml`)
 
 Creates a DataImportCron for win2k22 and imports via an explicit DataVolume.
 Needs the quay credentials (private repository). Skippable with
 `-e link_windows_image=false`.
 
-**5. Ensure shared cluster objects** (`ensure_shared_objects.yml`)
+**6. Ensure shared cluster objects** (`ensure_shared_objects.yml`)
 
 VM namespace, Terraform state namespace, and the sd1.* instance type catalog
 (#351, #530). Without this, nightly teardown schedules fail on a new cluster.
 
-**6. Apply the AAP configuration** (`config.yml`)
+**7. Apply the AAP configuration** (`config.yml`)
 
 Organization, project, credentials, both inventories and their sync, the job
 templates and their surveys, the nightly teardown schedules, and the execution
 environment — mirrored from quay into *this environment's* Private Automation
 Hub, so the demo does not depend on quay.io at run time.
 
-**7. Deploy the AAP MCP server** (`mcp_server.yml`)
+**8. Deploy the AAP MCP server** (`mcp_server.yml`)
 
 So a new environment arrives with the MCP server already on rather than needing
 a second visit. Write posture comes from the environment's own group_vars.
 
-**8. Install Automation Orchestrator** (`install_ao.yml`)
+**9. Install Automation Orchestrator** (`install_ao.yml`)
 
 Installs AO and the PostgreSQL it cannot run without, via CloudNativePG. Default
 on, skipped with `-e install_ao=false`.
 
-**9. Configure Automation Orchestrator** (`configure_ao.yml`)
+**10. Configure Automation Orchestrator** (`configure_ao.yml`)
 
 Connects AO to AAP — OIDC SSO and the AAP integration so AO can see job
 templates. Gated on the same `install_ao` flag.
 
-**10. Deploy the self-service portal** (`portal.yml`)
+**11. Deploy the self-service portal** (`portal.yml`)
 
 Helm chart, gateway OAuth app, org sync. Default on, skipped with
 `-e install_portal=false`. Needs AAP configured first (stage 6), does not depend
 on AO.
 
-**11. Generate the environment URL reference** (`generate_env_urls.yml`)
+**12. Generate the environment URL reference** (`generate_env_urls.yml`)
 
 Regenerates the env-urls file with credentials included (setup.yml is always a
 laptop command with the vault available).
 
-**12. Probe the environment** (`probe_env.yml`)
+**13. Probe the environment** (`probe_env.yml`)
 
 Measures CPU, memory, and storage now that everything is installed. Recommends
 `available_memory_gb` under full load (AO, portal, MCP server all running).
 Strictly read-only (#100).
 
-**13. Prove it** (`prepare_env.yml`)
+**14. Prove it** (`prepare_env.yml`)
 
 Checks the boot source is genuinely backed by a ready snapshot, that storage
 clones with `csi-clone` rather than copying, and that ingress admits Routes —
@@ -123,14 +148,14 @@ then builds one real VM, times it, and destroys it.
 
 ## How long
 
-**Roughly 30-35 minutes**: about 2 for the monitoring storage switch,
+**Roughly 40-50 minutes**: about 5-10 for the node tuning reboot, about 2 for the monitoring storage switch,
 about 4 for CNV, 1-2 for the RHEL 9 golden image
 import, about 7-10 for the Windows golden image import, a few for shared
 objects, several for the AAP objects and the first Hub image mirror, about 1
 for the MCP server, about 5 for AO and its database, about 2 to configure AO,
 about 5-10 for the portal, about 1 for env URLs, about 1 for the probe, and
 about 1 to verify. That is on top of RHDP provisioning the environment itself,
-so **budget ~40-45 minutes from ordering an environment to demoing on it**.
+so **budget ~50-60 minutes from ordering an environment to demoing on it**.
 
 A timing summary is printed at the end of the run showing per-stage elapsed
 times and a total.
@@ -156,9 +181,17 @@ times and a total.
 
 ## What it does not do
 
-It does **not** enable hugepages, KSM, or workload partitioning. Each of those
-writes a MachineConfig and reboots the node — and on this catalog item AAP runs
-on the only node, so a reboot would take the demo down mid-install.
+It does **not** enable hugepages, KSM, or workload partitioning.
+
+This used to say "each of those writes a MachineConfig and reboots the node, and
+AAP runs on the only node, so a reboot would take the demo down mid-install".
+Stage 1 now writes a MachineConfig and reboots deliberately (#796), so the reason
+has changed rather than disappeared: a reboot is acceptable as the **first** step
+on a bare environment, and unacceptable once AAP, the portal and the demo VMs are
+up. Anything that reboots belongs in stage 1 or nowhere.
+
+It does **not** disable apiserver audit logging. That would reclaim ~3.36 GB, and
+it was declined in favour of keeping the audit trail (#796).
 
 It does **not** create Automation Hub credentials in AAP, and that is
 deliberate. AAP would use them to install `collections/requirements.yml` at
@@ -239,11 +272,12 @@ PY
 | Variable | Default | Meaning |
 |---|---|---|
 | `ENV` (inventory limit) | `sandbox` | Which environment to target — `sandbox`, `demo`, or `edge` |
-| `install_ao` | `true` | Set to `false` to skip both AO stages (8 and 9) |
-| `install_portal` | `true` | Set to `false` to skip the portal deploy (stage 10) |
-| `link_rhel9_image` | `true` | Set to `false` to skip the RHEL 9 golden image import (stage 3) |
-| `link_windows_image` | `true` | Set to `false` to skip the Windows golden image import (stage 4) |
-| `configure_monitoring` | `true` | Set to `false` to leave the cluster Prometheus on its stock node-local emptyDir (stage 1) |
+| `install_ao` | `true` | Set to `false` to skip both AO stages (9 and 10) |
+| `install_portal` | `true` | Set to `false` to skip the portal deploy (stage 11) |
+| `link_rhel9_image` | `true` | Set to `false` to skip the RHEL 9 golden image import (stage 4) |
+| `link_windows_image` | `true` | Set to `false` to skip the Windows golden image import (stage 5) |
+| `configure_monitoring` | `true` | Set to `false` to leave the cluster Prometheus on its stock node-local emptyDir (stage 2) |
+| `configure_node` | `true` | Set to `false` to skip the kubelet disk tuning (stage 1) — **and its node reboot** |
 
 Credentials are included in env-urls by default (#565). setup.yml is always a
 laptop command with the vault available, so no extra-var is needed.
@@ -288,6 +322,11 @@ Optional overrides, if the user has a reason:
 ./utilities/run-ansible.sh playbooks/setup.yml -i inventory --limit sandbox \
   --vault-id sales.demos@~/secrets/.vault_pass_sales_demos \
   -e target_env=sandbox -e install_ao=false -e install_portal=false
+
+# Skip the node tuning reboot (use on any environment you cannot take down now)
+./utilities/run-ansible.sh playbooks/setup.yml -i inventory --limit sandbox \
+  --vault-id sales.demos@~/secrets/.vault_pass_sales_demos \
+  -e target_env=sandbox -e configure_node=false
 
 # Pin scratch space to a specific StorageClass instead of the cluster default
 ./utilities/run-ansible.sh playbooks/setup.yml -i inventory --limit sandbox \

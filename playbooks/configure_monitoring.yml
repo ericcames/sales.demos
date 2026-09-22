@@ -37,11 +37,24 @@
 # that — it is what OpenShift ships. It is simply the wrong default for a
 # single-node cluster with one 107 GB disk.
 #
-# TUNING IMAGE GC IS NOT THE ALTERNATIVE. Of the 50 images on that node, 48
-# (48.19 GB) are referenced by a running pod and only 1.81 GB is GC-eligible,
-# against the 4.78 GB the kubelet tried and failed to free. There is almost
-# nothing to reclaim. Moving Prometheus is the only change that returns real
-# headroom rather than redistributing it. See #793 for the full arithmetic.
+# TUNING IMAGE GC IS NOT THE ALTERNATIVE -- CONCLUSION UNCHANGED, NUMBERS
+# CORRECTED (#796). This paragraph used to say "of the 50 images on that node,
+# 48 (48.19 GB) are referenced and only 1.81 GB is GC-eligible". The figure was
+# derived from `node.status.images`, which kubelet truncates at
+# `--node-status-max-images` -- 50 of the 174 images the node actually holds --
+# so it was unsound whatever it said.
+#
+# Re-derived from cri-o on 2026-09-21, and the conclusion survived its broken
+# method: 174 images, 62.67 GB real on disk (`du -x`, deduplicated), of which
+# 170 are referenced by a container and only **2.26 GB** is genuinely
+# GC-eligible -- against the 4.78 GB kubelet tried and failed to free on job
+# 638. There is still almost nothing to reclaim. Moving Prometheus remains the
+# only change that returns real headroom rather than redistributing it.
+#
+# Two independent derivations agreed on 2.26 GB, and kubelet's own
+# `FreeDiskSpaceFailed` ("found 2.47 GB") agrees from a third direction. If you
+# re-derive it, join on the digest: matching `image.id` against `imageRef`
+# reports 75 of 174 unreferenced, which is wrong. See #793 and #796.
 #
 # THE EXISTING HISTORY IS LOST ON THE FIRST RUN, and that is unavoidable: an
 # emptyDir cannot be migrated to a PVC, the pod is replaced, and the old

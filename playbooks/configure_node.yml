@@ -1,0 +1,598 @@
+---
+# ===========================================================================
+# configure_node.yml — tune kubelet's disk management on the node. Issue #796.
+#
+#   ./utilities/run-playbook.sh playbooks/configure_node.yml -i inventory \
+#     --limit sandbox -e target_env=sandbox
+#
+#   Reverse with:
+#   ./utilities/run-playbook.sh playbooks/configure_node.yml -i inventory \
+#     --limit sandbox -e target_env=sandbox -e node_tuning_state=absent
+#
+# ===========================================================================
+# THIS REBOOTS THE NODE. A KubeletConfig is rendered into a MachineConfig and
+# the Machine Config Operator drains and reboots to apply it. On an RHDP
+# single-node cluster that is the whole cluster: AAP, the demo VMs, the portal
+# and the API server all go away for roughly 5-10 minutes. Never run it during
+# a demo, and never from an AAP job template -- see the bottom of this header.
+# ===========================================================================
+#
+# WHAT THIS FIXES, AND WHAT IT DELIBERATELY DOES NOT.
+#
+# The RHDP single-node clusters put RHCOS, etcd, every container image and all
+# pod ephemeral storage on one ~107 GB filesystem. kubelet evicts at
+# `imagefs.available<15%` -- 85% used -- and `imageGCHighThresholdPercent`
+# ships at 85 too. Image GC and pod eviction therefore begin at the same
+# instant: there is no band in which GC quietly rescues the node before pods
+# start dying. That is the shape of #782 and #788.
+#
+# THERE ARE TWO EVICTION THRESHOLDS ON THIS ONE FILESYSTEM, and only one of
+# them matters. Read from the live kubelet on 2026-09-22:
+#
+#     evictionHard.imagefs.available  15%   ->  85% used   <- binding
+#     evictionHard.nodefs.available   10%   ->  90% used
+#
+# imagefs and nodefs are the same device here, so the 15% rule always trips
+# first and 85% is the line. This is worth writing down because the dashboard
+# gauge used to turn red at 90: not an arbitrary number, but the *other*
+# eviction threshold -- the one that cannot fire first on a shared disk. Do not
+# "correct" the gauge back to 90.
+#
+# `evictionMinimumReclaim` is null, so kubelet reclaims only back to the
+# threshold, and `imageMinimumGCAge` is 2m0s, so an image pulled in the last
+# two minutes is never a GC candidate.
+#
+# THIS OPENS THAT BAND. Moving the GC high threshold below the eviction line
+# gives kubelet somewhere to act before anything is killed. That is the entire
+# point of the change, and it is worth more than the bytes it reclaims.
+#
+# ---------------------------------------------------------------------------
+# THE NUMBERS ARE MEASURED, AND THEY ARE SMALLER THAN #796 ASSUMED.
+# ---------------------------------------------------------------------------
+# Measured on sandbox `control-plane-cluster-v9n68-1`, 2026-09-21, from cri-o
+# rather than from `node.status.images`:
+#
+#     images cri-o holds                          174
+#     real on-disk (du -x, deduplicated)          62.67 GB
+#     naive sum of `crictl` sizes                 87.44 GB   <- do not quote
+#     GC-eligible now (referenced by nothing)      2.26 GB   (4 images)
+#     referenced only by an exited container       6.35 GB   (9 images, nominal)
+#
+# Two independent derivations agreed on this -- one via `oc debug node`, one via
+# the machine-config-daemon pod -- and kubelet's own `FreeDiskSpaceFailed` on
+# job 638 ("Attempted to free 4.78 GB, but only found 2.47 GB") agrees from a
+# third direction.
+#
+# SO #793's CONCLUSION SURVIVED ITS BROKEN METHOD. #793 derived "only 1.81 GB is
+# GC-eligible" from `node.status.images`, which kubelet truncates at
+# `--node-status-max-images` (50 of 174). The method was unsound and the
+# conclusion was still right. Re-deriving correctly did not reveal a hidden
+# pool; it found 2.26 GB. The lesson is about the method, not the answer.
+#
+# IF YOU RE-DERIVE THIS, JOIN ON THE DIGEST. Matching `image.id` against
+# `imageRef` reports 75 of 174 as unreferenced, which is wrong. Match on
+# `repoDigests`, the bare digest after the `@`, and `repoTags`.
+#
+# ---------------------------------------------------------------------------
+# WHY 80/79, AND WHY THE LOW THRESHOLD IS THE HARD PART.
+# ---------------------------------------------------------------------------
+# THE RULE: GC MUST BE ABLE TO REACH ITS LOW THRESHOLD. If it cannot, kubelet
+# retries on every cycle and logs `FreeDiskSpaceFailed` for ever -- which is
+# both noise and a signal nobody will trust the next time it means something.
+# Whether it can is arithmetic against the measured reclaimable pool, not a
+# matter of taste.
+#
+#     /var                                106.77 GB
+#     reclaimable (measured, above)          2.26 GB  ~= 2.1 percentage points
+#
+# #796's draft proposed 70/60. 60 is unreachable by construction: container
+# storage alone is 62.67 GB -- 62.7% of the disk -- and 170 of the 174 images
+# are held by RUNNING containers, which GC will never touch. The practical
+# floor on this node is about 65% with everything else empty.
+#
+# 78/75 WAS THE SAME MISTAKE, SMALLER, and it was briefly shipped to sandbox
+# before this line was written. From a 78% trigger, reclaiming all 2.26 GB
+# lands at 75.88% -- short of a 75% target by ~0.94 GB. It would have produced
+# exactly the `FreeDiskSpaceFailed` noise that was the stated reason to reject
+# 60. Check the arithmetic, not the shape of the numbers.
+#
+# 80/79:
+#   - 80 leaves a 5-point band before the 85% eviction line, and sits clear of
+#     today's ~75.8% so GC is not firing constantly for little gain. (78 was
+#     close enough to the resting level to thrash.)
+#   - 79 needs ~1.07 GB to reach, against 2.26 GB measured. Comfortable, and it
+#     stays comfortable as the node drifts.
+#   - It reclaims less per cycle than a wider band would. That is the trade
+#     taken deliberately: a GC pass that always succeeds is worth more than one
+#     that frees more and sometimes fails.
+#
+# THE POOL GROWS OVER TIME, which is why this stays safe rather than getting
+# tighter: 103 exited containers currently pin another ~6.35 GB (nominal) that
+# becomes reclaimable once container GC reaps them.
+#
+# WHAT THIS DOES NOT CHANGE: the eviction threshold. `imagefs.available<15%`
+# is untouched, so the node is no less tolerant than before. Lowering the GC
+# trigger means kubelet starts cleaning EARLIER, not that anything dies sooner.
+#
+# ---------------------------------------------------------------------------
+# THE CONTAINER LOG CAPS ARE GROWTH CONTROL, NOT RECLAIM.
+# ---------------------------------------------------------------------------
+# `/var/log/pods` is 3.35 GB, and it is worth being precise about what capping
+# it actually buys, because #796's draft assumed most of that came back:
+#
+#     total pod log files                          455
+#     files larger than the 30Mi cap                41   (2.01 GB between them)
+#     largest single pod directory                0.175 GB
+#
+# Nothing dominates. Capping the 41 outliers at 30Mi each retains ~1.29 GB, so
+# the eventual reclaim is ~0.7 GB -- and kubelet rotates on write rather than
+# truncating retroactively, so the immediate reclaim is nearer zero. This is
+# here to stop `/var/log/pods` growing without bound, which is real value on a
+# long-lived cluster, but it is not how the node gets headroom today.
+#
+# THE SHIPPED DEFAULT IS NOT "UNCAPPED", and this comment used to imply it was.
+# Read from the live kubelet (`/api/v1/nodes/<node>/proxy/configz`) on
+# 2026-09-21: containerLogMaxSize 50Mi, containerLogMaxFiles 5 -- so 250Mi per
+# container, which is why 41 files had grown past 30Mi. 10Mi x 3 is a 8.3x
+# reduction of the ceiling, not the introduction of one.
+#
+# ---------------------------------------------------------------------------
+# WHAT THIS DOES NOT DO: THE APISERVER AUDIT PROFILE.
+# ---------------------------------------------------------------------------
+# #796 task 3 proposed setting `APIServer/cluster` `spec.audit.profile: None`,
+# which would reclaim ~3.36 GB (`/var/log/kube-apiserver` 2.10 +
+# `openshift-apiserver` 1.11 + `oauth-apiserver` 0.15) and stop the regrowth.
+# It is deliberately NOT implemented here.
+#
+# It is the only lever big enough to reach the old "<70% on the dashboard"
+# target, and it buys that by deleting the cluster's API audit trail. Eric's
+# call, made 2026-09-21: keep the audit trail, and re-baseline the target
+# instead -- because the 70% line was never what failed. Every measured
+# incident (#788 jobs 638 and 624, #782 job 593) was an eviction at 85%
+# triggered by a cold 3.06 GB EE pull, and #788's keeper DaemonSet removed that
+# trigger. The dashboard gauge was changed to describe eviction rather than a
+# round number; see playbooks/files/grafana/cluster-health.json.
+#
+# Do not add the audit change back without that decision being revisited
+# explicitly. It is a security-posture change, not a cleanup.
+#
+# ---------------------------------------------------------------------------
+# LAPTOP-ONLY. THERE IS NO JOB TEMPLATE, AND THERE CANNOT BE.
+# ---------------------------------------------------------------------------
+# This reboots the node AAP runs on. A job template executing this playbook
+# would kill its own pod partway through and report `error` with no output --
+# the same signature as the evicted jobs this issue is about, which would be a
+# genuinely confusing way to fail. Same structural constraint as `sync_hub.yml`
+# and the GPU playbooks: nothing in controller_templates.yml.
+# ===========================================================================
+
+- name: Tune kubelet disk management on the cluster node
+  hosts: aap
+  gather_facts: false
+
+  environment:
+    K8S_AUTH_HOST: "{{ openshift_api_url }}"
+    K8S_AUTH_API_KEY: "{{ openshift_api_token }}"
+    K8S_AUTH_VERIFY_SSL: "{{ openshift_validate_certs | default(false) | bool }}"
+
+  vars:
+    node_tuning_state: "present"
+    node_tuning_name: "sales-demos-disk-tuning"
+    # The MachineConfigPool this applies to. RHDP single-node clusters run one
+    # pool named master whose node is also the worker; a multi-node cluster
+    # would need this pointed at `worker` as well, which is why it is a
+    # variable rather than a literal.
+    node_tuning_pool: "master"
+    # Resolved from the cluster rather than hardcoded, so the configz
+    # verification works on any environment.
+    node_tuning_node: "{{ (node_pool_nodes.resources | default([]) | map(attribute='metadata.name') | first) | default('') }}"
+    # See the header for why these are 80/79 and not 70/60 or 78/75.
+    node_gc_high_percent: 80
+    node_gc_low_percent: 79
+    node_log_max_size: "10Mi"
+    node_log_max_files: 3
+    # The reboot budget. 60 x 20s = 20 minutes, against a measured 5-10 minute
+    # rollout on SNO. Generous on purpose: the failure mode of being too short
+    # is a red playbook over a cluster that is fine.
+    node_tuning_retries: 60
+    node_tuning_delay: 20
+
+  tasks:
+    - name: Confirm the inventory resolved to the environment you meant
+      ansible.builtin.include_tasks: tasks/assert_target_environment.yml
+
+    - name: Assert the required connection variables are set
+      ansible.builtin.assert:
+        that:
+          - openshift_api_url | default('') | length > 0
+          - openshift_api_token | default('') | length > 0
+        fail_msg: >-
+          No OpenShift connection. Locally this comes from
+          group_vars/<env>/connection.yml plus the vault-encrypted
+          playbooks/group_vars/all/secrets.yml.
+        quiet: true
+
+    - name: Assert the requested state is valid
+      ansible.builtin.assert:
+        that:
+          - node_tuning_state in ['present', 'absent']
+        fail_msg: >-
+          node_tuning_state must be 'present' or 'absent', not
+          '{{ node_tuning_state }}'.
+        quiet: true
+
+    # -------------------------------------------------------------------
+    # Refuse to start a rollout on a pool that is already unhappy.
+    # -------------------------------------------------------------------
+    # Applying a MachineConfig to a Degraded or mid-update pool stacks a second
+    # rollout onto a first and makes the resulting state very hard to reason
+    # about on a cluster with exactly one node. Check first, and say which
+    # condition is wrong rather than failing on a timeout twenty minutes later.
+    - name: Read the MachineConfigPool before touching anything
+      kubernetes.core.k8s_info:
+        api_version: machineconfiguration.openshift.io/v1
+        kind: MachineConfigPool
+        name: "{{ node_tuning_pool }}"
+      register: node_pool_before
+
+    - name: Assert the pool exists and is settled
+      ansible.builtin.assert:
+        that:
+          - node_pool_before.resources | default([]) | length == 1
+          - node_pool_conditions_before.get('Degraded', 'Unknown') == 'False'
+          - node_pool_conditions_before.get('Updating', 'Unknown') == 'False'
+          - node_pool_conditions_before.get('Updated', 'Unknown') == 'True'
+        fail_msg: >-
+          MachineConfigPool/{{ node_tuning_pool }} is not settled
+          (Updated={{ node_pool_conditions_before.get('Updated', '?') }},
+          Updating={{ node_pool_conditions_before.get('Updating', '?') }},
+          Degraded={{ node_pool_conditions_before.get('Degraded', '?') }}).
+          Applying a MachineConfig now would stack a second rollout on an
+          unfinished one. Wait for it to settle, or fix the degradation first.
+        success_msg: "Pool {{ node_tuning_pool }} is settled — safe to roll."
+        quiet: true
+      vars:
+        node_pool_conditions_before: >-
+          {{ dict((node_pool_before.resources[0].status.conditions | default([]))
+                  | map(attribute='type') | list
+                  | zip((node_pool_before.resources[0].status.conditions | default([]))
+                        | map(attribute='status') | list)) }}
+
+    - name: Read the nodes in the pool, for the configz verification
+      kubernetes.core.k8s_info:
+        api_version: v1
+        kind: Node
+        label_selectors:
+          - "node-role.kubernetes.io/{{ node_tuning_pool }}"
+      register: node_pool_nodes
+
+    - name: Remember the rendered config the node is on now
+      # THE ROLLOUT-DETECTION TRAP. Waiting for `Updated=True` straight after
+      # applying returns instantly, because the pool has not noticed the change
+      # yet -- so the playbook would report success over a node that never
+      # rebooted. Capturing the rendered config name first and waiting for it to
+      # CHANGE, then settle, is what makes the wait mean something.
+      ansible.builtin.set_fact:
+        node_config_before: >-
+          {{ node_pool_before.resources[0].status.configuration.name | default('') }}
+
+    - name: Say what is about to happen
+      ansible.builtin.debug:
+        msg:
+          - >-
+            {{ (node_tuning_state == 'present') | ternary('APPLYING', 'REMOVING') }}
+            KubeletConfig/{{ node_tuning_name }} on pool {{ node_tuning_pool }}
+          - >-
+            {{ (node_tuning_state == 'present') | ternary(
+                 'image GC ' ~ node_gc_high_percent ~ '/' ~ node_gc_low_percent ~
+                 ', container logs ' ~ node_log_max_size ~ ' x ' ~ node_log_max_files,
+                 'kubelet returns to its shipped defaults (85/80, logs 50Mi x 5)') }}
+          - "Currently on rendered config: {{ node_config_before }}"
+          - "THIS REBOOTS THE NODE. On a single-node cluster the API, AAP and every VM go away for ~5-10 minutes."
+          - "The apiserver audit profile is NOT touched — see this playbook's header."
+
+    # -------------------------------------------------------------------
+    # FORWARD PATH — node_tuning_state=present
+    # -------------------------------------------------------------------
+    - name: Apply the kubelet disk tuning
+      when: node_tuning_state == 'present'
+      # THE WHOLE OBJECT IS ONE TEMPLATE, and both reasons are measured (#796).
+      #
+      # 1. A JINJA EXPRESSION IN A YAML *KEY* IS NOT TEMPLATED HERE. Written the
+      #    obvious way --
+      #      matchLabels:
+      #        pools.operator.machineconfiguration.openshift.io/{{ node_tuning_pool }}: ""
+      #    -- the key reached the cluster with the literal braces in it. The MCO
+      #    then failed to sync BOTH pools, once per second, with "invalid label
+      #    selector ... must consist of alphanumeric characters", which means it
+      #    could not render any MachineConfig for the whole cluster while the CR
+      #    existed. Building the mapping in one expression puts the key inside
+      #    Jinja, where `~` concatenation works.
+      #
+      # 2. A QUOTED TEMPLATE IS ALWAYS A STRING, whatever filter is inside it.
+      #    `containerLogMaxFiles: "{{ node_log_max_files | int }}"` sent "3" and
+      #    the CR was rejected with `cannot unmarshal string into Go struct
+      #    field KubeletConfiguration.containerLogMaxFiles of type int32`.
+      #    Inside one dict template the Python types survive -- verified:
+      #    containerLogMaxFiles -> int, imageGC*Percent -> int,
+      #    containerLogMaxSize -> str, which is what the CRD wants.
+      #
+      # This is the same rule tasks/ensure_shared_objects.yml follows for the
+      # sd1.* instancetypes, and for the same reason. yamllint and ansible-lint
+      # pass on the broken form; only the cluster rejects it, at apply time.
+      kubernetes.core.k8s:
+        state: present
+        apply: true
+        definition: >-
+          {{ {
+               'apiVersion': 'machineconfiguration.openshift.io/v1',
+               'kind': 'KubeletConfig',
+               'metadata': {
+                 'name': node_tuning_name,
+                 'labels': {
+                   'app.kubernetes.io/managed-by': 'sales.demos',
+                   'app.kubernetes.io/part-of': 'sales-demos'
+                 }
+               },
+               'spec': {
+                 'machineConfigPoolSelector': {
+                   'matchLabels': {
+                     'pools.operator.machineconfiguration.openshift.io/' ~ node_tuning_pool: ''
+                   }
+                 },
+                 'kubeletConfig': {
+                   'imageGCHighThresholdPercent': node_gc_high_percent | int,
+                   'imageGCLowThresholdPercent': node_gc_low_percent | int,
+                   'containerLogMaxSize': node_log_max_size,
+                   'containerLogMaxFiles': node_log_max_files | int
+                 }
+               }
+             } }}
+
+    # -------------------------------------------------------------------
+    # DID THE OPERATOR ACCEPT IT? Ask before waiting on a rollout.
+    # -------------------------------------------------------------------
+    # THIS CHECK IS THE DIFFERENCE BETWEEN A RED RUN AND A FALSE GREEN. The
+    # first version of this playbook created a rejected CR, waited 150s for a
+    # render that could never happen, concluded "no change needed -- kubelet
+    # already had these settings", and reported ok=16 changed=1 failed=0 over a
+    # cluster whose MCO was broken. The CR had been telling the truth in its own
+    # status the whole time and nothing read it.
+    #
+    # NOTE THE MCO'S CONVENTION: the rejection arrives as a condition of TYPE
+    # `Failure` with STATUS `"False"` and the error in `message`. Testing
+    # `status == 'True'` would never fire. Test on the type.
+    - name: Wait for the MCO to judge the KubeletConfig
+      kubernetes.core.k8s_info:
+        api_version: machineconfiguration.openshift.io/v1
+        kind: KubeletConfig
+        name: "{{ node_tuning_name }}"
+      register: node_kc_verdict
+      until: >-
+        (node_kc_verdict.resources | default([]) | length == 1) and
+        ((node_kc_verdict.resources[0].status.conditions | default([])) | length > 0)
+      retries: 12
+      delay: 5
+      when: node_tuning_state == 'present'
+
+    - name: Assert the MCO accepted the KubeletConfig
+      ansible.builtin.assert:
+        that:
+          - node_kc_conditions | selectattr('type', 'equalto', 'Failure') | list | length == 0
+        fail_msg: >-
+          The Machine Config Operator REJECTED
+          KubeletConfig/{{ node_tuning_name }}:
+          "{{ (node_kc_conditions | selectattr('type', 'equalto', 'Failure')
+               | map(attribute='message') | first | default('no message')) }}"
+          Nothing was rolled out and the node was not rebooted. A rejected CR
+          left in place also stops the MCO rendering MachineConfigs for every
+          pool, so remove it:
+          `oc delete kubeletconfig {{ node_tuning_name }}`
+        success_msg: "MCO accepted the KubeletConfig."
+        quiet: true
+      vars:
+        node_kc_conditions: >-
+          {{ (node_kc_verdict.resources | default([{}]) | first).get('status', {}).get('conditions', []) }}
+      when: node_tuning_state == 'present'
+
+    # -------------------------------------------------------------------
+    # REVERSAL PATH — node_tuning_state=absent
+    # -------------------------------------------------------------------
+    # Deleting the CR makes the MCO re-render without it, which returns kubelet
+    # to the shipped 85/80 and uncapped logs -- and reboots again to do it.
+    - name: Remove the kubelet disk tuning
+      when: node_tuning_state == 'absent'
+      kubernetes.core.k8s:
+        state: absent
+        api_version: machineconfiguration.openshift.io/v1
+        kind: KubeletConfig
+        name: "{{ node_tuning_name }}"
+
+    # -------------------------------------------------------------------
+    # Ride out the rollout, and do not return until kubelet agrees.
+    # -------------------------------------------------------------------
+    # WHAT WENT WRONG THE FIRST TIME. This used to watch for the pool's rendered
+    # config NAME to change, with a 150s budget, and treat a timeout as "no
+    # change needed". The MCO took longer than that, so the playbook printed
+    # "kubelet already had these settings", reported ok/changed/0 failed, and
+    # RETURNED WHILE THE NODE WAS STILL ABOUT TO REBOOT. As setup.yml stage 1
+    # that is actively harmful: stage 2 would start against a rebooting node.
+    #
+    # THE END CONDITION IS THE LIVE KUBELET, not a rendered config name, not the
+    # CR, and not a timer. `configz` is the process's own view of what it is
+    # running, so it cannot be satisfied early by an object that merely exists.
+    # It also makes the "already correct" case fall out for free: a re-run that
+    # changes nothing passes on the first poll.
+    #
+    # THE API DISAPPEARS PARTWAY THROUGH on a single-node cluster. Both loops
+    # therefore use `failed_when: false` and test the DATA in `until`, so an
+    # errored poll simply fails the condition and retries. Never tested on
+    # `.failed` -- `failed_when: false` zeroes it, so such a check could never
+    # fire (#694).
+    # ORDER MATTERS, AND IT IS THE OPPOSITE OF THE OBVIOUS ONE. kubelet reports
+    # the new configuration BEFORE the MachineConfigPool finishes its rollout --
+    # measured on sandbox: configz showed 80/79 while the pool was still
+    # `Updating=True`. Waiting on the pool first therefore returns instantly
+    # (it is still settled on the OLD config, because the rollout has not begun)
+    # and the run finishes during the tail of a reboot. The next invocation then
+    # fails its own "is the pool settled" precondition, which is how this was
+    # found. Gate on kubelet to ride out the reboot, THEN wait for the MCO to
+    # finish bookkeeping, and only then report.
+    - name: Wait for kubelet to report the requested configuration
+      ansible.builtin.uri:
+        url: "{{ openshift_api_url }}/api/v1/nodes/{{ node_tuning_node }}/proxy/configz"
+        method: GET
+        headers:
+          Authorization: "Bearer {{ openshift_api_token }}"
+        validate_certs: "{{ openshift_validate_certs | default(false) | bool }}"
+        return_content: true
+      register: node_configz
+      until: >-
+        (node_configz.status | default(0)) == 200 and
+        ((node_configz.json | default({})).get('kubeletconfig', {}).get('imageGCHighThresholdPercent', -1) | int)
+          == (node_gc_expected_high | int) and
+        ((node_configz.json | default({})).get('kubeletconfig', {}).get('imageGCLowThresholdPercent', -1) | int)
+          == (node_gc_expected_low | int) and
+        ((node_configz.json | default({})).get('kubeletconfig', {}).get('containerLogMaxFiles', -1) | int)
+          == (node_log_expected_files | int)
+      retries: "{{ node_tuning_retries }}"
+      delay: "{{ node_tuning_delay }}"
+      failed_when: false
+      vars: &node_expected
+        # On the reversal path the target is kubelet's shipped default, which
+        # was READ from the live node rather than assumed: 85/80 with logs
+        # 50Mi x 5. "Uncapped" would have been wrong.
+        node_gc_expected_high: "{{ (node_tuning_state == 'present') | ternary(node_gc_high_percent, 85) }}"
+        node_gc_expected_low: "{{ (node_tuning_state == 'present') | ternary(node_gc_low_percent, 80) }}"
+        node_log_expected_files: "{{ (node_tuning_state == 'present') | ternary(node_log_max_files, 5) }}"
+
+    - name: Wait for the MachineConfigPool to converge
+      kubernetes.core.k8s_info:
+        api_version: machineconfiguration.openshift.io/v1
+        kind: MachineConfigPool
+        name: "{{ node_tuning_pool }}"
+      register: node_pool_after
+      until: >-
+        (node_pool_after.resources | default([]) | length == 1) and
+        (node_pool_after.resources[0].status.machineCount | default(0)) > 0 and
+        (node_pool_after.resources[0].status.updatedMachineCount | default(-1))
+          == (node_pool_after.resources[0].status.machineCount | default(0)) and
+        (node_pool_after.resources[0].status.degradedMachineCount | default(1)) == 0 and
+        ((node_pool_after.resources[0].status.conditions | default([]))
+          | selectattr('type', 'equalto', 'Updating')
+          | map(attribute='status') | first | default('True')) == 'False'
+      retries: "{{ node_tuning_retries }}"
+      delay: "{{ node_tuning_delay }}"
+      failed_when: false
+
+    - name: Assert the MachineConfigPool finished its rollout
+      # The wait above carries `failed_when: false` so it can survive the API
+      # outage; without this assert a timeout would pass silently and the run
+      # would return mid-rollout -- which is exactly the bug that produced a
+      # "none needed" report over a reboot, and then a failed precondition on
+      # the next invocation.
+      ansible.builtin.assert:
+        that:
+          - node_pool_after.resources | default([]) | length == 1
+          - (node_pool_after.resources[0].status.updatedMachineCount | default(-1))
+            == (node_pool_after.resources[0].status.machineCount | default(0))
+          - (node_pool_after.resources[0].status.degradedMachineCount | default(1)) == 0
+        fail_msg: >-
+          MachineConfigPool/{{ node_tuning_pool }} did not finish within
+          {{ (node_tuning_retries | int) * (node_tuning_delay | int) }}s
+          (updated={{ node_pool_after.resources[0].status.updatedMachineCount | default('?') }}/{{
+             node_pool_after.resources[0].status.machineCount | default('?') }},
+          degraded={{ node_pool_after.resources[0].status.degradedMachineCount | default('?') }}).
+          kubelet has the right configuration, but the MCO is still working or
+          is stuck. Check `oc get mcp {{ node_tuning_pool }}` before re-running.
+        success_msg: "MachineConfigPool rollout complete."
+        quiet: true
+
+    - name: Assert kubelet is running the configuration we asked for
+      # THE GATE. A timeout above leaves the last poll in `node_configz`, so
+      # this fails with the real live values rather than a bare "timed out".
+      ansible.builtin.assert:
+        that:
+          - (node_configz.status | default(0)) == 200
+          - (node_live.imageGCHighThresholdPercent | default(-1) | int) == (node_gc_expected_high | int)
+          - (node_live.imageGCLowThresholdPercent | default(-1) | int) == (node_gc_expected_low | int)
+          - (node_live.containerLogMaxFiles | default(-1) | int) == (node_log_expected_files | int)
+        fail_msg: >-
+          kubelet did not converge on the requested configuration within
+          {{ (node_tuning_retries | int) * (node_tuning_delay | int) }}s.
+          Live: imageGCHigh={{ node_live.imageGCHighThresholdPercent | default('?') }},
+          imageGCLow={{ node_live.imageGCLowThresholdPercent | default('?') }},
+          containerLogMaxSize={{ node_live.containerLogMaxSize | default('?') }},
+          containerLogMaxFiles={{ node_live.containerLogMaxFiles | default('?') }}
+          (configz HTTP {{ node_configz.status | default('no response') }}).
+          Wanted {{ node_gc_expected_high }}/{{ node_gc_expected_low }} and
+          {{ node_log_expected_files }} log files. Check
+          `oc get mcp {{ node_tuning_pool }}` -- the node may still be rebooting,
+          or the rollout may be degraded. This playbook is idempotent; re-run
+          once the pool settles.
+        success_msg: >-
+          kubelet confirms
+          {{ node_live.imageGCHighThresholdPercent }}/{{ node_live.imageGCLowThresholdPercent }}
+          and {{ node_live.containerLogMaxSize }} x {{ node_live.containerLogMaxFiles }}.
+        quiet: true
+      vars:
+        <<: *node_expected
+        node_live: >-
+          {{ (node_configz.json | default({})).get('kubeletconfig', {}) }}
+
+    - name: Re-read the pool now that kubelet has converged
+      # READ IT AGAIN, AND ONLY NOW. The earlier convergence wait can return
+      # before the MCO has rendered anything -- the pool still looks settled on
+      # the OLD config because the rollout has not begun. Deciding "did it roll"
+      # from that reading produced a report saying "none needed" immediately
+      # after a reboot that plainly happened, which is the same class of false
+      # claim this playbook exists to stop making. Once the kubelet gate above
+      # has passed, the render is definitely done, so this comparison is sound.
+      kubernetes.core.k8s_info:
+        api_version: machineconfiguration.openshift.io/v1
+        kind: MachineConfigPool
+        name: "{{ node_tuning_pool }}"
+      register: node_pool_final
+
+    - name: Note whether the pool actually rolled
+      ansible.builtin.set_fact:
+        node_config_after: >-
+          {{ node_pool_final.resources[0].status.configuration.name | default('') }}
+        node_rollout_started: >-
+          {{ (node_pool_final.resources | default([]) | length == 1) and
+             ((node_pool_final.resources[0].status.configuration.name | default('')) != node_config_before) }}
+
+
+    - name: Describe the rollout for the report
+      ansible.builtin.set_fact:
+        node_rollout_note: >-
+          {{ 'Rollout: ' ~ node_config_before ~ ' -> ' ~ node_config_after ~
+             ', node drained, rebooted and rejoined'
+             if (node_rollout_started | bool)
+             else 'Rollout: none — kubelet already reported these values, so no MachineConfig was rendered' }}
+
+    - name: Report what changed
+      # DELIBERATELY TWO PLAIN TASKS. This was one `debug` building its message
+      # with a single Jinja list expression (`[...] + ([...] if x else [...])`).
+      # It was valid Ansible -- `--syntax-check` passed -- but ansible-lint
+      # could not load it and failed the CI gate with
+      # "A malformed block was encountered while loading a block", pointing at
+      # line 1 rather than at the task. Clever inline construction is not worth
+      # a lint failure nobody can locate.
+      ansible.builtin.debug:
+        msg:
+          - "Node tuning present on {{ aap_env_name }}."
+          - "{{ node_rollout_note }}"
+          - "image GC: {{ node_gc_high_percent }}% high / {{ node_gc_low_percent }}% low (was 85/80 — GC now has a band below the 85% eviction line)"
+          - "container logs: {{ node_log_max_size }} x {{ node_log_max_files }} per container (~0.7 GB eventually; growth control, not reclaim)"
+          - "apiserver audit: UNCHANGED — deliberately, see this playbook header"
+          - "Reverse with: -e node_tuning_state=absent"
+      when: node_tuning_state == 'present'
+
+    - name: Report the reversal
+      ansible.builtin.debug:
+        msg:
+          - "Node tuning removed from {{ aap_env_name }}."
+          - "{{ node_rollout_note }}"
+          - "kubelet is back on its shipped defaults (85/80, logs 50Mi x 5)."
+      when: node_tuning_state == 'absent'
