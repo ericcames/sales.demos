@@ -121,7 +121,7 @@
                       'job_template_id': ao_jt_ids[ao_node.job_template],
                       'job_template_name': ao_node.job_template,
                       'organization_name': ao_node.organization}
-                     | combine({'extra_vars': ao_node.extra_vars | to_json}
+                     | combine({'extra_vars': ao_node.extra_vars}
                                if ao_node.extra_vars is defined else {})}
                   if ao_node.type == 'aap_job_template' else
                   ({'parameters': {'condition': ao_node.condition}}
