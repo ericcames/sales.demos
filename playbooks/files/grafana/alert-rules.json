@@ -216,7 +216,7 @@
       },
       "annotations": {
         "summary": "kubelet on {{ $labels.node }} ({{ $labels.cluster }}) is evicting pods for disk",
-        "description": "DiskPressure means kubelet has already started evicting. AAP job pods are BestEffort, so they are among the first taken and a running job dies as 'error' with no output or 'failed' with a shutdown signal. Fires immediately -- the condition often lasts only seconds. See issue #782.",
+        "description": "DiskPressure means kubelet has already started evicting. AAP job pods request no ephemeral-storage, so kubelet ranks them among the first to take whatever their QoS class and a running job dies as 'error' with no output or 'failed' with a shutdown signal. Fires immediately -- the condition often lasts only seconds. See issue #782.",
         "__dashboardUid__": "sales-demos-cluster-health",
         "__panelId__": "7"
       },

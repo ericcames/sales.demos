@@ -45,7 +45,7 @@ by `cluster`:
 | Running VM count dropped | fewer VMs running than 10 minutes ago (1m) — expected after a teardown |
 | AAP jobs stuck pending | any pending job for 15m |
 | Free-tier series budget above 80% | over 8,000 active series stack-wide (15m) |
-| Node under disk pressure | kubelet reports DiskPressure on any node (immediate) — it is already evicting, and AAP job pods are BestEffort so they go first (#782) |
+| Node under disk pressure | kubelet reports DiskPressure on any node (immediate) — it is already evicting, and AAP job pods request no ephemeral-storage so they rank among the first taken (#782) |
 | Node disk approaching the eviction threshold | a node's `/var` is above 82% used for 15m — eviction begins at 85% (#782) |
 
 **No contact point is configured.** Firing alerts follow the stack's default
