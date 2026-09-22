@@ -38,6 +38,12 @@ failed each time, not the one that looked fine:
 
 **It never approves.** A person approving in AO is the part being rehearsed.
 
+**Before rehearsing, clear stale approvals in the UI:** in AO, open Approvals, tick
+every Pending row, then click **Reject**. That way the queue the audience sees
+holds only the live run. Do it by hand: only the listed SSO approver can reject,
+and the local `admin` the playbooks log in as cannot. Cancelling the run instead
+leaves it `paused` in AO for good, and so does letting it expire. See #805.
+
 ## Preflight Check
 
 ```bash
