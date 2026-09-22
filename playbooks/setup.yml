@@ -117,7 +117,8 @@
 # `python3 utilities/refresh-hub-requirements.py --audit-pins` and
 # `--write-approved`, which now refuses to write a set missing a dependency.
 #
-# WHAT PAH CONFIGURATION COSTS THIS PLAYBOOK: seconds. Stage 4 creates the three
+# WHAT PAH CONFIGURATION COSTS THIS PLAYBOOK: seconds. Stage 7 (config.yml)
+# creates the three
 # remotes and repositories and STARTS the sync without waiting for it, so the
 # time estimate below still holds and the content lands in the background
 # (measured at 4.4 minutes to populate all three repositories).
@@ -207,7 +208,7 @@
         setup_t_cnv: "{{ now(utc=true).strftime('%s') | int }}"
 
 - name: Phase 0 (4/14) — link the RHEL 9 CIS L1 golden image
-  # DEFAULT ON, AND SKIPPABLE. Needs the HyperConverged CR from stage 1 and the
+  # DEFAULT ON, AND SKIPPABLE. Needs the HyperConverged CR from stage 3 and the
   # quay credentials in the vault. `-e link_rhel9_image=false` skips it for
   # environments where the quay creds are not configured yet; the stock rhel9
   # DataSource still works, it just is not CIS-hardened.

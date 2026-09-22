@@ -126,7 +126,7 @@ templates. Gated on the same `install_ao` flag.
 **11. Deploy the self-service portal** (`portal.yml`)
 
 Helm chart, gateway OAuth app, org sync. Default on, skipped with
-`-e install_portal=false`. Needs AAP configured first (stage 6), does not depend
+`-e install_portal=false`. Needs AAP configured first (stage 7), does not depend
 on AO.
 
 **12. Generate the environment URL reference** (`generate_env_urls.yml`)
