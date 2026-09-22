@@ -160,6 +160,14 @@ inference_token: ""  # noqa: var-naming[no-role-prefix]
 # default), no notification is sent — graceful degradation per #661.
 demo_facts_eda_webhook_url: ""
 
+# Whether an investigate-severity diff POSTs to the EDA webhook at all (#803).
+# True for a standalone gather — that is the manual-gather drift path. False
+# for any gather that runs INSIDE the drift remediation workflow: its own
+# gather sees the drift it was started for, and its verify sees the fix, and
+# either POST starts another run (#803, #804). Passed as a survey answer
+# because Gather Facts takes no free-form launch variables.
+demo_facts_notify_eda: true
+
 # Provisioning metadata, read from the host variables register_hosts.yml sets.
 demo_facts_golden_image_source: "{{ golden_image_source | default('') }}"
 demo_facts_golden_image_cis_level: "{{ golden_image_cis_level | default('') }}"

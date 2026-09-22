@@ -1819,6 +1819,22 @@ controller_templates_all:
           choices:
             - "false"
             - "true"
+        # A survey question rather than an extra_var because this template
+        # does not ask for variables on launch — a survey answer is the only
+        # way a workflow node can switch the POST off (#803).
+        - question_name: Notify EDA of investigate-severity drift
+          question_description: >-
+            POST to the EDA webhook when the comparison finds investigate
+            drift, which starts the AO drift remediation workflow. The
+            workflows' own gather and verify steps answer false, or each run
+            would start the next one (#803, #804).
+          variable: demo_facts_notify_eda
+          type: multiplechoice
+          required: false
+          default: "true"
+          choices:
+            - "false"
+            - "true"
 
   - name: "Windows Day 2 - Gather Facts"
     description: "Re-gather the Windows guest's facts, refresh its Facts tab in AAP and republish <web_url>/facts.html. Read-only."
@@ -1981,6 +1997,8 @@ controller_templates_all:
       "Linux Day 2 - Drift Remediation (as code)" AO workflow. The AO
       workflow then orchestrates gather → approval → remediate.
       Three products: EDA catches, AO orchestrates, AAP executes (#684).
+      Launched by EDA — do not launch by hand after injecting drift, or
+      two runs start (#804). Without EDA, use Run on the workflow in AO.
     labels:
       - linux
       - day-2
