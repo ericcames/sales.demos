@@ -358,7 +358,23 @@
           OIDC identity provider:
           {{ 'already configured — skipped' if (ao_oidc_exists | bool) else 'created' }}
 
+    # Rename only while "Syntara" still exists. After the first rename it is
+    # gone, and state: present would then try to CREATE a "Syntara" app —
+    # which the gateway rejects with 400 (client_type and
+    # authorization_grant_type are required on create). This made every
+    # re-run of this playbook fail.
+    - name: Look up the AO-created "Syntara" application
+      ansible.builtin.set_fact:
+        ao_syntara_app: >-
+          {{ query('ansible.platform.gateway_api', 'applications',
+                   query_params={'name': 'Syntara'},
+                   host='https://' ~ aap_hostname,
+                   username=aap_username, password=aap_password,
+                   verify_ssl=aap_validate_certs | default(false) | bool) }}
+      no_log: true
+
     - name: Rename AO application link to Orchestrator
+      when: ao_syntara_app | length > 0
       ansible.platform.application:
         aap_hostname: "https://{{ aap_hostname }}"
         aap_username: "{{ aap_username }}"
