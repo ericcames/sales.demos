@@ -209,14 +209,26 @@
         status_code: 200
       register: ao_wf_current
 
-    # Positions are layout, not behaviour, and AO may store them as floats — so
-    # they are left out of the comparison. Without that, every run would save a
-    # new version of an unchanged workflow.
+    # AO may store positions as floats, so the node comparison leaves them out
+    # and they are compared separately, rounded to integers. Compared raw, every
+    # run would save a new version of an unchanged workflow; left out entirely,
+    # a layout-only fix read as "unchanged" and never reached AO (#813).
     - name: "Decide whether the stored definition differs — {{ ao_wf.name }}"
       when: ao_wf.name in ao_existing_workflow_ids
       ansible.builtin.set_fact:
         ao_wf_needs_update: >-
           {{
+            ((ao_wf_current.json.version.workflow_definition.nodes
+              + ao_wf_current.json.version.workflow_definition.triggers) | sort(attribute='id')
+             | map(attribute='position.x', default=0) | map('float') | map('round') | map('int') | list)
+            != ((ao_wf_definition.nodes + ao_wf_definition.triggers) | sort(attribute='id')
+             | map(attribute='position.x', default=0) | map('float') | map('round') | map('int') | list)
+            or ((ao_wf_current.json.version.workflow_definition.nodes
+              + ao_wf_current.json.version.workflow_definition.triggers) | sort(attribute='id')
+             | map(attribute='position.y', default=0) | map('float') | map('round') | map('int') | list)
+            != ((ao_wf_definition.nodes + ao_wf_definition.triggers) | sort(attribute='id')
+             | map(attribute='position.y', default=0) | map('float') | map('round') | map('int') | list)
+            or
             (ao_wf_current.json.version.workflow_definition.nodes
              | map('dict2items') | map('rejectattr', 'key', 'equalto', 'position') | map('list') | map('items2dict')
              | sort(attribute='id') | to_json(sort_keys=True))

@@ -235,14 +235,14 @@ ao_workflows:
       - id: logic_drift_check
         name: drift_check
         type: condition
-        position: {x: -275, y: -172}
+        position: {x: -50, y: -172}
         # Must equal activity_remediate's job_template below.
         condition: '${activity_decide.result.content.template} == "Linux Day 2 - Fix SELinux"'
 
       - id: activity_approval
         name: security_approval
         type: approval
-        position: {x: -50, y: -141}
+        position: {x: 400, y: -141}
         # No period after reason: the model ends its own sentence (#802 showed "..").
         prompt: >-
           AI drift analysis: ${activity_decide.result.content.reason}
@@ -255,7 +255,7 @@ ao_workflows:
       - id: activity_remediate
         name: remediate
         type: aap_job_template
-        position: {x: 400, y: -121}
+        position: {x: 850, y: -121}
         job_template: "Linux Day 2 - Fix SELinux"
         organization: "IT Service Automation"
         credential: "AAP Admin"
@@ -265,7 +265,7 @@ ao_workflows:
       - id: activity_verify
         name: verify
         type: aap_job_template
-        position: {x: 850, y: -121}
+        position: {x: 1300, y: -121}
         job_template: "Linux Day 2 - Gather Facts"
         organization: "IT Service Automation"
         credential: "AAP Admin"
