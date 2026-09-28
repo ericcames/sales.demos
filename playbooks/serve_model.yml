@@ -610,41 +610,13 @@
           secrets.yml for the target environment.
         quiet: true
 
-    - name: Create the inference credential type
-      ansible.controller.credential_type:
-        name: "Sales Demos - Inference Endpoint"
-        description: "GPU-served model endpoint. Created by serve_model.yml (#677)."
-        kind: cloud
-        inputs:
-          fields:
-            - id: inference_url
-              type: string
-              label: "Inference URL"
-              help_text: "OpenAI-compatible endpoint (https://route-host). Changes when the GPU environment is re-ordered."
-            - id: inference_token
-              type: string
-              label: "Inference token"
-              secret: true
-              help_text: "Bearer token for the SA scoped to this model's InferenceService."
-            - id: inference_model
-              type: string
-              label: "Model name"
-              help_text: "The --served-model-name, used in API requests."
-          required:
-            - inference_url
-            - inference_token
-            - inference_model
-        injectors:
-          extra_vars:
-            inference_url: "{  { inference_url }}"
-            inference_token: "{  { inference_token }}"
-            inference_model: "{  { inference_model }}"
-        controller_host: "https://{{ aap_hostname }}"
-        controller_username: "{{ aap_username }}"
-        controller_password: "{{ aap_password }}"
-        validate_certs: "{{ aap_validate_certs | default(false) | bool }}"
-        state: present
-
+    # THE CREDENTIAL TYPE IS NOT CREATED HERE (#826). It lives in
+    # inventory/group_vars/aap/controller_credential_types.yml, because only
+    # config.yml's role rewrites the `{  {` injector escape. Creating it here
+    # with ansible.controller.credential_type stored the injectors literally,
+    # so every AAP job received "{  { inference_url }}". config.yml must have
+    # run first -- setup.yml orders it, and on a fresh AAP it also creates the
+    # credential this task refreshes (#820).
     - name: Create or update the inference credential
       ansible.controller.credential:
         name: "Sales Demos - Inference Endpoint"
