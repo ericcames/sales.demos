@@ -56,19 +56,31 @@ hub_ee_repositories_all:
       - v1.0.0
       - v1.1.0
       - v1.2.0
-    sync: true   # ROLE GATE
+    # ROLE GATE, and the one place the flag's VALUE is read (#831). Dispatch
+    # only checks that hub_ee_repository_sync is defined, so `-e
+    # hub_ee_repository_sync=false` used to change nothing. Deriving the role
+    # gate from it makes false mean false. Measured: this evaluates to a real
+    # bool, and the role's `when: item.sync | default(false)` skips on false.
+    # Only pass false on a RE-RUN, when the tags are already in PAH -- on a
+    # fresh environment Controller would have nothing to pull.
+    sync: "{{ hub_ee_repository_sync | default(true) | bool }}"
     wait: true
 
-# DISPATCH GATE. The value is ignored; only its existence matters. Removing this
-# silently skips the sync and leaves the Hub repository empty.
+# DISPATCH GATE. Dispatch reads only whether this is defined; removing it
+# silently skips the sync and leaves the Hub repository empty. Its VALUE is read
+# by the role gate above (#831): `-e hub_ee_repository_sync=false` skips the
+# multi-minute sync on a re-run where the EE is already mirrored.
 #
 # Deliberately NOT suffixed `_all`. It is a scalar flag, and the wildcard merge
 # in dispatch's include_wildcard_vars.yml only handles lists and dicts — a
 # suffixed scalar would be fed to `[] + true` and blow up.
 hub_ee_repository_sync: true
 
-# FRESH-ENVIRONMENT EE SYNC RESILIENCE (#547). The upstream defaults (50
+# FRESH-ENVIRONMENT EE SYNC RESILIENCE (#547, #831). The upstream defaults (50
 # retries x 1s delay = 50s of polling) are not enough on a new cluster where
-# the quay registry was just created. 120 x 2s = 4 minutes.
-hub_configuration_ee_repository_sync_async_retries: 120
+# the quay registry was just created. #547 raised it to 120 x 2s = 4 minutes,
+# and the 2026-09-28 bootstrap measured that as too tight: one config.yml run
+# hit 120/120 and failed with "Unknown Error", the next needed 101/120. 300 x 2s
+# = 10 minutes. A ceiling, not a delay: a finished sync returns immediately.
+hub_configuration_ee_repository_sync_async_retries: 300
 hub_configuration_ee_repository_sync_async_delay: 2
