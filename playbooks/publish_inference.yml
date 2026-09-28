@@ -1,0 +1,453 @@
+---
+# ===========================================================================
+# publish_inference.yml — publish an OpenAI-compatible inference endpoint the
+# repo did NOT serve (#818). Today that is LiteMaaS, the model-as-a-service
+# RHDP now ships with the sandbox environment. serve_model.yml does the same
+# publishing for the GPU cluster, but reads the endpoint out of the GPU play's
+# hostvars, so it cannot publish anything else.
+#
+#   ./utilities/run-playbook.sh playbooks/publish_inference.yml \
+#     -i inventory --limit sandbox -e target_env=sandbox
+#
+# Publishes to both consumers:
+#   AAP  "Sales Demos - Inference Endpoint" credential (type created if
+#        missing) — read by decide_remediation.yml and demo_facts narration.
+#   AO   an LLM Provider integration + its credential, the endpoint's host on
+#        the SSRF allowlist (#621), model discovery run, and ONLY the chosen
+#        model enabled. ao_workflows.yml binds an agentic node to the first
+#        enabled model, so enabling every model LiteMaaS offers would hand the
+#        drift workflow whichever one sorts first.
+#
+# Inputs:
+#   litemaas_url     group_vars/<env>/local.yml   base URL, /v1 optional
+#   litemaas_model   group_vars/<env>/local.yml   model id as /v1/models lists it
+#   litemaas_api_key secrets.yml, TOP-LEVEL key   (like the gpu_* keys: it is
+#                    not a per-environment AAP credential)
+# Override the names with -e ao_llm_integration=... / -e ao_llm_credential=...
+#
+# serve_model.yml is deliberately untouched (additive only). Folding its
+# publish plays onto this one is the follow-up, once LiteMaaS is proven.
+# ===========================================================================
+
+- name: Publish an inference endpoint to AAP and Automation Orchestrator
+  hosts: aap
+  gather_facts: false
+
+  environment:
+    K8S_AUTH_HOST: "{{ openshift_api_url }}"
+    K8S_AUTH_API_KEY: "{{ openshift_api_token }}"
+    K8S_AUTH_VERIFY_SSL: "{{ openshift_validate_certs | default(false) | bool }}"
+
+  vars:
+    _inference_url: >-
+      {{ litemaas_url | default('') | regex_replace('/+$', '') | regex_replace('/v1$', '') }}
+    # Bare on purpose: check-secrets-example.py counts a bare reference as
+    # "this vault key is required". The assert below names it if missing.
+    _inference_token: "{{ litemaas_api_key }}"
+    _inference_model: "{{ litemaas_model | default('') }}"
+    _llm_integration_name: "{{ ao_llm_integration | default('LiteMaaS') }}"
+    _llm_credential_name: "{{ ao_llm_credential | default('LiteMaaS API Key') }}"
+    _llm_provider_hint: "{{ inference_provider_hint | default('red_hat_ai') }}"
+    ao_namespace: "automation-orchestrator"
+    ao_route_name: "ao"
+    ao_api_retries: 30
+    ao_api_delay: 10
+
+  tasks:
+    - name: Assert the environment is unambiguous
+      ansible.builtin.include_tasks: tasks/assert_target_environment.yml
+
+    - name: Assert the endpoint inputs are set
+      ansible.builtin.assert:
+        that:
+          - litemaas_api_key is defined
+          - _inference_url | length > 0
+          - _inference_token | length > 0
+          - _inference_model | length > 0
+          - aap_hostname | default('') | length > 0
+          - aap_password | default('') | length > 0
+        fail_msg: >-
+          Set litemaas_url and litemaas_model in
+          inventory/group_vars/{{ aap_env_name | default('<env>') }}/local.yml
+          and litemaas_api_key (top-level) in the vaulted secrets.yml.
+        quiet: true
+
+    # Ask the endpoint before publishing anything, so a wrong key or model
+    # fails here rather than as a mid-demo AO step failure.
+    - name: List the endpoint's models
+      ansible.builtin.uri:
+        url: "{{ _inference_url }}/v1/models"
+        headers:
+          Authorization: "Bearer {{ _inference_token }}"
+        validate_certs: false
+        status_code: 200
+      register: _endpoint_models
+
+    - name: Assert the chosen model is served
+      ansible.builtin.assert:
+        that:
+          - _inference_model in (_endpoint_models.json.data | map(attribute='id') | list)
+        fail_msg: >-
+          '{{ _inference_model }}' is not served by {{ _inference_url }}.
+          Available: {{ _endpoint_models.json.data | map(attribute='id') | list }}
+        quiet: true
+
+    - name: Smoke test a chat completion
+      ansible.builtin.uri:
+        url: "{{ _inference_url }}/v1/chat/completions"
+        method: POST
+        body_format: json
+        body:
+          model: "{{ _inference_model }}"
+          messages:
+            - role: user
+              content: "Reply with the single word: ready"
+          max_tokens: 10
+        headers:
+          Authorization: "Bearer {{ _inference_token }}"
+        validate_certs: false
+        status_code: 200
+        timeout: 60
+      register: _endpoint_smoke
+
+    # ---------------------------------------------------------------- AAP --
+    - name: Create the inference credential type
+      ansible.controller.credential_type:
+        name: "Sales Demos - Inference Endpoint"
+        description: "OpenAI-compatible model endpoint. Created by serve_model.yml (#677) or publish_inference.yml (#818)."
+        kind: cloud
+        inputs:
+          fields:
+            - id: inference_url
+              type: string
+              label: "Inference URL"
+              help_text: "OpenAI-compatible endpoint base URL, without /v1."
+            - id: inference_token
+              type: string
+              label: "Inference token"
+              secret: true
+              help_text: "Bearer token for the endpoint."
+            - id: inference_model
+              type: string
+              label: "Model name"
+              help_text: "The model id used in API requests."
+          required:
+            - inference_url
+            - inference_token
+            - inference_model
+        injectors:
+          extra_vars:
+            inference_url: "{  { inference_url }}"
+            inference_token: "{  { inference_token }}"
+            inference_model: "{  { inference_model }}"
+        controller_host: "https://{{ aap_hostname }}"
+        controller_username: "{{ aap_username }}"
+        controller_password: "{{ aap_password }}"
+        validate_certs: "{{ aap_validate_certs | default(false) | bool }}"
+        state: present
+
+    - name: Create or update the inference credential
+      ansible.controller.credential:
+        name: "Sales Demos - Inference Endpoint"
+        description: "{{ _inference_model }} via {{ _llm_integration_name }}. Re-run publish_inference.yml to refresh."
+        organization: "IT Service Automation"
+        credential_type: "Sales Demos - Inference Endpoint"
+        inputs:
+          inference_url: "{{ _inference_url }}"
+          inference_token: "{{ _inference_token }}"
+          inference_model: "{{ _inference_model }}"
+        controller_host: "https://{{ aap_hostname }}"
+        controller_username: "{{ aap_username }}"
+        controller_password: "{{ aap_password }}"
+        validate_certs: "{{ aap_validate_certs | default(false) | bool }}"
+        state: present
+      no_log: true
+
+    # ----------------------------------------------------------------- AO --
+    - name: Connect to Automation Orchestrator
+      ansible.builtin.include_tasks: tasks/ao_connect.yml
+
+    - name: Add the endpoint host to AO's SSRF allowlist
+      vars:
+        _inference_hostnames:
+          - "{{ _inference_url | urlsplit('hostname') }}"
+        _ao_admin_settings_configmap: "ao-admin-settings"
+      block:
+        - name: Read the current SSRF allowlist
+          kubernetes.core.k8s_info:
+            api_version: v1
+            kind: ConfigMap
+            namespace: "{{ ao_namespace }}"
+            name: "{{ _ao_admin_settings_configmap }}"
+          register: _ao_ssrf_cm
+
+        - name: Parse the existing allowed hosts
+          ansible.builtin.set_fact:
+            _ao_ssrf_current: >-
+              {{ (_ao_ssrf_cm.resources[0].data.APP_INTEGRATION_URL_ALLOWED_HOSTS
+                  | default('[]') | from_json)
+                 if _ao_ssrf_cm.resources | length > 0 else [] }}
+
+        - name: Update the ConfigMap with the endpoint host
+          when: _inference_hostnames | difference(_ao_ssrf_current) | length > 0
+          kubernetes.core.k8s:
+            state: present
+            definition:
+              apiVersion: v1
+              kind: ConfigMap
+              metadata:
+                name: "{{ _ao_admin_settings_configmap }}"
+                namespace: "{{ ao_namespace }}"
+              data:
+                APP_INTEGRATION_URL_ALLOWED_HOSTS: >-
+                  {{ (_ao_ssrf_current + _inference_hostnames) | unique | to_json }}
+                APP_OIDC_ALLOW_PRIVATE_NETWORKS: "true"
+          register: _ao_ssrf_cm_updated
+
+        - name: Restart AO components so they read the updated ConfigMap
+          when: _ao_ssrf_cm_updated.changed | default(false)
+          kubernetes.core.k8s:
+            state: absent
+            api_version: v1
+            kind: Pod
+            namespace: "{{ ao_namespace }}"
+            label_selectors:
+              - "app.kubernetes.io/component={{ item }}"
+          loop:
+            - ao-backend
+            - ao-worker
+            - ao-background-worker
+          changed_when: true
+
+        - name: Wait for the AO backend to be ready after restart
+          when: _ao_ssrf_cm_updated.changed | default(false)
+          kubernetes.core.k8s_info:
+            api_version: apps/v1
+            kind: Deployment
+            namespace: "{{ ao_namespace }}"
+            name: ao-backend
+            wait: true
+            wait_condition:
+              type: Available
+              status: "True"
+            wait_timeout: 120
+
+        - name: Re-login to AO after restart
+          when: _ao_ssrf_cm_updated.changed | default(false)
+          ansible.builtin.include_tasks: tasks/ao_connect.yml
+
+    - name: Look up AO credential types, projects, credentials and integrations
+      ansible.builtin.uri:
+        url: "{{ ao_url }}/api/v1/{{ item }}"
+        headers: "{{ ao_auth_header }}"
+        validate_certs: false
+        status_code: 200
+      loop:
+        - credential_types
+        - projects
+        - credentials
+        - integrations
+      register: _ao_lookups
+
+    - name: Resolve the IDs this play needs
+      ansible.builtin.set_fact:
+        _ao_llm_cred_type_id: >-
+          {{ _ao_lookups.results[0].json.resources
+             | selectattr('name', 'equalto', 'LLM Provider') | map(attribute='id') | first }}
+        _ao_default_project_id: >-
+          {{ _ao_lookups.results[1].json.resources
+             | selectattr('name', 'equalto', 'default') | map(attribute='id') | first }}
+        _ao_llm_cred_existing: >-
+          {{ _ao_lookups.results[2].json.resources
+             | selectattr('name', 'equalto', _llm_credential_name) | list }}
+        _ao_llm_integration_existing: >-
+          {{ _ao_lookups.results[3].json.resources
+             | selectattr('name', 'equalto', _llm_integration_name) | list }}
+
+    - name: Create the LLM credential
+      when: _ao_llm_cred_existing | length == 0
+      ansible.builtin.uri:
+        url: "{{ ao_url }}/api/v1/credentials"
+        method: POST
+        body_format: json
+        body:
+          name: "{{ _llm_credential_name }}"
+          description: "API key for {{ _llm_integration_name }}. Created by publish_inference.yml (#818)."
+          credential_type_id: "{{ _ao_llm_cred_type_id | trim }}"
+          project_id: "{{ _ao_default_project_id | trim }}"
+          inputs:
+            api_key: "{{ _inference_token }}"
+        headers: "{{ ao_auth_header }}"
+        validate_certs: false
+        status_code: [200, 201]
+      register: _ao_llm_cred_created
+      no_log: true
+
+    - name: Update the existing LLM credential
+      when: _ao_llm_cred_existing | length > 0
+      ansible.builtin.uri:
+        url: "{{ ao_url }}/api/v1/credentials/{{ _ao_llm_cred_existing[0].id }}"
+        method: PATCH
+        body_format: json
+        body:
+          inputs:
+            api_key: "{{ _inference_token }}"
+        headers: "{{ ao_auth_header }}"
+        validate_certs: false
+        status_code: 200
+      no_log: true
+
+    - name: Set the LLM credential ID
+      ansible.builtin.set_fact:
+        _ao_llm_cred_id: >-
+          {{ _ao_llm_cred_created.json.id | trim
+             if _ao_llm_cred_existing | length == 0
+             else _ao_llm_cred_existing[0].id }}
+
+    - name: Create or update the LLM Provider integration
+      ansible.builtin.uri:
+        url: >-
+          {{ ao_url }}/api/v1/integrations{{
+             ('/' ~ _ao_llm_integration_existing[0].id) if _ao_llm_integration_existing | length > 0 else '' }}
+        method: "{{ 'PATCH' if _ao_llm_integration_existing | length > 0 else 'POST' }}"
+        body_format: json
+        body: >-
+          {{ {
+               'description': _inference_model ~ ' via ' ~ _inference_url ~ '. Published by publish_inference.yml (#818).',
+               'configuration': {
+                 'integration_type': 'llm_provider',
+                 'provider_hint': _llm_provider_hint,
+                 'base_url': _inference_url ~ '/v1',
+                 'insecure_skip_tls_verify': true
+               },
+               'management_credential_id': _ao_llm_cred_id | trim
+             } | combine({'name': _llm_integration_name, 'integration_type': 'llm_provider'}
+                         if _ao_llm_integration_existing | length == 0 else {}) }}
+        headers: "{{ ao_auth_header }}"
+        validate_certs: false
+        status_code: [200, 201]
+      register: _ao_llm_integration_saved
+      retries: 5
+      delay: 20
+      until: _ao_llm_integration_saved.status in [200, 201]
+
+    - name: Set the LLM integration ID
+      ansible.builtin.set_fact:
+        _ao_llm_integration_id: >-
+          {{ _ao_llm_integration_existing[0].id
+             if _ao_llm_integration_existing | length > 0
+             else _ao_llm_integration_saved.json.id | trim }}
+
+    # Validate → discover → enable, as serve_model.yml does (#708): creating
+    # an integration does not discover its models.
+    - name: Validate the integration
+      ansible.builtin.uri:
+        url: "{{ ao_url }}/api/v1/integrations/{{ _ao_llm_integration_id | trim }}/validate"
+        method: POST
+        headers: "{{ ao_auth_header }}"
+        validate_certs: false
+        status_code: 200
+      register: _ao_llm_validate
+
+    - name: Find the Integration Resource Discovery workflow
+      ansible.builtin.uri:
+        url: "{{ ao_url }}/api/v1/workflows?limit=50"
+        headers: "{{ ao_auth_header }}"
+        validate_certs: false
+        status_code: 200
+      register: _ao_discovery_workflows
+
+    - name: Extract the discovery workflow ID
+      ansible.builtin.set_fact:
+        _ao_discovery_wf_id: >-
+          {{ _ao_discovery_workflows.json.resources
+             | selectattr('name', 'equalto', 'Integration Resource Discovery')
+             | map(attribute='id') | first }}
+
+    - name: Read the discovery workflow
+      ansible.builtin.uri:
+        url: "{{ ao_url }}/api/v1/workflows/{{ _ao_discovery_wf_id | trim }}"
+        headers: "{{ ao_auth_header }}"
+        validate_certs: false
+        status_code: 200
+      register: _ao_discovery_wf
+
+    - name: Trigger model discovery
+      ansible.builtin.uri:
+        url: "{{ ao_url }}/api/v1/executions"
+        method: POST
+        body_format: json
+        body:
+          workflow_id: "{{ _ao_discovery_wf_id | trim }}"
+          trigger_node_id: "{{ _ao_discovery_wf.json.version.workflow_definition.triggers[0].id }}"
+          use_published: true
+        headers: "{{ ao_auth_header }}"
+        validate_certs: false
+        status_code: [200, 201]
+      register: _ao_discovery_execution
+
+    - name: Wait for discovery to complete
+      ansible.builtin.uri:
+        url: "{{ ao_url }}/api/v1/executions/{{ _ao_discovery_execution.json.id }}"
+        headers: "{{ ao_auth_header }}"
+        validate_certs: false
+        status_code: 200
+      register: _ao_discovery_status
+      retries: 12
+      delay: 10
+      until: _ao_discovery_status.json.status in ['completed', 'failed']
+
+    - name: List the integration's discovered models
+      ansible.builtin.uri:
+        url: "{{ ao_url }}/api/v1/integrations/{{ _ao_llm_integration_id | trim }}/models?limit=200"
+        headers: "{{ ao_auth_header }}"
+        validate_certs: false
+        status_code: 200
+      register: _ao_llm_models
+      retries: 3
+      delay: 5
+      until: _ao_llm_models.json.resources | default([]) | length > 0
+
+    - name: Split the chosen model from the rest
+      ansible.builtin.set_fact:
+        _ao_model_chosen: >-
+          {{ _ao_llm_models.json.resources | selectattr('name', 'equalto', _inference_model)
+             | map(attribute='id') | list }}
+        _ao_model_others: >-
+          {{ _ao_llm_models.json.resources | rejectattr('name', 'equalto', _inference_model)
+             | map(attribute='id') | list }}
+
+    - name: Assert AO discovered the chosen model
+      ansible.builtin.assert:
+        that:
+          - _ao_model_chosen | length > 0
+        fail_msg: >-
+          AO did not discover '{{ _inference_model }}'. It found:
+          {{ _ao_llm_models.json.resources | map(attribute='name') | list }}
+        quiet: true
+
+    - name: Enable the chosen model and disable the rest
+      ansible.builtin.uri:
+        url: "{{ ao_url }}/api/v1/integrations/{{ _ao_llm_integration_id | trim }}/models/bulk_update"
+        method: PATCH
+        body_format: json
+        body:
+          model_ids: "{{ item.ids }}"
+          enabled: "{{ item.enabled }}"
+        headers: "{{ ao_auth_header }}"
+        validate_certs: false
+        status_code: 200
+      loop:
+        - {ids: "{{ _ao_model_others }}", enabled: false}
+        - {ids: "{{ _ao_model_chosen }}", enabled: true}
+      when: item.ids | length > 0
+
+    - name: Report
+      ansible.builtin.debug:
+        msg:
+          - "Endpoint:    {{ _inference_url }}"
+          - "Model:       {{ _inference_model }} (smoke reply: {{ _endpoint_smoke.json.choices[0].message.content | default('?') | trim }})"
+          - "AAP:         'Sales Demos - Inference Endpoint' credential updated"
+          - "AO:          '{{ _llm_integration_name }}' integration, validated={{ _ao_llm_validate.json.success | default(false) }}"
+          - "AO models:   {{ _ao_model_chosen | length }} enabled, {{ _ao_model_others | length }} disabled"
+          - "Next:        load the workflow — playbooks/ao_workflows.yml"

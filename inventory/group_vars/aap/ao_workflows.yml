@@ -57,6 +57,14 @@
 #                            fallback_decision
 # ============================================================================
 
+# Which AO LLM Provider integration the drift workflow's agentic node uses
+# (#818). LiteMaaS is published by publish_inference.yml from the sandbox's
+# own model-as-a-service; the GPU cluster's is published by serve_model.yml.
+# Load against the GPU instead with:
+#   -e ao_llm_integration="GPU Inference (Granite)" -e ao_llm_credential="LLM Inference Token"
+ao_llm_integration: "LiteMaaS"
+ao_llm_credential: "LiteMaaS API Key"
+
 ao_workflows:
   # "(as code)" IS LOAD-BEARING. The loader matches workflows by name, and the
   # demo is a presenter building "Windows Day 2 - Compliance Remediation" live
@@ -229,8 +237,8 @@ ao_workflows:
           required:
             - template
             - reason
-        llm_integration: "GPU Inference (Granite)"
-        llm_credential: "LLM Inference Token"
+        llm_integration: "{{ ao_llm_integration }}"
+        llm_credential: "{{ ao_llm_credential }}"
 
       - id: logic_drift_check
         name: drift_check
