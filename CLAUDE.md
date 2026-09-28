@@ -409,13 +409,17 @@ environments (`sandbox`/`demo`) consume the endpoint. Issue
   `gpu_openshift_api_token`, NOT under `env_secrets`. A cluster with no AAP, no
   VMs, and no per-environment passwords would force dummy keys for credentials
   that do not exist.
-- **The credential type is imperative.** `serve_model.yml` creates
-  "Sales Demos - Inference Endpoint" (type + credential) on each run. It is not
-  in `controller_credential_types.yml` or `controller_credentials.yml`. The
-  credential contents rotate with the GPU cluster; the type must exist before
-  CaC templates can reference it. Three templates consume it: `Linux Day 2 -
-  Gather Facts`, `Windows Day 2 - Gather Facts`, and `Linux Day 2 - Decide
-  Remediation`.
+- **The inference credential type lives in config-as-code, and only there**
+  (#826). "Sales Demos - Inference Endpoint" is in
+  `controller_credential_types.yml`, and the credential is in
+  `controller_credentials.yml`, filled from `litemaas_*`.
+  `publish_inference.yml` and `serve_model.yml` only refresh the credential's
+  inputs; they never create the type. That is load-bearing: they used to
+  create it with `ansible.controller.credential_type`, which does not rewrite
+  the `{  {` injector escape. AAP stored the literal text, and every AAP-side
+  model call silently fell back for ten days. Three templates consume it:
+  `Linux Day 2 - Gather Facts`, `Windows Day 2 - Gather Facts`, and
+  `Linux Day 2 - Decide Remediation`.
 - **Three laptop-only playbooks** — `serve_model.yml`, `teardown_model.yml`,
   and `benchmark_model.yml` have no AAP job template. Same structural constraint
   as `pah-sync`: the target has no AAP, so there is nothing to create a template
