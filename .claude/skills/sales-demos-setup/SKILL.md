@@ -1,6 +1,6 @@
 ---
 name: sales-demos-setup
-description: "Phase 0 of the sales.demos platform — take a bare RHDP environment to demo-ready in one command. Fourteen stages: tune the node's image GC thresholds and container log caps, persist the cluster monitoring storage, install OpenShift Virtualization, link the RHEL 9 CIS image, link the Windows CIS image, create shared cluster objects, apply the AAP configuration, deploy the MCP server, install and configure Automation Orchestrator, deploy the self-service portal, generate the environment URL reference, probe the cluster for available_memory_gb, then prove it by building and timing a real VM. Checks prerequisites, confirms the cluster is reachable, then runs playbooks/setup.yml. TRIGGER when: the user has a new or rebuilt RHDP environment, asks to set one up or prepare it for the ocpvirt demo, says OpenShift Virtualization or KubeVirt is missing, hits a missing kubevirt.io API, or asks to install CNV. SKIP: if the environment is already set up and the user wants to create demo VMs — that is sales-demos-provision — or only wants to re-check readiness, which is sales-demos-verify-env."
+description: "Phase 0 of the sales.demos platform — take a bare RHDP environment to demo-ready in one command. Fifteen stages: tune the node's image GC thresholds and container log caps, persist the cluster monitoring storage, install OpenShift Virtualization, link the RHEL 9 CIS image, link the Windows CIS image, create shared cluster objects, apply the AAP configuration, deploy the MCP server, install and configure Automation Orchestrator, publish the LiteMaaS model endpoint and turn on AAP Lightspeed, deploy the self-service portal, generate the environment URL reference, probe the cluster for available_memory_gb, then prove it by building and timing a real VM. Checks prerequisites, confirms the cluster is reachable, then runs playbooks/setup.yml. TRIGGER when: the user has a new or rebuilt RHDP environment, asks to set one up or prepare it for the ocpvirt demo, says OpenShift Virtualization or KubeVirt is missing, hits a missing kubevirt.io API, or asks to install CNV. SKIP: if the environment is already set up and the user wants to create demo VMs — that is sales-demos-provision — or only wants to re-check readiness, which is sales-demos-verify-env."
 ---
 
 # sales-demos-setup
@@ -22,7 +22,7 @@ Phase 0. Takes a bare RHDP "Ansible Product Demo" environment to demo-ready in
 **one command**.
 
 This skill contains **no logic**. All the work is in
-[`playbooks/setup.yml`](../../../playbooks/setup.yml), which imports fourteen
+[`playbooks/setup.yml`](../../../playbooks/setup.yml), which imports fifteen
 playbooks in order. The same playbooks run from AAP job templates with survey
 answers mapped to the same variable names. See `CLAUDE.md` →
 *Skills and playbooks*.
@@ -123,24 +123,36 @@ on, skipped with `-e install_ao=false`.
 Connects AO to AAP — OIDC SSO and the AAP integration so AO can see job
 templates. Gated on the same `install_ao` flag.
 
-**11. Deploy the self-service portal** (`portal.yml`)
+**11. Publish the model endpoint and enable Lightspeed** (`publish_inference.yml`)
+
+Publishes LiteMaaS (`llama-scout-17b`, committed in
+`inventory/group_vars/aap/litemaas.yml`) to AAP's "Sales Demos - Inference
+Endpoint" credential, to AO's LLM integration (skipped if AO is not installed),
+and to AAP Lightspeed, **which is on by default** (#829). It proves Lightspeed
+with a real chat query through the gateway. Needs `litemaas_api_key` in the
+vault: your own never-expiring key from the LiteMaaS portal (see
+[`/sales-demos-first-time`](https://github.com/ericcames/sales.demos/blob/main/.claude/skills/sales-demos-first-time/SKILL.md)).
+Skipped when `litemaas_url` is empty, or with `-e publish_inference=false`.
+Reload the AAP UI afterwards for the chat icon.
+
+**12. Deploy the self-service portal** (`portal.yml`)
 
 Helm chart, gateway OAuth app, org sync. Default on, skipped with
 `-e install_portal=false`. Needs AAP configured first (stage 7), does not depend
 on AO.
 
-**12. Generate the environment URL reference** (`generate_env_urls.yml`)
+**13. Generate the environment URL reference** (`generate_env_urls.yml`)
 
 Regenerates the env-urls file with credentials included (setup.yml is always a
 laptop command with the vault available).
 
-**13. Probe the environment** (`probe_env.yml`)
+**14. Probe the environment** (`probe_env.yml`)
 
 Measures CPU, memory, and storage now that everything is installed. Recommends
 `available_memory_gb` under full load (AO, portal, MCP server all running).
 Strictly read-only (#100).
 
-**14. Prove it** (`prepare_env.yml`)
+**15. Prove it** (`prepare_env.yml`)
 
 Checks the boot source is genuinely backed by a ready snapshot, that storage
 clones with `csi-clone` rather than copying, and that ingress admits Routes —
@@ -153,7 +165,7 @@ about 4 for CNV, 1-2 for the RHEL 9 golden image
 import, about 7-10 for the Windows golden image import, a few for shared
 objects, several for the AAP objects and the first Hub image mirror, about 1
 for the MCP server, about 5 for AO and its database, about 2 to configure AO,
-about 5-10 for the portal, about 1 for env URLs, about 1 for the probe, and
+1-6 to publish LiteMaaS and enable Lightspeed, about 5-10 for the portal, about 1 for env URLs, about 1 for the probe, and
 about 1 to verify. That is on top of RHDP provisioning the environment itself,
 so **budget ~50-60 minutes from ordering an environment to demoing on it**.
 
@@ -273,7 +285,8 @@ PY
 |---|---|---|
 | `ENV` (inventory limit) | `sandbox` | Which environment to target — `sandbox`, `demo`, or `edge` |
 | `install_ao` | `true` | Set to `false` to skip both AO stages (9 and 10) |
-| `install_portal` | `true` | Set to `false` to skip the portal deploy (stage 11) |
+| `publish_inference` | `true` | Set to `false` to skip LiteMaaS and Lightspeed (stage 11) |
+| `install_portal` | `true` | Set to `false` to skip the portal deploy (stage 12) |
 | `link_rhel9_image` | `true` | Set to `false` to skip the RHEL 9 golden image import (stage 4) |
 | `link_windows_image` | `true` | Set to `false` to skip the Windows golden image import (stage 5) |
 | `configure_monitoring` | `true` | Set to `false` to leave the cluster Prometheus on its stock node-local emptyDir (stage 2) |

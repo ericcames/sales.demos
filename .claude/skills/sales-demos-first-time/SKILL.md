@@ -28,7 +28,7 @@ Setting up sales.demos on this machine. About 10 minutes, once.
   4. Python kubernetes client
   4.5 CLI tools                    oc, terraform, virtctl, helm (+ optional)
   5. Run-log directory             ~/ansible-logs/
-  6. Your environment's values     local.yml + set-env-passwords.sh + derived API token
+  6. Your environment's values     local.yml + set-env-passwords.sh (incl. your LiteMaaS key) + derived API token
 
 Nothing here has to be asked of anyone. Since #130 you create the vault
 password and the secrets file yourself — step 2, case A.
@@ -351,6 +351,21 @@ Committing `connection.yml` (`utilities/update-connection.sh`) only refreshes
 the upstream reference for fresh clones. This replaced #166's rule. A **fork**
 still repoints `sales_demos_scm_url`, but that is about whose code AAP syncs,
 not which cluster it targets.
+
+**Your own LiteMaaS key, once per SE, never per environment** (#825, #829).
+Setup stage 11 publishes the LiteMaaS model to AAP, AO and AAP Lightspeed, and
+it needs a key. Have the user create one in the LiteMaaS self-service portal:
+
+1. Open https://maas-rhdp-frontend.apps.maas.redhatworkshops.io and sign in.
+2. **Subscriptions:** subscribe to `llama-scout-17b` (the committed model, in
+   `inventory/group_vars/aap/litemaas.yml`).
+3. **API Keys:** create a key for that model with expiry **never**.
+
+Do **not** use the key on an APD's service page: it lasts 3 days, and only a
+LiteMaaS proxy admin can extend it. The personal key goes into the vault
+through the same `set-env-passwords.sh` prompt below
+(`litemaas_api_key (all environments)`). Enter it once; later runs keep it
+when you press Enter.
 
 Then the two passwords from the RHDP environment page. **Never ask the user to
 paste a password into the conversation.** Tell them to run this in a terminal

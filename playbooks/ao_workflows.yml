@@ -158,7 +158,7 @@
             fail_msg: >-
               These LLM integrations have no models:
               {{ ao_llm_integration_names | reject('in', ao_model_ids) | list }}.
-              Has serve_model.yml been run? It validates the integration,
+              Has publish_inference.yml been run? It validates the integration,
               triggers the Integration Resource Discovery workflow, and
               enables the discovered models.
             quiet: true
