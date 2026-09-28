@@ -17,6 +17,8 @@
 #        model enabled. ao_workflows.yml binds an agentic node to the first
 #        enabled model, so enabling every model LiteMaaS offers would hand the
 #        drift workflow whichever one sorts first.
+#   Lightspeed (opt-in, #823) -e publish_inference_enable_lightspeed=true
+#        points the AAP intelligent assistant at the same endpoint.
 #
 # Inputs:
 #   litemaas_url     group_vars/<env>/local.yml   base URL, /v1 optional
@@ -162,6 +164,130 @@
         validate_certs: "{{ aap_validate_certs | default(false) | bool }}"
         state: present
       no_log: true
+
+    # --------------------------------------------------------- Lightspeed --
+    # Opt-in (#823): the same block serve_model.yml runs for the GPU endpoint
+    # (#704), pointed at this one. LiteMaaS serves a publicly trusted cert,
+    # so the chatbot's hard-coded tls_verify: true (#740) is satisfied by the
+    # endpoint URL itself, with no -direct route. The key rotates every 3
+    # days: re-running this updates the Secret and bounces the pods.
+    - name: Enable Lightspeed on this endpoint
+      when: publish_inference_enable_lightspeed | default(false) | bool
+      vars:
+        _lightspeed_secret_name: "chatbot-inference-config"
+        _lightspeed_namespace: "aap"
+        _lightspeed_selector: "app.kubernetes.io/managed-by=ansible-lightspeed-operator"
+      block:
+        - name: Create or update the Lightspeed chatbot config Secret
+          kubernetes.core.k8s:
+            state: present
+            definition:
+              apiVersion: v1
+              kind: Secret
+              metadata:
+                name: "{{ _lightspeed_secret_name }}"
+                namespace: "{{ _lightspeed_namespace }}"
+                labels:
+                  app.kubernetes.io/part-of: sales-demos
+              type: Opaque
+              stringData:
+                # The /v1 suffix is mandatory (#704).
+                chatbot_url: "{{ _inference_url }}/v1"
+                chatbot_token: "{{ _inference_token }}"
+                chatbot_model: "{{ _inference_model }}"
+          register: _lightspeed_secret
+          no_log: true
+
+        - name: Enable Lightspeed on the AAP CR
+          kubernetes.core.k8s:
+            state: present
+            definition:
+              apiVersion: aap.ansible.com/v1alpha1
+              kind: AnsibleAutomationPlatform
+              metadata:
+                name: aap
+                namespace: "{{ _lightspeed_namespace }}"
+              spec:
+                lightspeed:
+                  disabled: false
+                  chatbot_config_secret_name: "{{ _lightspeed_secret_name }}"
+
+        # The operator does not watch Secret content, so a rotated key would
+        # otherwise sit unread until the next unrelated restart.
+        - name: Bounce the Lightspeed pods if the Secret changed
+          when: _lightspeed_secret.changed
+          kubernetes.core.k8s:
+            state: absent
+            api_version: v1
+            kind: Pod
+            namespace: "{{ _lightspeed_namespace }}"
+            label_selectors:
+              - "{{ _lightspeed_selector }}"
+            delete_all: true
+
+        # First enable: the operator reconciles the CR before it creates any
+        # deployment, so wait for one to exist AND be available.
+        - name: Wait for the Lightspeed deployments to be ready
+          kubernetes.core.k8s_info:
+            api_version: apps/v1
+            kind: Deployment
+            namespace: "{{ _lightspeed_namespace }}"
+            label_selectors:
+              - "{{ _lightspeed_selector }}"
+          register: _lightspeed_deploy
+          retries: 90
+          delay: 10
+          until: >-
+            _lightspeed_deploy.resources | length > 0
+            and _lightspeed_deploy.resources
+                | map(attribute='status.availableReplicas', default=0)
+                | reject('gt', 0) | list | length == 0
+
+        - name: Read the Lightspeed pod logs
+          kubernetes.core.k8s_log:
+            api_version: v1
+            kind: Pod
+            namespace: "{{ _lightspeed_namespace }}"
+            label_selectors:
+              - "{{ _lightspeed_selector }}"
+            since_seconds: 300
+          register: _chatbot_log
+
+        # Not the health endpoint: it is anonymous and returns 200 while
+        # every query fails (#740).
+        - name: Assert the chatbot registered its model
+          ansible.builtin.assert:
+            that:
+              - "'list_provider_model_ids() failed' not in _chatbot_log.log"
+            fail_msg: >-
+              The Lightspeed chatbot failed to register {{ _inference_model }}
+              from {{ _inference_url }}. Log excerpt:
+              {{ _chatbot_log.log | default('') | truncate(500) }}
+
+        # The proof. Deployments report available while the operator is still
+        # rolling the api pod, and the gateway answers 503 "no healthy
+        # upstream" for a minute or two after that (measured on #823's first
+        # run: the deployment wait passed, then two queries 503'd). Ask a
+        # real question through the gateway, as a user would.
+        - name: Ask Lightspeed a question through the gateway
+          ansible.builtin.uri:
+            url: "https://{{ aap_hostname }}/api/lightspeed/v1/ai/chat/"
+            method: POST
+            url_username: "{{ aap_username }}"
+            url_password: "{{ aap_password }}"
+            force_basic_auth: true
+            validate_certs: "{{ aap_validate_certs | default(false) | bool }}"
+            body_format: json
+            body:
+              query: "Reply with the single word: ready"
+            timeout: 120
+          register: _lightspeed_query
+          until:
+            - _lightspeed_query.status | default(0) == 200
+            - _lightspeed_query.json.response | default('') | length > 0
+          retries: 30
+          delay: 10
+          no_log: true
 
     # ----------------------------------------------------------------- AO --
     - name: Connect to Automation Orchestrator
@@ -444,6 +570,13 @@
       when: item.ids | length > 0
 
     - name: Report
+      vars:
+        _lightspeed_report: >-
+          {{ ('enabled on ' ~ _inference_model
+              ~ ' (reply: ' ~ (_lightspeed_query.json.response | default('?') | trim)
+              ~ '); reload the AAP UI for the chat icon')
+             if publish_inference_enable_lightspeed | default(false) | bool
+             else 'not changed (-e publish_inference_enable_lightspeed=true)' }}
       ansible.builtin.debug:
         msg:
           - "Endpoint:    {{ _inference_url }}"
@@ -451,4 +584,5 @@
           - "AAP:         'Sales Demos - Inference Endpoint' credential updated"
           - "AO:          '{{ _llm_integration_name }}' integration, validated={{ _ao_llm_validate.json.success | default(false) }}"
           - "AO models:   {{ _ao_model_chosen | length }} enabled, {{ _ao_model_others | length }} disabled"
+          - "Lightspeed:  {{ _lightspeed_report }}"
           - "Next:        load the workflow — playbooks/ao_workflows.yml"
