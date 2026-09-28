@@ -398,8 +398,9 @@
       until: _ao_discovery_status.json.status in ['completed', 'failed']
 
     - name: List the integration's discovered models
+      # AO rejects limit > 100 with a 422 (measured 2026-09-28).
       ansible.builtin.uri:
-        url: "{{ ao_url }}/api/v1/integrations/{{ _ao_llm_integration_id | trim }}/models?limit=200"
+        url: "{{ ao_url }}/api/v1/integrations/{{ _ao_llm_integration_id | trim }}/models?limit=100"
         headers: "{{ ao_auth_header }}"
         validate_certs: false
         status_code: 200
