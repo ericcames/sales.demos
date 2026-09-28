@@ -12,6 +12,12 @@
 #   aap_password         AAP admin password from the RHDP environment page
 #   kubeadmin_password   OpenShift kubeadmin password from the same page
 #
+# It also offers litemaas_api_key (#829): YOUR OWN LiteMaaS portal key, created
+# once with expiry "never" at
+# https://maas-rhdp-frontend.apps.maas.redhatworkshops.io. It is TOP-LEVEL in
+# the vault, not per environment, because one personal key serves every
+# environment. Enter it once; press Enter on later runs to keep it.
+#
 # openshift_api_token is NOT asked for — derive-ocp-token.sh derives it from
 # kubeadmin_password (#559). --derive-token runs that afterwards, which only
 # works once local.yml already points at the new cluster.
@@ -117,8 +123,9 @@ read_secret() {
 echo "Setting RHDP passwords for '$ENV_NAME'. Enter keeps the current value."
 read_secret NEW_AAP_PASSWORD "  aap_password: "
 read_secret NEW_KUBEADMIN_PASSWORD "  kubeadmin_password: "
+read_secret NEW_LITEMAAS_API_KEY "  litemaas_api_key (all environments): "
 
-if [[ -z "$NEW_AAP_PASSWORD" && -z "$NEW_KUBEADMIN_PASSWORD" ]]; then
+if [[ -z "$NEW_AAP_PASSWORD" && -z "$NEW_KUBEADMIN_PASSWORD" && -z "$NEW_LITEMAAS_API_KEY" ]]; then
   echo "Nothing entered — vault unchanged."
 else
   umask 077
@@ -129,6 +136,7 @@ else
     | ENV_NAME="$ENV_NAME" \
       NEW_AAP_PASSWORD="$NEW_AAP_PASSWORD" \
       NEW_KUBEADMIN_PASSWORD="$NEW_KUBEADMIN_PASSWORD" \
+      NEW_LITEMAAS_API_KEY="$NEW_LITEMAAS_API_KEY" \
       python3 -c "
 import sys, yaml, os
 data = yaml.safe_load(sys.stdin)
@@ -137,6 +145,8 @@ for key, var in (('aap_password', 'NEW_AAP_PASSWORD'),
                  ('kubeadmin_password', 'NEW_KUBEADMIN_PASSWORD')):
     if os.environ[var]:
         env[key] = os.environ[var]
+if os.environ['NEW_LITEMAAS_API_KEY']:
+    data['litemaas_api_key'] = os.environ['NEW_LITEMAAS_API_KEY']
 yaml.dump(data, sys.stdout, default_flow_style=False, sort_keys=False, width=200)
 " > "$TMPFILE"
 
@@ -144,19 +154,27 @@ yaml.dump(data, sys.stdout, default_flow_style=False, sort_keys=False, width=200
   cp "$TMPFILE" "$SECRETS_FILE"
   chmod 600 "$SECRETS_FILE"
 fi
-unset NEW_AAP_PASSWORD NEW_KUBEADMIN_PASSWORD
+unset NEW_AAP_PASSWORD NEW_KUBEADMIN_PASSWORD NEW_LITEMAAS_API_KEY
 
 # ── Report what the vault now holds — presence only, never values ─────
 MISSING="$(ansible-vault view "$SECRETS_FILE" --vault-id "$VAULT_ID" 2>/dev/null \
   | ENV_NAME="$ENV_NAME" python3 -c "
 import sys, yaml, os
-env = (yaml.safe_load(sys.stdin).get('env_secrets') or {}).get(os.environ['ENV_NAME']) or {}
+data = yaml.safe_load(sys.stdin)
+env = (data.get('env_secrets') or {}).get(os.environ['ENV_NAME']) or {}
 missing = 0
 for key in ('aap_password', 'kubeadmin_password'):
     value = str(env.get(key) or '')
     ok = value and 'CHANGEME' not in value
     missing += not ok
     print(('  ✅ ' if ok else '  ❌ ') + key + (': present' if ok else ': MISSING'), file=sys.stderr)
+# Reported, not counted: the environment works without it, only setup stage
+# 11 (LiteMaaS + Lightspeed) needs it.
+key = str(data.get('litemaas_api_key') or '')
+if key and 'CHANGEME' not in key:
+    print('  ✅ litemaas_api_key: present (all environments)', file=sys.stderr)
+else:
+    print('  ⚠️  litemaas_api_key: MISSING -- setup stage 11 (LiteMaaS + Lightspeed) will fail; create a never-expiring key in the LiteMaaS portal', file=sys.stderr)
 print(missing)
 ")"
 

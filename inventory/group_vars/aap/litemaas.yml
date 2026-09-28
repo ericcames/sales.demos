@@ -1,0 +1,26 @@
+---
+# ============================================================================
+# group_vars/aap/litemaas.yml — the model endpoint every AAP environment uses
+# (#825, #829). Not credentials, so committed: the URL and the model are the
+# same for every SE. The KEY is each SE's own and stays in the vault as the
+# top-level litemaas_api_key.
+#
+# The key comes from the LiteMaaS self-service portal, created once with expiry
+# "never" and subscribed to the model below:
+#   https://maas-rhdp-frontend.apps.maas.redhatworkshops.io
+# Not the key on an APD's service page: that one lasts 3 days, and only a
+# LiteMaaS proxy admin can extend it (measured, #825).
+#
+# WHY llama-scout-17b (measured 2026-09-28, #825): chat plus function calling,
+# which Lightspeed needs on every query (#742); the drift decision was right 3/3
+# in about 0.7 s using 28 tokens; clean FQCN YAML for an Ansible question in
+# 1.1 s. qwen3-14b was rejected: Qwen3's thinking mode put <think> text into the
+# answers and spent 190-204 of decide_remediation.yml's 256-token cap.
+#
+# Consumed by playbooks/publish_inference.yml (setup stage 11/15) and by
+# controller_credentials.yml's "Sales Demos - Inference Endpoint". Override in
+# group_vars/<env>/local.yml; set litemaas_url: "" there to opt an environment
+# out entirely.
+# ============================================================================
+litemaas_url: "https://maas-rhdp.apps.maas.redhatworkshops.io"
+litemaas_model: "llama-scout-17b"

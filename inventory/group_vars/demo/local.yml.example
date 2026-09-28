@@ -36,8 +36,8 @@ openshift_apps_domain: "apps.cluster-<id>.dyn.redhatworkshops.io"
 # The matching private half goes in secrets.yml as demo_ssh_private_key.
 demo_ssh_public_key: "ssh-rsa CHANGEME"
 
-# LiteMaaS (#818) — the environment's model-as-a-service, from its RHDP page.
-# The API key goes in secrets.yml as litemaas_api_key. Published by
-# playbooks/publish_inference.yml; the AO drift workflow uses it by default.
-# litemaas_url: "https://litellm-<...>"
-# litemaas_model: "<model id from /v1/models>"
+# LiteMaaS (#825) — the URL and model are committed in
+# inventory/group_vars/aap/litemaas.yml, so nothing is needed here. Override
+# only to try another model, or set litemaas_url: "" to opt this environment
+# out. The key goes in secrets.yml as litemaas_api_key.
+# litemaas_model: "llama-scout-17b"

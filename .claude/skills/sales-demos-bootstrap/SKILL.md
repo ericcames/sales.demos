@@ -2,7 +2,8 @@
 name: sales-demos-bootstrap
 description: >-
   Full environment bootstrap from a single AAP URL — repoint local.yml,
-  verify vault, run setup.yml (all 14 stages with timing including probe),
+  verify vault, run setup.yml (all 15 stages with timing, including probe and
+  LiteMaaS + Lightspeed),
   set up MCP servers, and verify everything.
   TRIGGER when: user provides a new RHDP environment URL and wants it fully
   set up, or says "bootstrap", "new environment", "fresh cluster".
@@ -106,6 +107,8 @@ secrets = data.get("env_secrets", {}).get(env, {})
 for key in ["aap_password", "kubeadmin_password"]:
     status = "present" if secrets.get(key) else "MISSING"
     print(f"  {key}: {status}")
+key = str(data.get("litemaas_api_key") or "")
+print("  litemaas_api_key (all environments): " + ("present" if key and "CHANGEME" not in key else "MISSING"))
 '
 ```
 
@@ -120,6 +123,14 @@ Never ask the user to paste a password into the conversation. If the secrets
 file itself does not exist, that is
 [`/sales-demos-first-time`](https://github.com/ericcames/sales.demos/blob/main/.claude/skills/sales-demos-first-time/SKILL.md)
 instead.
+
+`litemaas_api_key` is the SE's own never-expiring LiteMaaS portal key, shared by
+every environment, so a bootstrap normally finds it already present. If it is
+missing, stage 11 (LiteMaaS + Lightspeed) will fail: have the user create one
+(see
+[`/sales-demos-first-time`](https://github.com/ericcames/sales.demos/blob/main/.claude/skills/sales-demos-first-time/SKILL.md))
+and enter it through the same `set-env-passwords.sh` prompt, or pass
+`-e publish_inference=false` to setup.yml.
 
 This check sees only *presence*. A password left over from the previous
 environment reads as present — the token derivation below is what catches it.
@@ -176,7 +187,7 @@ fresh token, or check `kubeadmin_password` in the vault.
 
 ## Step 7 — Run setup.yml
 
-This is the main event. All 14 stages, ~40-50 minutes (stage 1 reboots the node).
+This is the main event. All 15 stages, ~40-50 minutes (stage 1 reboots the node).
 
 ```bash
 mkdir -p ~/ansible-logs
@@ -188,8 +199,15 @@ export ANSIBLE_LOG_PATH=~/ansible-logs/sales-demos-bootstrap-${ENV}-$(date +%F-%
   --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
 ```
 
-Tell the user this takes ~40-50 minutes — stage 1 tunes kubelet disk management and reboots the node, which is why it runs first. The timing summary at the end shows
-per-stage elapsed times.
+Tell the user **before starting** that this takes ~40-50 minutes, and that
+**stage 1 reboots the node: the AAP UI and every cluster route will be down for
+about 5-10 minutes early in the run.** That is expected, not a failure. On the
+2026-09-28 bootstrap it read as "the app is not working" because the warning
+lived only in the log. The timing summary at the end shows per-stage elapsed
+times.
+
+When it finishes, tell the user to **reload the AAP UI**: the Lightspeed chat
+icon only appears on a page loaded after stage 11 enabled it.
 
 If it fails, check the log at `$ANSIBLE_LOG_PATH` and see the failure table
 in
@@ -204,13 +222,13 @@ the new cluster.
 
 ## Step 9 — Update local.yml with probe results
 
-`setup.yml` stage 10 already ran `probe_env.yml` and printed the recommended
+`setup.yml` stage 14 already ran `probe_env.yml` and printed the recommended
 `available_memory_gb`. Update `local.yml` with that value so Terraform uses the
 real capacity, not a hardcoded guess.
 
 ## Step 10 — Verify env-urls
 
-`setup.yml` stage 9 already generated the env-urls file. Verify it exists and
+`setup.yml` stage 13 already generated the env-urls file. Verify it exists and
 references the new cluster:
 
 ```bash
