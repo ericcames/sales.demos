@@ -185,8 +185,10 @@
                       - --set=decision_logs.console=true
                       - /policies
                       - /config/data.json
-                    ports:
-                      - {name: http, containerPort: "{{ opa_port | int }}"}
+                    # One whole-list template, not a per-key one: a template
+                    # inside a single key always renders a STRING whatever the
+                    # filter, and the API server rejects "8181" as a port.
+                    ports: "{{ [{'name': 'http', 'containerPort': opa_port | int}] }}"
                     readinessProbe:
                       httpGet: {path: /health, port: http}
                       periodSeconds: 5
@@ -221,8 +223,7 @@
             type: ClusterIP
             selector:
               app.kubernetes.io/name: "{{ opa_name }}"
-            ports:
-              - {name: http, port: "{{ opa_port | int }}", targetPort: http}
+            ports: "{{ [{'name': 'http', 'port': opa_port | int, 'targetPort': 'http'}] }}"
 
     # -----------------------------------------------------------------------
     # 3. Ask the server, do not trust the rollout
