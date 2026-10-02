@@ -2012,7 +2012,7 @@ controller_templates_all:
     credentials:
       - "Sales Demos - Vault"
       - "Sales Demos - Env Secrets"
-    limit: sandbox
+    limit: "{{ aap_env_name }}"
 
   # Retired by #647 — folding fact gathering into step 5 renamed both.
   - name: "Linux Day 1 - 5 Check"
