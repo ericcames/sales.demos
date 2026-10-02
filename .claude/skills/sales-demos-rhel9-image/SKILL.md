@@ -154,7 +154,7 @@ confirm the DataSource identity matches `quay_rhel9_image`.
 | Symptom | Cause | Fix |
 |---|---|---|
 | `No HyperConverged CR` | CNV is not installed | Run `sales-demos-setup` first |
-| `quay_rhel9_image must name a real published containerdisk` | Image reference empty or placeholder in `connection.yml` | Set it to a real tag, e.g. `quay.io/zigfreed/rhel9-cis-l1-golden:20260905-0411` |
+| `quay_rhel9_image must name a real published containerdisk` | Image reference empty or placeholder in `connection.yml` | Set it to a real tag, e.g. `quay.io/zigfreed/rhel9-cis-l1-golden:20261002-1312` |
 | DataSource never reaches Ready | CDI importer failed to pull | Check the importer pod in `openshift-virtualization-os-images` for pull errors |
 | Ready, but the backing volume never becomes usable | Snapshot still materializing | Wait — this is the slow-build case `sales-demos-verify-env` exists to catch |
 | `401` / `Unauthorized` | RHDP bearer token expired | Refresh `openshift_api_token` in the vault, re-run `make-kubeconfig.sh` |
