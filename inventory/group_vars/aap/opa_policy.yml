@@ -22,6 +22,13 @@
 #   - a job is blocked only when `allowed` is false AND `violations` is
 #     non-empty. {"allowed": false, "violations": []} lets the job RUN
 #
+# THE DECISION LOG HOLDS EXTRA_VARS IN THE CLEAR. install_opa.yml turns on
+# console decision logs so the pod log shows exactly what AAP sent — measured
+# on sandbox (#841), that includes extra_vars VALUES, e.g. the db_password the
+# demo types. That is the right trade for a demo whose point is "this should
+# have been a credential", and a reason to add OPA's decision_logs mask policy
+# before anything real is launched through a guarded template.
+#
 # NEVER ATTACH AT ORGANIZATION LEVEL. The library denies superuser launches by
 # default and this whole platform runs as admin. An org-level path would block
 # config.yml's own work and every VM workflow. Demo templates only.
