@@ -23,9 +23,13 @@ which also records how AAP calls OPA. See `CLAUDE.md` → *Skills and playbooks*
    at the pinned tag, runs their own tests in an initContainer, starts one OPA
    pod behind a ClusterIP Service, and asks it two questions through the API
    service proxy.
-3. It asserts AAP is pointed at the server, then attaches
-   `aac/aap/policy/extra_vars_control` to the demo template through the
-   controller API — no collection module accepts `opa_query_path` yet.
+3. It asserts AAP is pointed at the server, then attaches each entry in
+   `opa_policy_associations` through the controller API — no collection
+   module accepts `opa_query_path` yet: `extra_vars_control` on
+   `Policy as Code - Hello`, `deny_all` on `Policy as Code - Canary`.
+
+`config.yml` also creates the demo identity, `policy-demo` in `app-team`
+(`policy_demo_rbac.yml`), with Execute on those two templates only.
 
 **Policies are attached to demo templates only, never an organization.** The
 library denies superuser launches by default, and this platform runs as admin.
@@ -96,11 +100,22 @@ utilities/run-in-ee.sh playbooks/install_opa.yml \
    - with `{"greeting": "hello", "db_password": "x"}` → job **failed** before
      running, with *"looks like a secret — pass it through a credential or
      Ansible Vault"* in its explanation
-4. **OPA saw both.** `mcp__openshift-<env>__pods_log` on the OPA pod — two
-   `decision_id` entries carrying the full input AAP sent.
+4. **The canary is blocked.** Launch `Policy as Code - Canary` with no extra
+   vars → job **failed** before running, with *"All automation is blocked:
+   this is the Policy as Code wiring canary"*. It is attached to `deny_all`
+   and must never run. **If it runs, AAP is not reaching OPA**, and every
+   other "allowed" result above proves nothing: the policies default a
+   missing field to allowed, so broken wiring looks like a permissive policy.
+5. **As a non-admin.** Launch `Hello` with basic auth as `policy-demo`
+   (password `env_secrets[<env>].policy_demo_password`) → successful, and its
+   decision-log input shows `"is_superuser": false` and
+   `"teams": [{"id": …, "name": "app-team"}]`.
+6. **OPA saw them all.** `mcp__openshift-<env>__pods_log` on the OPA pod — two
+   `decision_id` entries per launch, carrying the full input AAP sent. Filter
+   the log on `"msg":"Decision Log"` — health probes fill the rest.
 
-If launch 3b *succeeds*, enforcement is off: check step 2 and the template's
-`opa_query_path`.
+If launch 3b or the canary *succeeds*, enforcement is off: check step 2 and
+the template's `opa_query_path`.
 
 ## Undo
 

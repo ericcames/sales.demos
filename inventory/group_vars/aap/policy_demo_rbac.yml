@@ -1,0 +1,65 @@
+---
+# ============================================================================
+# group_vars/aap/policy_demo_rbac.yml — the Policy as Code demo identity (#841)
+# ============================================================================
+# THE FIRST USER AND TEAM IN THIS REPO'S CONFIG-AS-CODE, and they exist for
+# one reason: everything else here runs as `admin`, and admin is the one user
+# the policies cannot say much about. admin is a superuser in no team, so the
+# input AAP sends OPA carries `is_superuser: true` and `teams: []`. Every
+# team-scoped rule in rego_policy_libraries silently never fires against that
+# — which is how a wiring mistake hides (Tim's warning on #841).
+#
+# `policy-demo` is a plain user in `app-team`. Launching the policy templates
+# as that user is what puts a real, populated `created_by.teams` in front of
+# OPA, and later what lets the demo show "this team may, that team may not".
+#
+# SCOPED TO THE TWO `Policy as Code -` TEMPLATES, deliberately. Execute there
+# and nowhere else: a demo identity with a known password should not be able
+# to run anything that touches a cluster or a VM.
+#
+# FOUR VARIABLES, FOUR DISPATCHER ROLES, IN THE RIGHT ORDER. gateway_teams and
+# gateway_users (gateway dispatcher) run before gateway_role_user_assignments,
+# and the whole gateway pass runs before the controller pass, where
+# controller_roles comes after controller_job_templates. So the user, the team,
+# the membership and the templates all exist before the execute grant. The
+# `_all` suffix is merged by dispatch_include_wildcard_vars (aap_settings.yml).
+#
+# controller_roles IS LEGACY RBAC, and the choice is forced. Its replacement,
+# controller_role_team_assignments, needs the template's integer id and is not
+# in infra.aap_configuration 4.7.0's dispatcher at all. controller_roles takes
+# names and is dispatched. Team MEMBERSHIP does use the new path
+# (gateway_role_user_assignments, which accepts names in object_ids).
+# ============================================================================
+
+aap_teams_all:
+  - name: app-team
+    description: "Policy as Code demo team (#841). Execute on the Policy as Code templates only."
+    organization: "IT Service Automation"
+
+aap_user_accounts_all:
+  - username: policy-demo
+    email: policy-demo@example.com
+    first_name: Policy
+    last_name: Demo
+    is_superuser: false
+    # Vaulted per environment, like every other credential here.
+    password: "{{ env_secrets[aap_env_name].policy_demo_password }}"
+    # false keeps config.yml at changed=0: AAP returns the password as
+    # $encrypted$, so true would rewrite it on every run. The cost is that a
+    # rotated vault value only lands on a user that does not exist yet —
+    # delete the user, or flip this for one run, to rotate.
+    update_secrets: false
+
+gateway_role_user_assignments_all:
+  - user: policy-demo
+    role_definition: Team Member
+    object_ids:
+      - app-team
+
+controller_roles_all:
+  - team: app-team
+    job_templates:
+      - "Policy as Code - Hello"
+      - "Policy as Code - Canary"
+    lookup_organization: "IT Service Automation"
+    role: execute
