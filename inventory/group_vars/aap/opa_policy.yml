@@ -1,0 +1,87 @@
+---
+# ============================================================================
+# group_vars/aap/opa_policy.yml — AAP Policy as Code backed by OPA (#841)
+# ============================================================================
+# AAP 2.7 asks an Open Policy Agent server "may this job run?" before it
+# launches any job whose organization, inventory or job template carries an
+# `opa_query_path`. playbooks/install_opa.yml deploys that server and attaches
+# the paths below; config.yml points AAP at the server (OPA_HOST in
+# controller_settings.yml) and creates the demo template.
+#
+# THE POLICIES ARE NOT WRITTEN HERE. They come from the public, Apache-2.0
+# ynotbhatc/rego_policy_libraries, pinned to a release tag. That library is
+# the policy content; this repo is the platform that runs it. Moving to a new
+# release is one line: policy_library_version.
+#
+# HOW AAP CALLS OPA — read from awx/main/tasks/policy.py, recorded on #841:
+#   - only JOBS are evaluated; workflows, project updates and inventory syncs
+#     are not (each job node inside a workflow is)
+#   - FAIL-CLOSED where a path is attached: an unreachable OPA fails the job.
+#     Where no path is attached, no connection is ever opened, so a dead OPA
+#     cannot touch anything else
+#   - a job is blocked only when `allowed` is false AND `violations` is
+#     non-empty. {"allowed": false, "violations": []} lets the job RUN
+#
+# THE DECISION LOG HOLDS EXTRA_VARS IN THE CLEAR. install_opa.yml turns on
+# console decision logs so the pod log shows exactly what AAP sent — measured
+# on sandbox (#841), that includes extra_vars VALUES, e.g. the db_password the
+# demo types. That is the right trade for a demo whose point is "this should
+# have been a credential", and a reason to add OPA's decision_logs mask policy
+# before anything real is launched through a guarded template.
+#
+# NEVER ATTACH AT ORGANIZATION LEVEL. The library denies superuser launches by
+# default and this whole platform runs as admin. An org-level path would block
+# config.yml's own work and every VM workflow. Demo templates only.
+# ============================================================================
+
+opa_namespace: policy-as-code
+opa_name: opa
+opa_port: 8181
+
+# What AAP dials. In-cluster Service DNS: AAP runs on the same cluster, so no
+# Route is needed — and a LoadBalancer or NodePort would be dead on RHDP
+# anyway (#29). controller_settings.yml reads this for OPA_HOST.
+opa_service_host: "{{ opa_name }}.{{ opa_namespace }}.svc.cluster.local"
+
+# Pinned to the multi-arch INDEX digest (amd64 + arm64), not a per-arch one.
+# 1.10.0 is what the library's own publish workflow builds bundles with.
+opa_image: "docker.io/openpolicyagent/opa@sha256:c0814ce7811ecef8f1297a8e55774a1d5422e5c18b996b665acbc126124fab19"
+
+policy_library_repo: ynotbhatc/rego_policy_libraries
+policy_library_version: v2.0.0
+policy_library_path: enforcement/aap
+
+# Every file in enforcement/aap/ at v2.0.0. Listed rather than discovered so a
+# new upstream file is a deliberate change here, not a surprise in a demo. The
+# test file ships too: the initContainer runs `opa test` on every rollout.
+policy_library_files:
+  - extra_vars_control.rego
+  - maintenance_window.rego
+  - naming_and_source.rego
+  - owner_scope.rego
+  - required_labels.rego
+  - tests/test_aap_policy.rego
+
+# Our settings, loaded at data.aac.aap.config. ONE BLOCK PER ATTACHED RULE,
+# written out in full even where it equals the library default, so a default
+# changing upstream cannot silently change the demo. Add a block when a rule
+# is attached, not before.
+opa_policy_config:
+  extra_vars:
+    allowlist: []
+    denylist: []
+    allow_unlisted: true
+    value_patterns: {}
+    forbid_secret_like_keys: true
+
+# Which demo template asks which rule. The query path is the rule's package
+# path; AAP turns dots into slashes and POSTs to /v1/data/<path>.
+#
+# Applied by install_opa.yml through the controller API, because no collection
+# can set this field yet: ansible.controller lists opa_query_path under
+# needs_param_development for job_template, inventory and organization, and
+# infra.aap_configuration has no support up to 4.10.0 (#841). Move this into
+# controller_templates.yml when the module learns it.
+opa_policy_associations:
+  - job_template: "Policy as Code - Hello"
+    opa_query_path: "aac/aap/policy/extra_vars_control"

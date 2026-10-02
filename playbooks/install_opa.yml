@@ -1,0 +1,339 @@
+---
+# ===========================================================================
+# install_opa.yml — deploy the OPA server AAP's Policy as Code asks. #841.
+#
+#   ansible-playbook playbooks/install_opa.yml -i inventory --limit sandbox \
+#     -e target_env=sandbox \
+#     --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
+#
+# Run config.yml FIRST. It owns the two things config-as-code can express —
+# OPA_HOST/OPA_PORT and the demo template — and this playbook asserts both
+# rather than creating them. What is left here is what nothing else can do:
+#
+#   1. fetch the pinned policies from ynotbhatc/rego_policy_libraries
+#   2. run them in one OPA pod, behind a ClusterIP Service
+#   3. prove the server answers, through the Kubernetes API service proxy
+#   4. attach each opa_query_path to its demo template via the controller API
+#
+# Every input is in inventory/group_vars/aap/opa_policy.yml, which also
+# records how AAP calls OPA and why policies are never attached at org level.
+#
+# WHY ONE --ignore FLAG MATTERS. A ConfigMap volume carries hidden `..data`
+# and `..<timestamp>` directories. Pointed at the mount, OPA loads every file
+# three times, silently: `opa test` reported PASS 141/141 instead of 47/47
+# when reproduced locally (#841). `--ignore=.*` on both containers.
+#
+# WHY THE initContainer RUNS `opa test`. A new library release that breaks its
+# own tests fails the rollout here, while the old pod keeps serving — not in
+# front of a customer. The tests run WITHOUT our data.json, so they check the
+# library's defaults exactly as upstream CI does.
+#
+# NO ROUTE, deliberately. AAP reaches the server by Service DNS. The smoke
+# test goes through the API server's service proxy, which works from a laptop
+# and from an AAP job alike, with the credentials this play already has.
+# ===========================================================================
+
+- name: Deploy OPA for AAP Policy as Code
+  hosts: aap
+  gather_facts: false
+
+  environment:
+    K8S_AUTH_HOST: "{{ openshift_api_url }}"
+    K8S_AUTH_API_KEY: "{{ openshift_api_token }}"
+    K8S_AUTH_VERIFY_SSL: "{{ openshift_validate_certs | default(false) | bool }}"
+
+  vars:
+    _opa_proxy: >-
+      {{ openshift_api_url }}/api/v1/namespaces/{{ opa_namespace }}/services/http:{{ opa_name }}:{{ opa_port }}/proxy
+    _aap_api: "https://{{ aap_hostname }}/api/controller/v2"
+
+  tasks:
+    - name: Confirm the inventory resolved to the environment you meant
+      ansible.builtin.include_tasks: tasks/assert_target_environment.yml
+
+    - name: Assert the connection variables are set
+      ansible.builtin.assert:
+        that:
+          - openshift_api_url | default('') | length > 0
+          - openshift_api_token | default('') | length > 0
+          - aap_hostname | default('') | length > 0
+          - aap_username | default('') | length > 0
+          - aap_password | default('') | length > 0
+        fail_msg: >-
+          openshift_api_* or aap_* is not set for '{{ aap_env_name | default("?") }}'.
+          Check connection.yml / local.yml, and that --vault-id was passed so
+          env_secrets resolves.
+        quiet: true
+      no_log: true
+
+    # -----------------------------------------------------------------------
+    # 1. The policies, at the pinned release
+    # -----------------------------------------------------------------------
+    - name: Fetch the policies at {{ policy_library_version }}
+      ansible.builtin.uri:
+        url: >-
+          https://raw.githubusercontent.com/{{ policy_library_repo }}/{{ policy_library_version }}/{{ policy_library_path }}/{{ item }}
+        return_content: true
+      loop: "{{ policy_library_files }}"
+      register: opa_fetched
+
+    - name: Build the ConfigMap payloads
+      # ConfigMap keys cannot contain '/', so tests/test_aap_policy.rego is
+      # keyed by its basename. OPA does not care where a module lives.
+      ansible.builtin.set_fact:
+        opa_policy_data: >-
+          {{ dict(opa_fetched.results | map(attribute='item') | map('basename')
+                  | zip(opa_fetched.results | map(attribute='content'))) }}
+        opa_config_json: "{{ {'aac': {'aap': {'config': opa_policy_config}}} | to_json }}"
+
+    # -----------------------------------------------------------------------
+    # 2. The server
+    # -----------------------------------------------------------------------
+    - name: Create the namespace
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: v1
+          kind: Namespace
+          metadata:
+            name: "{{ opa_namespace }}"
+
+    - name: Apply the policies ConfigMap
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: "{{ opa_name }}-policies"
+            namespace: "{{ opa_namespace }}"
+            labels:
+              app.kubernetes.io/name: "{{ opa_name }}"
+            annotations:
+              sales-demos/policy-library: "{{ policy_library_repo }}@{{ policy_library_version }}"
+          data: "{{ opa_policy_data }}"
+
+    - name: Apply our settings ConfigMap
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: "{{ opa_name }}-config"
+            namespace: "{{ opa_namespace }}"
+            labels:
+              app.kubernetes.io/name: "{{ opa_name }}"
+          data:
+            data.json: "{{ opa_config_json }}"
+
+    - name: Apply the Deployment
+      # The checksum annotation is what rolls the pod when a policy or a
+      # setting changes. OPA reads its files once at start; without this an
+      # updated ConfigMap would sit unused behind a pod still serving the old
+      # policy, and the run would report success.
+      kubernetes.core.k8s:
+        state: present
+        wait: true
+        wait_timeout: 300
+        definition:
+          apiVersion: apps/v1
+          kind: Deployment
+          metadata:
+            name: "{{ opa_name }}"
+            namespace: "{{ opa_namespace }}"
+            labels:
+              app.kubernetes.io/name: "{{ opa_name }}"
+          spec:
+            replicas: 1
+            selector:
+              matchLabels:
+                app.kubernetes.io/name: "{{ opa_name }}"
+            template:
+              metadata:
+                labels:
+                  app.kubernetes.io/name: "{{ opa_name }}"
+                annotations:
+                  sales-demos/config-checksum: >-
+                    {{ (opa_policy_data | to_json ~ opa_config_json) | hash('sha256') }}
+              spec:
+                initContainers:
+                  - name: opa-test
+                    image: "{{ opa_image }}"
+                    args: ["test", "--ignore=.*", "/policies"]
+                    volumeMounts:
+                      - {name: policies, mountPath: /policies, readOnly: true}
+                    securityContext: &restricted
+                      allowPrivilegeEscalation: false
+                      runAsNonRoot: true
+                      capabilities: {drop: ["ALL"]}
+                      seccompProfile: {type: RuntimeDefault}
+                    resources:
+                      requests: {cpu: 50m, memory: 64Mi}
+                      limits: {memory: 256Mi}
+                containers:
+                  - name: opa
+                    image: "{{ opa_image }}"
+                    args:
+                      - run
+                      - --server
+                      - "--addr=:{{ opa_port }}"
+                      - --ignore=.*
+                      - --log-format=json
+                      # Every decision with its full input, in the pod log.
+                      # This is how the real AAP 2.7 input gets captured.
+                      - --set=decision_logs.console=true
+                      - /policies
+                      - /config/data.json
+                    # One whole-list template, not a per-key one: a template
+                    # inside a single key always renders a STRING whatever the
+                    # filter, and the API server rejects "8181" as a port.
+                    ports: "{{ [{'name': 'http', 'containerPort': opa_port | int}] }}"
+                    readinessProbe:
+                      httpGet: {path: /health, port: http}
+                      periodSeconds: 5
+                    livenessProbe:
+                      httpGet: {path: /health, port: http}
+                      periodSeconds: 20
+                    volumeMounts:
+                      - {name: policies, mountPath: /policies, readOnly: true}
+                      - {name: config, mountPath: /config, readOnly: true}
+                    securityContext: *restricted
+                    resources:
+                      requests: {cpu: 50m, memory: 128Mi}
+                      limits: {memory: 256Mi}
+                volumes:
+                  - name: policies
+                    configMap: {name: "{{ opa_name }}-policies"}
+                  - name: config
+                    configMap: {name: "{{ opa_name }}-config"}
+
+    - name: Apply the Service
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: v1
+          kind: Service
+          metadata:
+            name: "{{ opa_name }}"
+            namespace: "{{ opa_namespace }}"
+            labels:
+              app.kubernetes.io/name: "{{ opa_name }}"
+          spec:
+            type: ClusterIP
+            selector:
+              app.kubernetes.io/name: "{{ opa_name }}"
+            ports: "{{ [{'name': 'http', 'port': opa_port | int, 'targetPort': 'http'}] }}"
+
+    # -----------------------------------------------------------------------
+    # 3. Ask the server, do not trust the rollout
+    # -----------------------------------------------------------------------
+    - name: Ask OPA about a clean launch and a secret-shaped one
+      ansible.builtin.uri:
+        url: "{{ _opa_proxy }}/v1/data/aac/aap/policy/extra_vars_control"
+        method: POST
+        headers:
+          Authorization: "Bearer {{ openshift_api_token }}"
+        body_format: json
+        body:
+          input:
+            extra_vars: "{{ item }}"
+        validate_certs: "{{ openshift_validate_certs | default(false) | bool }}"
+        return_content: true
+      loop:
+        - {greeting: hello}
+        - {greeting: hello, db_password: not-a-real-one}
+      loop_control:
+        label: "{{ item.keys() | list }}"
+      register: opa_smoke
+      # The Service can briefly have no endpoint right after the rollout.
+      until: opa_smoke.status == 200
+      retries: 12
+      delay: 5
+
+    - name: Assert OPA allowed the first and blocked the second, with a reason
+      # Both halves matter. AAP blocks only when allowed is false AND
+      # violations is non-empty — an empty list would let the job run.
+      ansible.builtin.assert:
+        that:
+          - opa_smoke.results[0].json.result.allowed | bool
+          - not (opa_smoke.results[1].json.result.allowed | bool)
+          - opa_smoke.results[1].json.result.violations | length > 0
+        fail_msg: "OPA answered, but not as expected: {{ opa_smoke.results | map(attribute='json') | list }}"
+
+    # -----------------------------------------------------------------------
+    # 4. Point the demo templates at it
+    # -----------------------------------------------------------------------
+    - name: Read AAP's Policy as Code settings
+      ansible.builtin.uri:
+        url: "{{ _aap_api }}/settings/policyascode/"
+        user: "{{ aap_username }}"
+        password: "{{ aap_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ aap_validate_certs | default(false) | bool }}"
+      register: opa_aap_settings
+
+    - name: Assert AAP is pointed at this server
+      # config.yml sets these from controller_settings.yml. Asserted rather
+      # than set here so there is one owner. Without them AAP returns before
+      # ever calling OPA, and every attached template runs unguarded.
+      ansible.builtin.assert:
+        that:
+          - opa_aap_settings.json.OPA_HOST == opa_service_host
+          - opa_aap_settings.json.OPA_PORT | int == opa_port | int
+        fail_msg: >-
+          AAP's OPA_HOST is '{{ opa_aap_settings.json.OPA_HOST }}' (port
+          {{ opa_aap_settings.json.OPA_PORT }}); expected '{{ opa_service_host }}'
+          ({{ opa_port }}). Run playbooks/config.yml for {{ aap_env_name }} first.
+
+    - name: Look up each demo template
+      ansible.builtin.uri:
+        url: "{{ _aap_api }}/job_templates/?name={{ item.job_template | urlencode }}"
+        user: "{{ aap_username }}"
+        password: "{{ aap_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ aap_validate_certs | default(false) | bool }}"
+      loop: "{{ opa_policy_associations }}"
+      loop_control:
+        label: "{{ item.job_template }}"
+      register: opa_jt_lookup
+
+    - name: Assert every demo template exists
+      ansible.builtin.assert:
+        that: item.json.count == 1
+        fail_msg: >-
+          Job template '{{ item.item.job_template }}' not found. It comes from
+          controller_templates.yml — run playbooks/config.yml first.
+        quiet: true
+      loop: "{{ opa_jt_lookup.results }}"
+      loop_control:
+        label: "{{ item.item.job_template }}"
+
+    - name: Attach each policy to its template
+      # Through the API because no collection module accepts opa_query_path
+      # yet — see opa_policy.yml. config.yml re-runs do not wipe it: the
+      # module never sends a field it does not know.
+      ansible.builtin.uri:
+        url: "{{ _aap_api }}/job_templates/{{ item.json.results[0].id }}/"
+        method: PATCH
+        user: "{{ aap_username }}"
+        password: "{{ aap_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ aap_validate_certs | default(false) | bool }}"
+        body_format: json
+        body:
+          opa_query_path: "{{ item.item.opa_query_path }}"
+      when: item.json.results[0].opa_query_path | default('') != item.item.opa_query_path
+      changed_when: true
+      loop: "{{ opa_jt_lookup.results }}"
+      loop_control:
+        label: "{{ item.item.job_template }} -> {{ item.item.opa_query_path }}"
+
+    - name: Report what is now enforced
+      ansible.builtin.debug:
+        msg:
+          - "OPA for Policy as Code deployed to {{ aap_env_name }}."
+          - "Policies:   {{ policy_library_repo }}@{{ policy_library_version }} ({{ policy_library_files | length }} files)"
+          - "AAP dials:  {{ opa_service_host }}:{{ opa_port }}"
+          - "Attached:   {{ opa_policy_associations | map(attribute='job_template') | join(', ') }}"
+          - "Prove it from AAP: launch 'Policy as Code - Hello' with db_password set — it must be blocked."

@@ -57,3 +57,10 @@ controller_settings_all:
     AUTOMATION_ANALYTICS_GATHER_INTERVAL: 14400
     SUBSCRIPTIONS_CLIENT_ID: "{{ vaulted_subscriptions_client_id }}"
     SUBSCRIPTIONS_CLIENT_SECRET: "{{ vaulted_subscriptions_client_secret }}"
+    # Policy as Code (#841). Verified present on the 2.7 sandbox controller
+    # (category `policyascode`, no feature flag). Safe in every environment,
+    # including one with no OPA deployed: AAP only dials OPA for a job whose
+    # org, inventory or template carries an opa_query_path, and only
+    # install_opa.yml attaches one. See group_vars/aap/opa_policy.yml.
+    OPA_HOST: "{{ opa_service_host }}"
+    OPA_PORT: "{{ opa_port }}"
