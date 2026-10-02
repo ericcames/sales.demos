@@ -12,7 +12,7 @@
 # THREE AXES, and each value has to earn its place:
 #
 #   domain      aap-ecosystem, linux, windows, observability, golden-image,
-#               cluster
+#               cluster, policy
 #   phase       install, day-0, day-1, day-2
 #   safety      read-only
 #   hypervisor  ocpvirt
@@ -50,6 +50,8 @@ controller_labels_all:
   - name: golden-image
     organization: "IT Service Automation"
   - name: cluster
+    organization: "IT Service Automation"
+  - name: policy
     organization: "IT Service Automation"
 
   # --- phase ----------------------------------------------------------

@@ -64,6 +64,16 @@ probe_workloads:
       Replace with a measurement — it is already installed, so this one is
       free to take.
 
+  - name: "OPA for Policy as Code (policy-as-code/opa)"
+    cpu: 0.05
+    memory: 0.125
+    source: >-
+      DECLARED, not measured: the container's own requests in
+      playbooks/install_opa.yml (50m / 128Mi; the opa-test initContainer asks
+      for less, so the max() accounting lands on these). Not `installed` —
+      it is opt-in until #841 proves it. Disk is the cost worth watching
+      instead: one small image pull on a node with ~2.5 GB of headroom.
+
   - name: "MCP gateway (mcp-gateway)"
     cpu: 0.5
     memory: 1.0

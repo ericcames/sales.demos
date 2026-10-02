@@ -620,6 +620,47 @@ controller_templates_all:
     extra_vars:
       target_env: "{{ aap_env_name }}"
 
+  - name: "AAP Ecosystem - Install Policy Server"
+    description: "Deploy the OPA server AAP's Policy as Code asks before each job, load the pinned rego_policy_libraries release, and attach policies to the demo templates. Run config.yml first."
+    labels:
+      - aap-ecosystem
+      - install
+      - policy
+    job_type: run
+    organization: "IT Service Automation"
+    inventory: "Sales Demo VMs"
+    project: "Sales Demos"
+    playbook: playbooks/install_opa.yml
+    execution_environment: "Sales Demos - OCP Virt EE"
+    credentials:
+      - "Sales Demos - Vault"
+      - "Sales Demos - Env Secrets"
+    limit: "{{ aap_env_name }}"
+    extra_vars:
+      target_env: "{{ aap_env_name }}"
+
+  # POLICY AS CODE (#841). The guarded job. Its opa_query_path is NOT set
+  # here — no collection module accepts that field yet — install_opa.yml
+  # attaches it from opa_policy_associations in opa_policy.yml.
+  #
+  # ask_variables_on_launch IS THE DEMO: the presenter types the extra vars,
+  # and OPA decides on what was typed. No credentials, deliberately — the job
+  # does nothing, so there is nothing for it to authenticate to.
+  - name: "Policy as Code - Hello"
+    description: "Blocked by policy when launched with a secret-shaped extra var (e.g. db_password); runs otherwise. The demo is whether AAP lets it start."
+    labels:
+      - policy
+    job_type: run
+    organization: "IT Service Automation"
+    inventory: "Sales Demo VMs"
+    project: "Sales Demos"
+    playbook: playbooks/policy_demo_hello.yml
+    execution_environment: "Sales Demos - OCP Virt EE"
+    limit: "{{ aap_env_name }}"
+    ask_variables_on_launch: true
+    extra_vars:
+      greeting: hello
+
   # =====================================================================
   # CLUSTER DAY 0 (#330). Prepare the CLUSTER to host demos, before any VM
   # exists. The subject of Day 1 is the VM; the subject of Day 0 is the cluster.

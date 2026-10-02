@@ -1,0 +1,28 @@
+---
+# ===========================================================================
+# policy_demo_hello.yml — the job AAP's Policy as Code guards. #841.
+#
+# Deliberately does nothing but report what it was given. The demo is not
+# this playbook — it is whether AAP lets it start. The template that runs it,
+# `Policy as Code - Hello`, carries opa_query_path
+# aac/aap/policy/extra_vars_control (attached by install_opa.yml), so:
+#
+#   launch with   greeting: hello                 -> runs, prints this
+#   launch with   greeting: hello, db_password: x -> blocked before any pod
+#                                                    starts, with OPA's reason
+#
+# If you ever see this playbook's output for the second launch, the policy is
+# NOT enforcing — check OPA_HOST and the template's opa_query_path.
+# ===========================================================================
+
+- name: Policy as Code - Hello
+  hosts: aap
+  gather_facts: false
+
+  tasks:
+    - name: Report that policy allowed this job
+      ansible.builtin.debug:
+        msg:
+          - "OPA allowed this job, so AAP started it."
+          - "Greeting: {{ greeting | default('(none given)') }}"
+          - "Try again with an extra var named like a secret (db_password) to see it blocked."
