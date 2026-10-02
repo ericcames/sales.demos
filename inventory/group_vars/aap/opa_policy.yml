@@ -73,6 +73,14 @@ opa_policy_config:
     allow_unlisted: true
     value_patterns: {}
     forbid_secret_like_keys: true
+  # The canary's rule. deny_all is OFF by default (active: false) — attaching
+  # it alone blocks nothing, so the canary would pass silently and prove the
+  # opposite of what it claims. It is switched on here, and that is safe
+  # because the only template asking deny_all is the canary.
+  deny_all:
+    active: true
+    reason: "this is the Policy as Code wiring canary — if you can read this in AAP, OPA is answering"
+    exempt_labels: []
 
 # Which demo template asks which rule. The query path is the rule's package
 # path; AAP turns dots into slashes and POSTs to /v1/data/<path>.
@@ -85,3 +93,5 @@ opa_policy_config:
 opa_policy_associations:
   - job_template: "Policy as Code - Hello"
     opa_query_path: "aac/aap/policy/extra_vars_control"
+  - job_template: "Policy as Code - Canary"
+    opa_query_path: "aac/aap/policy/deny_all"
