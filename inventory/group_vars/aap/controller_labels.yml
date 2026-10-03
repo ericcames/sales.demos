@@ -15,6 +15,7 @@
 #               cluster, policy
 #   phase       install, day-0, day-1, day-2
 #   safety      read-only
+#   override    break-glass
 #   hypervisor  ocpvirt
 #   entry point self-service
 #
@@ -76,6 +77,16 @@ controller_labels_all:
   # breaking what is on screen?" is a different question, and it is the one an
   # SE actually asks mid-demo.
   - name: read-only
+    organization: "IT Service Automation"
+
+  # --- override -------------------------------------------------------
+  # A FIFTH AXIS, and it is the only label applied at LAUNCH rather than on a
+  # template (#841). The change-window policy lets a job carrying it through,
+  # and because AAP copies launch labels onto the job, the override is on the
+  # record. It has to exist before anyone can pick it from the launch prompt.
+  # No template carries it: a template with break-glass baked in would bypass
+  # the window on every launch, which is the opposite of an override.
+  - name: break-glass
     organization: "IT Service Automation"
 
   # --- autonomy --------------------------------------------------------

@@ -13,7 +13,7 @@
 # as that user is what puts a real, populated `created_by.teams` in front of
 # OPA, and later what lets the demo show "this team may, that team may not".
 #
-# SCOPED TO THE TWO `Policy as Code -` TEMPLATES, deliberately. Execute there
+# SCOPED TO THE `Policy as Code -` TEMPLATES, deliberately. Execute there
 # and nowhere else: a demo identity with a known password should not be able
 # to run anything that touches a cluster or a VM.
 #
@@ -61,5 +61,6 @@ controller_roles_all:
     job_templates:
       - "Policy as Code - Hello"
       - "Policy as Code - Canary"
+      - "Policy as Code - Change Window"
     lookup_organization: "IT Service Automation"
     role: execute

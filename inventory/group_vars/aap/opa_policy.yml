@@ -82,6 +82,28 @@ opa_policy_config:
     active: true
     reason: "this is the Policy as Code wiring canary — if you can read this in AAP, OPA is answering"
     exempt_labels: []
+  # The change window (Phase 2). WEEKENDS ONLY, the shape a real production
+  # change policy takes — and, deliberately, one almost no live demo falls
+  # inside, so `Policy as Code - Change Window` is reliably blocked on screen.
+  # The way through is the break-glass label, prompted at launch: that is the
+  # second half of the demo, and the label on the job is the audit trail. The
+  # library evaluates the job's own `created` time, not "now". A demo given on
+  # a UTC Saturday or Sunday will RUN — say so rather than be surprised.
+  #
+  # WHY NOT AN OVERNIGHT WINDOW. Days and hours are checked separately, both
+  # against the calendar date (measured, #841): Sat/Sun with 22:00-04:00 means
+  # Sat and Sun 00-04 plus 22-24, so Sunday night's tail on Monday morning is
+  # blocked. Any description of that would mislead, so the hours are open.
+  #
+  # The library's default is Mon-Fri; every key is written out so that cannot
+  # leak back in.
+  maintenance_window:
+    timezone: UTC
+    allowed_days: [Saturday, Sunday]
+    start_hour: 0
+    end_hour: 24
+    freeze_dates: []
+    break_glass_label: break-glass
 
 # Which demo template asks which rule. The query path is the rule's package
 # path; AAP turns dots into slashes and POSTs to /v1/data/<path>.
@@ -96,3 +118,5 @@ opa_policy_associations:
     opa_query_path: "aac/aap/policy/extra_vars_control"
   - job_template: "Policy as Code - Canary"
     opa_query_path: "aac/aap/policy/deny_all"
+  - job_template: "Policy as Code - Change Window"
+    opa_query_path: "aac/aap/policy/maintenance_window"
