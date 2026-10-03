@@ -22,12 +22,13 @@
 #   - a job is blocked only when `allowed` is false AND `violations` is
 #     non-empty. {"allowed": false, "violations": []} lets the job RUN
 #
-# THE DECISION LOG HOLDS EXTRA_VARS IN THE CLEAR. install_opa.yml turns on
-# console decision logs so the pod log shows exactly what AAP sent — measured
-# on sandbox (#841), that includes extra_vars VALUES, e.g. the db_password the
-# demo types. That is the right trade for a demo whose point is "this should
-# have been a credential", and a reason to add OPA's decision_logs mask policy
-# before anything real is launched through a guarded template.
+# THE DECISION LOG IS MASKED. install_opa.yml turns on console decision logs
+# so the pod log shows exactly what AAP sent. Unmasked, that included
+# extra_vars VALUES — measured on sandbox (#841), the db_password the demo
+# types sat there in the clear. playbooks/files/opa/decision_log_mask.rego now
+# keeps every extra_vars KEY and replaces every value with **REDACTED**, and
+# install_opa.yml reads the pod log back and fails if a value got through.
+# Only extra_vars is masked: it is the one free-text field a launcher types.
 #
 # NEVER ATTACH AT ORGANIZATION LEVEL. The library denies superuser launches by
 # default and this whole platform runs as admin. An org-level path would block
