@@ -705,6 +705,25 @@ controller_templates_all:
     limit: "{{ aap_env_name }}"
     ask_labels_on_launch: true
 
+  # THE CHANGE TICKET (#841, Phase 2). Attached to required_labels, which
+  # opa_policy.yml sets to demand a `change-ticket:CHG<7 digits>` label. So a
+  # launch with no ticket is blocked, a malformed one is blocked with the
+  # format in the reason, and `change-ticket:CHG0012345` runs. The ticket is
+  # given at launch, never baked in — a template that carried one would cite
+  # the same change for ever.
+  - name: "Policy as Code - Change Ticket"
+    description: "Blocked unless launched with a change-ticket:CHG<7 digits> label, e.g. change-ticket:CHG0012345. The label stays on the job as the change record."
+    labels:
+      - policy
+    job_type: run
+    organization: "IT Service Automation"
+    inventory: "Sales Demo VMs"
+    project: "Sales Demos"
+    playbook: playbooks/policy_demo_change_ticket.yml
+    execution_environment: "Sales Demos - OCP Virt EE"
+    limit: "{{ aap_env_name }}"
+    ask_labels_on_launch: true
+
   # =====================================================================
   # CLUSTER DAY 0 (#330). Prepare the CLUSTER to host demos, before any VM
   # exists. The subject of Day 1 is the VM; the subject of Day 0 is the cluster.

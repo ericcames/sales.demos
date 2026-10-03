@@ -1,6 +1,6 @@
 ---
 name: sales-demos-policy
-description: "Deploy AAP Policy as Code backed by OPA: one OPA server on the cluster loaded with the pinned ynotbhatc/rego_policy_libraries release, AAP pointed at it, and policies attached to the `Policy as Code -` demo templates (secret-shaped extra vars, a change window with break-glass, and a wiring canary). Runs playbooks/install_opa.yml after config.yml, then proves it from AAP — a blocked launch and an allowed one. TRIGGER when: the user wants to demo or set up Policy as Code, policy enforcement, OPA or Open Policy Agent with AAP, wants a job blocked by policy, wants a change window or change freeze or break-glass demo, asks about rego_policy_libraries, opa_query_path or OPA_HOST, or asks about issue #841. SKIP: if the user wants CIS/STIG compliance scanning of VMs — that is sales-demos-ocpvirt-demo (OpenSCAP) — or Kubernetes admission policy (Gatekeeper), which this repo does not deploy."
+description: "Deploy AAP Policy as Code backed by OPA: one OPA server on the cluster loaded with the pinned ynotbhatc/rego_policy_libraries release, AAP pointed at it, and policies attached to the `Policy as Code -` demo templates (secret-shaped extra vars, a change window with break-glass, a required change ticket, and a wiring canary). Runs playbooks/install_opa.yml after config.yml, then proves it from AAP — a blocked launch and an allowed one. TRIGGER when: the user wants to demo or set up Policy as Code, policy enforcement, OPA or Open Policy Agent with AAP, wants a job blocked by policy, wants a change window, change freeze, break-glass or change-ticket demo, asks about rego_policy_libraries, opa_query_path or OPA_HOST, or asks about issue #841. SKIP: if the user wants CIS/STIG compliance scanning of VMs — that is sales-demos-ocpvirt-demo (OpenSCAP) — or Kubernetes admission policy (Gatekeeper), which this repo does not deploy."
 ---
 
 # sales-demos-policy
@@ -27,7 +27,8 @@ which also records how AAP calls OPA. See `CLAUDE.md` → *Skills and playbooks*
    `opa_policy_associations` through the controller API — no collection
    module accepts `opa_query_path` yet: `extra_vars_control` on
    `Policy as Code - Hello`, `deny_all` on `Policy as Code - Canary`,
-   `maintenance_window` on `Policy as Code - Change Window`.
+   `maintenance_window` on `Policy as Code - Change Window`,
+   `required_labels` on `Policy as Code - Change Ticket`.
 
 `config.yml` also creates the demo identity, `policy-demo` in `app-team`
 (`policy_demo_rbac.yml`), with Execute on those templates only.
@@ -36,8 +37,19 @@ which also records how AAP calls OPA. See `CLAUDE.md` → *Skills and playbooks*
 (default `America/Phoenix`). Set it to the presenter's zone in `local.yml`:
 in UTC, a Friday evening in the US is already Saturday and the template
 would *run* on screen. The `break-glass` label, given at launch, lets it
-through — and `policy-demo` **cannot** apply that label (HTTP 403), so the
-override is an admin's privilege, not app-team's. That is the point.
+through.
+
+**`Policy as Code - Change Ticket` needs a `change-ticket:CHG<7 digits>`
+label at launch.** With no ticket, or a malformed one, it is blocked, and the
+two refusals read differently. `change-ticket:CHG0012345` exists as code so
+the demo is repeatable.
+
+**A label is a marker, not a permission — do not present break-glass as
+RBAC-protected.** AAP lets anyone who can view the label's organization apply
+it at launch (`LabelAccess` in `awx/main/access.py`), so any org member can
+break glass. `policy-demo` gets HTTP 403 applying *any* label only because it
+is not an org member. Making break-glass a privilege needs the policy to also
+check who launched, which the library does not do yet.
 
 **Policies are attached to demo templates only, never an organization.** The
 library denies superuser launches by default, and this platform runs as admin.
@@ -124,10 +136,19 @@ utilities/run-in-ee.sh playbooks/install_opa.yml \
      day for automation (allowed: ["Saturday", "Sunday"])"*
    - with `{"labels": [<id of break-glass>]}` as admin → **successful**, and
      the job carries both `break-glass` and `policy` labels — the record
-   - the same as `policy-demo` → **HTTP 403**: app-team cannot break glass
+   - the same as `policy-demo` → **HTTP 403**, because it is not an org
+     member — not because break-glass is protected (see above)
    On a weekend in that zone the first launch runs — that is the policy
    working, not failing.
-7. **OPA saw them all.** `mcp__openshift-<env>__pods_log` on the OPA pod — two
+7. **The change ticket.** Launch `Policy as Code - Change Ticket`:
+   - no labels → job **failed**, *"Label 'change-ticket' is required in
+     'key:value' form matching ^CHG[0-9]{7}$, but no value was supplied."*
+   - with `{"labels": [<id of change-ticket:CHG0012345>]}` as admin →
+     **successful**, and the ticket is on the job
+   The malformed case (`change-ticket:12345`) is asserted by
+   `install_opa.yml` against OPA directly, so sandbox needs no junk label —
+   AAP labels have no delete endpoint.
+8. **OPA saw them all.** `mcp__openshift-<env>__pods_log` on the OPA pod — two
    `decision_id` entries per launch, carrying the full input AAP sent. Filter
    the log on `"msg":"Decision Log"` — health probes fill the rest.
    Every `extra_vars` value reads `**REDACTED**` and the key is kept: step 3b's

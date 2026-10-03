@@ -322,6 +322,38 @@
       loop_control:
         label: "{{ item.item.label }}"
 
+    - name: Ask OPA about change tickets
+      # Fixed inputs: no ticket, a malformed one, a well-formed one. The
+      # first two are the two distinct refusals the demo shows.
+      ansible.builtin.uri:
+        url: "{{ _opa_proxy }}/v1/data/aac/aap/policy/required_labels"
+        method: POST
+        headers:
+          Authorization: "Bearer {{ openshift_api_token }}"
+        body_format: json
+        body:
+          input: "{{ item.input }}"
+        validate_certs: "{{ openshift_validate_certs | default(false) | bool }}"
+        return_content: true
+      loop:
+        - {label: "no ticket", allowed: false, input: {labels: [{name: policy}]}}
+        - {label: "change-ticket:12345", allowed: false, input: {labels: [{name: policy}, {name: "change-ticket:12345"}]}}
+        - {label: "change-ticket:CHG0012345", allowed: true, input: {labels: [{name: policy}, {name: "change-ticket:CHG0012345"}]}}
+      loop_control:
+        label: "{{ item.label }}"
+      register: opa_rl_smoke
+
+    - name: Assert each change-ticket answer, with a reason when blocked
+      ansible.builtin.assert:
+        that:
+          - (item.json.result.allowed | bool) == item.item.allowed
+          - item.item.allowed or (item.json.result.violations | length > 0)
+        fail_msg: "required_labels with {{ item.item.label }}: expected allowed={{ item.item.allowed }}, got {{ item.json.result }}"
+        quiet: true
+      loop: "{{ opa_rl_smoke.results }}"
+      loop_control:
+        label: "{{ item.item.label }}"
+
     - name: Read the decision log those queries wrote
       kubernetes.core.k8s_log:
         kind: Deployment
@@ -425,3 +457,4 @@
           - "Attached:   {{ opa_policy_associations | map(attribute='job_template') | join(', ') }}"
           - "Prove it from AAP: launch 'Policy as Code - Hello' with db_password set — it must be blocked."
           - "On a weekday, 'Policy as Code - Change Window' must be blocked, and run when relaunched with the break-glass label."
+          - "'Policy as Code - Change Ticket' must be blocked without a change-ticket:CHG<7 digits> label, and run with change-ticket:CHG0012345."

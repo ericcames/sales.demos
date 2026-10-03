@@ -1,0 +1,28 @@
+---
+# ===========================================================================
+# policy_demo_change_ticket.yml — the job the change-ticket policy guards.
+# #841, Phase 2.
+#
+# Like policy_demo_hello.yml, it does nothing but report; the demo is whether
+# AAP lets it start. `Policy as Code - Change Ticket` carries opa_query_path
+# aac/aap/policy/required_labels (attached by install_opa.yml), set in
+# opa_policy.yml to demand a `change-ticket:CHG<7 digits>` label, so:
+#
+#   launch with no labels                       -> blocked, no ticket
+#   launch with label change-ticket:12345       -> blocked, bad format
+#   launch with label change-ticket:CHG0012345  -> runs, ticket on the job
+#
+# If this runs WITHOUT a ticket label, the policy is not enforcing — check
+# OPA_HOST and the template's opa_query_path.
+# ===========================================================================
+
+- name: Policy as Code - Change Ticket
+  hosts: aap
+  gather_facts: false
+
+  tasks:
+    - name: Report that policy allowed this job
+      ansible.builtin.debug:
+        msg:
+          - "OPA allowed this job, so AAP started it: it carries a well-formed change ticket."
+          - "The job's Labels, on its Details page, are the record of which change it ran under."

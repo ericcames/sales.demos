@@ -112,6 +112,21 @@ opa_policy_config:
     end_hour: 24
     freeze_dates: []
     break_glass_label: break-glass
+  # The change ticket (Phase 2). A job must carry a label naming its change
+  # record, `change-ticket:CHG0012345` — the ServiceNow change-number shape,
+  # and the library's own example. pattern_requirements both requires the
+  # key and checks the value, so one entry gives the demo two distinct
+  # refusals: no ticket, and a malformed one. Keys match case-insensitively.
+  # `required` stays empty on purpose: it matches whole label names, so
+  # `required: [change-ticket]` would demand a bare `change-ticket` label that
+  # no real ticket label could ever satisfy.
+  labels:
+    required: []
+    forbidden: []
+    required_for_inventories: {}
+    one_of: []
+    pattern_requirements:
+      change-ticket: "^CHG[0-9]{7}$"
 
 # Which demo template asks which rule. The query path is the rule's package
 # path; AAP turns dots into slashes and POSTs to /v1/data/<path>.
@@ -128,3 +143,5 @@ opa_policy_associations:
     opa_query_path: "aac/aap/policy/deny_all"
   - job_template: "Policy as Code - Change Window"
     opa_query_path: "aac/aap/policy/maintenance_window"
+  - job_template: "Policy as Code - Change Ticket"
+    opa_query_path: "aac/aap/policy/required_labels"
