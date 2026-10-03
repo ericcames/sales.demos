@@ -15,8 +15,7 @@
 #               cluster, policy
 #   phase       install, day-0, day-1, day-2
 #   safety      read-only
-#   override    break-glass
-#   change ref  change-ticket:CHG0012345
+#   launch-time break-glass, change-ticket:CHG0012345 (Policy as Code)
 #   hypervisor  ocpvirt
 #   entry point self-service
 #
@@ -80,28 +79,33 @@ controller_labels_all:
   - name: read-only
     organization: "IT Service Automation"
 
-  # --- override -------------------------------------------------------
-  # A FIFTH AXIS, and it is the only label applied at LAUNCH rather than on a
-  # template (#841). The change-window policy lets a job carrying it through,
-  # and because AAP copies launch labels onto the job, the override is on the
-  # record. It has to exist before anyone can pick it from the launch prompt.
-  # No template carries it: a template with break-glass baked in would bypass
-  # the window on every launch, which is the opposite of an override.
+  # --- launch-time labels (#841) -------------------------------------
+  # The Policy as Code demos. Unlike every label above, these are applied at
+  # LAUNCH, not on a template — AAP copies launch labels onto the job, so the
+  # job itself carries the record — and the policies read them from OPA's
+  # input.labels. They must exist before anyone can pick them, because the
+  # launch API takes label IDs. NO TEMPLATE CARRIES EITHER: one that did would
+  # override the window, or cite the same change, on every launch. It would
+  # also widen who may apply them (next paragraph).
   #
-  # WHO CAN APPLY IT IS RBAC, and that is a feature. Measured on sandbox: the
-  # non-admin `policy-demo` can launch the Change Window template but gets
-  # HTTP 403 when the launch carries this label (job 166 without it was
-  # accepted, then blocked by policy). So app-team cannot override the change
-  # window; an admin can. Which role would grant it is not yet measured. Do not grant it "to make the demo smoother".
+  # A LABEL IS A MARKER, NOT A PERMISSION. AAP lets a user apply a label at
+  # launch if they can VIEW the label's organization, or view any template
+  # that already carries it (LabelAccess.filtered_queryset, awx/main/access.py).
+  # So any org member can apply break-glass. Measured on sandbox: the
+  # non-admin `policy-demo` got HTTP 403 launching with either label, and its
+  # launch without one was accepted then blocked by policy (job 166) — but
+  # only because that demo user is in app-team and NOT an org member. Do not
+  # present break-glass as RBAC-protected: making it a privilege needs the
+  # policy itself to check who launched, which rego_policy_libraries v2.0.0
+  # does not do.
+  #
+  # break-glass: the change-window policy (maintenance_window) lets a job
+  # carrying it through.
   - name: break-glass
     organization: "IT Service Automation"
-
-  # --- change reference -----------------------------------------------
-  # A SIXTH AXIS, and like break-glass it is applied at LAUNCH (#841). The
-  # required_labels policy wants `change-ticket:<CHG + 7 digits>` on any job
-  # it guards. A real shop mints one per change; this one example exists so
-  # the demo is repeatable — AAP's launch API takes label IDs, so a label
-  # must already exist to be picked. No template carries it.
+  # change-ticket:<CHG + 7 digits>: the change-ticket policy (required_labels)
+  # wants one on every job it guards. A real shop mints one per change; this
+  # single example exists so the demo is repeatable.
   - name: "change-ticket:CHG0012345"
     organization: "IT Service Automation"
 
