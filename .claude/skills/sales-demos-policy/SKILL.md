@@ -113,6 +113,9 @@ utilities/run-in-ee.sh playbooks/install_opa.yml \
 6. **OPA saw them all.** `mcp__openshift-<env>__pods_log` on the OPA pod — two
    `decision_id` entries per launch, carrying the full input AAP sent. Filter
    the log on `"msg":"Decision Log"` — health probes fill the rest.
+   Every `extra_vars` value reads `**REDACTED**` and the key is kept: step 3b's
+   entry shows `"db_password":"**REDACTED**"`, never the `x` that was typed.
+   `install_opa.yml` asserts the same thing on its own smoke queries.
 
 If launch 3b or the canary *succeeds*, enforcement is off: check step 2 and
 the template's `opa_query_path`.

@@ -28,6 +28,13 @@
 # front of a customer. The tests run WITHOUT our data.json, so they check the
 # library's defaults exactly as upstream CI does.
 #
+# WHY THE DECISION LOG IS MASKED. Console decision logs carry the full input
+# AAP sent, and that includes extra_vars VALUES — measured on sandbox, the
+# db_password typed for the demo sat in the pod log in the clear (#841).
+# files/opa/decision_log_mask.rego keeps every key and redacts every value,
+# a second initContainer runs its tests, and step 3 reads the pod log back
+# and fails the run if the smoke test's own fake secret appears in it.
+#
 # NO ROUTE, deliberately. AAP reaches the server by Service DNS. The smoke
 # test goes through the API server's service proxy, which works from a laptop
 # and from an AAP job alike, with the credentials this play already has.
@@ -85,6 +92,11 @@
           {{ dict(opa_fetched.results | map(attribute='item') | map('basename')
                   | zip(opa_fetched.results | map(attribute='content'))) }}
         opa_config_json: "{{ {'aac': {'aap': {'config': opa_policy_config}}} | to_json }}"
+        # Ours, not the library's — see the header. The test file rides in the
+        # same ConfigMap for the initContainer; the server never loads it.
+        opa_mask_data:
+          decision_log_mask.rego: "{{ lookup('ansible.builtin.file', playbook_dir ~ '/files/opa/decision_log_mask.rego') }}"
+          decision_log_mask_test.rego: "{{ lookup('ansible.builtin.file', playbook_dir ~ '/files/opa/decision_log_mask_test.rego') }}"
 
     # -----------------------------------------------------------------------
     # 2. The server
@@ -124,8 +136,7 @@
             namespace: "{{ opa_namespace }}"
             labels:
               app.kubernetes.io/name: "{{ opa_name }}"
-          data:
-            data.json: "{{ opa_config_json }}"
+          data: "{{ {'data.json': opa_config_json} | combine(opa_mask_data) }}"
 
     - name: Apply the Deployment
       # The checksum annotation is what rolls the pod when a policy or a
@@ -155,7 +166,7 @@
                   app.kubernetes.io/name: "{{ opa_name }}"
                 annotations:
                   sales-demos/config-checksum: >-
-                    {{ (opa_policy_data | to_json ~ opa_config_json) | hash('sha256') }}
+                    {{ (opa_policy_data | to_json ~ opa_config_json ~ opa_mask_data | to_json) | hash('sha256') }}
               spec:
                 initContainers:
                   - name: opa-test
@@ -168,9 +179,21 @@
                       runAsNonRoot: true
                       capabilities: {drop: ["ALL"]}
                       seccompProfile: {type: RuntimeDefault}
-                    resources:
+                    resources: &test_resources
                       requests: {cpu: 50m, memory: 64Mi}
                       limits: {memory: 256Mi}
+                  # Same reason as opa-test: a mask that stops masking must
+                  # fail the rollout, not leak quietly in front of a customer.
+                  - name: opa-test-mask
+                    image: "{{ opa_image }}"
+                    args:
+                      - test
+                      - /config/decision_log_mask.rego
+                      - /config/decision_log_mask_test.rego
+                    volumeMounts:
+                      - {name: config, mountPath: /config, readOnly: true}
+                    securityContext: *restricted
+                    resources: *test_resources
                 containers:
                   - name: opa
                     image: "{{ opa_image }}"
@@ -185,6 +208,9 @@
                       - --set=decision_logs.console=true
                       - /policies
                       - /config/data.json
+                      # Loaded at data.system.log.mask, the path OPA applies
+                      # to every decision-log event by default.
+                      - /config/decision_log_mask.rego
                     # One whole-list template, not a per-key one: a template
                     # inside a single key always renders a STRING whatever the
                     # filter, and the API server rejects "8181" as a port.
@@ -260,6 +286,32 @@
           - not (opa_smoke.results[1].json.result.allowed | bool)
           - opa_smoke.results[1].json.result.violations | length > 0
         fail_msg: "OPA answered, but not as expected: {{ opa_smoke.results | map(attribute='json') | list }}"
+
+    - name: Read the decision log those two queries wrote
+      kubernetes.core.k8s_log:
+        kind: Deployment
+        name: "{{ opa_name }}"
+        namespace: "{{ opa_namespace }}"
+      register: opa_log
+      # Console decision logs are flushed asynchronously; give them a moment.
+      until: >-
+        opa_log.log_lines | select('search', '"Decision Log"')
+        | select('search', 'db_password') | list | length > 0
+      retries: 6
+      delay: 5
+
+    - name: Assert the log names the variable but never shows its value
+      # The mask is only proven by the log it produces. 'not-a-real-one' is
+      # the value the smoke test sent; if it is anywhere in the pod log, the
+      # mask is not loaded, and anything typed into a guarded template leaks.
+      ansible.builtin.assert:
+        that:
+          - opa_log.log_lines | select('search', 'not-a-real-one') | list | length == 0
+          - opa_log.log_lines | select('search', '"db_password":"\\*\\*REDACTED\\*\\*"') | list | length > 0
+        fail_msg: >-
+          The decision log is not masked: the smoke test's extra_vars value is
+          in the OPA pod log, or db_password is not redacted. Check that
+          /config/decision_log_mask.rego is in the server's args.
 
     # -----------------------------------------------------------------------
     # 4. Point the demo templates at it
