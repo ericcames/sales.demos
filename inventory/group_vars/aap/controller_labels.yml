@@ -86,6 +86,12 @@ controller_labels_all:
   # record. It has to exist before anyone can pick it from the launch prompt.
   # No template carries it: a template with break-glass baked in would bypass
   # the window on every launch, which is the opposite of an override.
+  #
+  # WHO CAN APPLY IT IS RBAC, and that is a feature. Measured on sandbox: the
+  # non-admin `policy-demo` can launch the Change Window template but gets
+  # HTTP 403 when the launch carries this label (job 166 without it was
+  # accepted, then blocked by policy). So app-team cannot override the change
+  # window; an admin can. Which role would grant it is not yet measured. Do not grant it "to make the demo smoother".
   - name: break-glass
     organization: "IT Service Automation"
 
