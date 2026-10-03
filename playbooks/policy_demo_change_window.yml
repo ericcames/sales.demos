@@ -6,7 +6,7 @@
 # Like policy_demo_hello.yml, it does nothing but report; the demo is whether
 # AAP lets it start. `Policy as Code - Change Window` carries opa_query_path
 # aac/aap/policy/maintenance_window (attached by install_opa.yml), set in
-# opa_policy.yml to weekends only (UTC), so:
+# opa_policy.yml to weekends only in policy_change_window_timezone, so:
 #
 #   launch on a weekday               -> blocked, with the day in the reason
 #   relaunch with label break-glass   -> runs, and the label is on the job
@@ -24,5 +24,5 @@
       ansible.builtin.debug:
         msg:
           - "OPA allowed this job, so AAP started it."
-          - "Either it is a weekend (UTC), or break-glass was applied."
+          - "Either it is a weekend ({{ policy_change_window_timezone }}), or break-glass was applied."
           - "The job's Labels, on its Details page, are the record of which."

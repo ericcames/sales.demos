@@ -303,9 +303,10 @@
         validate_certs: "{{ openshift_validate_certs | default(false) | bool }}"
         return_content: true
       loop:
-        - {label: "Wed 15:00Z", allowed: false, input: {created: "2026-10-07T15:00:00Z", labels: [{name: policy}]}}
-        - {label: "Sat 23:00Z", allowed: true, input: {created: "2026-10-10T23:00:00Z", labels: [{name: policy}]}}
-        - {label: "Wed 15:00Z + break-glass", allowed: true, input: {created: "2026-10-07T15:00:00Z", labels: [{name: break-glass}]}}
+        # Midday UTC, so the weekday is the same in every zone from -11 to +11.
+        - {label: "Wed 12:00Z", allowed: false, input: {created: "2026-10-07T12:00:00Z", labels: [{name: policy}]}}
+        - {label: "Sat 12:00Z", allowed: true, input: {created: "2026-10-10T12:00:00Z", labels: [{name: policy}]}}
+        - {label: "Wed 12:00Z + break-glass", allowed: true, input: {created: "2026-10-07T12:00:00Z", labels: [{name: break-glass}]}}
       loop_control:
         label: "{{ item.label }}"
       register: opa_mw_smoke

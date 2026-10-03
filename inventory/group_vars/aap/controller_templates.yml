@@ -687,12 +687,13 @@ controller_templates_all:
       greeting: "if you can read this, the canary did NOT block"
 
   # THE CHANGE WINDOW (#841, Phase 2). Attached to maintenance_window, which
-  # opa_policy.yml sets to weekends only (UTC) — so on a weekday it is
+  # opa_policy.yml sets to weekends only, in policy_change_window_timezone
+  # — so on a weekday it is
   # blocked, with the day in the reason. ask_labels_on_launch IS THE
   # SECOND HALF OF THE DEMO: relaunch with the `break-glass` label and it runs,
   # and the label stays on the job as the record of who overrode the window.
   - name: "Policy as Code - Change Window"
-    description: "Blocked outside the weekend change window (Saturday and Sunday, UTC). Launch with the break-glass label to override; the label stays on the job."
+    description: "Blocked outside the weekend change window (Saturday and Sunday, {{ policy_change_window_timezone }}). Launch with the break-glass label to override; the label stays on the job."
     labels:
       - policy
     job_type: run
