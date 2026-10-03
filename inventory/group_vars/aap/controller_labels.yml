@@ -16,6 +16,7 @@
 #   phase       install, day-0, day-1, day-2
 #   safety      read-only
 #   override    break-glass
+#   change ref  change-ticket:CHG0012345
 #   hypervisor  ocpvirt
 #   entry point self-service
 #
@@ -93,6 +94,15 @@ controller_labels_all:
   # accepted, then blocked by policy). So app-team cannot override the change
   # window; an admin can. Which role would grant it is not yet measured. Do not grant it "to make the demo smoother".
   - name: break-glass
+    organization: "IT Service Automation"
+
+  # --- change reference -----------------------------------------------
+  # A SIXTH AXIS, and like break-glass it is applied at LAUNCH (#841). The
+  # required_labels policy wants `change-ticket:<CHG + 7 digits>` on any job
+  # it guards. A real shop mints one per change; this one example exists so
+  # the demo is repeatable — AAP's launch API takes label IDs, so a label
+  # must already exist to be picked. No template carries it.
+  - name: "change-ticket:CHG0012345"
     organization: "IT Service Automation"
 
   # --- autonomy --------------------------------------------------------

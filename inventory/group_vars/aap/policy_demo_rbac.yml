@@ -62,5 +62,6 @@ controller_roles_all:
       - "Policy as Code - Hello"
       - "Policy as Code - Canary"
       - "Policy as Code - Change Window"
+      - "Policy as Code - Change Ticket"
     lookup_organization: "IT Service Automation"
     role: execute
