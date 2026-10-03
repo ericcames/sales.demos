@@ -46,4 +46,4 @@ demo_ssh_public_key: "ssh-rsa CHANGEME"
 # inventory/group_vars/aap/opa_policy.yml. Set it to YOUR zone if you present
 # the demo: the window is "weekends only" there, and a zone already past
 # Friday midnight lets `Policy as Code - Change Window` run on screen.
-# policy_change_window_timezone: "America/Los_Angeles"
+# policy_change_window_timezone: "America/Phoenix"

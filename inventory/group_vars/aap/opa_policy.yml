@@ -51,9 +51,9 @@ opa_image: "docker.io/openpolicyagent/opa@sha256:c0814ce7811ecef8f1297a8e55774a1
 # The change window's clock. TOP-LEVEL ON PURPOSE, so an SE presenting from
 # another region sets it in their local.yml without copying the whole
 # opa_policy_config. It decides whether the demo blocks: UTC was tried first,
-# and at 18:00 on a Friday in California it was already Saturday in UTC — the
+# and at 18:00 on a Friday in Phoenix it was already Saturday in UTC — the
 # template would have RUN on screen (#841). Pick the presenter's zone.
-policy_change_window_timezone: America/Los_Angeles
+policy_change_window_timezone: America/Phoenix
 
 policy_library_repo: ynotbhatc/rego_policy_libraries
 policy_library_version: v2.0.0
