@@ -287,7 +287,42 @@
           - opa_smoke.results[1].json.result.violations | length > 0
         fail_msg: "OPA answered, but not as expected: {{ opa_smoke.results | map(attribute='json') | list }}"
 
-    - name: Read the decision log those two queries wrote
+    - name: Ask OPA about the change window at fixed times
+      # The rule evaluates the job's own `created`, so fixed timestamps make
+      # this answer the same whatever day the playbook runs. Against the
+      # weekends-only window in opa_policy.yml: a Wednesday is blocked, a
+      # Saturday is allowed, and break-glass lets the Wednesday through.
+      ansible.builtin.uri:
+        url: "{{ _opa_proxy }}/v1/data/aac/aap/policy/maintenance_window"
+        method: POST
+        headers:
+          Authorization: "Bearer {{ openshift_api_token }}"
+        body_format: json
+        body:
+          input: "{{ item.input }}"
+        validate_certs: "{{ openshift_validate_certs | default(false) | bool }}"
+        return_content: true
+      loop:
+        # Midday UTC, so the weekday is the same in every zone from -11 to +11.
+        - {label: "Wed 12:00Z", allowed: false, input: {created: "2026-10-07T12:00:00Z", labels: [{name: policy}]}}
+        - {label: "Sat 12:00Z", allowed: true, input: {created: "2026-10-10T12:00:00Z", labels: [{name: policy}]}}
+        - {label: "Wed 12:00Z + break-glass", allowed: true, input: {created: "2026-10-07T12:00:00Z", labels: [{name: break-glass}]}}
+      loop_control:
+        label: "{{ item.label }}"
+      register: opa_mw_smoke
+
+    - name: Assert each change-window answer, with a reason when blocked
+      ansible.builtin.assert:
+        that:
+          - (item.json.result.allowed | bool) == item.item.allowed
+          - item.item.allowed or (item.json.result.violations | length > 0)
+        fail_msg: "maintenance_window at {{ item.item.label }}: expected allowed={{ item.item.allowed }}, got {{ item.json.result }}"
+        quiet: true
+      loop: "{{ opa_mw_smoke.results }}"
+      loop_control:
+        label: "{{ item.item.label }}"
+
+    - name: Read the decision log those queries wrote
       kubernetes.core.k8s_log:
         kind: Deployment
         name: "{{ opa_name }}"
@@ -389,3 +424,4 @@
           - "AAP dials:  {{ opa_service_host }}:{{ opa_port }}"
           - "Attached:   {{ opa_policy_associations | map(attribute='job_template') | join(', ') }}"
           - "Prove it from AAP: launch 'Policy as Code - Hello' with db_password set — it must be blocked."
+          - "On a weekday, 'Policy as Code - Change Window' must be blocked, and run when relaunched with the break-glass label."

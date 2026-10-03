@@ -1,6 +1,6 @@
 ---
 name: sales-demos-policy
-description: "Deploy AAP Policy as Code backed by OPA: one OPA server on the cluster loaded with the pinned ynotbhatc/rego_policy_libraries release, AAP pointed at it, and the policy attached to the `Policy as Code - Hello` demo template. Runs playbooks/install_opa.yml after config.yml, then proves it from AAP — a blocked launch and an allowed one. TRIGGER when: the user wants to demo or set up Policy as Code, policy enforcement, OPA or Open Policy Agent with AAP, wants a job blocked by policy, asks about rego_policy_libraries, opa_query_path or OPA_HOST, or asks about issue #841. SKIP: if the user wants CIS/STIG compliance scanning of VMs — that is sales-demos-ocpvirt-demo (OpenSCAP) — or Kubernetes admission policy (Gatekeeper), which this repo does not deploy."
+description: "Deploy AAP Policy as Code backed by OPA: one OPA server on the cluster loaded with the pinned ynotbhatc/rego_policy_libraries release, AAP pointed at it, and policies attached to the `Policy as Code -` demo templates (secret-shaped extra vars, a change window with break-glass, and a wiring canary). Runs playbooks/install_opa.yml after config.yml, then proves it from AAP — a blocked launch and an allowed one. TRIGGER when: the user wants to demo or set up Policy as Code, policy enforcement, OPA or Open Policy Agent with AAP, wants a job blocked by policy, wants a change window or change freeze or break-glass demo, asks about rego_policy_libraries, opa_query_path or OPA_HOST, or asks about issue #841. SKIP: if the user wants CIS/STIG compliance scanning of VMs — that is sales-demos-ocpvirt-demo (OpenSCAP) — or Kubernetes admission policy (Gatekeeper), which this repo does not deploy."
 ---
 
 # sales-demos-policy
@@ -26,10 +26,18 @@ which also records how AAP calls OPA. See `CLAUDE.md` → *Skills and playbooks*
 3. It asserts AAP is pointed at the server, then attaches each entry in
    `opa_policy_associations` through the controller API — no collection
    module accepts `opa_query_path` yet: `extra_vars_control` on
-   `Policy as Code - Hello`, `deny_all` on `Policy as Code - Canary`.
+   `Policy as Code - Hello`, `deny_all` on `Policy as Code - Canary`,
+   `maintenance_window` on `Policy as Code - Change Window`.
 
 `config.yml` also creates the demo identity, `policy-demo` in `app-team`
-(`policy_demo_rbac.yml`), with Execute on those two templates only.
+(`policy_demo_rbac.yml`), with Execute on those templates only.
+
+**The change window is weekends only, in `policy_change_window_timezone`**
+(default `America/Phoenix`). Set it to the presenter's zone in `local.yml`:
+in UTC, a Friday evening in the US is already Saturday and the template
+would *run* on screen. The `break-glass` label, given at launch, lets it
+through — and `policy-demo` **cannot** apply that label (HTTP 403), so the
+override is an admin's privilege, not app-team's. That is the point.
 
 **Policies are attached to demo templates only, never an organization.** The
 library denies superuser launches by default, and this platform runs as admin.
@@ -110,7 +118,16 @@ utilities/run-in-ee.sh playbooks/install_opa.yml \
    (password `env_secrets[<env>].policy_demo_password`) → successful, and its
    decision-log input shows `"is_superuser": false` and
    `"teams": [{"id": …, "name": "app-team"}]`.
-6. **OPA saw them all.** `mcp__openshift-<env>__pods_log` on the OPA pod — two
+6. **The change window.** On a weekday in `policy_change_window_timezone`,
+   launch `Policy as Code - Change Window`:
+   - no labels → job **failed** before running, *"Friday is not an approved
+     day for automation (allowed: ["Saturday", "Sunday"])"*
+   - with `{"labels": [<id of break-glass>]}` as admin → **successful**, and
+     the job carries both `break-glass` and `policy` labels — the record
+   - the same as `policy-demo` → **HTTP 403**: app-team cannot break glass
+   On a weekend in that zone the first launch runs — that is the policy
+   working, not failing.
+7. **OPA saw them all.** `mcp__openshift-<env>__pods_log` on the OPA pod — two
    `decision_id` entries per launch, carrying the full input AAP sent. Filter
    the log on `"msg":"Decision Log"` — health probes fill the rest.
    Every `extra_vars` value reads `**REDACTED**` and the key is kept: step 3b's

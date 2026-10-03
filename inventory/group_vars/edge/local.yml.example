@@ -35,3 +35,9 @@ openshift_apps_domain: "apps.cluster-<id>.dyn.redhatworkshops.io"
 # is unreachable — cloud-init disables password auth with no authorized key.
 # The matching private half goes in secrets.yml as demo_ssh_private_key.
 demo_ssh_public_key: "ssh-rsa CHANGEME"
+
+# Policy as Code change window (#841) — committed in
+# inventory/group_vars/aap/opa_policy.yml. Set it to YOUR zone if you present
+# the demo: the window is "weekends only" there, and a zone already past
+# Friday midnight lets `Policy as Code - Change Window` run on screen.
+# policy_change_window_timezone: "America/Phoenix"
