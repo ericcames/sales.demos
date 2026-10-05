@@ -13,22 +13,22 @@
 # paths need a human. Measured 2026-09-10 against two dead rules.
 
 # Catch-all
-*                       @ericcames @mlowcher61
+*                       @ericcames @mlowcher61 @ynotbhatc
 
 # Conventions contract — changes here need extra scrutiny.
-/CLAUDE.md              @ericcames @mlowcher61
-/CONTRIBUTING.md        @ericcames @mlowcher61
+/CLAUDE.md              @ericcames @mlowcher61 @ynotbhatc
+/CONTRIBUTING.md        @ericcames @mlowcher61 @ynotbhatc
 
 # Secret hygiene — this repo is public.
-/.gitignore             @ericcames @mlowcher61
-/utilities/             @ericcames @mlowcher61
+/.gitignore             @ericcames @mlowcher61 @ynotbhatc
+/utilities/             @ericcames @mlowcher61 @ynotbhatc
 
 # Demo content, infrastructure, and CI
-/inventory/             @ericcames @mlowcher61
-/playbooks/             @ericcames @mlowcher61
-/terraform/             @ericcames @mlowcher61
-/.claude/skills/        @ericcames @mlowcher61
-/.github/workflows/     @ericcames @mlowcher61
+/inventory/             @ericcames @mlowcher61 @ynotbhatc
+/playbooks/             @ericcames @mlowcher61 @ynotbhatc
+/terraform/             @ericcames @mlowcher61 @ynotbhatc
+/.claude/skills/        @ericcames @mlowcher61 @ynotbhatc
+/.github/workflows/     @ericcames @mlowcher61 @ynotbhatc
 
 # Governance. There is no /docs/ here — documentation lives in sales.demos-docs.
-/ROADMAP.md             @ericcames @mlowcher61
+/ROADMAP.md             @ericcames @mlowcher61 @ynotbhatc
