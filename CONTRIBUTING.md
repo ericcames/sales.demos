@@ -13,8 +13,8 @@ Use generic placeholders in committed docs and examples:
 
 `playbooks/group_vars/all/secrets.yml` is **vault-encrypted and local only — it
 is not tracked** — and is the only secrets mechanism in this repo. It sits in the
-`all` group directory so it loads for every environment — one file, both
-`sandbox` and `demo`.
+`all` group directory so it loads for every host — `sandbox`, `demo`, `edge`,
+`gpu`, and the demo VMs.
 
 On a fresh clone it does not exist. Build it from `secrets.yml.example`, which
 is the contract and is kept honest by CI (#128):
@@ -35,10 +35,26 @@ ansible-vault edit playbooks/group_vars/all/secrets.yml \
 **It holds credentials only.** Per-environment credentials are keyed under
 `env_secrets` by environment name. Everything that is not a credential —
 `aap_hostname`, `openshift_api_url`, usernames, namespaces — lives in the
-committed plaintext `inventory/group_vars/<env>/connection.yml`.
+committed plaintext `inventory/group_vars/<env>/connection.yml`. The one
+exception is `gpu`, which has no AAP and no per-environment passwords, so its
+credentials are the top-level keys `gpu_admin_password` and
+`gpu_openshift_api_token` — see [CLAUDE.md § GPU/AI
+inference](CLAUDE.md#gpuai-inference).
 
-A new RHDP environment therefore means editing that environment's
-`connection.yml` plus two keys in the vault.
+**A new RHDP environment means `local.yml` plus two keys in the vault — not
+`connection.yml`.** Copy `inventory/group_vars/<env>/local.yml.example` to
+`local.yml` (gitignored) and fill in your cluster's values. Ansible loads a
+`group_vars/<env>/` directory in sorted order, so `local.yml` overrides
+`connection.yml` with no code change, and you can `git pull` without conflicting
+with anyone else's cluster. The name matters: `connection.local.yml` sorts
+*before* `connection.yml` and silently loses.
+
+Do not edit `connection.yml` during a bootstrap or repoint — a stale one is the
+expected state during active development. Committing it is a separate,
+deliberate step once the environment is stable:
+`utilities/update-connection.sh <env>` (#513). See [conventions
+rationale](https://ericcames.github.io/sales.demos-docs/reference/conventions-rationale/#the-localyml-overlay-and-what-it-replaced)
+for how `local.yml` reaches AAP through `config.yml`.
 
 The vault password lives outside this repo at
 `~/secrets/.vault_pass_sales_demos` (`chmod 600`, `chmod 700` directory),
@@ -128,6 +144,17 @@ skill never reimplements logic — both drive the same playbook.
 - Survey variable names, skill prompts, and playbook `extra_vars` must match
   exactly. **The variable names are the contract.**
 
+**Run ad-hoc playbooks through `utilities/run-playbook.sh`.** It names the log,
+writes it to `~/ansible-logs/` — never into this repo — passes the vault id, and
+reports the real exit status:
+
+```bash
+./utilities/run-playbook.sh playbooks/config.yml --limit sandbox -e target_env=sandbox
+```
+
+Never pipe a run through `tee`: in a pipeline the exit status comes from `tee`,
+so a failed run reports success.
+
 **Verify a playbook change in the EE before it merges** (#120). `ansible-playbook`
 runs against your laptop's collections and python; a job template runs against
 what the execution environment baked in. CI cannot tell them apart — the lint
@@ -164,14 +191,28 @@ audit reports `MODIFIED` and shows how to repair them.
 
 1. **Open an issue before writing code.** Label it — run
    `gh label list --repo ericcames/sales.demos` and apply every label that fits.
-2. Branch off `main`.
+2. **Work in an isolated worktree, never in the main checkout.** More than one
+   Claude Code session can share a checkout, and the branch can change under
+   you, so the main checkout stays on `main` and is read-only. Name the branch
+   `<type>-<issue>-<slug>` — `fix-86-preflight-vault-lookup`:
+
+   ```bash
+   git worktree add ../sales.demos-<slug> -b <type>-<issue>-<slug> origin/main
+   # ... work, commit, push, PR ...
+   git worktree remove ../sales.demos-<slug>
+   ```
+
+   A new worktree does not get your gitignored files (`secrets.yml`,
+   `local.yml`). See [conventions
+   rationale](https://ericcames.github.io/sales.demos-docs/reference/conventions-rationale/#the-worktree-mandate)
+   for the incident behind this.
 3. Make one focused change. One concern per PR — group by shared root cause, not
    item count. The test: would you revert these together? Then ship them
    together. Behavior changes and anything risky stay isolated regardless.
 4. Update [`ROADMAP.md`](ROADMAP.md) if the plan changes, and
    [`CLAUDE.md`](CLAUDE.md) if a convention changes.
-5. Run the phase against `sandbox` — and run it in the EE too, per
-   *Skills and playbooks* above. A green CI run proves neither.
+5. Run the phase against `sandbox` with `utilities/run-playbook.sh` — and run
+   it in the EE too, per *Skills and playbooks* above. A green CI run proves neither.
 6. Run the leak audit above.
 7. Open a PR with a summary, a test plan, and a rollback note.
 
