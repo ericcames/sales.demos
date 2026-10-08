@@ -23,3 +23,64 @@
 
   roles:
     - linux_compliance
+
+  post_tasks:
+    # -----------------------------------------------------------------------
+    # Keep the result as evidence (#857). Opt-in by presence: without
+    # policy-db this says so and changes nothing. See
+    # tasks/record_compliance_evidence.yml.
+    # -----------------------------------------------------------------------
+    - name: Read every evaluated rule's result from the scan
+      # ON THE GUEST, with its own python3: results.xml stays where oscap
+      # wrote it, and only the compact rule -> result map crosses the wire.
+      # `notselected` rules are outside the CIS L1 profile and are dropped.
+      ansible.builtin.command:
+        argv:
+          - python3
+          - -c
+          - |
+            import json, sys, xml.etree.ElementTree as ET
+            prefix = "xccdf_org.ssgproject.content_rule_"
+            out = {}
+            for el in ET.parse(sys.argv[1]).iter():
+                if el.tag.endswith("}rule-result"):
+                    res = next((c.text for c in el if c.tag.endswith("}result")), None)
+                    if res and res != "notselected":
+                        out[el.get("idref", "").removeprefix(prefix)] = res
+            print(json.dumps(out))
+          - "{{ linux_compliance_report_dir }}/results.xml"
+      register: linux_evidence_rules
+      changed_when: false
+
+    - name: Record the scan in policy-db
+      ansible.builtin.include_tasks: tasks/record_compliance_evidence.yml
+      vars:
+        _rules: "{{ linux_evidence_rules.stdout | from_json }}"
+        evidence_framework: openscap-cis-l1-rhel9
+        evidence_compliant: "{{ linux_compliance_fail | int == 0 }}"
+        evidence_score: "{{ linux_compliance_score | int }}"
+        evidence_violations: >-
+          {{ _rules | dict2items(key_name='rule', value_name='result')
+             | selectattr('result', 'in', ['fail', 'error']) | list }}
+        evidence_facts: >-
+          {{ {
+               'scanner': 'OpenSCAP',
+               'profile': linux_compliance_profile,
+               'content': linux_compliance_content,
+               'scanned': ansible_facts.date_time.iso8601,
+               'results': {
+                 'pass': linux_compliance_pass | int,
+                 'fail': linux_compliance_fail | int,
+                 'notapplicable': linux_compliance_notapplicable | int,
+                 'notchecked': linux_compliance_notchecked | int,
+                 'score_percent': linux_compliance_score | int,
+               },
+               'rules': _rules,
+               'host': {
+                 'distribution': ansible_facts.distribution,
+                 'version': ansible_facts.distribution_version,
+                 'kernel': ansible_facts.kernel,
+                 'selinux': ansible_facts.selinux.status | default(none),
+                 'golden_image': golden_image_source | default(none, true),
+               },
+             } }}
