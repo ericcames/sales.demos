@@ -19,11 +19,12 @@
 # database for both is not an option. `aac`, owned by role `aac`, in the
 # same CloudNativePG cluster: zero new pods, zero new images.
 #
-# THE SCHEMA IS THE PRODUCT'S OWN. aac/roles/aac_compliance_db/tasks/schema.yml
-# (synced weekly, #873) is how the AAC lab creates its tables. Its tasks are
-# community.postgresql calls; this playbook reads the SAME statements out of
-# that file and applies them through psql on the primary, exactly as
-# install_policy_db.yml applies its schema. Same DDL as the lab, no database
+# THE SCHEMA IS THE PRODUCT'S OWN. roles/aac_compliance_db/tasks/schema.yml
+# in the public AAC pack (ynotbhatc/aac-pack at aac_pack_version, aac.yml) is
+# how the AAC lab creates its tables. Its tasks are community.postgresql
+# calls; this playbook fetches that file at the pinned tag, reads the SAME
+# statements out of it and applies them through psql on the primary, exactly
+# as install_policy_db.yml applies its schema. Same DDL as the lab, no database
 # port reachable from a laptop required, no collection required in the EE
 # for this step. Every statement is IF NOT EXISTS / CREATE OR REPLACE, so a
 # re-run is harmless.
@@ -56,7 +57,8 @@
     aac_db_name: "aac"
     aac_db_owner: "aac"
     aac_db_password: "{{ env_secrets[aap_env_name].aac_db_password }}"
-    aac_db_role_dir: "{{ playbook_dir }}/../aac/roles/aac_compliance_db"
+    aac_db_role_url: "{{ aac_pack_raw }}/roles/aac_compliance_db"
+    aac_db_files_url: "{{ aac_pack_raw }}/files"
     aac_db_seed_url: ""
     aac_db_seed_token: ""
     # The tables the product's schema task creates. Asserted after apply.
@@ -199,9 +201,34 @@
     # -----------------------------------------------------------------------
     # 2. The product's schema, read out of the product's role
     # -----------------------------------------------------------------------
-    - name: Read the schema task file from the synced pack
+    - name: Fetch the schema task file at {{ aac_pack_version }}
+      ansible.builtin.uri:
+        url: "{{ aac_db_role_url }}/tasks/schema.yml"
+        return_content: true
+      register: _schema_fetched
+
+    - name: Parse it
       ansible.builtin.set_fact:
-        _schema_tasks: "{{ lookup('ansible.builtin.file', aac_db_role_dir ~ '/tasks/schema.yml') | from_yaml }}"
+        _schema_tasks: "{{ _schema_fetched.content | from_yaml }}"
+
+    # One task applies a .sql file by path rather than an inline query. Fetch
+    # those files from the pack too, by basename, before rendering.
+    - name: Fetch the script files the schema task references
+      ansible.builtin.uri:
+        url: "{{ aac_db_files_url }}/{{ item | basename }}"
+        return_content: true
+      loop: >-
+        {{ _schema_tasks | selectattr('community.postgresql.postgresql_script', 'defined')
+           | map(attribute='community.postgresql.postgresql_script.path') | list }}
+      loop_control:
+        label: "{{ item | basename }}"
+      register: _script_fetched
+
+    - name: Index them by basename
+      ansible.builtin.set_fact:
+        _script_files: >-
+          {{ dict(_script_fetched.results | default([]) | map(attribute='item') | map('basename')
+                  | zip(_script_fetched.results | default([]) | map(attribute='content'))) }}
 
     - name: Render the statements
       # Each task is one community.postgresql call: `query:` (or a loop of
@@ -219,7 +246,7 @@
             {% elif q.query is defined -%}
               {% set _ = out.append(q.query) -%}
             {% elif s.path is defined -%}
-              {% set _ = out.append(lookup('ansible.builtin.file', s.path | replace('{{ role_path }}', aac_db_role_dir))) -%}
+              {% set _ = out.append(_script_files[s.path | basename]) -%}
             {% endif -%}
           {% endfor -%}
           SET ROLE {{ aac_db_owner }};
@@ -234,9 +261,9 @@
           - _schema_sql is search('CREATE TABLE IF NOT EXISTS compliance_results')
           - _schema_sql is search('CREATE TABLE IF NOT EXISTS host_facts')
         fail_msg: >-
-          The schema rendered from {{ aac_db_role_dir }}/tasks/schema.yml does not
+          The schema fetched from {{ aac_db_role_url }}/tasks/schema.yml does not
           look like the AAC evidence schema ({{ _schema_tasks | length }} tasks).
-          Has the AAC pack been synced into aac/ (#873)?
+          Check aac_pack_repo / aac_pack_version in aac.yml.
         quiet: true
 
     - name: Stage the schema in the primary

@@ -2175,7 +2175,7 @@ controller_templates_all:
   # ---------------------------------------------------------------------
   # The AAC evidence database (#869, #841 Phase 2): database `aac` owned by
   # role `aac` inside the existing policy-db cluster, schema applied from
-  # the product's own role in the synced pack (aac/roles/aac_compliance_db).
+  # the product's own role in the public AAC pack at the pinned tag.
   # Optional seed from a URL. Opt-in; aac_db_state=absent removes it; the
   # platform's `compliance` database is never touched.
   # ---------------------------------------------------------------------
