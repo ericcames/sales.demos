@@ -31,9 +31,14 @@
     # tasks/record_compliance_evidence.yml.
     # -----------------------------------------------------------------------
     - name: Read every evaluated rule's result from the scan
-      # ON THE GUEST, with its own python3: results.xml stays where oscap
-      # wrote it, and only the compact rule -> result map crosses the wire.
+      # ON THE GUEST, with its own python3: results.xml (about 19 MB) stays
+      # where oscap wrote it, and only a compact summary crosses the wire.
       # `notselected` rules are outside the CIS L1 profile and are dropped.
+      #
+      # TITLE AND SEVERITY ARE READ ONLY FOR FAILING RULES (#865). They come
+      # from the Benchmark's <Rule> definitions in the same file. There is no
+      # found/expected: XCCDF results hold only pass/fail, and the observed
+      # values live in OVAL results this scan does not write.
       ansible.builtin.command:
         argv:
           - python3
@@ -41,13 +46,27 @@
           - |
             import json, sys, xml.etree.ElementTree as ET
             prefix = "xccdf_org.ssgproject.content_rule_"
-            out = {}
-            for el in ET.parse(sys.argv[1]).iter():
+            root = ET.parse(sys.argv[1]).getroot()
+            rules = {}
+            for el in root.iter():
                 if el.tag.endswith("}rule-result"):
                     res = next((c.text for c in el if c.tag.endswith("}result")), None)
                     if res and res != "notselected":
-                        out[el.get("idref", "").removeprefix(prefix)] = res
-            print(json.dumps(out))
+                        rules[el.get("idref", "").removeprefix(prefix)] = res
+            failing = {k for k, v in rules.items() if v in ("fail", "error")}
+            meta = {}
+            for el in root.iter():
+                if el.tag.endswith("}Rule"):
+                    rid = el.get("id", "").removeprefix(prefix)
+                    if rid in failing:
+                        title = next((c for c in el if c.tag.endswith("}title")), None)
+                        meta[rid] = {
+                            "title": " ".join("".join(title.itertext()).split()) if title is not None else "",
+                            "severity": el.get("severity", ""),
+                        }
+            failed = [dict(rule=r, result=rules[r], **meta.get(r, {"title": "", "severity": ""}))
+                      for r in sorted(failing)]
+            print(json.dumps({"rules": rules, "failed": failed}))
           - "{{ linux_compliance_report_dir }}/results.xml"
       register: linux_evidence_rules
       changed_when: false
@@ -55,13 +74,12 @@
     - name: Record the scan in policy-db
       ansible.builtin.include_tasks: tasks/record_compliance_evidence.yml
       vars:
-        _rules: "{{ linux_evidence_rules.stdout | from_json }}"
+        _parsed: "{{ linux_evidence_rules.stdout | from_json }}"
+        _rules: "{{ _parsed.rules }}"
         evidence_framework: openscap-cis-l1-rhel9
         evidence_compliant: "{{ linux_compliance_fail | int == 0 }}"
         evidence_score: "{{ linux_compliance_score | int }}"
-        evidence_violations: >-
-          {{ _rules | dict2items(key_name='rule', value_name='result')
-             | selectattr('result', 'in', ['fail', 'error']) | list }}
+        evidence_violations: "{{ _parsed.failed }}"
         evidence_facts: >-
           {{ {
                'scanner': 'OpenSCAP',

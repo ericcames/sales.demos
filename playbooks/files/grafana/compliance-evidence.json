@@ -10,7 +10,7 @@
   "editable": false,
   "graphTooltip": 1,
   "schemaVersion": 41,
-  "version": 3,
+  "version": 4,
   "refresh": "1m",
   "time": {
     "from": "now-7d",
@@ -334,7 +334,7 @@
           "format": "table",
           "rawQuery": true,
           "editorMode": "code",
-          "rawSql": "WITH latest AS (\n  SELECT DISTINCT ON (host, framework) host, framework, run_at, violations FROM assessments\n  WHERE framework IN (${framework:sqlstring})\n  ORDER BY host, framework, run_at DESC\n)\nSELECT regexp_replace(split_part(host, '.', 1), '-[0-9a-f]{6}-.*$', '') AS host, framework,\n  coalesce(v->>'rule', '') AS rule,\n  coalesce(v->>'title', '') AS title,\n  coalesce(v->>'result', v->>'status') AS result,\n  coalesce(v->>'actual', '') AS found,\n  coalesce(v->>'expected', '') AS expected,\n  run_at AS scanned\nFROM latest, jsonb_array_elements(violations) v\nORDER BY host, rule"
+          "rawSql": "WITH latest AS (\n  SELECT DISTINCT ON (host, framework) host, framework, run_at, violations FROM assessments\n  WHERE framework IN (${framework:sqlstring})\n  ORDER BY host, framework, run_at DESC\n)\nSELECT regexp_replace(split_part(host, '.', 1), '-[0-9a-f]{6}-.*$', '') AS host, framework,\n  coalesce(v->>'rule', '') AS rule,\n  coalesce(v->>'title', '') AS title,\n  coalesce(v->>'severity', '') AS severity,\n  coalesce(v->>'result', v->>'status') AS result,\n  coalesce(v->>'actual', '') AS found,\n  coalesce(v->>'expected', '') AS expected,\n  run_at AS scanned\nFROM latest, jsonb_array_elements(violations) v\nORDER BY host, rule"
         }
       ],
       "options": {
@@ -389,6 +389,30 @@
               {
                 "id": "custom.width",
                 "value": 110
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "severity"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 100
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "title"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 420
               }
             ]
           }
