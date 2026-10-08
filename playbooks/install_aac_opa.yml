@@ -1,0 +1,309 @@
+---
+# ===========================================================================
+# install_aac_opa.yml — the AAC assessment OPA: one pod, the whole pinned
+# rego_policy_libraries release as a bundle, three Service names. #868,
+# Compliance as Code Phase 1 on #841.
+#
+#   ansible-playbook playbooks/install_aac_opa.yml -i inventory --limit sandbox \
+#     -e target_env=sandbox \
+#     --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
+#
+# Remove it again (the enforcement `opa` pod and AAP are untouched):
+#
+#   ... -e aac_opa_state=absent
+#
+# Every input is in inventory/group_vars/aap/aac.yml, which also says why one
+# pod and why not the enforcement pod. Runs after install_opa.yml only because
+# that playbook creates the namespace; nothing here depends on the enforcement
+# server and nothing here touches OPA_HOST or a template's opa_query_path.
+#
+# WHAT IS PROVEN BEFORE THIS RETURNS. The rollout alone is not trusted: each
+# Service is asked, through the API service proxy, for a framework's
+# `main.compliance_report` on EMPTY input, and the answer must be a populated
+# object that says non-compliant. An empty answer here is exactly the silent
+# failure an assessment would later store as a result.
+# ===========================================================================
+
+- name: Deploy the AAC assessment OPA
+  hosts: aap
+  gather_facts: false
+
+  environment:
+    K8S_AUTH_HOST: "{{ openshift_api_url }}"
+    K8S_AUTH_API_KEY: "{{ openshift_api_token }}"
+    K8S_AUTH_VERIFY_SSL: "{{ openshift_validate_certs | default(false) | bool }}"
+
+  vars:
+    aac_opa_state: present
+    aac_opa_wait_timeout: 900
+    _proxy_base: "{{ openshift_api_url }}/api/v1/namespaces/{{ aac_opa_namespace }}/services"
+
+  tasks:
+    - name: Confirm the inventory resolved to the environment you meant
+      ansible.builtin.include_tasks: tasks/assert_target_environment.yml
+
+    - name: Assert the inputs are set
+      ansible.builtin.assert:
+        that:
+          - openshift_api_url | default('') | length > 0
+          - openshift_api_token | default('') | length > 0
+          - policy_library_repo | default('') | length > 0
+          - policy_library_version | default('') | length > 0
+          - aac_opa_state in ['present', 'absent']
+        fail_msg: >-
+          openshift_api_url / openshift_api_token must be set for
+          '{{ aap_env_name | default("?") }}', policy_library_repo/version come
+          from opa_policy.yml, and aac_opa_state must be present or absent
+          (got '{{ aac_opa_state }}').
+        quiet: true
+      no_log: true
+
+    # -----------------------------------------------------------------------
+    # Removal
+    # -----------------------------------------------------------------------
+    - name: Remove the assessment OPA
+      when: aac_opa_state == 'absent'
+      block:
+        - name: Delete the Services
+          kubernetes.core.k8s:
+            state: absent
+            api_version: v1
+            kind: Service
+            name: "{{ item }}"
+            namespace: "{{ aac_opa_namespace }}"
+            wait: true
+          loop: "{{ aac_opa_services }}"
+
+        - name: Delete the Deployment
+          kubernetes.core.k8s:
+            state: absent
+            api_version: apps/v1
+            kind: Deployment
+            name: "{{ aac_opa_name }}"
+            namespace: "{{ aac_opa_namespace }}"
+            wait: true
+
+        - name: Stop here
+          ansible.builtin.meta: end_play
+
+    # -----------------------------------------------------------------------
+    # 1. The release must exist before anything rolls
+    # -----------------------------------------------------------------------
+    - name: Confirm the library release tarball is reachable
+      # From here, not only from the pod: a wrong tag would otherwise surface
+      # as an initContainer CrashLoop ten minutes into a wait.
+      ansible.builtin.uri:
+        url: "{{ aac_library_tarball }}"
+        method: HEAD
+        follow_redirects: all
+        status_code: 200
+
+    - name: Assert the namespace exists
+      kubernetes.core.k8s_info:
+        api_version: v1
+        kind: Namespace
+        name: "{{ aac_opa_namespace }}"
+      register: aac_ns
+      failed_when: aac_ns.resources | length == 0
+
+    # -----------------------------------------------------------------------
+    # 2. The server
+    # -----------------------------------------------------------------------
+    - name: Apply the Deployment
+      # The annotation rolls the pod when the pinned release or an image
+      # changes; OPA activates a bundle once at start.
+      kubernetes.core.k8s:
+        state: present
+        wait: true
+        wait_timeout: "{{ aac_opa_wait_timeout }}"
+        definition:
+          apiVersion: apps/v1
+          kind: Deployment
+          metadata:
+            name: "{{ aac_opa_name }}"
+            namespace: "{{ aac_opa_namespace }}"
+            labels:
+              app.kubernetes.io/name: "{{ aac_opa_name }}"
+              app.kubernetes.io/part-of: compliance-as-code
+            annotations:
+              sales-demos/policy-library: "{{ policy_library_repo }}@{{ policy_library_version }}"
+          spec:
+            replicas: 1
+            selector:
+              matchLabels:
+                app.kubernetes.io/name: "{{ aac_opa_name }}"
+            template:
+              metadata:
+                labels:
+                  app.kubernetes.io/name: "{{ aac_opa_name }}"
+                annotations:
+                  sales-demos/config-checksum: >-
+                    {{ (aac_library_tarball ~ opa_image ~ aac_fetch_image) | hash('sha256') }}
+              spec:
+                initContainers:
+                  # 1/3 fetch the pinned release into an emptyDir. Public repo,
+                  # no token. --strip-components drops the <repo>-<ver>/ top dir.
+                  - name: fetch
+                    image: "{{ aac_fetch_image }}"
+                    command: ["sh", "-c"]
+                    args:
+                      - >-
+                        curl -fsSL "$LIBRARY_TARBALL" | tar -xz --strip-components=1 -C /lib
+                        && test -d /lib/benchmarks && test -d /lib/frameworks
+                    env:
+                      - {name: LIBRARY_TARBALL, value: "{{ aac_library_tarball }}"}
+                    volumeMounts:
+                      - {name: lib, mountPath: /lib}
+                    securityContext: &restricted
+                      allowPrivilegeEscalation: false
+                      runAsNonRoot: true
+                      capabilities: {drop: ["ALL"]}
+                      seccompProfile: {type: RuntimeDefault}
+                    resources: &init_resources
+                      requests: {cpu: 100m, memory: 256Mi}
+                      limits: {memory: 768Mi}
+                  # 2/3 the library's own tests. A release that fails them never
+                  # serves; the previous pod keeps answering. The whole tree, not
+                  # a subset: tests reach across directories.
+                  - name: opa-test
+                    image: "{{ opa_image }}"
+                    args: ["test", "--ignore=.github", "--ignore=.*", "/lib"]
+                    volumeMounts:
+                      - {name: lib, mountPath: /lib, readOnly: true}
+                    securityContext: *restricted
+                    resources: *init_resources
+                  # 3/3 compile it once. Serving a bundle instead of a directory
+                  # is what makes startup seconds rather than the minutes a
+                  # per-file REST load takes.
+                  - name: opa-build
+                    image: "{{ opa_image }}"
+                    args: ["build", "--ignore=.github", "--ignore=.*", "-b", "/lib", "-o", "/bundles/aac.tar.gz"]
+                    volumeMounts:
+                      - {name: lib, mountPath: /lib, readOnly: true}
+                      - {name: bundles, mountPath: /bundles}
+                    securityContext: *restricted
+                    resources: *init_resources
+                containers:
+                  - name: opa
+                    image: "{{ opa_image }}"
+                    args:
+                      - run
+                      - --server
+                      - "--addr=:{{ aac_opa_port }}"
+                      - --log-format=json
+                      # No decision logs: an assessment input is a whole fact
+                      # document, not a launch decision, and would flood the log.
+                      - --bundle
+                      - /bundles/aac.tar.gz
+                    ports: "{{ [{'name': 'http', 'containerPort': aac_opa_port | int}] }}"
+                    # ?bundles: ready only once the bundle is ACTIVATED, not
+                    # merely once the process listens.
+                    readinessProbe:
+                      httpGet: {path: "/health?bundles=true", port: http}
+                      periodSeconds: 5
+                    livenessProbe:
+                      httpGet: {path: /health, port: http}
+                      periodSeconds: 20
+                    volumeMounts:
+                      - {name: bundles, mountPath: /bundles, readOnly: true}
+                    securityContext: *restricted
+                    resources:
+                      requests: {cpu: 100m, memory: 256Mi}
+                      limits: {memory: 768Mi}
+                volumes:
+                  - name: lib
+                    emptyDir: {sizeLimit: 256Mi}
+                  - name: bundles
+                    emptyDir: {sizeLimit: 64Mi}
+
+    - name: Apply the three Services
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: v1
+          kind: Service
+          metadata:
+            name: "{{ item }}"
+            namespace: "{{ aac_opa_namespace }}"
+            labels:
+              app.kubernetes.io/name: "{{ aac_opa_name }}"
+              app.kubernetes.io/part-of: compliance-as-code
+              compliance-as-code/bucket: "{{ item | regex_replace('^opa-', '') }}"
+          spec:
+            type: ClusterIP
+            selector:
+              app.kubernetes.io/name: "{{ aac_opa_name }}"
+            ports: "{{ [{'name': 'http', 'port': aac_opa_port | int, 'targetPort': 'http'}] }}"
+      loop: "{{ aac_opa_services }}"
+
+    - name: Assert the URL contract names the Services just created
+      # opa_security_url etc. are what every AAC playbook resolves. If someone
+      # renames a Service without the variable, the playbooks would still look
+      # green until the first assessment stored nothing.
+      ansible.builtin.assert:
+        that:
+          - opa_security_url is search('^http://opa-security\\.' ~ aac_opa_namespace ~ '\\.svc')
+          - opa_compliance_url is search('^http://opa-compliance\\.' ~ aac_opa_namespace ~ '\\.svc')
+          - opa_ot_url is search('^http://opa-ot\\.' ~ aac_opa_namespace ~ '\\.svc')
+        fail_msg: "aac.yml's opa_*_url do not point at the Services this playbook creates."
+        quiet: true
+
+    # -----------------------------------------------------------------------
+    # 3. Ask each Service, do not trust the rollout
+    # -----------------------------------------------------------------------
+    - name: Ask each Service for a framework report on EMPTY input
+      ansible.builtin.uri:
+        url: "{{ _proxy_base }}/http:{{ item.service }}:{{ aac_opa_port }}/proxy/v1/data/{{ item.key | replace('.', '/') }}/main/compliance_report"
+        method: POST
+        headers:
+          Authorization: "Bearer {{ openshift_api_token }}"
+        body_format: json
+        body: {input: {}}
+        validate_certs: "{{ openshift_validate_certs | default(false) | bool }}"
+        return_content: true
+      loop: "{{ aac_opa_smoke }}"
+      loop_control:
+        label: "{{ item.service }} {{ item.key }}"
+      register: aac_smoke
+      until: aac_smoke.status == 200
+      retries: 12
+      delay: 5
+
+    - name: Assert every answer is a populated, non-compliant report
+      # {} or undefined here is the collapse an assessment would store as an
+      # empty result. Non-compliant on no facts is the fail-closed contract.
+      ansible.builtin.assert:
+        that:
+          - item.json.result is defined
+          - item.json.result is mapping
+          - item.json.result | length > 0
+          - not (item.json.result.compliant | default(true) | bool)
+        fail_msg: >-
+          {{ item.item.service }}: {{ item.item.key }}/main/compliance_report on empty
+          input returned {{ item.json | default(item.content) | to_json | truncate(300) }} —
+          not a populated non-compliant report. Check the key against the pinned release.
+        quiet: true
+      loop: "{{ aac_smoke.results }}"
+      loop_control:
+        label: "{{ item.item.service }} {{ item.item.key }}"
+
+    - name: Assert CIS RHEL 9 reports every control failed on empty input
+      # The whole-input gate in cis_rhel9_main.rego: no facts means every one
+      # of its 224 controls is unverified, which is failed, not passed.
+      ansible.builtin.assert:
+        that:
+          - _cis.failed_controls == _cis.total_controls
+          - _cis.compliance_percentage == 0
+        fail_msg: "cis_rhel9 on empty input: {{ _cis | to_json | truncate(300) }}"
+        quiet: true
+      vars:
+        _cis: >-
+          {{ (aac_smoke.results | selectattr('item.key', 'equalto', 'cis_rhel9') | first).json.result }}
+
+    - name: Report
+      ansible.builtin.debug:
+        msg:
+          - "AAC assessment OPA: {{ aac_opa_name }} in {{ aac_opa_namespace }}, {{ policy_library_repo }}@{{ policy_library_version }}"
+          - "Services: {{ aac_opa_services | join(', ') }} (all :{{ aac_opa_port }})"
+          - "Smoke: {{ aac_smoke.results | length }} framework reports populated and non-compliant on empty input"
+          - "Enforcement (`opa`, OPA_HOST, opa_query_path) untouched — launch Policy as Code - Canary to confirm it is still blocked."

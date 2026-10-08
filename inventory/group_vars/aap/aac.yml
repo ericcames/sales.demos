@@ -1,0 +1,77 @@
+---
+# ============================================================================
+# group_vars/aap/aac.yml — Compliance as Code: the AAC assessment layer on
+# this platform (ericcames/sales.demos#841 Phase 1+, #868).
+# ============================================================================
+# Policy as Code (opa_policy.yml) answers "may this job run?". Compliance as
+# Code answers "how compliant is this host against framework X?" with the
+# ASSESSMENT policies of the same library, ynotbhatc/rego_policy_libraries,
+# at the same pinned release (policy_library_version). One library, one pin,
+# two questions.
+#
+# ONE POD, THREE SERVICE NAMES. AAC's playbooks route every framework to one
+# of three URLs — security, compliance, ot — and resolve them from variables,
+# never literals. The whole library builds into a single 1.2 MB bundle
+# (measured at main 2026-10-08), so this platform serves it from ONE
+# Deployment and gives it the three Service names the contract expects.
+# Splitting into three pods later is a replica/selector change, not a
+# contract change.
+#
+# WHY NOT THE ENFORCEMENT POD. The `opa` pod's rollout is gated by the
+# enforcement tests and it fails closed on every guarded template. Loading
+# ~970 assessment files into it would couple a demo rollout to the thing
+# that blocks jobs. Decision A on #841.
+#
+# HOW THE POLICIES GET IN. The library is far past a ConfigMap. An
+# initContainer fetches the release tarball from GitHub (public, no token)
+# into an emptyDir, a second runs the library's own tests, a third builds
+# the bundle, and the server runs it. A release that fails its tests fails
+# the rollout while the old pod keeps serving — same shape as install_opa.yml.
+# ============================================================================
+
+aac_opa_name: opa-assessment
+aac_opa_namespace: "{{ opa_namespace }}"
+aac_opa_port: 8181
+
+# The three names every AAC playbook resolves (opa_security_url /
+# opa_compliance_url / opa_ot_url). All select the same pod.
+aac_opa_services:
+  - opa-security
+  - opa-compliance
+  - opa-ot
+
+opa_security_url: "http://opa-security.{{ aac_opa_namespace }}.svc.cluster.local:{{ aac_opa_port }}"
+opa_compliance_url: "http://opa-compliance.{{ aac_opa_namespace }}.svc.cluster.local:{{ aac_opa_port }}"
+opa_ot_url: "http://opa-ot.{{ aac_opa_namespace }}.svc.cluster.local:{{ aac_opa_port }}"
+
+# The AO decision/routing OPA (#867, Phase 4). A name contract like the three
+# above; the server is deployed by its own playbook. Declared here so
+# ao_workflows_aac.yml can template its http_request URLs from one place.
+aac_opa_routing_url: "http://opa-routing.{{ aac_opa_namespace }}.svc.cluster.local:{{ aac_opa_port }}"
+
+# Fetches the release tarball. curl + busybox tar, about 10 MB; the only new
+# image pull this feature costs the node (probe_workloads.yml). Pinned by
+# digest: quay.io/curl/curl 8.22.0, 2026-09-02.
+aac_fetch_image: "quay.io/curl/curl@sha256:58adaa4e8dca9c988bae2aba4ab3434a0bb2da16bbe3f92dec39ec7785166777"
+
+aac_library_tarball: >-
+  https://github.com/{{ policy_library_repo }}/archive/refs/tags/{{ policy_library_version }}.tar.gz
+
+# WHAT A GREEN ROLLOUT DOES NOT PROVE. A framework key whose package does not
+# define `main.compliance_report` makes OPA answer {} — and an AAC assessment
+# that reads {} stores an EMPTY result instead of failing (the trap recorded
+# in the AAC repo's CLAUDE.md). So the install asks each service, per bucket,
+# and asserts a populated report on EMPTY input. Measured at library main
+# 2026-10-08: 81 of 88 `.main` entrypoints answer; the seven that do not
+# (digital_sovereignty, fisma, gdpr, hipaa, pci_dss, soc2, sox) are known
+# upstream and are deliberately not listed here.
+aac_opa_smoke:
+  - {service: opa-security, key: cis_rhel9}
+  - {service: opa-security, key: cis_windows_server_2022}
+  - {service: opa-security, key: stig.windows_server_2022}
+  - {service: opa-security, key: nist.sp800_53}
+  - {service: opa-compliance, key: fedramp}
+  - {service: opa-compliance, key: nis2}
+  - {service: opa-compliance, key: cis_controls_v8}
+  - {service: opa-ot, key: nist_800_82}
+  - {service: opa-ot, key: eu_ai_act}
