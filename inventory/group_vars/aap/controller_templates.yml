@@ -639,6 +639,29 @@ controller_templates_all:
     extra_vars:
       target_env: "{{ aap_env_name }}"
 
+  # THE EVIDENCE STORE (#851, #841 Phase 3c). A CloudNativePG PostgreSQL in
+  # policy-as-code that compliance grading writes to. No policy attached, like
+  # every install template: platform automation runs as admin, which the
+  # library denies by default. Needs CloudNativePG from install_ao.yml first.
+  - name: "AAP Ecosystem - Install Policy Evidence Store"
+    description: "Create the PostgreSQL evidence store for Policy as Code compliance grading (host_facts, assessments) on Ceph storage. Needs CloudNativePG from the AO install first."
+    labels:
+      - aap-ecosystem
+      - install
+      - policy
+    job_type: run
+    organization: "IT Service Automation"
+    inventory: "Sales Demo VMs"
+    project: "Sales Demos"
+    playbook: playbooks/install_policy_db.yml
+    execution_environment: "Sales Demos - OCP Virt EE"
+    credentials:
+      - "Sales Demos - Vault"
+      - "Sales Demos - Env Secrets"
+    limit: "{{ aap_env_name }}"
+    extra_vars:
+      target_env: "{{ aap_env_name }}"
+
   # POLICY AS CODE (#841). The guarded job. Its opa_query_path is NOT set
   # here — no collection module accepts that field yet — install_opa.yml
   # attaches it from opa_policy_associations in opa_policy.yml.
