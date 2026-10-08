@@ -84,6 +84,15 @@ probe_workloads:
       10Gi claim moved the node's free space by 16 MB. The postgres image is
       the one ao-db already pulled.
 
+  - name: "Policy as Code compliance dashboard (policy-as-code/policy-dashboard)"
+    cpu: 0.05
+    memory: 0.125
+    source: >-
+      DECLARED, not measured: the Grafana container's own requests in
+      playbooks/install_policy_dashboard.yml (50m / 128Mi). Opt-in (#859).
+      Disk is the cost to watch: a ~365 MiB image pull (grafana 13.1.7) on
+      the node's ~6 GiB headroom. Its data dir is an emptyDir capped at 256Mi.
+
   - name: "MCP gateway (mcp-gateway)"
     cpu: 0.5
     memory: 1.0

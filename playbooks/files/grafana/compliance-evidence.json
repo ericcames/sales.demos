@@ -1,0 +1,398 @@
+{
+  "uid": "compliance-evidence",
+  "title": "Policy as Code - Compliance Evidence",
+  "tags": [
+    "policy-as-code",
+    "compliance",
+    "sales-demos"
+  ],
+  "timezone": "browser",
+  "editable": false,
+  "graphTooltip": 1,
+  "schemaVersion": 41,
+  "version": 1,
+  "refresh": "1m",
+  "time": {
+    "from": "now-7d",
+    "to": "now"
+  },
+  "templating": {
+    "list": [
+      {
+        "name": "framework",
+        "label": "Framework",
+        "type": "query",
+        "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "policy-db"
+        },
+        "query": "SELECT DISTINCT framework FROM assessments ORDER BY 1",
+        "definition": "SELECT DISTINCT framework FROM assessments ORDER BY 1",
+        "refresh": 1,
+        "multi": true,
+        "includeAll": true,
+        "current": {
+          "selected": true,
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        }
+      }
+    ]
+  },
+  "annotations": {
+    "list": []
+  },
+  "links": [],
+  "panels": [
+    {
+      "id": 1,
+      "type": "text",
+      "title": "",
+      "gridPos": {
+        "h": 3,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "**Compliance evidence** from the demo VMs, as recorded by each Day 1 compliance scan in `policy-db` (sales.demos #841 Phase 3). Linux is graded by **OpenSCAP** (CIS L1 Server); Windows by **configuration verification** of CIS L1 controls. OPA grading of the same facts comes later. Every scan appends a row, so the history below is the audit trail."
+      }
+    },
+    {
+      "id": 2,
+      "type": "bargauge",
+      "title": "Latest score by host and framework",
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 0,
+        "y": 3
+      },
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "policy-db"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "policy-db"
+          },
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT DISTINCT ON (host, framework)\n  split_part(host, '.', 1) || ' \u00b7 ' || framework AS metric,\n  compliance_percentage AS score\nFROM assessments\nWHERE framework IN (${framework:sqlstring})\nORDER BY host, framework, run_at DESC"
+        }
+      ],
+      "options": {
+        "orientation": "horizontal",
+        "displayMode": "gradient",
+        "showUnfilled": true,
+        "valueMode": "color",
+        "namePlacement": "top",
+        "reduceOptions": {
+          "values": true,
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/^score$/"
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "decimals": 0,
+          "displayName": "${__data.fields.metric}",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 80
+              },
+              {
+                "color": "yellow",
+                "value": 95
+              },
+              {
+                "color": "green",
+                "value": 100
+              }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Open violations (latest scans)",
+      "gridPos": {
+        "h": 7,
+        "w": 6,
+        "x": 12,
+        "y": 3
+      },
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "policy-db"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "policy-db"
+          },
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "WITH latest AS (\n  SELECT DISTINCT ON (host, framework) violations FROM assessments\n  WHERE framework IN (${framework:sqlstring})\n  ORDER BY host, framework, run_at DESC\n)\nSELECT coalesce(sum(jsonb_array_length(violations)), 0) AS violations FROM latest"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "values": false,
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": ""
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 10
+              }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Scans recorded (time range)",
+      "gridPos": {
+        "h": 7,
+        "w": 6,
+        "x": 18,
+        "y": 3
+      },
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "policy-db"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "policy-db"
+          },
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT count(*) AS scans FROM assessments WHERE $__timeFilter(run_at) AND framework IN (${framework:sqlstring})"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "values": false,
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": ""
+        },
+        "colorMode": "none",
+        "graphMode": "none",
+        "textMode": "value"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "blue"
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Compliance % over time",
+      "gridPos": {
+        "h": 9,
+        "w": 24,
+        "x": 0,
+        "y": 10
+      },
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "policy-db"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "policy-db"
+          },
+          "refId": "A",
+          "format": "time_series",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT run_at AS time,\n  split_part(host, '.', 1) || ' \u00b7 ' || framework AS metric,\n  compliance_percentage AS value\nFROM assessments\nWHERE $__timeFilter(run_at) AND framework IN (${framework:sqlstring})\nORDER BY run_at"
+        }
+      ],
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "calcs": [
+            "lastNotNull",
+            "min"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "showPoints": "always",
+            "pointSize": 6,
+            "spanNulls": true
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 6,
+      "type": "table",
+      "title": "What is failing now (latest scan per host)",
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 19
+      },
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "policy-db"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "policy-db"
+          },
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "WITH latest AS (\n  SELECT DISTINCT ON (host, framework) host, framework, run_at, violations FROM assessments\n  WHERE framework IN (${framework:sqlstring})\n  ORDER BY host, framework, run_at DESC\n)\nSELECT split_part(host, '.', 1) AS host, framework,\n  coalesce(v->>'rule', '') AS rule,\n  coalesce(v->>'title', '') AS title,\n  coalesce(v->>'result', v->>'status') AS result,\n  coalesce(v->>'actual', '') AS found,\n  coalesce(v->>'expected', '') AS expected,\n  run_at AS scanned\nFROM latest, jsonb_array_elements(violations) v\nORDER BY host, rule"
+        }
+      ],
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm"
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      }
+    },
+    {
+      "id": 7,
+      "type": "table",
+      "title": "Assessment history",
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 29
+      },
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "policy-db"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "policy-db"
+          },
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT run_at AS scanned, split_part(host, '.', 1) AS host, framework, compliant,\n  compliance_percentage AS score,\n  jsonb_array_length(violations) AS violations\nFROM assessments\nWHERE $__timeFilter(run_at) AND framework IN (${framework:sqlstring})\nORDER BY run_at DESC\nLIMIT 500"
+        }
+      ],
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm"
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "score"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percent"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

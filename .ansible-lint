@@ -45,6 +45,10 @@ mock_modules:
   # configure_ao.yml asks an ao-worker pod for its SSRF allowlist (#621) —
   # the ConfigMap existing proves nothing about a pod started before it.
   - kubernetes.core.k8s_exec
+  # The evidence recorder (#857) and the dashboard's read-only role (#859)
+  # stage SQL files in the CNPG primary with this. #858 used it first and passed
+  # only because syntax-check does not follow a dynamic include_tasks.
+  - kubernetes.core.k8s_cp
   # serve_model.yml reads the Lightspeed chatbot pod log after a bounce to
   # assert the model registered successfully (#738).
   - kubernetes.core.k8s_log
