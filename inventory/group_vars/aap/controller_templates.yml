@@ -2171,3 +2171,32 @@ controller_templates_all:
   - name: "Windows Day 1 - 5 Check"
     organization: "IT Service Automation"
     state: absent
+
+  # ---------------------------------------------------------------------
+  # The AO decision OPA (#867, #841 Phase 4). Loads AAC's routing policies
+  # from the synced pack (aac/opa-routing/policies, #873) into one pod in
+  # policy-as-code; every AAC AO workflow's http_request node asks it for the
+  # route. Decision logs on: the decision is the demo's receipt. Opt-in;
+  # opa_routing_state=absent removes it.
+  # ---------------------------------------------------------------------
+  - name: "AAP Ecosystem - Install Compliance Routing Server"
+    description: >-
+      Deploy opa-routing, the OPA that decides the route in the AAC Automation
+      Orchestrator workflows, from aac/opa-routing/policies in this project.
+      Proves the policy overrides the agent on critical drift before returning.
+    labels:
+      - aap-ecosystem
+      - install
+    job_type: run
+    organization: "IT Service Automation"
+    inventory: "Sales Demo VMs"
+    project: "Sales Demos"
+    playbook: playbooks/install_opa_routing.yml
+    execution_environment: "Sales Demos - OCP Virt EE"
+    credentials:
+      - "Sales Demos - Vault"
+      - "Sales Demos - Env Secrets"
+    limit: "{{ aap_env_name }}"
+    ask_variables_on_launch: true
+    extra_vars:
+      target_env: "{{ aap_env_name }}"

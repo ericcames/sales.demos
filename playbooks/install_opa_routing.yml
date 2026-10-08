@@ -1,0 +1,307 @@
+---
+# ===========================================================================
+# install_opa_routing.yml — the AO decision OPA. #867, Compliance as Code
+# Phase 4 on #841.
+#
+#   ansible-playbook playbooks/install_opa_routing.yml -i inventory --limit sandbox \
+#     -e target_env=sandbox \
+#     --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
+#
+# Remove it again (nothing else is touched):
+#
+#   ... -e opa_routing_state=absent
+#
+# WHAT IT IS. Every AAC Automation Orchestrator workflow has the same spine:
+# an agentic node RECOMMENDS a route, an http_request node asks THIS server
+# for the DECISION, and a switch acts on the policy's verdict. The agent
+# proposes, the policy disposes. These are AAC's own routing policies
+# (`aac.golden.routing`, `aac.tanium.drift_routing`, `aac.ami.routing`,
+# `aac.mythos.scoring`, `aac.mythos.routing_v2`, `aac.gpuflex.routing`), not
+# the vendor-neutral library, so they do not come from rego_policy_libraries.
+# They come from aac/opa-routing/policies/ in this repository, which the
+# weekly AAC pack sync maintains (#873); their source is ynotbhatc/compliance.
+#
+# DECISION LOGS ON, DELIBERATELY. For the enforcement `opa` the log is a
+# capture tool and extra_vars are masked. Here the decision IS the demo's
+# receipt: the pod log shows the agent's recommendation and the policy's
+# route side by side, with `overrode_agent` when they differ. Nothing in
+# this input is a secret: drift flags, hostnames, severities.
+#
+# `data.aac.golden.config` (rollback_paused, authorized_change_hosts) is
+# seeded from golden_config.json and may be flipped live through the Data
+# API by `aac/playbooks/golden_image_set_rollback_pause.yml`; a rollout
+# resets it to the file, which is the documented behaviour.
+# ===========================================================================
+
+- name: Deploy the AO routing OPA
+  hosts: aap
+  gather_facts: false
+
+  environment:
+    K8S_AUTH_HOST: "{{ openshift_api_url }}"
+    K8S_AUTH_API_KEY: "{{ openshift_api_token }}"
+    K8S_AUTH_VERIFY_SSL: "{{ openshift_validate_certs | default(false) | bool }}"
+
+  vars:
+    opa_routing_state: present
+    opa_routing_name: opa-routing
+    opa_routing_namespace: "{{ opa_namespace }}"
+    opa_routing_port: "{{ opa_port }}"
+    opa_routing_src: "{{ playbook_dir }}/../aac/opa-routing/policies"
+    _proxy: >-
+      {{ openshift_api_url }}/api/v1/namespaces/{{ opa_routing_namespace }}/services/http:{{ opa_routing_name }}:{{ opa_routing_port }}/proxy
+
+  tasks:
+    - name: Confirm the inventory resolved to the environment you meant
+      ansible.builtin.include_tasks: tasks/assert_target_environment.yml
+
+    - name: Assert the inputs are set
+      ansible.builtin.assert:
+        that:
+          - openshift_api_url | default('') | length > 0
+          - openshift_api_token | default('') | length > 0
+          - opa_routing_state in ['present', 'absent']
+        fail_msg: >-
+          openshift_api_url / openshift_api_token must be set for
+          '{{ aap_env_name | default("?") }}', and opa_routing_state must be
+          present or absent (got '{{ opa_routing_state }}').
+        quiet: true
+      no_log: true
+
+    # -----------------------------------------------------------------------
+    # Removal
+    # -----------------------------------------------------------------------
+    - name: Remove the routing OPA
+      when: opa_routing_state == 'absent'
+      block:
+        - name: Delete its objects
+          kubernetes.core.k8s:
+            state: absent
+            api_version: "{{ item.api }}"
+            kind: "{{ item.kind }}"
+            name: "{{ item.name }}"
+            namespace: "{{ opa_routing_namespace }}"
+            wait: true
+          loop:
+            - {api: v1, kind: Service, name: "{{ opa_routing_name }}"}
+            - {api: apps/v1, kind: Deployment, name: "{{ opa_routing_name }}"}
+            - {api: v1, kind: ConfigMap, name: "{{ opa_routing_name }}-policies"}
+          loop_control:
+            label: "{{ item.kind }}/{{ item.name }}"
+
+        - name: Stop here
+          ansible.builtin.meta: end_play
+
+    # -----------------------------------------------------------------------
+    # 1. The policies, from the synced pack in this checkout
+    # -----------------------------------------------------------------------
+    - name: Find the routing policies
+      ansible.builtin.set_fact:
+        _routing_files: >-
+          {{ (query('ansible.builtin.fileglob', opa_routing_src ~ '/*.rego')
+              + query('ansible.builtin.fileglob', opa_routing_src ~ '/*.json')
+              + query('ansible.builtin.fileglob', opa_routing_src ~ '/tests/*.rego')) | sort }}
+
+    - name: Assert the pack is present
+      # The pack is a generated tree the weekly sync maintains (#873). Without
+      # it there is nothing to load, and a ConfigMap with no policies would
+      # make every AO decision node fail closed with a confusing 404.
+      ansible.builtin.assert:
+        that:
+          - _routing_files | length >= 8
+          - _routing_files | map('basename') | select('equalto', 'drift_routing.rego') | list | length == 1
+          - _routing_files | map('basename') | select('equalto', 'golden_config.json') | list | length == 1
+        fail_msg: >-
+          Expected the AAC routing policies under {{ opa_routing_src }} (eight
+          files plus tests), found {{ _routing_files | length }}. Has the AAC
+          pack been synced into aac/ (#873)?
+        quiet: true
+
+    # Keys cannot contain '/', so tests/x.rego is keyed by basename. OPA
+    # does not care where a module lives; the test container loads them all.
+    - name: Read each policy file
+      ansible.builtin.set_fact:
+        _routing_data: "{{ _routing_data | default({}) | combine({item | basename: lookup('ansible.builtin.file', item)}) }}"
+      loop: "{{ _routing_files }}"
+      loop_control:
+        label: "{{ item | basename }}"
+
+    # -----------------------------------------------------------------------
+    # 2. The server
+    # -----------------------------------------------------------------------
+    - name: Apply the policies ConfigMap
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: "{{ opa_routing_name }}-policies"
+            namespace: "{{ opa_routing_namespace }}"
+            labels:
+              app.kubernetes.io/name: "{{ opa_routing_name }}"
+              app.kubernetes.io/part-of: compliance-as-code
+          data: "{{ _routing_data }}"
+
+    - name: Apply the Deployment
+      kubernetes.core.k8s:
+        state: present
+        wait: true
+        wait_timeout: 300
+        definition:
+          apiVersion: apps/v1
+          kind: Deployment
+          metadata:
+            name: "{{ opa_routing_name }}"
+            namespace: "{{ opa_routing_namespace }}"
+            labels:
+              app.kubernetes.io/name: "{{ opa_routing_name }}"
+              app.kubernetes.io/part-of: compliance-as-code
+          spec:
+            replicas: 1
+            selector:
+              matchLabels:
+                app.kubernetes.io/name: "{{ opa_routing_name }}"
+            template:
+              metadata:
+                labels:
+                  app.kubernetes.io/name: "{{ opa_routing_name }}"
+                annotations:
+                  sales-demos/config-checksum: "{{ _routing_data | to_json | hash('sha256') }}"
+              spec:
+                initContainers:
+                  # The policies' own tests (16 at the first sync). A routing
+                  # policy that stops routing must fail the rollout, not send
+                  # every drift to auto-rollback in front of a customer.
+                  - name: opa-test
+                    image: "{{ opa_image }}"
+                    args: ["test", "--ignore=.*", "/policies"]
+                    volumeMounts:
+                      - {name: policies, mountPath: /policies, readOnly: true}
+                    securityContext: &restricted
+                      allowPrivilegeEscalation: false
+                      runAsNonRoot: true
+                      capabilities: {drop: ["ALL"]}
+                      seccompProfile: {type: RuntimeDefault}
+                    resources:
+                      requests: {cpu: 50m, memory: 64Mi}
+                      limits: {memory: 256Mi}
+                containers:
+                  - name: opa
+                    image: "{{ opa_image }}"
+                    args:
+                      - run
+                      - --server
+                      - "--addr=:{{ opa_routing_port }}"
+                      - --ignore=.*
+                      - --log-format=json
+                      # The decision is the receipt (see the header).
+                      - --set=decision_logs.console=true
+                      - /policies
+                    ports: "{{ [{'name': 'http', 'containerPort': opa_routing_port | int}] }}"
+                    readinessProbe:
+                      httpGet: {path: /health, port: http}
+                      periodSeconds: 5
+                    livenessProbe:
+                      httpGet: {path: /health, port: http}
+                      periodSeconds: 20
+                    volumeMounts:
+                      - {name: policies, mountPath: /policies, readOnly: true}
+                    securityContext: *restricted
+                    resources:
+                      requests: {cpu: 50m, memory: 128Mi}
+                      limits: {memory: 256Mi}
+                volumes:
+                  - name: policies
+                    configMap: {name: "{{ opa_routing_name }}-policies"}
+
+    - name: Apply the Service
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: v1
+          kind: Service
+          metadata:
+            name: "{{ opa_routing_name }}"
+            namespace: "{{ opa_routing_namespace }}"
+            labels:
+              app.kubernetes.io/name: "{{ opa_routing_name }}"
+              app.kubernetes.io/part-of: compliance-as-code
+          spec:
+            type: ClusterIP
+            selector:
+              app.kubernetes.io/name: "{{ opa_routing_name }}"
+            ports: "{{ [{'name': 'http', 'port': opa_routing_port | int, 'targetPort': 'http'}] }}"
+
+    # -----------------------------------------------------------------------
+    # 3. Ask it, do not trust the rollout: the policy must override the agent
+    # -----------------------------------------------------------------------
+    - name: Ask the golden-image routing policy three questions
+      ansible.builtin.uri:
+        url: "{{ _proxy }}/v1/data/aac/golden/routing/decision"
+        method: POST
+        headers:
+          Authorization: "Bearer {{ openshift_api_token }}"
+        body_format: json
+        body:
+          input: "{{ item.input }}"
+        validate_certs: "{{ openshift_validate_certs | default(false) | bool }}"
+        return_content: true
+      loop:
+        # The agent says auto; the drift is critical; the policy must say approve.
+        - label: "critical drift, agent says auto → approve"
+          expect: approve
+          input: {agent: {recommended_route: auto_rollback}, facts: {any_drift: true, critical_drift: true, baseline_compliant: true, drifted_key: sshd_config, target_host: demo}}
+        # Routine drift with a sound baseline: auto is permitted.
+        - label: "routine drift → auto"
+          expect: auto
+          input: {agent: {recommended_route: auto_rollback}, facts: {any_drift: true, critical_drift: false, baseline_compliant: true, drifted_key: motd, target_host: demo}}
+        # No usable baseline: never auto, send a human.
+        - label: "no baseline → investigate"
+          expect: investigate
+          input: {agent: {recommended_route: auto_rollback}, facts: {any_drift: true, critical_drift: false, baseline_compliant: false, drifted_key: motd, target_host: demo}}
+      loop_control:
+        label: "{{ item.label }}"
+      register: _routing_smoke
+      until: _routing_smoke.status == 200
+      retries: 12
+      delay: 5
+
+    - name: Assert each route, and that the override is recorded
+      ansible.builtin.assert:
+        that:
+          - item.json.result.route == item.item.expect
+          - item.json.result.authority == 'policy'
+          - (item.json.result.overrode_agent | bool) == (item.item.expect != 'auto')
+        fail_msg: "{{ item.item.label }}: got {{ item.json.result | to_json }}"
+        quiet: true
+      loop: "{{ _routing_smoke.results }}"
+      loop_control:
+        label: "{{ item.item.label }}"
+
+    - name: Ask the Tanium drift policy with nothing proven
+      # Fail-closed to a human: missing facts land in front of a person.
+      ansible.builtin.uri:
+        url: "{{ _proxy }}/v1/data/aac/tanium/drift_routing/decision"
+        method: POST
+        headers:
+          Authorization: "Bearer {{ openshift_api_token }}"
+        body_format: json
+        body: {input: {}}
+        validate_certs: "{{ openshift_validate_certs | default(false) | bool }}"
+        return_content: true
+      register: _tanium_smoke
+
+    - name: Assert the empty case routes to approval
+      ansible.builtin.assert:
+        that:
+          - _tanium_smoke.json.result.route == 'approve_remediate'
+        fail_msg: "tanium drift_routing on {}: {{ _tanium_smoke.json.result | to_json }}"
+        quiet: true
+
+    - name: Report
+      ansible.builtin.debug:
+        msg:
+          - "opa-routing in {{ opa_routing_namespace }}: {{ _routing_data | length }} files from aac/opa-routing/policies"
+          - "URL for AO http_request nodes: http://{{ opa_routing_name }}.{{ opa_routing_namespace }}.svc.cluster.local:{{ opa_routing_port }} (aac_opa_routing_url)"
+          - "Smoke: policy overrode the agent on critical drift, allowed routine drift, sent no-baseline to investigate; Tanium fails closed to a human."
