@@ -29,6 +29,16 @@
 # the rollout while the old pod keeps serving — same shape as install_opa.yml.
 # ============================================================================
 
+# THE AAC PACK. ynotbhatc/compliance is private; what this platform consumes
+# from it is published to a small PUBLIC repository by the AAC lab's weekly
+# sync, scrubbed on export, and pinned here by tag exactly like
+# policy_library_version. Playbooks (an AAP project), the opa-routing
+# policies, the evidence schema and the AO workflow definitions all resolve
+# through these two lines. Moving to a new pack is one line.
+aac_pack_repo: ynotbhatc/aac-pack
+aac_pack_version: v2026.10.08
+aac_pack_raw: "https://raw.githubusercontent.com/{{ aac_pack_repo }}/{{ aac_pack_version }}"
+
 aac_opa_name: opa-assessment
 aac_opa_namespace: "{{ opa_namespace }}"
 aac_opa_port: 8181
