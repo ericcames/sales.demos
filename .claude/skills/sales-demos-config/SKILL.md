@@ -54,12 +54,16 @@ non-check path (#173).
 mkdir -p ~/ansible-logs
 LOGFILE=~/ansible-logs/validate-${ENV:-sandbox}-$(date +%F-%H%M).log
 
-ANSIBLE_LOG_PATH="$LOGFILE" ./utilities/run-ansible.sh playbooks/validate.yml --check \
-  -i inventory --limit ${ENV:-sandbox} \
-  -e target_env=${ENV:-sandbox} \
-  --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
-echo "Validate log: $LOGFILE"
+utilities/run-in-ee.sh --with-hub-token playbooks/validate.yml --check \
+  -i inventory --limit ${ENV:-sandbox} -e target_env=${ENV:-sandbox} \
+  --vault-id sales.demos@~/secrets/.vault_pass_sales_demos \
+  > "$LOGFILE" 2>&1; echo "rc=$? Validate log: $LOGFILE"
 ```
+
+From the EE, the same as the run below (#853). The laptop equivalent swaps
+`utilities/run-in-ee.sh --with-hub-token` for
+`ANSIBLE_LOG_PATH="$LOGFILE" ./utilities/run-ansible.sh`. The EE is also where
+#173's check-mode behaviour actually applies, because it runs AAP's ansible-core.
 
 **Skip the validate step only when you already know what failed** — a credential
 type that AAP refuses to modify (see below), or a re-run after fixing a single
@@ -71,40 +75,49 @@ variable. Otherwise run it.
 |---|---|---|
 | `ENV` (inventory limit) | `sandbox` | Which environment to target — `sandbox` or `demo` |
 
-## Run
+## Run — from the EE (default)
+
+Run it in the execution environment AAP uses. That gets the same ansible-core,
+Python and collections as production, and it doesn't depend on the laptop's
+Python or local callback plugins (#853):
 
 ```bash
 mkdir -p ~/ansible-logs
-LOGFILE=~/ansible-logs/config-${ENV:-sandbox}-$(date +%F-%H%M).log
+LOGFILE=~/ansible-logs/config-${ENV:-sandbox}-ee-$(date +%F-%H%M).log
 
+utilities/run-in-ee.sh --with-hub-token playbooks/config.yml \
+  -i inventory --limit ${ENV:-sandbox} -e target_env=${ENV:-sandbox} \
+  --vault-id sales.demos@~/secrets/.vault_pass_sales_demos \
+  > "$LOGFILE" 2>&1; echo "rc=$? Log: $LOGFILE"
+```
+
+**`--with-hub-token` is required.** `config.yml` evaluates
+`automation_hub_token` through the hub remote templates. Without it,
+`run-in-ee.sh` fails with `Invalid filename: 'None'`.
+
+**Run it from the main checkout.** `playbooks/group_vars/all/secrets.yml` and
+`local.yml` are gitignored, so a worktree does not have them.
+
+Logs live outside the repo, in `~/ansible-logs/`. Tell the user the path.
+**Never pipe the run through `tee`.** In a pipeline the exit status comes from
+`tee`, not the playbook, so a failed run reports success. Redirect instead, as
+above. It takes about 2 minutes.
+
+### Alternative: straight from the laptop
+
+Same arguments, laptop dependency set. Use it only when the EE is unavailable,
+and don't treat it as verification. It resolves `~/.ansible/collections` and the
+system Python, not what AAP runs (#120):
+
+```bash
 ANSIBLE_LOG_PATH="$LOGFILE" ./utilities/run-ansible.sh playbooks/config.yml \
   -i inventory --limit ${ENV:-sandbox} \
   -e target_env=${ENV:-sandbox} \
   --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
-echo "Log: $LOGFILE"
 ```
 
-**Always set `ANSIBLE_LOG_PATH`** — the log is the only evidence left if it
-fails. Logs live outside the repo, in `~/ansible-logs/`. Tell the user the path.
-
-**Never pipe the run through `tee`.** In a pipeline the exit status comes from
-`tee`, not `ansible-playbook`, so a failed run reports success.
-
-Tell the user this takes about 2 minutes and stream the output.
-
-## Verify it in the EE before merging a change
-
-See `/sales-demos-verify-ee` for why and how. The one command:
-
-```bash
-utilities/run-in-ee.sh --with-hub-token playbooks/config.yml \
-  -i inventory --limit sandbox -e target_env=sandbox \
-  --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
-```
-
-**`--with-hub-token` is required** — `config.yml` evaluates
-`automation_hub_token` via the hub remote templates. Without it, `run-in-ee.sh`
-fails with `Invalid filename: 'None'`.
+Before merging a change, the EE run above is the pre-merge check. See
+`/sales-demos-verify-ee` for why.
 
 ## Verify against AAP, not the recap
 
@@ -144,10 +157,11 @@ config is applied.
 | `{'playbook': ['Playbook not found for project.']}` | The SCM project is stale | The playbook syncs it (#148), but if the sync itself failed, check the project in the AAP UI |
 | `Modifications to inputs are not allowed for credential types that are in use` | AAP refuses to modify a credential type's `inputs` when credentials exist | Delete the credential, then the credential type, via the API or AAP UI, then re-run — dispatch recreates both |
 | A partial failure left some objects applied and others not | `infra.aap_configuration` applies objects in order; a failure mid-run is a partial apply | Re-run — dispatch is idempotent. The already-applied objects report `ok` |
-| `check mode and async cannot be used on same task` | Running `validate.yml` without `--check` on ansible-core 2.16 | Add `--check` — it is required (#173) |
+| `check mode and async cannot be used on same task` | Running `validate.yml` without `--check` on ansible-core 2.16, or a gateway role that sets `async` unconditionally | Add `--check`; it's required (#173). If it still fails on a `gateway_*` role, add that role's wildcard var to the core < 2.17 skips in `validate.yml` (#854) |
 | `Default choice must be answered from the choices listed` | AAP server-side survey validation rejected a default value | The `no_log` censoring hides this — re-run with `-e aap_configuration_secure_logging=false`, then fix the survey_spec |
 | `Attempting to decrypt but no vault secrets found` | `--vault-id` missing from the command | Add `--vault-id sales.demos@~/secrets/.vault_pass_sales_demos` |
 | `KeyError: 'id'` in `ah_ee_repository.py` | validate.yml on a never-configured environment — the registry hasn't been created yet (#106) | Run `config.yml` first, then `validate.yml --check` passes cleanly |
+| `TypeError: function() argument 'code' must be code, not str` from a `callback/*.py`, before any task runs | The laptop's Python or ansible-core can't load a callback plugin (seen with Python 3.14 and a local stdout callback that subclasses `community.general.yaml`, #853) | Run from the EE as shown above; nothing in the repo is wrong |
 | `401` / `Unauthorized` on the first task | RHDP bearer token expired, or wrong password in the vault | Refresh `openshift_api_token` / `aap_password` in the vault |
 
 ### Deleting a credential type that AAP refuses to modify
