@@ -54,6 +54,9 @@ controller_labels_all:
     organization: "IT Service Automation"
   - name: policy
     organization: "IT Service Automation"
+  # The MCP surface — the AAP MCP server and what connects to it (#867).
+  - name: mcp
+    organization: "IT Service Automation"
 
   # --- phase ----------------------------------------------------------
   - name: install

@@ -2171,3 +2171,32 @@ controller_templates_all:
   - name: "Windows Day 1 - 5 Check"
     organization: "IT Service Automation"
     state: absent
+
+  # ---------------------------------------------------------------------
+  # Automation Orchestrator ↔ the AAP MCP server (#867, #841 Phase 4). Gives
+  # AO an mcp_server integration for this platform's AnsibleMCPServer, with a
+  # rotating AAP gateway token held only in the AO credential. The AAC
+  # agentic nodes attach it. Opt-in; re-run to rotate; aac_mcp_state=absent
+  # removes it and retires the tokens.
+  # ---------------------------------------------------------------------
+  - name: "AAP Ecosystem - Connect Automation Orchestrator to the MCP Server"
+    description: >-
+      Create or rotate the AO mcp_server integration and its bearer-token
+      credential for this platform's AAP MCP server, allowlist its in-cluster
+      name, run tool discovery, and prove the integration lists tools.
+    labels:
+      - aap-ecosystem
+      - mcp
+    job_type: run
+    organization: "IT Service Automation"
+    inventory: "Sales Demo VMs"
+    project: "Sales Demos"
+    playbook: playbooks/ao_mcp_integration.yml
+    execution_environment: "Sales Demos - OCP Virt EE"
+    credentials:
+      - "Sales Demos - Vault"
+      - "Sales Demos - Env Secrets"
+    limit: "{{ aap_env_name }}"
+    ask_variables_on_launch: true
+    extra_vars:
+      target_env: "{{ aap_env_name }}"
