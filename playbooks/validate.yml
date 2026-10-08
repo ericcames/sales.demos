@@ -295,6 +295,38 @@
           - "A laptop run on core 2.17 or newer covers the organizations too."
       when: ansible_version.full is version('2.17', '<')
 
+    - name: Skip the three RBAC roles on an ansible-core that rejects async in check mode
+      # SAME BUG AND SAME FIX AS THE ORGANIZATIONS SKIP ABOVE (#854).
+      # gateway_teams, gateway_users and gateway_role_user_assignments also set
+      # `async: 1000` unconditionally, with no check-mode guard and no timeout
+      # variable, so aap_configuration_async_timeout cannot reach them. They
+      # began running when #841 added policy_demo_rbac.yml, and from then on
+      # this playbook died in the EE on `app-team` before validating anything
+      # after it.
+      #
+      # The wildcard SOURCE vars are emptied, as above. Those `_all` vars in
+      # policy_demo_rbac.yml are the only sources today.
+      #
+      # WHAT IS NOT VALIDATED AS A RESULT: the team, the user and the team
+      # membership in policy_demo_rbac.yml. controller_roles, the job-template
+      # execute grant for app-team, is still validated.
+      ansible.builtin.set_fact:
+        aap_teams_all: []
+        aap_user_accounts_all: []
+        gateway_role_user_assignments_all: []
+      when: ansible_version.full is version('2.17', '<')
+
+    - name: Say so, loudly, about the RBAC skip
+      ansible.builtin.debug:
+        msg:
+          - "ansible-core {{ ansible_version.full }} rejects async in check mode."
+          - "SKIPPING gateway_teams, gateway_users and gateway_role_user_assignments"
+          - "for this run: each sets async unconditionally (#854)."
+          - ""
+          - "NOT VALIDATED THIS RUN: the team, user and membership in"
+          - "policy_demo_rbac.yml. A laptop run on core 2.17 or newer covers them."
+      when: ansible_version.full is version('2.17', '<')
+
     - name: Dispatch in check mode (reports intended changes, applies nothing)
       # Basic auth on purpose. dispatch supports it directly, so no OAuth token
       # is minted — which means there is nothing to leak and nothing to clean
