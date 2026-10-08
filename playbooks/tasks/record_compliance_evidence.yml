@@ -1,0 +1,191 @@
+---
+# ===========================================================================
+# record_compliance_evidence.yml — write one scan's result into the Policy as
+# Code evidence store (policy-db, #851). #857, #841 Phase 3.
+#
+# Included at the end of linux_compliance_scan.yml and
+# windows_compliance_scan.yml, once per guest. The caller sets:
+#
+#   evidence_framework   e.g. openscap-cis-l1-rhel9
+#   evidence_compliant   bool
+#   evidence_score       number, 0-100
+#   evidence_violations  list — what failed, in the scanner's own words
+#   evidence_facts       dict — upserted into host_facts (the input a policy
+#                        reads later), one row per host and framework
+#
+# RUNS IN THE JOB'S EE, NOT ON THE GUEST. Delegated to localhost and written
+# through k8s_cp + psql on the CloudNativePG primary — the path
+# install_policy_db.yml already uses — so it needs no postgres collection,
+# no EE rebuild, and no database password: the Kubernetes API is the auth.
+#
+# THE CLUSTER COMES FROM THE CONTROL HOST. A guest has no openshift_api_url of
+# its own; register_hosts.yml gives it `env_name`, and `<env>-local` carries
+# the effective value that config.yml wrote from local.yml.
+# openshift_api_token arrives as an extra var from the Env Secrets credential
+# both scan templates carry.
+#
+# OPT-IN BY PRESENCE, AND NEVER THE REASON A SCAN FAILS. No policy-db: say so
+# and skip. A write that fails: warn loudly and carry on. The scan is the
+# Day 1 workflow's job; a Phase 3 add-on must not be able to turn it red.
+# ===========================================================================
+
+- name: Record compliance evidence in policy-db
+  delegate_to: localhost
+  # The Linux scan play runs with become; sudo does not exist in the EE.
+  become: false
+  vars:
+    # READ KEYS, NEVER THE WHOLE hostvars ENTRY. Templating the control host's
+    # hostvars as one dict evaluates every variable it has, including the
+    # Automation Hub token lookup into ~/.ansible.cfg, which does not exist in
+    # a job pod. Measured: the whole-dict form failed with "Invalid filename:
+    # 'None'" (#857).
+    _pe_ctl_name: "{{ (env_name | default('')) ~ '-local' }}"
+    _pe_has_ctl: "{{ _pe_ctl_name in hostvars }}"
+    _pe_api_url: "{{ hostvars[_pe_ctl_name].openshift_api_url | default('') if _pe_has_ctl else '' }}"
+    _pe_namespace: "{{ hostvars[_pe_ctl_name].opa_namespace | default('policy-as-code') if _pe_has_ctl else 'policy-as-code' }}"
+    # The same names install_policy_db.yml creates (its play vars).
+    _pe_cluster: "policy-db"
+    _pe_database: "compliance"
+    _pe_owner: "compliance"
+    # The guest's interpreter must not follow the task to localhost: the
+    # kubernetes client is in the EE's own python.
+    ansible_python_interpreter: "{{ ansible_playbook_python }}"
+  environment:
+    K8S_AUTH_HOST: "{{ _pe_api_url }}"
+    K8S_AUTH_API_KEY: "{{ openshift_api_token | default('') }}"
+    K8S_AUTH_VERIFY_SSL: "{{ (hostvars[_pe_ctl_name].openshift_validate_certs | default(false) if _pe_has_ctl else false) | bool }}"
+  block:
+    - name: Check the cluster connection is available
+      ansible.builtin.set_fact:
+        _pe_ready: >-
+          {{ (_pe_api_url | length > 0)
+             and (openshift_api_token | default('') | length > 0) }}
+
+    - name: Say why evidence is not recorded
+      ansible.builtin.debug:
+        msg: >-
+          Not recording compliance evidence for {{ inventory_hostname }}: no
+          cluster connection (env_name '{{ env_name | default("?") }}', or no
+          openshift_api_token — the Env Secrets credential).
+      when: not _pe_ready | bool
+
+    - name: Look for the evidence store
+      kubernetes.core.k8s_info:
+        api_version: postgresql.cnpg.io/v1
+        kind: Cluster
+        name: "{{ _pe_cluster }}"
+        namespace: "{{ _pe_namespace }}"
+      register: _pe_db
+      when: _pe_ready | bool
+
+    - name: Say the evidence store is not installed
+      ansible.builtin.debug:
+        msg: >-
+          policy-db is not installed in {{ _pe_namespace }}, so this scan is not
+          recorded. Launch 'AAP Ecosystem - Install Policy Evidence Store' to
+          start keeping evidence (#851).
+      when:
+        - _pe_ready | bool
+        - _pe_db.resources | default([]) | length == 0
+
+    - name: Write the evidence
+      when:
+        - _pe_ready | bool
+        - _pe_db.resources | default([]) | length > 0
+      vars:
+        # Dollar-quoting carries the JSON verbatim, with no escaping to get
+        # wrong. The tag is asserted absent from the payload below.
+        _pe_tag: "$sales_demos_evidence$"
+        _pe_facts_json: "{{ evidence_facts | to_json }}"
+        _pe_violations_json: "{{ evidence_violations | to_json }}"
+        _pe_sql_path: "/controller/tmp/evidence-{{ inventory_hostname }}.sql"
+      block:
+        - name: Assert the inputs are safe to put in SQL
+          ansible.builtin.assert:
+            that:
+              - inventory_hostname is match('^[A-Za-z0-9._-]+$')
+              - evidence_framework is match('^[a-z0-9._-]+$')
+              - evidence_score | float >= 0
+              - evidence_score | float <= 100
+              - _pe_tag not in _pe_facts_json
+              - _pe_tag not in _pe_violations_json
+            fail_msg: >-
+              Refusing to build SQL from host '{{ inventory_hostname }}',
+              framework '{{ evidence_framework }}', score '{{ evidence_score }}'.
+            quiet: true
+
+        - name: Find the primary
+          kubernetes.core.k8s_info:
+            kind: Pod
+            namespace: "{{ _pe_namespace }}"
+            label_selectors:
+              - "cnpg.io/cluster={{ _pe_cluster }}"
+              - "cnpg.io/instanceRole=primary"
+          register: _pe_primary
+          failed_when: _pe_primary.resources | length != 1
+
+        - name: Stage the statement in the primary
+          # A file, not `psql -c`: one exec argument is capped at 128 KiB and
+          # a guest's facts can approach that. /controller/tmp is the writable
+          # emptyDir CNPG gives the container; the root filesystem is read-only.
+          kubernetes.core.k8s_cp:
+            namespace: "{{ _pe_namespace }}"
+            pod: "{{ _pe_primary.resources[0].metadata.name }}"
+            container: postgres
+            remote_path: "{{ _pe_sql_path }}"
+            state: to_pod
+            content: |
+              BEGIN;
+              SET ROLE {{ _pe_owner }};
+              INSERT INTO host_facts (host, framework, collected_at, facts)
+                VALUES ('{{ inventory_hostname }}', '{{ evidence_framework }}', now(),
+                        {{ _pe_tag }}{{ _pe_facts_json }}{{ _pe_tag }}::jsonb)
+                ON CONFLICT (host, framework)
+                DO UPDATE SET collected_at = EXCLUDED.collected_at, facts = EXCLUDED.facts;
+              INSERT INTO assessments (host, framework, compliant, compliance_percentage, violations)
+                VALUES ('{{ inventory_hostname }}', '{{ evidence_framework }}',
+                        {{ 'true' if evidence_compliant | bool else 'false' }},
+                        {{ evidence_score | float }},
+                        {{ _pe_tag }}{{ _pe_violations_json }}{{ _pe_tag }}::jsonb)
+                RETURNING id;
+              COMMIT;
+
+        - name: Apply it
+          kubernetes.core.k8s_exec:
+            namespace: "{{ _pe_namespace }}"
+            pod: "{{ _pe_primary.resources[0].metadata.name }}"
+            container: postgres
+            # -U postgres: peer auth maps the local socket to that role only
+            # (install_policy_db.yml). -q keeps only RETURNING's id on stdout.
+            command: "psql -U postgres -v ON_ERROR_STOP=1 -qtA -d {{ _pe_database }} -f {{ _pe_sql_path }}"
+          register: _pe_write
+          failed_when: _pe_write.rc != 0
+          changed_when: true
+
+        - name: Report what was recorded
+          ansible.builtin.debug:
+            msg: >-
+              Recorded {{ evidence_framework }} for {{ inventory_hostname }} in
+              {{ _pe_cluster }}: assessment {{ _pe_write.stdout | trim }},
+              compliant={{ evidence_compliant | bool }}, score={{ evidence_score }},
+              {{ evidence_violations | length }} violation(s).
+
+      always:
+        - name: Remove the staged statement
+          kubernetes.core.k8s_exec:
+            namespace: "{{ _pe_namespace }}"
+            pod: "{{ _pe_primary.resources[0].metadata.name }}"
+            container: postgres
+            command: "rm -f {{ _pe_sql_path }}"
+          when: _pe_primary.resources | default([]) | length == 1
+          changed_when: false
+          failed_when: false
+
+  rescue:
+    - name: Warn that the evidence was NOT recorded
+      # Loud, not fatal — see the header. The scan result above still stands.
+      ansible.builtin.debug:
+        msg:
+          - "WARNING: compliance evidence for {{ inventory_hostname }} was NOT recorded in policy-db."
+          - "Failed task: {{ ansible_failed_task.name | default('?') }}"
+          - "Error: {{ ansible_failed_result.msg | default(ansible_failed_result.stderr | default('?')) }}"

@@ -33,3 +33,45 @@
 
   roles:
     - windows_compliance
+
+  post_tasks:
+    # -----------------------------------------------------------------------
+    # Keep the result as evidence (#857), the same way the Linux scan does.
+    # Opt-in by presence; see tasks/record_compliance_evidence.yml.
+    #
+    # NOT REACHED when windows_compliance_fail_on_noncompliant fires, because
+    # that gate fails the host first. It is off by default.
+    # -----------------------------------------------------------------------
+    - name: Record the verification in policy-db
+      ansible.builtin.include_tasks: tasks/record_compliance_evidence.yml
+      vars:
+        evidence_framework: cis-l1-windows2022-verify
+        # Same definition as the job artifact the role publishes (#613).
+        evidence_compliant: >-
+          {{ (windows_compliance_fail | int) == 0
+             and (windows_compliance_notconfigured | int) == 0 }}
+        evidence_score: "{{ windows_compliance_score | int }}"
+        evidence_violations: >-
+          {{ windows_compliance_results
+             | selectattr('status', 'in', ['noncompliant', 'notconfigured', 'error']) | list }}
+        evidence_facts: >-
+          {{ {
+               'scanner': 'configuration verification (no OpenSCAP agent exists for Windows)',
+               'profile': windows_compliance_profile,
+               'profile_source': windows_compliance_profile_source,
+               'scanned': ansible_facts.date_time.iso8601,
+               'results': {
+                 'pass': windows_compliance_pass | int,
+                 'fail': windows_compliance_fail | int,
+                 'not_configured': windows_compliance_notconfigured | int,
+                 'notchecked': windows_compliance_errors | int,
+                 'score_percent': windows_compliance_score | int,
+               },
+               'controls': windows_compliance_results,
+               'exceptions': windows_compliance_exceptions,
+               'host': {
+                 'os': ansible_facts.os_name | default(none),
+                 'version': ansible_facts.distribution_version | default(none),
+                 'golden_image': golden_image_source | default(none, true),
+               },
+             } }}
