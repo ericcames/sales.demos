@@ -1,0 +1,285 @@
+---
+# ============================================================================
+# group_vars/aap/compliance_as_code.yml — the AAP objects for Compliance as
+# Code, tranche 1 (ericcames/sales.demos#841 Phases 3–5; #867).
+# ============================================================================
+# ONE FILE, FOUR WILDCARD LISTS, NONE OF THEM YOURS. dispatch merges every
+# controller_<kind>_* variable (dispatch_include_wildcard_vars, aap_settings.yml),
+# so the credential type, credentials, job templates and workflow below live
+# here under an `_aac` suffix and never touch controller_templates.yml or the
+# other shared files. Remove this file and config.yml stops managing them.
+#
+# THE PLAYBOOKS ARE THE SYNCED PACK. Every template runs aac/playbooks/<name>
+# from project "Sales Demos" — the generated tree the weekly AAC pack sync
+# maintains (#873). Their source is ynotbhatc/compliance; they are not edited
+# here.
+#
+# WHAT THEY NEED, AND WHERE IT COMES FROM:
+#   - the evidence database (#869): one credential, "Compliance as Code -
+#     Evidence Database", injects pg_host / pg_port / pg_db / pg_user /
+#     pg_password (and compliance_db_password, the older name some playbooks
+#     read). The host is policy-db's read-write Service; the password is
+#     env_secrets[<env>].aac_db_password.
+#   - the cluster, for the Golden Image family: "Compliance as Code -
+#     OpenShift", a stock Kubernetes bearer-token credential built from
+#     openshift_api_url and env_secrets[<env>].openshift_api_token, which
+#     kubernetes.core reads as K8S_AUTH_*.
+#   - opa-routing (#874): aac_opa_routing_url from aac.yml, passed as
+#     opa_routing_url where a playbook calls it.
+#   - community.postgresql in the EE (#875) — until the EE is rebuilt with
+#     it, every template here fails at its first database task.
+#
+# NAMES ARE THE CONTRACT. The AO workflows (ao_workflows_aac.yml) name these
+# templates; the loader resolves them to IDs. Rename here, rename there.
+#
+# HONEST LIMIT. The Golden Image Check / Rollback / Notify playbooks read a
+# `demo-rhel9` Deployment through the Kubernetes API — the AAC lab's target.
+# This platform has no such Deployment, so those three run but find nothing
+# until Phase 5 on #841 re-points them at the CNV guests. They are here so
+# the AO workflows that name them can load and be rehearsed.
+# ============================================================================
+
+# Launch-time default for the Golden Image family. Phase 5 replaces it with a
+# guest; until then it names the lab's target so the plays are honest about
+# what they are looking for.
+aac_golden_target_host: "demo-rhel9"
+
+# What an AAC agentic node may do through the MCP server it attaches (#867).
+# The real guard is the SERVER's write posture (aap_mcp_allow_write_operations,
+# per environment); this is stated here, not defaulted in the loader, so the
+# choice is visible beside the workflows that use it.
+aac_agentic_tool_strategy: "ALL"
+
+controller_credential_types_aac:
+  - name: "Compliance as Code - Evidence Database"
+    description: "Connection to the AAC evidence database `aac` in policy-db (#869). Injected as the pg_* extra_vars the AAC playbooks read."
+    kind: cloud
+    inputs:
+      fields:
+        - id: pg_host
+          type: string
+          label: "PostgreSQL host"
+          help_text: "The policy-db read-write Service, e.g. policy-db-rw.policy-as-code.svc"
+        - id: pg_port
+          type: string
+          label: "PostgreSQL port"
+        - id: pg_db
+          type: string
+          label: "Database"
+        - id: pg_user
+          type: string
+          label: "Role"
+        - id: pg_password
+          type: string
+          label: "Password"
+          secret: true
+          help_text: "env_secrets[<env>].aac_db_password — the same value install_aac_db.yml sets on the role."
+    injectors:
+      extra_vars:
+        pg_host: "{  { pg_host }}"
+        pg_port: "{  { pg_port }}"
+        pg_db: "{  { pg_db }}"
+        pg_user: "{  { pg_user }}"
+        pg_password: "{  { pg_password }}"
+        compliance_db_password: "{  { pg_password }}"
+
+controller_credentials_aac:
+  - name: "Compliance as Code - Evidence Database"
+    description: "The `aac` database in policy-db, as role `aac` (#869)."
+    organization: "IT Service Automation"
+    credential_type: "Compliance as Code - Evidence Database"
+    inputs:
+      pg_host: "policy-db-rw.{{ opa_namespace }}.svc"
+      pg_port: "5432"
+      pg_db: "aac"
+      pg_user: "aac"
+      pg_password: "{{ env_secrets[aap_env_name].aac_db_password | default('') }}"
+
+  - name: "Compliance as Code - OpenShift"
+    description: "This environment's cluster, for the AAC playbooks that read it with kubernetes.core (K8S_AUTH_* from this credential)."
+    organization: "IT Service Automation"
+    credential_type: "OpenShift or Kubernetes API Bearer Token"
+    inputs:
+      host: "{{ openshift_api_url }}"
+      bearer_token: "{{ env_secrets[aap_env_name].openshift_api_token }}"
+      verify_ssl: false
+
+# Shared shape for every template below.
+_aac_template_defaults: &aac_template
+  job_type: run
+  organization: "IT Service Automation"
+  inventory: "Sales Demo VMs"
+  project: "Sales Demos"
+  execution_environment: "Sales Demos - OCP Virt EE"
+  labels:
+    - compliance
+  ask_variables_on_launch: true
+
+controller_templates_aac:
+  - <<: *aac_template
+    name: "Compliance as Code - Record AI Decision"
+    description: "Write one agent decision (recommendation, policy verdict, approval, outcome) to ai_action_log in the evidence database — the receipt every AAC AO workflow ends with."
+    playbook: aac/playbooks/record_ai_decision.yml
+    credentials:
+      - "Sales Demos - Vault"
+      - "Compliance as Code - Evidence Database"
+
+  - <<: *aac_template
+    name: "Compliance as Code - Identify Affected Components"
+    description: "Match a CVE list against the software catalog in the evidence database and publish blast radius, severity, KEV and vendor-fix facts as set_stats for the Mythos agents."
+    playbook: aac/playbooks/identify_affected_components.yml
+    credentials:
+      - "Sales Demos - Vault"
+      - "Compliance as Code - Evidence Database"
+
+  - <<: *aac_template
+    name: "Compliance as Code - Simulate Patch Risk"
+    description: "Score patch risk per host and environment and write the heat-map cells to the evidence database (Mythos investigate route)."
+    playbook: aac/playbooks/simulate_patch_lifecycle.yml
+    credentials:
+      - "Sales Demos - Vault"
+      - "Compliance as Code - Evidence Database"
+
+  - <<: *aac_template
+    name: "Compliance as Code - CIP-008 Incident Response"
+    description: "Open a CIP-008 incident record with forensic evidence in the evidence database (AMI Golden Meter bad-actor route)."
+    playbook: aac/playbooks/cip_008_incident_response.yml
+    credentials:
+      - "Sales Demos - Vault"
+      - "Compliance as Code - Evidence Database"
+
+  - <<: *aac_template
+    name: "Compliance as Code - Current State Query"
+    description: "Answer the question an endpoint-management tool answers — what is on this host right now — from the evidence database instead of an agent (Tanium comparison)."
+    playbook: aac/playbooks/current_state_query_macaap.yml
+    credentials:
+      - "Sales Demos - Vault"
+      - "Compliance as Code - Evidence Database"
+    extra_vars:
+      target_host: "{{ aac_golden_target_host }}"
+
+  - <<: *aac_template
+    name: "Compliance as Code - Golden Image Store Evidence"
+    description: "Record a governed-drift outcome (compliant, auto-remediated, approved, rejected) as evidence."
+    playbook: aac/playbooks/golden_image_store_evidence_macaap.yml
+    credentials:
+      - "Sales Demos - Vault"
+      - "Compliance as Code - Evidence Database"
+    extra_vars:
+      target_host: "{{ aac_golden_target_host }}"
+
+  - <<: *aac_template
+    name: "Compliance as Code - Golden Image Rollback Pause"
+    description: "Flip the managed-change hold in opa-routing (rollback_paused, authorized_change_hosts) live through the OPA Data API — the `hold` route."
+    playbook: aac/playbooks/golden_image_set_rollback_pause.yml
+    credentials:
+      - "Sales Demos - Vault"
+    extra_vars:
+      opa_routing_url: "{{ aac_opa_routing_url }}"
+
+  # The three below read a demo-rhel9 Deployment through the Kubernetes API
+  # (see the header). Phase 5 re-points them at the CNV guests.
+  - <<: *aac_template
+    name: "Compliance as Code - Golden Image Check"
+    description: >-
+      Compare the monitored golden file on the target with the approved
+      baseline in the evidence database; publishes any_drift / critical_drift /
+      drifted_key / baseline_compliant as set_stats. Targets demo-rhel9 until
+      Phase 5.
+    playbook: aac/playbooks/golden_image_check_macaap.yml
+    credentials:
+      - "Sales Demos - Vault"
+      - "Compliance as Code - Evidence Database"
+      - "Compliance as Code - OpenShift"
+    extra_vars:
+      target_host: "{{ aac_golden_target_host }}"
+
+  - <<: *aac_template
+    name: "Compliance as Code - Golden Image Rollback"
+    description: "Restore the monitored golden file on the target from the approved baseline. Targets demo-rhel9 until Phase 5."
+    playbook: aac/playbooks/golden_image_rollback_macaap.yml
+    credentials:
+      - "Sales Demos - Vault"
+      - "Compliance as Code - Evidence Database"
+      - "Compliance as Code - OpenShift"
+    extra_vars:
+      target_host: "{{ aac_golden_target_host }}"
+
+  - <<: *aac_template
+    name: "Compliance as Code - Notify Help Desk"
+    description: "Open, update or close the help-desk record for a drift event in the evidence database (action: open | close | held)."
+    playbook: aac/playbooks/golden_image_notify_helpdesk_macaap.yml
+    credentials:
+      - "Sales Demos - Vault"
+      - "Compliance as Code - Evidence Database"
+    extra_vars:
+      target_host: "{{ aac_golden_target_host }}"
+
+# The AAP workflow the Golden Image and Tanium AO workflows call through an
+# aap_workflow_job_template node when the policy says `auto`: check → roll
+# back → notify → verify → close. Mirrors the lab's AAC_GoldenImage_Enforcement
+# without its project-sync head node (config.yml syncs the project here).
+controller_workflows_aac:
+  - name: "Compliance as Code - Golden Image Enforcement"
+    description: >-
+      Enforce the golden image on a host: check for drift, roll back, open the
+      help-desk record, verify the host is back on baseline, close the record.
+      Started by the AO workflows on the policy's `auto` route, or by hand.
+    organization: "IT Service Automation"
+    labels:
+      - compliance
+    inventory: "Sales Demo VMs"
+    ask_variables_on_launch: true
+    destroy_current_nodes: true
+    extra_vars:
+      target_host: "{{ aac_golden_target_host }}"
+    related:
+      workflow_nodes:
+        - identifier: check
+          unified_job_template:
+            name: "Compliance as Code - Golden Image Check"
+            type: job_template
+            organization:
+              name: "IT Service Automation"
+          related:
+            success_nodes:
+              - identifier: rollback
+        - identifier: rollback
+          unified_job_template:
+            name: "Compliance as Code - Golden Image Rollback"
+            type: job_template
+            organization:
+              name: "IT Service Automation"
+          extra_data:
+            auto_rollback: "true"
+          related:
+            always_nodes:
+              - identifier: notify
+        - identifier: notify
+          unified_job_template:
+            name: "Compliance as Code - Notify Help Desk"
+            type: job_template
+            organization:
+              name: "IT Service Automation"
+          related:
+            always_nodes:
+              - identifier: verify
+        - identifier: verify
+          unified_job_template:
+            name: "Compliance as Code - Golden Image Check"
+            type: job_template
+            organization:
+              name: "IT Service Automation"
+          extra_data:
+            fail_on_drift: true
+          related:
+            success_nodes:
+              - identifier: close
+        - identifier: close
+          unified_job_template:
+            name: "Compliance as Code - Notify Help Desk"
+            type: job_template
+            organization:
+              name: "IT Service Automation"
+          extra_data:
+            action: close
