@@ -10,7 +10,7 @@
   "editable": false,
   "graphTooltip": 1,
   "schemaVersion": 41,
-  "version": 1,
+  "version": 2,
   "refresh": "1m",
   "time": {
     "from": "now-7d",
@@ -87,7 +87,7 @@
           "format": "table",
           "rawQuery": true,
           "editorMode": "code",
-          "rawSql": "SELECT DISTINCT ON (host, framework)\n  split_part(host, '.', 1) || ' \u00b7 ' || framework AS metric,\n  compliance_percentage AS score\nFROM assessments\nWHERE framework IN (${framework:sqlstring})\nORDER BY host, framework, run_at DESC"
+          "rawSql": "SELECT DISTINCT ON (host, framework)\n  regexp_replace(split_part(host, '.', 1), '-[0-9a-f]{6}-.*$', '') || ' \u00b7 ' || framework AS metric,\n  compliance_percentage AS score\nFROM assessments\nWHERE framework IN (${framework:sqlstring})\nORDER BY host, framework, run_at DESC"
         }
       ],
       "options": {
@@ -101,7 +101,7 @@
           "calcs": [
             "lastNotNull"
           ],
-          "fields": "/^score$/"
+          "fields": ""
         }
       },
       "fieldConfig": {
@@ -277,7 +277,7 @@
           "format": "time_series",
           "rawQuery": true,
           "editorMode": "code",
-          "rawSql": "SELECT run_at AS time,\n  split_part(host, '.', 1) || ' \u00b7 ' || framework AS metric,\n  compliance_percentage AS value\nFROM assessments\nWHERE $__timeFilter(run_at) AND framework IN (${framework:sqlstring})\nORDER BY run_at"
+          "rawSql": "SELECT run_at AS time,\n  regexp_replace(split_part(host, '.', 1), '-[0-9a-f]{6}-.*$', '') || ' \u00b7 ' || framework AS metric,\n  compliance_percentage AS value\nFROM assessments\nWHERE $__timeFilter(run_at) AND framework IN (${framework:sqlstring})\nORDER BY run_at"
         }
       ],
       "options": {
@@ -333,7 +333,7 @@
           "format": "table",
           "rawQuery": true,
           "editorMode": "code",
-          "rawSql": "WITH latest AS (\n  SELECT DISTINCT ON (host, framework) host, framework, run_at, violations FROM assessments\n  WHERE framework IN (${framework:sqlstring})\n  ORDER BY host, framework, run_at DESC\n)\nSELECT split_part(host, '.', 1) AS host, framework,\n  coalesce(v->>'rule', '') AS rule,\n  coalesce(v->>'title', '') AS title,\n  coalesce(v->>'result', v->>'status') AS result,\n  coalesce(v->>'actual', '') AS found,\n  coalesce(v->>'expected', '') AS expected,\n  run_at AS scanned\nFROM latest, jsonb_array_elements(violations) v\nORDER BY host, rule"
+          "rawSql": "WITH latest AS (\n  SELECT DISTINCT ON (host, framework) host, framework, run_at, violations FROM assessments\n  WHERE framework IN (${framework:sqlstring})\n  ORDER BY host, framework, run_at DESC\n)\nSELECT regexp_replace(split_part(host, '.', 1), '-[0-9a-f]{6}-.*$', '') AS host, framework,\n  coalesce(v->>'rule', '') AS rule,\n  coalesce(v->>'title', '') AS title,\n  coalesce(v->>'result', v->>'status') AS result,\n  coalesce(v->>'actual', '') AS found,\n  coalesce(v->>'expected', '') AS expected,\n  run_at AS scanned\nFROM latest, jsonb_array_elements(violations) v\nORDER BY host, rule"
         }
       ],
       "options": {
@@ -342,7 +342,56 @@
       },
       "fieldConfig": {
         "defaults": {},
-        "overrides": []
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "host"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 120
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "framework"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 230
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "rule"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 360
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "result"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 110
+              }
+            ]
+          }
+        ]
       }
     },
     {
@@ -369,7 +418,7 @@
           "format": "table",
           "rawQuery": true,
           "editorMode": "code",
-          "rawSql": "SELECT run_at AS scanned, split_part(host, '.', 1) AS host, framework, compliant,\n  compliance_percentage AS score,\n  jsonb_array_length(violations) AS violations\nFROM assessments\nWHERE $__timeFilter(run_at) AND framework IN (${framework:sqlstring})\nORDER BY run_at DESC\nLIMIT 500"
+          "rawSql": "SELECT run_at AS scanned, regexp_replace(split_part(host, '.', 1), '-[0-9a-f]{6}-.*$', '') AS host, framework, compliant,\n  compliance_percentage AS score,\n  jsonb_array_length(violations) AS violations\nFROM assessments\nWHERE $__timeFilter(run_at) AND framework IN (${framework:sqlstring})\nORDER BY run_at DESC\nLIMIT 500"
         }
       ],
       "options": {
