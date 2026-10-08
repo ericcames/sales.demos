@@ -9,10 +9,13 @@
 # here under an `_aac` suffix and never touch controller_templates.yml or the
 # other shared files. Remove this file and config.yml stops managing them.
 #
-# THE PLAYBOOKS ARE THE SYNCED PACK. Every template runs aac/playbooks/<name>
-# from project "Sales Demos" — the generated tree the weekly AAC pack sync
-# maintains (#873). Their source is ynotbhatc/compliance; they are not edited
-# here.
+# THE PLAYBOOKS ARE THE PUBLIC AAC PACK. A second AAP project, "AAC", tracks
+# ynotbhatc/aac-pack at the tag aac_pack_version pins in aac.yml — the same
+# one-string binding this repo already uses for rego_policy_libraries and
+# the golden images. Every template runs playbooks/<name> from that project.
+# The pack is published weekly from the private ynotbhatc/compliance by a
+# scrubbing exporter; nothing in it is edited here. Moving to a new pack is
+# the one line in aac.yml.
 #
 # WHAT THEY NEED, AND WHERE IT COMES FROM:
 #   - the evidence database (#869): one credential, "Compliance as Code -
@@ -49,6 +52,20 @@ aac_golden_target_host: "demo-rhel9"
 # per environment); this is stated here, not defaulted in the loader, so the
 # choice is visible beside the workflows that use it.
 aac_agentic_tool_strategy: "ALL"
+
+controller_projects_aac:
+  - name: "AAC"
+    description: "The public AAC pack, ynotbhatc/aac-pack, pinned at aac_pack_version (aac.yml). Playbooks for the Compliance as Code templates."
+    organization: "IT Service Automation"
+    scm_type: git
+    scm_url: "https://github.com/{{ aac_pack_repo }}.git"
+    scm_branch: "{{ aac_pack_version }}"
+    scm_clean: true
+    scm_delete_on_update: true
+    # The pin is the update. A tag does not move, so a launch-time sync would
+    # only cost time; config.yml re-syncs when aac_pack_version changes.
+    scm_update_on_launch: false
+    default_environment: "Sales Demos - OCP Virt EE"
 
 controller_credential_types_aac:
   - name: "Compliance as Code - Evidence Database"
@@ -109,7 +126,7 @@ _aac_template_defaults: &aac_template
   job_type: run
   organization: "IT Service Automation"
   inventory: "Sales Demo VMs"
-  project: "Sales Demos"
+  project: "AAC"
   execution_environment: "Sales Demos - OCP Virt EE"
   labels:
     - compliance
@@ -119,7 +136,7 @@ controller_templates_aac:
   - <<: *aac_template
     name: "Compliance as Code - Record AI Decision"
     description: "Write one agent decision (recommendation, policy verdict, approval, outcome) to ai_action_log in the evidence database — the receipt every AAC AO workflow ends with."
-    playbook: aac/playbooks/record_ai_decision.yml
+    playbook: playbooks/record_ai_decision.yml
     credentials:
       - "Sales Demos - Vault"
       - "Compliance as Code - Evidence Database"
@@ -127,7 +144,7 @@ controller_templates_aac:
   - <<: *aac_template
     name: "Compliance as Code - Identify Affected Components"
     description: "Match a CVE list against the software catalog in the evidence database and publish blast radius, severity, KEV and vendor-fix facts as set_stats for the Mythos agents."
-    playbook: aac/playbooks/identify_affected_components.yml
+    playbook: playbooks/identify_affected_components.yml
     credentials:
       - "Sales Demos - Vault"
       - "Compliance as Code - Evidence Database"
@@ -135,7 +152,7 @@ controller_templates_aac:
   - <<: *aac_template
     name: "Compliance as Code - Simulate Patch Risk"
     description: "Score patch risk per host and environment and write the heat-map cells to the evidence database (Mythos investigate route)."
-    playbook: aac/playbooks/simulate_patch_lifecycle.yml
+    playbook: playbooks/simulate_patch_lifecycle.yml
     credentials:
       - "Sales Demos - Vault"
       - "Compliance as Code - Evidence Database"
@@ -143,7 +160,7 @@ controller_templates_aac:
   - <<: *aac_template
     name: "Compliance as Code - CIP-008 Incident Response"
     description: "Open a CIP-008 incident record with forensic evidence in the evidence database (AMI Golden Meter bad-actor route)."
-    playbook: aac/playbooks/cip_008_incident_response.yml
+    playbook: playbooks/cip_008_incident_response.yml
     credentials:
       - "Sales Demos - Vault"
       - "Compliance as Code - Evidence Database"
@@ -151,7 +168,7 @@ controller_templates_aac:
   - <<: *aac_template
     name: "Compliance as Code - Current State Query"
     description: "Answer the question an endpoint-management tool answers — what is on this host right now — from the evidence database instead of an agent (Tanium comparison)."
-    playbook: aac/playbooks/current_state_query_macaap.yml
+    playbook: playbooks/current_state_query_macaap.yml
     credentials:
       - "Sales Demos - Vault"
       - "Compliance as Code - Evidence Database"
@@ -161,7 +178,7 @@ controller_templates_aac:
   - <<: *aac_template
     name: "Compliance as Code - Golden Image Store Evidence"
     description: "Record a governed-drift outcome (compliant, auto-remediated, approved, rejected) as evidence."
-    playbook: aac/playbooks/golden_image_store_evidence_macaap.yml
+    playbook: playbooks/golden_image_store_evidence_macaap.yml
     credentials:
       - "Sales Demos - Vault"
       - "Compliance as Code - Evidence Database"
@@ -171,7 +188,7 @@ controller_templates_aac:
   - <<: *aac_template
     name: "Compliance as Code - Golden Image Rollback Pause"
     description: "Flip the managed-change hold in opa-routing (rollback_paused, authorized_change_hosts) live through the OPA Data API — the `hold` route."
-    playbook: aac/playbooks/golden_image_set_rollback_pause.yml
+    playbook: playbooks/golden_image_set_rollback_pause.yml
     credentials:
       - "Sales Demos - Vault"
     extra_vars:
@@ -186,7 +203,7 @@ controller_templates_aac:
       baseline in the evidence database; publishes any_drift / critical_drift /
       drifted_key / baseline_compliant as set_stats. Targets demo-rhel9 until
       Phase 5.
-    playbook: aac/playbooks/golden_image_check_macaap.yml
+    playbook: playbooks/golden_image_check_macaap.yml
     credentials:
       - "Sales Demos - Vault"
       - "Compliance as Code - Evidence Database"
@@ -197,7 +214,7 @@ controller_templates_aac:
   - <<: *aac_template
     name: "Compliance as Code - Golden Image Rollback"
     description: "Restore the monitored golden file on the target from the approved baseline. Targets demo-rhel9 until Phase 5."
-    playbook: aac/playbooks/golden_image_rollback_macaap.yml
+    playbook: playbooks/golden_image_rollback_macaap.yml
     credentials:
       - "Sales Demos - Vault"
       - "Compliance as Code - Evidence Database"
@@ -208,7 +225,7 @@ controller_templates_aac:
   - <<: *aac_template
     name: "Compliance as Code - Notify Help Desk"
     description: "Open, update or close the help-desk record for a drift event in the evidence database (action: open | close | held)."
-    playbook: aac/playbooks/golden_image_notify_helpdesk_macaap.yml
+    playbook: playbooks/golden_image_notify_helpdesk_macaap.yml
     credentials:
       - "Sales Demos - Vault"
       - "Compliance as Code - Evidence Database"
