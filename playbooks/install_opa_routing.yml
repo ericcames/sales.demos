@@ -18,8 +18,9 @@
 # (`aac.golden.routing`, `aac.tanium.drift_routing`, `aac.ami.routing`,
 # `aac.mythos.scoring`, `aac.mythos.routing_v2`, `aac.gpuflex.routing`), not
 # the vendor-neutral library, so they do not come from rego_policy_libraries.
-# They come from aac/opa-routing/policies/ in this repository, which the
-# weekly AAC pack sync maintains (#873); their source is ynotbhatc/compliance.
+# They come from the public AAC pack, ynotbhatc/aac-pack, at the tag
+# aac_pack_version pins in aac.yml — fetched the way install_opa.yml fetches
+# the library, no token, no checkout. Their source is ynotbhatc/compliance.
 #
 # DECISION LOGS ON, DELIBERATELY. For the enforcement `opa` the log is a
 # capture tool and extra_vars are masked. Here the decision IS the demo's
@@ -47,7 +48,19 @@
     opa_routing_name: opa-routing
     opa_routing_namespace: "{{ opa_namespace }}"
     opa_routing_port: "{{ opa_port }}"
-    opa_routing_src: "{{ playbook_dir }}/../aac/opa-routing/policies"
+    # The pack's routing directory: eight policies, the data file and the
+    # tests. Listed, not globbed: a fetch cannot list a directory, and a file
+    # that goes missing upstream must fail here, loudly.
+    opa_routing_files:
+      - routing.rego
+      - drift_routing.rego
+      - gpuflex_routing.rego
+      - tanium_drift_routing.rego
+      - ami_routing.rego
+      - mythos_scoring.rego
+      - mythos_routing_v2.rego
+      - golden_config.json
+      - tests/drift_routing_test.rego
     _proxy: >-
       {{ openshift_api_url }}/api/v1/namespaces/{{ opa_routing_namespace }}/services/http:{{ opa_routing_name }}:{{ opa_routing_port }}/proxy
 
@@ -93,38 +106,33 @@
           ansible.builtin.meta: end_play
 
     # -----------------------------------------------------------------------
-    # 1. The policies, from the synced pack in this checkout
+    # 1. The policies, from the public pack at the pinned tag
     # -----------------------------------------------------------------------
-    - name: Find the routing policies
-      ansible.builtin.set_fact:
-        _routing_files: >-
-          {{ (query('ansible.builtin.fileglob', opa_routing_src ~ '/*.rego')
-              + query('ansible.builtin.fileglob', opa_routing_src ~ '/*.json')
-              + query('ansible.builtin.fileglob', opa_routing_src ~ '/tests/*.rego')) | sort }}
+    - name: Fetch the routing policies at {{ aac_pack_version }}
+      ansible.builtin.uri:
+        url: "{{ aac_pack_raw }}/opa-routing/policies/{{ item }}"
+        return_content: true
+      loop: "{{ opa_routing_files }}"
+      register: _routing_fetched
 
-    - name: Assert the pack is present
-      # The pack is a generated tree the weekly sync maintains (#873). Without
-      # it there is nothing to load, and a ConfigMap with no policies would
-      # make every AO decision node fail closed with a confusing 404.
+    - name: Build the ConfigMap payload
+      # Keys cannot contain '/', so tests/x.rego is keyed by basename. OPA
+      # does not care where a module lives; the test container loads them all.
+      ansible.builtin.set_fact:
+        _routing_data: >-
+          {{ dict(_routing_fetched.results | map(attribute='item') | map('basename')
+                  | zip(_routing_fetched.results | map(attribute='content'))) }}
+
+    - name: Assert the fetch returned policies, not an error page
       ansible.builtin.assert:
         that:
-          - _routing_files | length >= 8
-          - _routing_files | map('basename') | select('equalto', 'drift_routing.rego') | list | length == 1
-          - _routing_files | map('basename') | select('equalto', 'golden_config.json') | list | length == 1
+          - _routing_data['drift_routing.rego'] is search('package aac.golden.routing')
+          - _routing_data['golden_config.json'] | from_json is mapping
         fail_msg: >-
-          Expected the AAC routing policies under {{ opa_routing_src }} (eight
-          files plus tests), found {{ _routing_files | length }}. Has the AAC
-          pack been synced into aac/ (#873)?
+          The files fetched from {{ aac_pack_raw }}/opa-routing/policies/ do not
+          look like the AAC routing policies. Check aac_pack_repo / aac_pack_version
+          in aac.yml.
         quiet: true
-
-    # Keys cannot contain '/', so tests/x.rego is keyed by basename. OPA
-    # does not care where a module lives; the test container loads them all.
-    - name: Read each policy file
-      ansible.builtin.set_fact:
-        _routing_data: "{{ _routing_data | default({}) | combine({item | basename: lookup('ansible.builtin.file', item)}) }}"
-      loop: "{{ _routing_files }}"
-      loop_control:
-        label: "{{ item | basename }}"
 
     # -----------------------------------------------------------------------
     # 2. The server
@@ -302,6 +310,6 @@
     - name: Report
       ansible.builtin.debug:
         msg:
-          - "opa-routing in {{ opa_routing_namespace }}: {{ _routing_data | length }} files from aac/opa-routing/policies"
+          - "opa-routing in {{ opa_routing_namespace }}: {{ _routing_data | length }} files from {{ aac_pack_repo }}@{{ aac_pack_version }}"
           - "URL for AO http_request nodes: http://{{ opa_routing_name }}.{{ opa_routing_namespace }}.svc.cluster.local:{{ opa_routing_port }} (aac_opa_routing_url)"
           - "Smoke: policy overrode the agent on critical drift, allowed routine drift, sent no-baseline to investigate; Tanium fails closed to a human."

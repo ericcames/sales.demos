@@ -2174,7 +2174,7 @@ controller_templates_all:
 
   # ---------------------------------------------------------------------
   # The AO decision OPA (#867, #841 Phase 4). Loads AAC's routing policies
-  # from the synced pack (aac/opa-routing/policies, #873) into one pod in
+  # from the public AAC pack at the pinned tag (aac.yml) into one pod in
   # policy-as-code; every AAC AO workflow's http_request node asks it for the
   # route. Decision logs on: the decision is the demo's receipt. Opt-in;
   # opa_routing_state=absent removes it.
@@ -2182,7 +2182,7 @@ controller_templates_all:
   - name: "AAP Ecosystem - Install Compliance Routing Server"
     description: >-
       Deploy opa-routing, the OPA that decides the route in the AAC Automation
-      Orchestrator workflows, from aac/opa-routing/policies in this project.
+      Orchestrator workflows, from the public AAC pack at the pinned tag.
       Proves the policy overrides the agent on critical drift before returning.
     labels:
       - aap-ecosystem
