@@ -207,7 +207,9 @@
       # Each task is one community.postgresql call: `query:` (or a loop of
       # queries), or `postgresql_script: path:`. The same text the lab applies.
       ansible.builtin.set_fact:
-        _schema_sql: >-
+        # A LITERAL block, not a folded one: folding joins lines, and a SQL
+        # comment line (`-- …`) would then swallow the statement after it.
+        _schema_sql: |
           {% set out = [] -%}
           {% for t in _schema_tasks -%}
             {% set q = t['community.postgresql.postgresql_query'] | default({}) -%}
@@ -222,6 +224,7 @@
           {% endfor -%}
           SET ROLE {{ aac_db_owner }};
           {% for stmt in out %}{{ stmt | trim | regex_replace(';\s*$', '') }};
+
           {% endfor %}
 
     - name: Assert the schema rendered
