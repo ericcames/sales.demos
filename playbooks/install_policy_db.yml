@@ -1,0 +1,267 @@
+---
+# ===========================================================================
+# install_policy_db.yml — the Policy as Code evidence store. #851, #841 Phase 3c.
+#
+#   ansible-playbook playbooks/install_policy_db.yml -i inventory --limit sandbox \
+#     -e target_env=sandbox \
+#     --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
+#
+# Remove it again (the PVC goes with it):
+#
+#   ... -e policy_db_state=absent
+#
+# Grading compliance needs somewhere to keep what was graded: `host_facts` is
+# the input each framework's policy reads, `assessments` every result. Fact
+# shaping writes the first, the auditor the second, and Grafana reads both.
+# Opt-in, and not a setup.yml stage until Phase 3 proves it.
+#
+# WHY ON THE CLUSTER, NOT EC2 OR RDS. The "only ~6.7 GB free" concern raised in
+# the 2026-10-07 meeting is the NODE ROOT DISK: images, logs, emptyDir. PVCs
+# are not on it. They bind to `ocs-external-storagecluster-ceph-rbd`, the
+# shared RHDP Ceph, where AAP's own postgres and AO's `ao-db` already live.
+# Measured on sandbox in #851: 9.1 GiB written to a 10Gi claim moved the
+# node's free space by 16 MB, which is ordinary log churn.
+#
+# WHY NOT AAP'S POSTGRES, OR AO'S. Same reason install_ao.yml gives for its
+# own: another operator owns those and reconciles them at will. A separate
+# CloudNativePG Cluster is one more CR for an operator already installed.
+#
+# CloudNativePG ITSELF IS NOT INSTALLED HERE. install_ao.yml installs it, and
+# this play asserts it rather than growing a second copy of that install. Run
+# install_ao.yml (or setup.yml, whose default runs it) first.
+#
+# NO VAULT KEY. CloudNativePG generates the app role's password into the
+# `<cluster>-app` Secret. It is minted with the environment and dies with it,
+# so there is nothing to rotate or to store.
+# ===========================================================================
+
+- name: Deploy the Policy as Code evidence store
+  hosts: aap
+  gather_facts: false
+
+  environment:
+    K8S_AUTH_HOST: "{{ openshift_api_url }}"
+    K8S_AUTH_API_KEY: "{{ openshift_api_token }}"
+    K8S_AUTH_VERIFY_SSL: "{{ openshift_validate_certs | default(false) | bool }}"
+
+  vars:
+    policy_db_state: present
+    # Beside the OPA server (opa_policy.yml), so the whole demo is one namespace.
+    policy_db_namespace: "{{ opa_namespace }}"
+    policy_db_cluster: "policy-db"
+    policy_db_name: "compliance"
+    policy_db_owner: "compliance"
+    # A placeholder until the AAC team's real-world sizing is in (#851).
+    # Ceph RBD allows expansion, so growing it later is a PVC resize.
+    policy_db_storage_size: "10Gi"
+    # Every table schema.sql creates. The apply step runs only while one of
+    # these is missing, so a new table must be added here as well.
+    policy_db_tables:
+      - host_facts
+      - assessments
+    cnpg_namespace: "cnpg-system"
+    cnpg_package: "cloudnative-pg"
+    policy_db_wait_retries: 30
+    policy_db_wait_delay: 10
+
+  tasks:
+    - name: Confirm the inventory resolved to the environment you meant
+      ansible.builtin.include_tasks: tasks/assert_target_environment.yml
+
+    - name: Assert the inputs are set
+      ansible.builtin.assert:
+        that:
+          - openshift_api_url | default('') | length > 0
+          - openshift_api_token | default('') | length > 0
+          - policy_db_state in ['present', 'absent']
+        fail_msg: >-
+          openshift_api_url / openshift_api_token must be set for
+          '{{ aap_env_name | default("?") }}' (connection.yml, local.yml and the
+          vault via --vault-id), and policy_db_state must be present or absent
+          (got '{{ policy_db_state }}').
+        quiet: true
+      no_log: true
+
+    # -----------------------------------------------------------------------
+    # Removal
+    # -----------------------------------------------------------------------
+    - name: Remove the evidence store
+      when: policy_db_state == 'absent'
+      block:
+        - name: Delete the PostgreSQL cluster
+          kubernetes.core.k8s:
+            state: absent
+            api_version: postgresql.cnpg.io/v1
+            kind: Cluster
+            name: "{{ policy_db_cluster }}"
+            namespace: "{{ policy_db_namespace }}"
+
+        - name: Wait for its volumes to be released
+          # CloudNativePG owns the PVCs, so garbage collection removes them.
+          # Waited on rather than assumed: a leftover claim is the one thing
+          # that would keep costing storage after this reports success.
+          kubernetes.core.k8s_info:
+            api_version: v1
+            kind: PersistentVolumeClaim
+            namespace: "{{ policy_db_namespace }}"
+            label_selectors:
+              - "cnpg.io/cluster={{ policy_db_cluster }}"
+          register: policy_db_pvcs_left
+          retries: "{{ policy_db_wait_retries }}"
+          delay: "{{ policy_db_wait_delay }}"
+          until: policy_db_pvcs_left.resources | length == 0
+
+        - name: Stop here
+          ansible.builtin.meta: end_host
+
+    # -----------------------------------------------------------------------
+    # 1. The operator must already be there
+    # -----------------------------------------------------------------------
+    - name: Read the ClusterServiceVersions in {{ cnpg_namespace }}
+      kubernetes.core.k8s_info:
+        api_version: operators.coreos.com/v1alpha1
+        kind: ClusterServiceVersion
+        namespace: "{{ cnpg_namespace }}"
+      register: policy_db_cnpg_csv
+
+    - name: Assert CloudNativePG is installed and healthy
+      # By name, never items[0] — see install_ao.yml: an AllNamespaces
+      # operator's CSV is copied everywhere.
+      ansible.builtin.assert:
+        that:
+          - policy_db_cnpg_csv.resources | default([])
+            | selectattr('metadata.name', 'search', '^' ~ cnpg_package)
+            | selectattr('status.phase', 'defined')
+            | selectattr('status.phase', 'equalto', 'Succeeded') | list | length > 0
+        fail_msg: >-
+          CloudNativePG is not installed (no Succeeded {{ cnpg_package }} CSV in
+          {{ cnpg_namespace }}). It comes from playbooks/install_ao.yml — run that
+          first, or setup.yml, which runs it by default.
+        quiet: true
+
+    # -----------------------------------------------------------------------
+    # 2. The database
+    # -----------------------------------------------------------------------
+    - name: Create the namespace
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: v1
+          kind: Namespace
+          metadata:
+            name: "{{ policy_db_namespace }}"
+
+    - name: Create the PostgreSQL cluster
+      # The same shape as install_ao.yml's ao-db. No storageClass: the
+      # cluster default is the Ceph class this design depends on.
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: postgresql.cnpg.io/v1
+          kind: Cluster
+          metadata:
+            name: "{{ policy_db_cluster }}"
+            namespace: "{{ policy_db_namespace }}"
+            labels:
+              app.kubernetes.io/part-of: policy-as-code
+          spec:
+            instances: 1
+            storage:
+              size: "{{ policy_db_storage_size }}"
+            bootstrap:
+              initdb:
+                database: "{{ policy_db_name }}"
+                owner: "{{ policy_db_owner }}"
+            resources:
+              requests:
+                cpu: 100m
+                memory: 256Mi
+
+    - name: Wait for a ready instance
+      kubernetes.core.k8s_info:
+        api_version: postgresql.cnpg.io/v1
+        kind: Cluster
+        name: "{{ policy_db_cluster }}"
+        namespace: "{{ policy_db_namespace }}"
+      register: policy_db
+      retries: "{{ policy_db_wait_retries }}"
+      delay: "{{ policy_db_wait_delay }}"
+      until:
+        - policy_db.resources | default([]) | length > 0
+        - policy_db.resources[0].status.readyInstances | default(0) | int >= 1
+
+    - name: Find the primary
+      kubernetes.core.k8s_info:
+        kind: Pod
+        namespace: "{{ policy_db_namespace }}"
+        label_selectors:
+          - "cnpg.io/cluster={{ policy_db_cluster }}"
+          - "cnpg.io/instanceRole=primary"
+      register: policy_db_primary
+      failed_when: policy_db_primary.resources | length != 1
+
+    # -----------------------------------------------------------------------
+    # 3. The schema — asked for, not assumed
+    # -----------------------------------------------------------------------
+    - name: Ask which evidence tables exist
+      # `-U postgres` IS REQUIRED. Without it psql logs in as the container's
+      # numeric UID and peer authentication refuses it; CloudNativePG maps the
+      # local socket to the postgres role only (measured on the first run, #851).
+      kubernetes.core.k8s_exec:
+        namespace: "{{ policy_db_namespace }}"
+        pod: "{{ policy_db_primary.resources[0].metadata.name }}"
+        container: postgres
+        command: >-
+          psql -U postgres -v ON_ERROR_STOP=1 -d {{ policy_db_name }} -tA -c
+          "SELECT tablename || ':' || tableowner FROM pg_tables WHERE schemaname = 'public'"
+      register: policy_db_tables_before
+      changed_when: false
+      failed_when: policy_db_tables_before.rc != 0
+
+    - name: Apply the schema as {{ policy_db_owner }}
+      # SET ROLE so the app role owns the tables, not postgres — the auditor
+      # and Grafana connect as the app role and must be able to write/read.
+      vars:
+        _present: "{{ policy_db_tables_before.stdout_lines | map('split', ':') | map('first') | list }}"
+        _sql: >-
+          SET ROLE {{ policy_db_owner }};
+          {{ lookup('ansible.builtin.file', playbook_dir ~ '/files/policy_db/schema.sql') }}
+      when: policy_db_tables | difference(_present) | length > 0
+      kubernetes.core.k8s_exec:
+        namespace: "{{ policy_db_namespace }}"
+        pod: "{{ policy_db_primary.resources[0].metadata.name }}"
+        container: postgres
+        command: "psql -U postgres -v ON_ERROR_STOP=1 -d {{ policy_db_name }} -c {{ _sql | quote }}"
+      register: policy_db_schema
+      changed_when: true
+      failed_when: policy_db_schema.rc != 0
+
+    - name: Ask again
+      kubernetes.core.k8s_exec:
+        namespace: "{{ policy_db_namespace }}"
+        pod: "{{ policy_db_primary.resources[0].metadata.name }}"
+        container: postgres
+        command: >-
+          psql -U postgres -v ON_ERROR_STOP=1 -d {{ policy_db_name }} -tA -c
+          "SELECT tablename || ':' || tableowner FROM pg_tables WHERE schemaname = 'public'"
+      register: policy_db_tables_after
+      changed_when: false
+      failed_when: policy_db_tables_after.rc != 0
+
+    - name: Assert every table exists and the app role owns it
+      vars:
+        _expected: "{{ policy_db_tables | map('regex_replace', '$', ':' ~ policy_db_owner) | list }}"
+      ansible.builtin.assert:
+        that: _expected | difference(policy_db_tables_after.stdout_lines) | length == 0
+        fail_msg: >-
+          Expected {{ _expected }}; the database reports
+          {{ policy_db_tables_after.stdout_lines }}.
+        quiet: true
+
+    - name: Report
+      ansible.builtin.debug:
+        msg:
+          - "Evidence store ready in {{ aap_env_name }}: {{ policy_db_cluster }} ({{ policy_db_storage_size }})"
+          - "Read-write: {{ policy_db_cluster }}-rw.{{ policy_db_namespace }}.svc:5432 / database {{ policy_db_name }}"
+          - "Credentials: Secret {{ policy_db_cluster }}-app in {{ policy_db_namespace }} (generated by CloudNativePG)"
+          - "Tables: {{ policy_db_tables | join(', ') }}"

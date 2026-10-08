@@ -158,6 +158,38 @@ utilities/run-in-ee.sh playbooks/install_opa.yml \
 If launch 3b or the canary *succeeds*, enforcement is off: check step 2 and
 the template's `opa_query_path`.
 
+## Optional: the evidence store (Phase 3, #851)
+
+Compliance grading (#841 Phase 3) keeps what it graded in PostgreSQL:
+`host_facts` (each framework's input) and `assessments` (every result). It is
+**opt-in** and separate from enforcement. Nothing here touches `OPA_HOST`.
+
+It needs CloudNativePG, which `install_ao.yml` installs. The playbook asserts
+it rather than installing a second copy:
+
+```bash
+./utilities/run-playbook.sh playbooks/install_policy_db.yml -i inventory --limit "$ENV" -e target_env="$ENV"
+```
+
+From AAP instead: `AAP Ecosystem - Install Policy Evidence Store`.
+
+Its data is a Ceph PVC, not node disk. #851 measured a 9.1 GiB write moving
+the node's free space by 16 MB, so the ~6 GiB node headroom is not the limit.
+`policy_db_storage_size` (default `10Gi`) sets the claim.
+
+Verify by asking the cluster:
+
+1. `mcp__openshift-<env>__pods_list_in_namespace` for `policy-as-code`:
+   `policy-db-1` is Running.
+2. `mcp__openshift-<env>__resources_list` for `PersistentVolumeClaim` in
+   `policy-as-code`: `policy-db-1` is Bound on `ocs-external-storagecluster-ceph-rbd`.
+3. `mcp__openshift-<env>__pods_exec` on `policy-db-1` (container `postgres`):
+   `psql -d compliance -c '\dt'` lists `host_facts` and `assessments`, both
+   owned by `compliance`.
+
+Remove it with `-e policy_db_state=absent`. That deletes the Cluster and waits
+until its PVC is gone.
+
 ## Undo
 
 Clear `opa_query_path` on the template (PATCH it to `""`) and the template
