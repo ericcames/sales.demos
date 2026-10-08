@@ -131,3 +131,8 @@ mock_roles:
 exclude_paths:
   - collections/ansible_collections/
   - .github/
+  # aac/ is GENERATED from ynotbhatc/compliance by a weekly sync PR (#841,
+  # #867). It is linted at its source under that repository's rules; linting
+  # a copy here would fail on conventions the source does not follow and
+  # would be overwritten by the next sync anyway. See aac/README.md.
+  - aac/
