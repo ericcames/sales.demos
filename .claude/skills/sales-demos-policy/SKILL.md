@@ -190,6 +190,32 @@ Verify by asking the cluster:
 Remove it with `-e policy_db_state=absent`. That deletes the Cluster and waits
 until its PVC is gone.
 
+## Optional: the shareable compliance dashboard (#859)
+
+A Grafana over the evidence store, on a public Route that anyone with the link
+can view without logging in. It shows the latest score per host and framework,
+compliance % over time, what is failing now, and the scan history. It needs
+the evidence store above, and has data once a Day 1 compliance scan has run (#857).
+
+```bash
+./utilities/run-playbook.sh playbooks/install_policy_dashboard.yml -i inventory --limit "$ENV" -e target_env="$ENV"
+```
+
+From AAP instead: `AAP Ecosystem - Install Policy Compliance Dashboard`. The
+job prints the URL, which is `https://policy-dashboard-policy-as-code.<apps domain>`.
+
+**Anonymous visitors are bounded by the database, not by Grafana.** Grafana
+lets any viewer send queries to a datasource, so Grafana connects as
+`grafana_ro`, which may only `SELECT` `assessments` and `host_facts`. The
+playbook proves it on every run: an anonymous `BEGIN READ WRITE; DELETE ...`
+must come back `permission denied`. Admin login is `admin`, with the password
+in Secret `policy-dashboard` (key `admin-password`). The dashboard is
+provisioned from `playbooks/files/grafana/compliance-evidence.json` and is
+read-only in the UI: change the file and re-run.
+
+Remove it with `-e policy_dashboard_state=absent`. That drops `grafana_ro`
+but leaves the evidence untouched.
+
 ## Undo
 
 Clear `opa_query_path` on the template (PATCH it to `""`) and the template

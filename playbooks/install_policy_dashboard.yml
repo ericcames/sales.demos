@@ -1,0 +1,530 @@
+---
+# ===========================================================================
+# install_policy_dashboard.yml — a shareable compliance dashboard over the
+# Policy as Code evidence store. #859, #841 Phase 3 §3e.
+#
+#   ansible-playbook playbooks/install_policy_dashboard.yml -i inventory \
+#     --limit sandbox -e target_env=sandbox \
+#     --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
+#
+# Remove it again (policy-db and its evidence are untouched):
+#
+#   ... -e policy_dashboard_state=absent
+#
+# Needs policy-db first (install_policy_db.yml). The dashboard reads what the
+# Day 1 compliance scans record there (#857).
+#
+# WHY IN-CLUSTER, NOT GRAFANA CLOUD. The Cloud stack is at its user limit, so
+# a team could only reach it through a public dashboard link, and reaching a
+# private database from Cloud needs an extra agent whose free-tier accounting
+# is unclear. Here the Route is public on the RHDP *.apps domain and costs no
+# Cloud quota. The trade-off: it dies with the environment, and this playbook
+# rebuilds it.
+#
+# ANONYMOUS VIEWER, ON PURPOSE. The point is a link the team can open without
+# an account. Grafana lets any viewer send queries to a datasource, so the
+# thing that bounds an anonymous visitor is the DATABASE ROLE, not Grafana:
+# grafana_ro may SELECT the two evidence tables and nothing else, its
+# transactions default to read-only, and statements time out. Step 4 proves an
+# anonymous write is refused rather than assuming it.
+#
+# THE REPO IS THE SOURCE OF TRUTH. The datasource and the dashboard are
+# provisioned from files and are not editable in the UI. Change
+# playbooks/files/grafana/compliance-evidence.json and re-run.
+# ===========================================================================
+
+- name: Deploy the Policy as Code compliance dashboard
+  hosts: aap
+  gather_facts: false
+
+  environment:
+    K8S_AUTH_HOST: "{{ openshift_api_url }}"
+    K8S_AUTH_API_KEY: "{{ openshift_api_token }}"
+    K8S_AUTH_VERIFY_SSL: "{{ openshift_validate_certs | default(false) | bool }}"
+
+  vars:
+    policy_dashboard_state: present
+    policy_dashboard_namespace: "{{ opa_namespace }}"
+    policy_dashboard_name: "policy-dashboard"
+    # 13.1.7 over 13.2.3: 365 MiB against 459 MiB on a node whose real limit
+    # is disk headroom (rhdp-node-disk). Pinned by the multi-arch list digest.
+    policy_dashboard_image: "docker.io/grafana/grafana@sha256:248cda1de5bc3e69c3fb23c5efe1292aa18399d8ece499aa88cab6fd16f78d4b"
+    # The same names install_policy_db.yml creates.
+    policy_db_cluster: "policy-db"
+    policy_db_name: "compliance"
+    policy_db_owner: "compliance"
+    # `-r` (any instance), NOT `-ro`: -ro selects replicas only and has no
+    # endpoints on a single-instance cluster.
+    policy_dashboard_db_host: "{{ policy_db_cluster }}-r.{{ policy_dashboard_namespace }}.svc:5432"
+    policy_dashboard_db_role: "grafana_ro"
+    policy_dashboard_files: "{{ playbook_dir }}/files/grafana"
+    policy_dashboard_wait_retries: 30
+    policy_dashboard_wait_delay: 10
+
+  tasks:
+    - name: Confirm the inventory resolved to the environment you meant
+      ansible.builtin.include_tasks: tasks/assert_target_environment.yml
+
+    - name: Assert the inputs are set
+      ansible.builtin.assert:
+        that:
+          - openshift_api_url | default('') | length > 0
+          - openshift_api_token | default('') | length > 0
+          - policy_dashboard_state in ['present', 'absent']
+        fail_msg: >-
+          openshift_api_url / openshift_api_token must be set for
+          '{{ aap_env_name | default("?") }}', and policy_dashboard_state must
+          be present or absent (got '{{ policy_dashboard_state }}').
+        quiet: true
+      no_log: true
+
+    # -----------------------------------------------------------------------
+    # Removal
+    # -----------------------------------------------------------------------
+    - name: Remove the dashboard
+      when: policy_dashboard_state == 'absent'
+      block:
+        - name: Delete the dashboard's objects
+          kubernetes.core.k8s:
+            state: absent
+            api_version: "{{ item.api }}"
+            kind: "{{ item.kind }}"
+            name: "{{ item.name }}"
+            namespace: "{{ policy_dashboard_namespace }}"
+            wait: true
+          loop:
+            - {api: route.openshift.io/v1, kind: Route, name: "{{ policy_dashboard_name }}"}
+            - {api: v1, kind: Service, name: "{{ policy_dashboard_name }}"}
+            - {api: apps/v1, kind: Deployment, name: "{{ policy_dashboard_name }}"}
+            - {api: v1, kind: ConfigMap, name: "{{ policy_dashboard_name }}-provisioning"}
+            - {api: v1, kind: ConfigMap, name: "{{ policy_dashboard_name }}-dashboards"}
+            - {api: v1, kind: Secret, name: "{{ policy_dashboard_name }}"}
+          loop_control:
+            label: "{{ item.kind }}/{{ item.name }}"
+
+        - name: Find the database primary
+          kubernetes.core.k8s_info:
+            kind: Pod
+            namespace: "{{ policy_dashboard_namespace }}"
+            label_selectors:
+              - "cnpg.io/cluster={{ policy_db_cluster }}"
+              - "cnpg.io/instanceRole=primary"
+          register: policy_dashboard_primary
+
+        - name: Drop the read-only role
+          kubernetes.core.k8s_exec:
+            namespace: "{{ policy_dashboard_namespace }}"
+            pod: "{{ policy_dashboard_primary.resources[0].metadata.name }}"
+            container: postgres
+            command: >-
+              psql -U postgres -v ON_ERROR_STOP=1 -d {{ policy_db_name }} -c
+              "REVOKE ALL ON ALL TABLES IN SCHEMA public FROM {{ policy_dashboard_db_role }};
+              REVOKE ALL ON SCHEMA public FROM {{ policy_dashboard_db_role }};
+              REVOKE ALL ON DATABASE {{ policy_db_name }} FROM {{ policy_dashboard_db_role }};
+              DROP ROLE IF EXISTS {{ policy_dashboard_db_role }};"
+          when: policy_dashboard_primary.resources | length == 1
+          register: policy_dashboard_drop
+          # A role that was never created makes the REVOKEs fail; DROP ... IF
+          # EXISTS alone would succeed, so accept exactly that message.
+          failed_when:
+            - policy_dashboard_drop.rc != 0
+            - "'does not exist' not in policy_dashboard_drop.stderr"
+
+        - name: Stop here
+          ansible.builtin.meta: end_host
+
+    # -----------------------------------------------------------------------
+    # 1. The evidence store must already be there
+    # -----------------------------------------------------------------------
+    - name: Look for the evidence store
+      kubernetes.core.k8s_info:
+        api_version: postgresql.cnpg.io/v1
+        kind: Cluster
+        name: "{{ policy_db_cluster }}"
+        namespace: "{{ policy_dashboard_namespace }}"
+      register: policy_dashboard_db
+
+    - name: Assert policy-db is installed and ready
+      ansible.builtin.assert:
+        that:
+          - policy_dashboard_db.resources | length == 1
+          - policy_dashboard_db.resources[0].status.readyInstances | default(0) | int >= 1
+        fail_msg: >-
+          policy-db is not installed or not ready in {{ policy_dashboard_namespace }}.
+          Run playbooks/install_policy_db.yml (or 'AAP Ecosystem - Install
+          Policy Evidence Store') first.
+        quiet: true
+
+    - name: Find the database primary
+      kubernetes.core.k8s_info:
+        kind: Pod
+        namespace: "{{ policy_dashboard_namespace }}"
+        label_selectors:
+          - "cnpg.io/cluster={{ policy_db_cluster }}"
+          - "cnpg.io/instanceRole=primary"
+      register: policy_dashboard_primary
+      failed_when: policy_dashboard_primary.resources | length != 1
+
+    # -----------------------------------------------------------------------
+    # 2. Credentials — minted here, kept in the cluster, never in the vault
+    # -----------------------------------------------------------------------
+    - name: Read the dashboard Secret
+      kubernetes.core.k8s_info:
+        kind: Secret
+        name: "{{ policy_dashboard_name }}"
+        namespace: "{{ policy_dashboard_namespace }}"
+      register: policy_dashboard_secret
+      no_log: true
+
+    - name: Mint the passwords once
+      # Generated on first run and read back on every later one, so a re-run
+      # does not rotate them. They die with the environment, like everything
+      # else here (ephemeral-env credential design).
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: v1
+          kind: Secret
+          metadata:
+            name: "{{ policy_dashboard_name }}"
+            namespace: "{{ policy_dashboard_namespace }}"
+          type: Opaque
+          stringData:
+            admin-password: "{{ lookup('ansible.builtin.password', '/dev/null', length=24, chars=['ascii_letters', 'digits']) }}"
+            db-password: "{{ lookup('ansible.builtin.password', '/dev/null', length=32, chars=['ascii_letters', 'digits']) }}"
+      when: policy_dashboard_secret.resources | length == 0
+      no_log: true
+
+    - name: Read the passwords back
+      kubernetes.core.k8s_info:
+        kind: Secret
+        name: "{{ policy_dashboard_name }}"
+        namespace: "{{ policy_dashboard_namespace }}"
+      register: policy_dashboard_secret
+      no_log: true
+
+    # -----------------------------------------------------------------------
+    # 3. The read-only role — this is the security boundary, see the header
+    # -----------------------------------------------------------------------
+    - name: Ask whether the read-only role exists
+      kubernetes.core.k8s_exec:
+        namespace: "{{ policy_dashboard_namespace }}"
+        pod: "{{ policy_dashboard_primary.resources[0].metadata.name }}"
+        container: postgres
+        command: >-
+          psql -U postgres -tA -d {{ policy_db_name }} -c
+          "SELECT count(*) FROM pg_roles WHERE rolname = '{{ policy_dashboard_db_role }}'"
+      register: policy_dashboard_role_before
+      changed_when: false
+      failed_when: policy_dashboard_role_before.rc != 0
+
+    - name: Create or refresh the read-only role
+      # Applied every run so the grants cannot drift. Staged as a file because
+      # it carries the password, which must not appear in a process list.
+      # Alphanumeric by construction, so it needs no SQL quoting.
+      vars:
+        _pw: "{{ policy_dashboard_secret.resources[0].data['db-password'] | b64decode }}"
+        _sql_path: "/controller/tmp/{{ policy_dashboard_db_role }}.sql"
+      block:
+        - name: Stage the role statement
+          kubernetes.core.k8s_cp:
+            namespace: "{{ policy_dashboard_namespace }}"
+            pod: "{{ policy_dashboard_primary.resources[0].metadata.name }}"
+            container: postgres
+            remote_path: "{{ _sql_path }}"
+            state: to_pod
+            content: |
+              DO $$BEGIN
+                IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '{{ policy_dashboard_db_role }}') THEN
+                  CREATE ROLE {{ policy_dashboard_db_role }} LOGIN;
+                END IF;
+              END$$;
+              ALTER ROLE {{ policy_dashboard_db_role }} WITH LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE CONNECTION LIMIT 10 PASSWORD '{{ _pw }}';
+              ALTER ROLE {{ policy_dashboard_db_role }} SET default_transaction_read_only = on;
+              ALTER ROLE {{ policy_dashboard_db_role }} SET statement_timeout = '10s';
+              GRANT CONNECT ON DATABASE {{ policy_db_name }} TO {{ policy_dashboard_db_role }};
+              GRANT USAGE ON SCHEMA public TO {{ policy_dashboard_db_role }};
+              GRANT SELECT ON assessments, host_facts TO {{ policy_dashboard_db_role }};
+          no_log: true
+          # k8s_cp always reports a change; the apply below reports the real one.
+          changed_when: false
+
+        - name: Apply it
+          kubernetes.core.k8s_exec:
+            namespace: "{{ policy_dashboard_namespace }}"
+            pod: "{{ policy_dashboard_primary.resources[0].metadata.name }}"
+            container: postgres
+            command: "psql -U postgres -v ON_ERROR_STOP=1 -q -d {{ policy_db_name }} -f {{ _sql_path }}"
+          register: policy_dashboard_role
+          failed_when: policy_dashboard_role.rc != 0
+          changed_when: policy_dashboard_role_before.stdout | trim == '0'
+
+      always:
+        - name: Remove the staged statement
+          kubernetes.core.k8s_exec:
+            namespace: "{{ policy_dashboard_namespace }}"
+            pod: "{{ policy_dashboard_primary.resources[0].metadata.name }}"
+            container: postgres
+            command: "rm -f {{ _sql_path }}"
+          changed_when: false
+          failed_when: false
+
+    # -----------------------------------------------------------------------
+    # 4. Grafana
+    # -----------------------------------------------------------------------
+    - name: Apply the provisioning ConfigMap
+      # No password in here: Grafana expands $POLICY_DB_PASSWORD from the
+      # Secret-backed environment variable at start.
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: "{{ policy_dashboard_name }}-provisioning"
+            namespace: "{{ policy_dashboard_namespace }}"
+            labels:
+              app.kubernetes.io/name: "{{ policy_dashboard_name }}"
+          data:
+            datasources.yaml: |
+              apiVersion: 1
+              datasources:
+                - name: policy-db
+                  uid: policy-db
+                  type: grafana-postgresql-datasource
+                  url: {{ policy_dashboard_db_host }}
+                  user: {{ policy_dashboard_db_role }}
+                  isDefault: true
+                  editable: false
+                  jsonData:
+                    database: {{ policy_db_name }}
+                    sslmode: require
+                    postgresVersion: 1500
+                    maxOpenConns: 5
+                  secureJsonData:
+                    password: $POLICY_DB_PASSWORD
+            dashboards.yaml: |
+              apiVersion: 1
+              providers:
+                - name: policy-as-code
+                  type: file
+                  disableDeletion: true
+                  allowUiUpdates: false
+                  options:
+                    path: /var/lib/grafana-dashboards
+      register: policy_dashboard_prov
+
+    - name: Apply the dashboards ConfigMap
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: "{{ policy_dashboard_name }}-dashboards"
+            namespace: "{{ policy_dashboard_namespace }}"
+            labels:
+              app.kubernetes.io/name: "{{ policy_dashboard_name }}"
+          # One whole-mapping template, not a per-key one, so the file's JSON
+          # text stays a string instead of being re-typed on the way through.
+          data: "{{ {'compliance-evidence.json': lookup('ansible.builtin.file', policy_dashboard_files ~ '/compliance-evidence.json')} }}"
+      register: policy_dashboard_json
+
+    - name: Apply the Route
+      # Created before the Deployment so its host is known for root_url.
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: route.openshift.io/v1
+          kind: Route
+          metadata:
+            name: "{{ policy_dashboard_name }}"
+            namespace: "{{ policy_dashboard_namespace }}"
+            labels:
+              app.kubernetes.io/name: "{{ policy_dashboard_name }}"
+          spec:
+            to:
+              kind: Service
+              name: "{{ policy_dashboard_name }}"
+            port:
+              targetPort: http
+            tls:
+              termination: edge
+              insecureEdgeTerminationPolicy: Redirect
+      register: policy_dashboard_route
+
+    - name: Apply the Deployment
+      vars:
+        _host: "{{ policy_dashboard_route.result.spec.host }}"
+      kubernetes.core.k8s:
+        state: present
+        wait: true
+        wait_timeout: 600
+        definition:
+          apiVersion: apps/v1
+          kind: Deployment
+          metadata:
+            name: "{{ policy_dashboard_name }}"
+            namespace: "{{ policy_dashboard_namespace }}"
+            labels:
+              app.kubernetes.io/name: "{{ policy_dashboard_name }}"
+          spec:
+            replicas: 1
+            strategy:
+              type: Recreate
+            selector:
+              matchLabels:
+                app.kubernetes.io/name: "{{ policy_dashboard_name }}"
+            template:
+              metadata:
+                labels:
+                  app.kubernetes.io/name: "{{ policy_dashboard_name }}"
+                annotations:
+                  # Grafana reads provisioning once at start; roll the pod
+                  # when either ConfigMap changes.
+                  sales-demos/config-checksum: >-
+                    {{ (policy_dashboard_prov.result.data | to_json
+                        ~ policy_dashboard_json.result.data | to_json) | hash('sha256') }}
+              spec:
+                containers:
+                  - name: grafana
+                    image: "{{ policy_dashboard_image }}"
+                    ports:
+                      - {name: http, containerPort: 3000}
+                    env:
+                      - {name: GF_SERVER_ROOT_URL, value: "https://{{ _host }}"}
+                      - {name: GF_AUTH_ANONYMOUS_ENABLED, value: "true"}
+                      - {name: GF_AUTH_ANONYMOUS_ORG_ROLE, value: "Viewer"}
+                      - {name: GF_USERS_ALLOW_SIGN_UP, value: "false"}
+                      - {name: GF_SECURITY_ADMIN_USER, value: "admin"}
+                      - name: GF_SECURITY_ADMIN_PASSWORD
+                        valueFrom:
+                          secretKeyRef: {name: "{{ policy_dashboard_name }}", key: admin-password}
+                      - name: POLICY_DB_PASSWORD
+                        valueFrom:
+                          secretKeyRef: {name: "{{ policy_dashboard_name }}", key: db-password}
+                      - {name: GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH, value: "/var/lib/grafana-dashboards/compliance-evidence.json"}
+                      # No outbound calls at start or while serving.
+                      - {name: GF_PLUGINS_PREINSTALL_DISABLED, value: "true"}
+                      - {name: GF_ANALYTICS_REPORTING_ENABLED, value: "false"}
+                      - {name: GF_ANALYTICS_CHECK_FOR_UPDATES, value: "false"}
+                      - {name: GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES, value: "false"}
+                      - {name: GF_NEWS_NEWS_FEED_ENABLED, value: "false"}
+                      - {name: GF_SECURITY_DISABLE_GRAVATAR, value: "true"}
+                      - {name: GF_LOG_MODE, value: "console"}
+                    readinessProbe:
+                      httpGet: {path: /api/health, port: http}
+                      periodSeconds: 10
+                    livenessProbe:
+                      httpGet: {path: /api/health, port: http}
+                      initialDelaySeconds: 30
+                      periodSeconds: 30
+                    resources:
+                      requests: {cpu: 50m, memory: 128Mi}
+                      limits: {memory: 512Mi}
+                    securityContext:
+                      allowPrivilegeEscalation: false
+                      runAsNonRoot: true
+                      capabilities: {drop: ["ALL"]}
+                      seccompProfile: {type: RuntimeDefault}
+                    volumeMounts:
+                      - {name: data, mountPath: /var/lib/grafana}
+                      - {name: provisioning, mountPath: /etc/grafana/provisioning/datasources/datasources.yaml, subPath: datasources.yaml, readOnly: true}
+                      - {name: provisioning, mountPath: /etc/grafana/provisioning/dashboards/dashboards.yaml, subPath: dashboards.yaml, readOnly: true}
+                      - {name: dashboards, mountPath: /var/lib/grafana-dashboards, readOnly: true}
+                volumes:
+                  # Nothing in Grafana's own database is worth keeping: every
+                  # object it serves is provisioned from files on each start.
+                  - name: data
+                    emptyDir: {sizeLimit: 256Mi}
+                  - name: provisioning
+                    configMap: {name: "{{ policy_dashboard_name }}-provisioning"}
+                  - name: dashboards
+                    configMap: {name: "{{ policy_dashboard_name }}-dashboards"}
+
+    - name: Apply the Service
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: v1
+          kind: Service
+          metadata:
+            name: "{{ policy_dashboard_name }}"
+            namespace: "{{ policy_dashboard_namespace }}"
+            labels:
+              app.kubernetes.io/name: "{{ policy_dashboard_name }}"
+          spec:
+            type: ClusterIP
+            selector:
+              app.kubernetes.io/name: "{{ policy_dashboard_name }}"
+            ports:
+              - {name: http, port: 3000, targetPort: http}
+
+    # -----------------------------------------------------------------------
+    # 5. Ask the Route, as an anonymous visitor would
+    # -----------------------------------------------------------------------
+    - name: Fetch the dashboard anonymously
+      ansible.builtin.uri:
+        url: "https://{{ policy_dashboard_route.result.spec.host }}/api/dashboards/uid/compliance-evidence"
+        validate_certs: false
+        return_content: true
+      register: policy_dashboard_get
+      until: policy_dashboard_get.status == 200
+      retries: "{{ policy_dashboard_wait_retries }}"
+      delay: "{{ policy_dashboard_wait_delay }}"
+
+    - name: Run a panel query anonymously
+      ansible.builtin.uri:
+        url: "https://{{ policy_dashboard_route.result.spec.host }}/api/ds/query"
+        method: POST
+        validate_certs: false
+        body_format: json
+        body:
+          queries:
+            - refId: A
+              datasource: {uid: policy-db}
+              rawSql: "SELECT count(*) AS n FROM assessments"
+              format: table
+        return_content: true
+      register: policy_dashboard_read
+
+    - name: Try to write anonymously — it must be refused
+      ansible.builtin.uri:
+        url: "https://{{ policy_dashboard_route.result.spec.host }}/api/ds/query"
+        method: POST
+        validate_certs: false
+        body_format: json
+        body:
+          queries:
+            - refId: A
+              datasource: {uid: policy-db}
+              # BEGIN READ WRITE first, so the refusal has to come from the
+              # GRANTS. A plain DELETE is stopped earlier by
+              # default_transaction_read_only, which a client can turn off and
+              # so proves less (measured, #859).
+              rawSql: "BEGIN READ WRITE; DELETE FROM assessments WHERE false; COMMIT"
+              format: table
+        return_content: true
+        status_code: [200, 400, 500]
+      register: policy_dashboard_write
+
+    - name: Assert anonymous read works and anonymous write does not
+      ansible.builtin.assert:
+        that:
+          - policy_dashboard_get.json.dashboard.uid == 'compliance-evidence'
+          - policy_dashboard_read.json.results.A.status | default(200) == 200
+          - policy_dashboard_read.json.results.A.error is not defined
+          - "'permission denied' in policy_dashboard_write.json.results.A.error | default('')"
+        fail_msg: >-
+          Dashboard: {{ policy_dashboard_get.status }}.
+          Read: {{ policy_dashboard_read.json.results.A | default(policy_dashboard_read.json) }}.
+          Write: {{ policy_dashboard_write.json.results.A | default(policy_dashboard_write.json) }}.
+          A write that was NOT refused means grafana_ro has more than SELECT.
+
+    - name: Report
+      ansible.builtin.debug:
+        msg:
+          - "Compliance dashboard for {{ aap_env_name }}: https://{{ policy_dashboard_route.result.spec.host }}"
+          - "Anyone with the link can view it; no login needed."
+          - "Anonymous write refused by the database: {{ policy_dashboard_write.json.results.A.error | truncate(120) }}"
+          - "Admin login: user 'admin', password in Secret {{ policy_dashboard_name }} (key admin-password)."
