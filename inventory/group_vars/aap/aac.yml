@@ -36,7 +36,7 @@
 # policies, the evidence schema and the AO workflow definitions all resolve
 # through these two lines. Moving to a new pack is one line.
 aac_pack_repo: ynotbhatc/aac-pack
-aac_pack_version: v2026.10.08-3
+aac_pack_version: v2026.10.09
 aac_pack_raw: "https://raw.githubusercontent.com/{{ aac_pack_repo }}/{{ aac_pack_version }}"
 
 aac_opa_name: opa-assessment
