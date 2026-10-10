@@ -110,7 +110,9 @@ controller_credentials_aac:
       pg_port: "5432"
       pg_db: "aac"
       pg_user: "aac"
-      pg_password: "{{ env_secrets[aap_env_name].aac_db_password | default('') }}"
+      # No default: a missing vault key must fail config.yml here, not create
+      # a credential with an empty password that fails later inside a job.
+      pg_password: "{{ env_secrets[aap_env_name].aac_db_password }}"
 
   - name: "Compliance as Code - OpenShift"
     description: "This environment's cluster, for the AAC playbooks that read it with kubernetes.core (K8S_AUTH_* from this credential)."
