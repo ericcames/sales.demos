@@ -89,9 +89,10 @@ collections:
     version: "4.0.0"
 
   # PostgreSQL. The AAC playbooks the Compliance as Code templates run
-  # (aac/playbooks/, synced weekly — #873) read and write the AAC evidence
-  # database with community.postgresql.postgresql_query / postgresql_script:
-  # 29 calls across the ten tranche-1 playbooks, nothing else outside
+  # (playbooks/ in the public ynotbhatc/aac-pack repository, pinned by
+  # aac_pack_version in inventory/group_vars/aap/aac.yml — #871) read and
+  # write the AAC evidence database with
+  # community.postgresql.postgresql_query / postgresql_script: 29 calls across the ten tranche-1 playbooks, nothing else outside
   # ansible.builtin. Decision E on #841: one collection added to this EE
   # rather than a second EE image on a node with ~6 GiB of disk headroom.
   # ansible-builder installs the collection's own python requirement
