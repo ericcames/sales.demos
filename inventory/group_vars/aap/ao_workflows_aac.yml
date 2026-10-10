@@ -49,8 +49,8 @@ ao_workflows_aac:
         name: GPU Flex Request
         type: manual_trigger
         position:
-          x: -1473.787681424634
-          y: -273.56403725973996
+          x: -1474
+          y: -274
         parameters:
           input_schema:
             type: object
@@ -345,8 +345,8 @@ ao_workflows_aac:
         name: Golden Image Drift
         type: manual_trigger
         position:
-          x: -109.90017123470028
-          y: 269.68271138353094
+          x: -110
+          y: 270
         parameters:
           input_schema:
             type: object
@@ -630,8 +630,8 @@ ao_workflows_aac:
         name: Governed Drift (Tanium comparison)
         type: manual_trigger
         position:
-          x: -306.63103448275865
-          y: 246.77586206896552
+          x: -307
+          y: 247
         parameters:
           input_schema:
             type: object
