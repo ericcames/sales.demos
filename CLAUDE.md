@@ -508,6 +508,14 @@ environments (`sandbox`/`demo`) consume the endpoint. Issue
   real status.
 
 - **Document before fixing** — open a GitHub issue before making code changes.
+- **Every PR body starts with its issue link** — `Closes #N`, or `Part of #N`
+  when the PR is one piece of a larger issue; the last piece carries `Closes`
+  (#879). A mention like "Decision E on #841" is a cross-reference, not a link:
+  GitHub only closes an issue on merge for `Closes` / `Fixes` / `Resolves`.
+  The PR template asks for this, but `gh pr create --body` skips the template
+  entirely — that is how #870–#878 all arrived unlinked. The required
+  `pr-links-issue` check enforces it and re-runs when the description is
+  edited, so fix the body, not the code.
 - **Always label new issues** — run `gh label list --repo ericcames/sales.demos`
   and apply every label that genuinely fits.
 - **One concern per PR** — group by shared root cause. Would you revert these
@@ -565,14 +573,15 @@ environments (`sandbox`/`demo`) consume the endpoint. Issue
     deliberate: a PR should not block on a second person being around.
   - **CODEOWNERS requests review; it does not gate.**
     `require_code_owner_reviews` is `false`.
-  - **All 9 lint checks are required** — `yamllint`, `ansible-lint`,
+  - **All 10 checks are required** — `yamllint`, `ansible-lint`,
     `secret-guard`, `secrets-example-sync`, `generated-files`,
     `skills-frontmatter`, `docs-artifacts-current`, `renderer-matches-role`,
-    `fact-normalisation-agrees`.
+    `fact-normalisation-agrees` (all in `lint.yml`), and `pr-links-issue`
+    (its own `pr-links-issue.yml`, because it must also run on `edited`).
     **Adding or renaming a CI job means updating this list** and the branch
     protection API — two steps, every time:
 
-    1. add the job to `.github/workflows/lint.yml` and to the list above;
+    1. add the job to a workflow in `.github/workflows/` and to the list above;
     2. `gh api -X PATCH repos/ericcames/sales.demos/branches/main/protection/required_status_checks`
        with `-F strict=false` and the full `contexts[]` set — **the full set**,
        because the endpoint replaces rather than appends.

@@ -214,7 +214,10 @@ audit reports `MODIFIED` and shows how to repair them.
 5. Run the phase against `sandbox` with `utilities/run-playbook.sh` — and run
    it in the EE too, per *Skills and playbooks* above. A green CI run proves neither.
 6. Run the leak audit above.
-7. Open a PR with a summary, a test plan, and a rollback note.
+7. Open a PR with a summary, a test plan, and a rollback note. **Start the body
+   with `Closes #N`** — or `Part of #N` when the PR is one piece of a larger
+   issue. `gh pr create --body` skips the PR template, so write it yourself;
+   the required `pr-links-issue` check fails without it (#879).
 
 **There is no changelog to update.** The per-PR obligation was retired in #432.
 What changed lives in `git log` and the closed issue; the accumulated history is
