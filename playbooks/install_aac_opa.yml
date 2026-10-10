@@ -143,17 +143,21 @@
                 initContainers:
                   # 1/3 fetch the pinned release into an emptyDir. Public repo,
                   # no token. --strip-components drops the <repo>-<ver>/ top dir.
+                  # NEVER mount it at /lib: that hides the image's own /lib,
+                  # which holds the musl loader busybox needs, and the container
+                  # dies with "exec /bin/sh: No such file or directory" before
+                  # running a line. Measured on sandbox, 2026-10-09.
                   - name: fetch
                     image: "{{ aac_fetch_image }}"
                     command: ["sh", "-c"]
                     args:
                       - >-
-                        curl -fsSL "$LIBRARY_TARBALL" | tar -xz --strip-components=1 -C /lib
-                        && test -d /lib/benchmarks && test -d /lib/frameworks
+                        curl -fsSL "$LIBRARY_TARBALL" | tar -xz --strip-components=1 -C /library
+                        && test -d /library/benchmarks && test -d /library/frameworks
                     env:
                       - {name: LIBRARY_TARBALL, value: "{{ aac_library_tarball }}"}
                     volumeMounts:
-                      - {name: lib, mountPath: /lib}
+                      - {name: lib, mountPath: /library}
                     securityContext: &restricted
                       allowPrivilegeEscalation: false
                       runAsNonRoot: true
@@ -167,9 +171,9 @@
                   # a subset: tests reach across directories.
                   - name: opa-test
                     image: "{{ opa_image }}"
-                    args: ["test", "--ignore=.github", "--ignore=.*", "/lib"]
+                    args: ["test", "--ignore=.github", "--ignore=.*", "/library"]
                     volumeMounts:
-                      - {name: lib, mountPath: /lib, readOnly: true}
+                      - {name: lib, mountPath: /library, readOnly: true}
                     securityContext: *restricted
                     resources: *init_resources
                   # 3/3 compile it once. Serving a bundle instead of a directory
@@ -177,9 +181,9 @@
                   # per-file REST load takes.
                   - name: opa-build
                     image: "{{ opa_image }}"
-                    args: ["build", "--ignore=.github", "--ignore=.*", "-b", "/lib", "-o", "/bundles/aac.tar.gz"]
+                    args: ["build", "--ignore=.github", "--ignore=.*", "-b", "/library", "-o", "/bundles/aac.tar.gz"]
                     volumeMounts:
-                      - {name: lib, mountPath: /lib, readOnly: true}
+                      - {name: lib, mountPath: /library, readOnly: true}
                       - {name: bundles, mountPath: /bundles}
                     securityContext: *restricted
                     resources: *init_resources
