@@ -246,6 +246,26 @@
         status_code: 200
       register: ao_wf_current
 
+    # AO accepts an agentic node's `responseSchema` (the name #703 checked in
+    # its OpenAPI spec) but stores and returns it as `response_schema`. Rename it
+    # back on the stored side, so what is sent stays as it was; compared raw,
+    # every workflow with an agentic node read as changed on every run (#889).
+    - name: "Normalise the stored nodes for comparison — {{ ao_wf.name }}"
+      when: ao_wf.name in ao_existing_workflow_ids
+      ansible.builtin.set_fact:
+        ao_wf_stored_nodes: >-
+          {%- set out = [] -%}
+          {%- for n in ao_wf_current.json.version.workflow_definition.nodes -%}
+          {%-   if 'response_schema' in (n.parameters | default({})) -%}
+          {%-     set p = n.parameters | dict2items | rejectattr('key', 'equalto', 'response_schema')
+                          | list | items2dict | combine({'responseSchema': n.parameters.response_schema}) -%}
+          {%-     set _ = out.append(n | combine({'parameters': p})) -%}
+          {%-   else -%}
+          {%-     set _ = out.append(n) -%}
+          {%-   endif -%}
+          {%- endfor -%}
+          {{ out }}
+
     # AO may store positions as floats, so the node comparison leaves them out
     # and they are compared separately, rounded to integers. Compared raw, every
     # run would save a new version of an unchanged workflow; left out entirely,
@@ -266,7 +286,7 @@
             != ((ao_wf_definition.nodes + ao_wf_definition.triggers) | sort(attribute='id')
              | map(attribute='position.y', default=0) | map('float') | map('round') | map('int') | list)
             or
-            (ao_wf_current.json.version.workflow_definition.nodes
+            (ao_wf_stored_nodes
              | map('dict2items') | map('rejectattr', 'key', 'equalto', 'position') | map('list') | map('items2dict')
              | sort(attribute='id') | to_json(sort_keys=True))
             != (ao_wf_definition.nodes
