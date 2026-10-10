@@ -1,0 +1,431 @@
+---
+# ===========================================================================
+# install_aac_db.yml — the AAC evidence database, as a second database in
+# the Policy as Code evidence store. #869, Compliance as Code Phase 2 on #841.
+#
+#   ansible-playbook playbooks/install_aac_db.yml -i inventory --limit sandbox \
+#     -e target_env=sandbox \
+#     --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
+#
+# Remove it again (policy-db, the `compliance` database and its evidence are
+# untouched):
+#
+#   ... -e aac_db_state=absent
+#
+# WHY A SECOND DATABASE, NOT A SECOND CLUSTER AND NOT A SHARED ONE. Decision C
+# on #841. policy-db already exists, on Ceph, measured (#851). AAC's schema
+# (compliance_results, compliance_facts, host_facts, …) and this platform's
+# (host_facts, assessments) BOTH define a table named host_facts, so one
+# database for both is not an option. `aac`, owned by role `aac`, in the
+# same CloudNativePG cluster: zero new pods, zero new images.
+#
+# THE SCHEMA IS THE PRODUCT'S OWN. roles/aac_compliance_db/tasks/schema.yml
+# in the public AAC pack (ynotbhatc/aac-pack at aac_pack_version, aac.yml) is
+# how the AAC lab creates its tables. Its tasks are community.postgresql
+# calls; this playbook fetches that file at the pinned tag, reads the SAME
+# statements out of it and applies them through psql on the primary, exactly
+# as install_policy_db.yml applies its schema. Same DDL as the lab, no database
+# port reachable from a laptop required, no collection required in the EE
+# for this step. Every statement is IF NOT EXISTS / CREATE OR REPLACE, so a
+# re-run is harmless.
+#
+# CREDENTIALS (decision G). Role `aac` gets env_secrets[<env>].aac_db_password.
+# AAC's playbooks connect with community.postgresql over
+# policy-db-rw.<ns>.svc:5432, so the password reaches job templates through
+# the "Compliance as Code - Evidence Database" credential (#878), which reads
+# env_secrets[<env>].aac_db_password -- its own credential type, so the shared
+# "Sales Demos - Env Secrets" type is never changed (decision G). The password
+# is only ever inside a no_log task.
+#
+# SEED (optional, decision J-style). aac_db_seed_url, with an optional
+# aac_db_seed_token, restores a plain-SQL pg_dump (gzipped) into `aac` ONLY,
+# only when compliance_results is empty, and refuses a dump that would switch
+# databases. Where that URL lives is Tim's call; nothing is defaulted.
+# ===========================================================================
+
+- name: Deploy the AAC evidence database
+  hosts: aap
+  gather_facts: false
+
+  environment:
+    K8S_AUTH_HOST: "{{ openshift_api_url }}"
+    K8S_AUTH_API_KEY: "{{ openshift_api_token }}"
+    K8S_AUTH_VERIFY_SSL: "{{ openshift_validate_certs | default(false) | bool }}"
+
+  vars:
+    aac_db_state: present
+    aac_db_namespace: "{{ opa_namespace }}"
+    policy_db_cluster: "policy-db"
+    aac_db_name: "aac"
+    aac_db_owner: "aac"
+    aac_db_password: "{{ env_secrets[aap_env_name].aac_db_password }}"
+    aac_db_role_url: "{{ aac_pack_raw }}/roles/aac_compliance_db"
+    aac_db_files_url: "{{ aac_pack_raw }}/files"
+    aac_db_seed_url: ""
+    aac_db_seed_token: ""
+    # The tables the product's schema task creates. Asserted after apply.
+    aac_db_tables:
+      - compliance_results
+      - compliance_facts
+      - host_facts
+      - compliance_certifications
+      - framework_catalog
+      - customer_frameworks
+      - remediation_budgets
+      - remediation_rates
+      - technical_debt_items
+      - technical_debt_summary
+      - sidecar_datasets
+    _psql: "psql -U postgres -v ON_ERROR_STOP=1"
+
+  tasks:
+    - name: Confirm the inventory resolved to the environment you meant
+      ansible.builtin.include_tasks: tasks/assert_target_environment.yml
+
+    - name: Assert the inputs are set
+      ansible.builtin.assert:
+        that:
+          - openshift_api_url | default('') | length > 0
+          - openshift_api_token | default('') | length > 0
+          - aac_db_state in ['present', 'absent']
+          - aac_db_state == 'absent' or (aac_db_password | length >= 12)
+          - aac_db_state == 'absent' or (aac_db_password is not search("['\\\\]"))
+        fail_msg: >-
+          openshift_api_* must be set for '{{ aap_env_name | default("?") }}';
+          env_secrets.{{ aap_env_name | default("<env>") }}.aac_db_password must be
+          12+ characters with no quote or backslash (it is placed in SQL by this
+          playbook); aac_db_state must be present or absent.
+        quiet: true
+      no_log: true
+
+    - name: Look for the evidence store
+      kubernetes.core.k8s_info:
+        api_version: postgresql.cnpg.io/v1
+        kind: Cluster
+        name: "{{ policy_db_cluster }}"
+        namespace: "{{ aac_db_namespace }}"
+      register: _cluster
+
+    - name: Assert it is there and ready
+      ansible.builtin.assert:
+        that:
+          - _cluster.resources | length == 1
+          - _cluster.resources[0].status.readyInstances | default(0) | int >= 1
+        fail_msg: >-
+          No ready CloudNativePG cluster '{{ policy_db_cluster }}' in
+          {{ aac_db_namespace }}. Run playbooks/install_policy_db.yml
+          (AAP Ecosystem - Install Policy Evidence Store, #851) first — this
+          playbook adds a database to it, it does not create a cluster.
+        quiet: true
+
+    - name: Find the primary
+      kubernetes.core.k8s_info:
+        kind: Pod
+        namespace: "{{ aac_db_namespace }}"
+        label_selectors:
+          - "cnpg.io/cluster={{ policy_db_cluster }}"
+          - "cnpg.io/instanceRole=primary"
+      register: _primary
+      failed_when: _primary.resources | length != 1
+
+    - name: Set the exec target
+      ansible.builtin.set_fact:
+        _pod: "{{ _primary.resources[0].metadata.name }}"
+
+    # -----------------------------------------------------------------------
+    # Removal
+    # -----------------------------------------------------------------------
+    - name: Remove the AAC database and role
+      when: aac_db_state == 'absent'
+      block:
+        - name: Drop the database, then the role
+          # FORCE ends the sessions AAC playbooks may hold. Only `aac` is
+          # named; the cluster and the `compliance` database are not touched.
+          kubernetes.core.k8s_exec:
+            namespace: "{{ aac_db_namespace }}"
+            pod: "{{ _pod }}"
+            container: postgres
+            command: >-
+              {{ _psql }} -d postgres -c
+              "DROP DATABASE IF EXISTS {{ aac_db_name }} WITH (FORCE); DROP ROLE IF EXISTS {{ aac_db_owner }};"
+          register: _drop
+          changed_when: "'DROP' in _drop.stdout"
+          failed_when: _drop.rc != 0
+
+        - name: Stop here
+          ansible.builtin.meta: end_play
+
+    # -----------------------------------------------------------------------
+    # 1. Role and database
+    # -----------------------------------------------------------------------
+    - name: Create or update the role
+      # LOGIN + password; no superuser, no createdb. The password is set on
+      # every run so a rotated vault value lands.
+      kubernetes.core.k8s_exec:
+        namespace: "{{ aac_db_namespace }}"
+        pod: "{{ _pod }}"
+        container: postgres
+        command: >-
+          {{ _psql }} -d postgres -c
+          "DO $$ BEGIN
+             IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '{{ aac_db_owner }}') THEN
+               CREATE ROLE {{ aac_db_owner }} LOGIN PASSWORD '{{ aac_db_password }}';
+             ELSE
+               ALTER ROLE {{ aac_db_owner }} WITH LOGIN PASSWORD '{{ aac_db_password }}';
+             END IF;
+           END $$;"
+      register: _role
+      changed_when: false
+      failed_when: _role.rc != 0
+      no_log: true
+
+    - name: Does the database exist?
+      kubernetes.core.k8s_exec:
+        namespace: "{{ aac_db_namespace }}"
+        pod: "{{ _pod }}"
+        container: postgres
+        command: "{{ _psql }} -d postgres -tA -c \"SELECT 1 FROM pg_database WHERE datname = '{{ aac_db_name }}'\""
+      register: _db_exists
+      changed_when: false
+      failed_when: _db_exists.rc != 0
+
+    - name: Create the database
+      when: _db_exists.stdout | trim != '1'
+      kubernetes.core.k8s_exec:
+        namespace: "{{ aac_db_namespace }}"
+        pod: "{{ _pod }}"
+        container: postgres
+        command: "{{ _psql }} -d postgres -c \"CREATE DATABASE {{ aac_db_name }} OWNER {{ aac_db_owner }}\""
+      register: _db_create
+      changed_when: true
+      failed_when: _db_create.rc != 0
+
+    # -----------------------------------------------------------------------
+    # 2. The product's schema, read out of the product's role
+    # -----------------------------------------------------------------------
+    - name: Fetch the schema task file at {{ aac_pack_version }}
+      ansible.builtin.uri:
+        url: "{{ aac_db_role_url }}/tasks/schema.yml"
+        return_content: true
+      register: _schema_fetched
+
+    - name: Parse it
+      ansible.builtin.set_fact:
+        _schema_tasks: "{{ _schema_fetched.content | from_yaml }}"
+
+    # One task applies a .sql file by path rather than an inline query. Fetch
+    # those files from the pack too, by basename, before rendering.
+    - name: Fetch the script files the schema task references
+      ansible.builtin.uri:
+        url: "{{ aac_db_files_url }}/{{ item | basename }}"
+        return_content: true
+      loop: >-
+        {{ _schema_tasks | selectattr('community.postgresql.postgresql_script', 'defined')
+           | map(attribute='community.postgresql.postgresql_script.path') | list }}
+      loop_control:
+        label: "{{ item | basename }}"
+      register: _script_fetched
+
+    - name: Index them by basename
+      ansible.builtin.set_fact:
+        _script_files: >-
+          {{ dict(_script_fetched.results | default([]) | map(attribute='item') | map('basename')
+                  | zip(_script_fetched.results | default([]) | map(attribute='content'))) }}
+
+    - name: Render the statements
+      # Each task is one community.postgresql call: `query:` (or a loop of
+      # queries), or `postgresql_script: path:`. The same text the lab applies.
+      ansible.builtin.set_fact:
+        # A LITERAL block, not a folded one: folding joins lines, and a SQL
+        # comment line (`-- …`) would then swallow the statement after it.
+        _schema_sql: |
+          {% set out = [] -%}
+          {% for t in _schema_tasks -%}
+            {% set q = t['community.postgresql.postgresql_query'] | default({}) -%}
+            {% set s = t['community.postgresql.postgresql_script'] | default({}) -%}
+            {% if 'loop' in t and t['loop'] is sequence and t['loop'] is not string -%}
+              {% for item in t['loop'] %}{% set _ = out.append(item | string) %}{% endfor -%}
+            {% elif q.query is defined -%}
+              {% set _ = out.append(q.query) -%}
+            {% elif s.path is defined -%}
+              {% set _ = out.append(_script_files[s.path | basename]) -%}
+            {% endif -%}
+          {% endfor -%}
+          SET ROLE {{ aac_db_owner }};
+          {% for stmt in out %}{{ stmt | trim | regex_replace(';\s*$', '') }};
+
+          {% endfor %}
+
+    - name: Assert the schema rendered
+      ansible.builtin.assert:
+        that:
+          - _schema_tasks | length >= 25
+          - _schema_sql is search('CREATE TABLE IF NOT EXISTS compliance_results')
+          - _schema_sql is search('CREATE TABLE IF NOT EXISTS host_facts')
+        fail_msg: >-
+          The schema fetched from {{ aac_db_role_url }}/tasks/schema.yml does not
+          look like the AAC evidence schema ({{ _schema_tasks | length }} tasks).
+          Check aac_pack_repo / aac_pack_version in aac.yml.
+        quiet: true
+
+    - name: Stage the schema in the primary
+      # A file, not -c: the rendered schema is ~15 KB, over the exec arg cap.
+      kubernetes.core.k8s_cp:
+        namespace: "{{ aac_db_namespace }}"
+        pod: "{{ _pod }}"
+        container: postgres
+        remote_path: "/controller/tmp/aac-schema.sql"
+        state: to_pod
+        content: "{{ _schema_sql }}"
+
+    - name: Apply it as {{ aac_db_owner }}
+      kubernetes.core.k8s_exec:
+        namespace: "{{ aac_db_namespace }}"
+        pod: "{{ _pod }}"
+        container: postgres
+        command: "{{ _psql }} -d {{ aac_db_name }} -q -f /controller/tmp/aac-schema.sql"
+      register: _schema_apply
+      changed_when: false
+      failed_when: _schema_apply.rc != 0
+
+    - name: Remove the staged file
+      kubernetes.core.k8s_exec:
+        namespace: "{{ aac_db_namespace }}"
+        pod: "{{ _pod }}"
+        container: postgres
+        command: "rm -f /controller/tmp/aac-schema.sql"
+      changed_when: false
+      failed_when: false
+
+    - name: Ask which tables exist and who owns them
+      kubernetes.core.k8s_exec:
+        namespace: "{{ aac_db_namespace }}"
+        pod: "{{ _pod }}"
+        container: postgres
+        command: >-
+          {{ _psql }} -d {{ aac_db_name }} -tA -c
+          "SELECT tablename || ':' || tableowner FROM pg_tables WHERE schemaname = 'public' ORDER BY 1"
+      register: _tables
+      changed_when: false
+      failed_when: _tables.rc != 0
+
+    - name: Assert every table exists and is owned by the app role
+      ansible.builtin.assert:
+        that: _expected | difference(_tables.stdout_lines) | length == 0
+        fail_msg: >-
+          Expected {{ _expected }}; the database reports {{ _tables.stdout_lines }}.
+        quiet: true
+      vars:
+        _expected: "{{ aac_db_tables | map('regex_replace', '$', ':' ~ aac_db_owner) | list }}"
+
+    # -----------------------------------------------------------------------
+    # 3. Seed (optional): the AAC lab's history, into `aac` only, once
+    # -----------------------------------------------------------------------
+    - name: Seed the database
+      when: aac_db_seed_url | length > 0
+      block:
+        - name: How many results are there already?
+          kubernetes.core.k8s_exec:
+            namespace: "{{ aac_db_namespace }}"
+            pod: "{{ _pod }}"
+            container: postgres
+            command: "{{ _psql }} -d {{ aac_db_name }} -tA -c 'SELECT count(*) FROM compliance_results'"
+          register: _rows_before
+          changed_when: false
+
+        - name: Skip the seed when the database already has history
+          when: _rows_before.stdout | trim | int > 0
+          ansible.builtin.debug:
+            msg: >-
+              compliance_results already holds {{ _rows_before.stdout | trim }} rows;
+              the seed is for an empty database and is skipped.
+
+        - name: Fetch, check and restore the dump
+          when: _rows_before.stdout | trim | int == 0
+          block:
+            - name: Download the dump
+              ansible.builtin.get_url:
+                url: "{{ aac_db_seed_url }}"
+                dest: "/tmp/aac-seed.sql.gz"
+                mode: "0600"
+                headers: "{{ {'Authorization': 'token ' ~ aac_db_seed_token} if aac_db_seed_token | length > 0 else {} }}"
+              no_log: true
+
+            - name: Refuse a dump that would leave the aac database
+              # A plain pg_dump of one database has neither. If either is
+              # present, the restore could write somewhere else.
+              ansible.builtin.shell:
+                cmd: "set -o pipefail; gunzip -c /tmp/aac-seed.sql.gz | grep -cE '^(\\\\connect|CREATE DATABASE|DROP DATABASE)' || true"
+                executable: /bin/bash
+              register: _dump_scan
+              changed_when: false
+              failed_when: _dump_scan.stdout | trim | int > 0
+
+            - name: Stage the dump in the primary
+              kubernetes.core.k8s_cp:
+                namespace: "{{ aac_db_namespace }}"
+                pod: "{{ _pod }}"
+                container: postgres
+                remote_path: "/controller/tmp/aac-seed.sql.gz"
+                local_path: "/tmp/aac-seed.sql.gz"
+                state: to_pod
+
+            - name: Restore it into {{ aac_db_name }}
+              # ON_ERROR_STOP off, deliberately: the dump's CREATE TABLE lines
+              # collide with the schema just applied and must be skipped while
+              # every COPY still loads. The row counts below are the check.
+              kubernetes.core.k8s_exec:
+                namespace: "{{ aac_db_namespace }}"
+                pod: "{{ _pod }}"
+                container: postgres
+                command: >-
+                  sh -c "gunzip -c /controller/tmp/aac-seed.sql.gz
+                  | psql -U postgres -d {{ aac_db_name }} -q -v ON_ERROR_STOP=0 > /dev/null;
+                  rm -f /controller/tmp/aac-seed.sql.gz"
+              register: _restore
+              changed_when: true
+
+            - name: Hand every table to {{ aac_db_owner }}
+              # The dump created anything it added as postgres; the AAC
+              # playbooks connect as aac and must own what they write to.
+              kubernetes.core.k8s_exec:
+                namespace: "{{ aac_db_namespace }}"
+                pod: "{{ _pod }}"
+                container: postgres
+                command: >-
+                  {{ _psql }} -d {{ aac_db_name }} -c
+                  "DO $$ DECLARE r record; BEGIN
+                     FOR r IN SELECT tablename FROM pg_tables WHERE schemaname = 'public' AND tableowner <> '{{ aac_db_owner }}' LOOP
+                       EXECUTE format('ALTER TABLE public.%I OWNER TO {{ aac_db_owner }}', r.tablename);
+                     END LOOP;
+                     FOR r IN SELECT sequencename FROM pg_sequences WHERE schemaname = 'public' AND sequenceowner <> '{{ aac_db_owner }}' LOOP
+                       EXECUTE format('ALTER SEQUENCE public.%I OWNER TO {{ aac_db_owner }}', r.sequencename);
+                     END LOOP;
+                   END $$;"
+              changed_when: true
+          always:
+            - name: Remove the local copy
+              ansible.builtin.file:
+                path: "/tmp/aac-seed.sql.gz"
+                state: absent
+
+    - name: Count the evidence
+      kubernetes.core.k8s_exec:
+        namespace: "{{ aac_db_namespace }}"
+        pod: "{{ _pod }}"
+        container: postgres
+        command: >-
+          {{ _psql }} -d {{ aac_db_name }} -tA -c
+          "SELECT (SELECT count(*) FROM compliance_results) || ' results, '
+                  || (SELECT count(*) FROM compliance_facts) || ' fact sets, '
+                  || (SELECT count(*) FROM pg_tables WHERE schemaname = 'public') || ' tables'"
+      register: _counts
+      changed_when: false
+
+    - name: Report
+      ansible.builtin.debug:
+        msg:
+          - "AAC evidence database ready in {{ aap_env_name }}: {{ policy_db_cluster }} / database {{ aac_db_name }}, owner {{ aac_db_owner }}"
+          - "Read-write: {{ policy_db_cluster }}-rw.{{ aac_db_namespace }}.svc:5432 — AAC playbooks get pg_host/pg_db/pg_user/pg_password from the 'Compliance as Code - Evidence Database' credential"
+          - "{{ _counts.stdout | trim }}"
+          - "The platform's own `compliance` database and its tables were not touched."

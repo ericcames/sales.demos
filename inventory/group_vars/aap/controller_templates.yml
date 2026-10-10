@@ -2261,3 +2261,32 @@ controller_templates_all:
     ask_variables_on_launch: true
     extra_vars:
       target_env: "{{ aap_env_name }}"
+
+  # ---------------------------------------------------------------------
+  # The AAC evidence database (#869, #841 Phase 2): database `aac` owned by
+  # role `aac` inside the existing policy-db cluster, schema applied from
+  # the product's own role in the public AAC pack at the pinned tag.
+  # Optional seed from a URL. Opt-in; aac_db_state=absent removes it; the
+  # platform's `compliance` database is never touched.
+  # ---------------------------------------------------------------------
+  - name: "AAP Ecosystem - Install Compliance Evidence Database"
+    description: >-
+      Add the AAC evidence database `aac` to policy-db, apply the product's
+      schema (11 tables) as role `aac`, and optionally seed it from
+      aac_db_seed_url. Proves every table exists and who owns it.
+    labels:
+      - aap-ecosystem
+      - install
+    job_type: run
+    organization: "IT Service Automation"
+    inventory: "Sales Demo VMs"
+    project: "Sales Demos"
+    playbook: playbooks/install_aac_db.yml
+    execution_environment: "Sales Demos - OCP Virt EE"
+    credentials:
+      - "Sales Demos - Vault"
+      - "Sales Demos - Env Secrets"
+    limit: "{{ aap_env_name }}"
+    ask_variables_on_launch: true
+    extra_vars:
+      target_env: "{{ aap_env_name }}"
