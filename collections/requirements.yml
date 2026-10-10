@@ -87,3 +87,17 @@ collections:
   # entry points, and so `ansible-lint` can resolve it locally.
   - name: cloud.terraform
     version: "4.0.0"
+
+  # PostgreSQL. The AAC playbooks the Compliance as Code templates run
+  # (playbooks/ in the public ynotbhatc/aac-pack repository, pinned by
+  # aac_pack_version in inventory/group_vars/aap/aac.yml — #871) read and
+  # write the AAC evidence database with
+  # community.postgresql.postgresql_query / postgresql_script: 29 calls across the ten tranche-1 playbooks, nothing else outside
+  # ansible.builtin. Decision E on #841: one collection added to this EE
+  # rather than a second EE image on a node with ~6 GiB of disk headroom.
+  # ansible-builder installs the collection's own python requirement
+  # (psycopg2-binary) from its requirements.txt during the build. Needs an EE
+  # rebuild and tag bump (/sales-demos-ee-build) before any of those
+  # templates can run.
+  - name: community.postgresql
+    version: "4.2.0"
