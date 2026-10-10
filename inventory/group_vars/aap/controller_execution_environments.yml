@@ -31,8 +31,8 @@ controller_execution_environments_all:
   - name: "Sales Demos - OCP Virt EE"
     description: |-
       {%- raw -%}
-      sales.demos EE v1.2.0 (base ee-supported-rhel9, AAP 2.7) — Terraform 1.15.8 · Helm 3.21.4 · cloud.terraform · kubernetes.core · redhat.openshift_virtualization · infra.aap_configuration
-      {%- endraw -%}
+      sales.demos EE v1.3.0 (base ee-supported-rhel9, AAP 2.7) — Terraform 1.15.8 · Helm 3.21.4
+      Collections: cloud.terraform · kubernetes.core · redhat.openshift_virtualization · infra.aap_configuration · community.postgresql{%- endraw -%}
     organization: "IT Service Automation"
     # PULLED FROM THIS ENVIRONMENT'S OWN PRIVATE AUTOMATION HUB (#35), not from
     # quay.io directly. quay remains the published artifact and the source of
@@ -56,10 +56,17 @@ controller_execution_environments_all:
     #
     # Upstream audit trail — if the digest under the quay tag ever differs from
     # this, someone re-pushed:
+    #   sha256:64e95a36bde6dd0eb0822d3ee05b5a8e4d456d1f655a81d0dddb7800caebe172
+    #   skopeo inspect --no-creds docker://quay.io/zigfreed/sales-demos-ee:v1.3.0
+    # and for the previous one:
     #   sha256:be41f1ffdfef21fdcd45bc134dd564cf91525c5ebd235f2ecfc03d88b632ff2b
     #   skopeo inspect --no-creds docker://quay.io/zigfreed/sales-demos-ee:v1.1.0
     #
-    # v1.2.0 SINCE #324: adds the helm 3.21.4 binary, without which
+    # v1.3.0 SINCE #885: adds community.postgresql 4.2.0 (#875), which every
+    # Compliance as Code template that touches the AAC evidence database needs
+    # (#878). Same base digest, same terraform and helm; one collection added.
+    #
+    # v1.2.0 (#324) added the helm 3.21.4 binary, without which
     # kubernetes.core.helm -- and therefore playbooks/portal.yml -- could not
     # run from AAP at all. v1.1.0 was the 2.7-base rebuild (#122), v1.0.0 before
     # it (digest
@@ -74,7 +81,7 @@ controller_execution_environments_all:
     # its gate is both: the portal template completing, AND `Linux Day 1 - 0
     # Workflow` still green end to end on the new image. A helm binary should
     # not disturb terraform or kubernetes.core, but "should not" is not evidence.
-    image: "{{ aap_hostname }}/sales_demos_ee:v1.2.0"
+    image: "{{ aap_hostname }}/sales_demos_ee:v1.3.0"
     # PAH requires authentication for container pulls even when the repository
     # is not private, so this is required regardless of visibility.
     credential: "Sales Demos - PAH Registry"

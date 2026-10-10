@@ -47,15 +47,17 @@ hub_ee_repositories_all:
     # create a second, moving copy of an image the whole design treats as
     # immutable (see utilities/build-ee.sh — never re-push a tag).
     include_tags:
-      # ALL THREE, and that is the additive rule (#122). v1.2.0 adds the helm
-      # binary (#324); v1.1.0 stays mirrored as the rollback, so reverting is a
-      # one-line change to controller_execution_environments.yml rather than a
+      # ALL FOUR, and that is the additive rule (#122). v1.3.0 adds
+      # community.postgresql (#885) and v1.2.0 stays mirrored as its rollback;
+      # v1.2.0 added the helm binary (#324) and v1.1.0 was its rollback. Reverting
+      # is a one-line change to controller_execution_environments.yml rather than a
       # re-mirror. v1.0.0's stated retirement condition is now met -- v1.1.0 has
       # run real job templates in both environments -- but dropping it is a
       # separate concern and is deliberately not bundled with a version bump.
       - v1.0.0
       - v1.1.0
       - v1.2.0
+      - v1.3.0
     # ROLE GATE, and the one place the flag's VALUE is read (#831). Dispatch
     # only checks that hub_ee_repository_sync is defined, so `-e
     # hub_ee_repository_sync=false` used to change nothing. Deriving the role
