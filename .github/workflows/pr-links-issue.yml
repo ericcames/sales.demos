@@ -27,8 +27,14 @@ jobs:
       - name: "PR body has Closes #N or Part of #N"
         env:
           PR_BODY: ${{ github.event.pull_request.body }}
+        # Strip fenced code, inline code and HTML comments first: GitHub ignores
+        # closing keywords in all three, so a quoted example (or the template's
+        # commented-out placeholder) must not count. #880's own test plan quoted
+        # `fixes #12` and passed this check while GitHub linked nothing.
         run: |
-          if printf '%s' "$PR_BODY" | grep -qiE \
+          linkable=$(printf '%s' "$PR_BODY" | perl -0777 -pe \
+            's/^[ \t]*```.*?^[ \t]*```[^\n]*$//gms; s/<!--.*?-->//gs; s/`[^`]*`//g')
+          if printf '%s' "$linkable" | grep -qiE \
               '(\b(close[sd]?|fix(e[sd])?|resolve[sd]?)|\bpart of)[[:space:]]+([[:alnum:]_.-]+/[[:alnum:]_.-]+)?#[0-9]+'; then
             echo "PR body links an issue."
           else
