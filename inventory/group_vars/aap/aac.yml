@@ -57,7 +57,16 @@ opa_ot_url: "http://opa-ot.{{ aac_opa_namespace }}.svc.cluster.local:{{ aac_opa_
 # The AO decision/routing OPA (#867, Phase 4). A name contract like the three
 # above; the server is deployed by its own playbook. Declared here so
 # ao_workflows_aac.yml can template its http_request URLs from one place.
-aac_opa_routing_url: "http://opa-routing.{{ aac_opa_namespace }}.svc.cluster.local:{{ aac_opa_port }}"
+#
+# THE SHORT NAME, `.svc`, NOT `.svc.cluster.local` (#890). AO checks workflow
+# HTTP URLs with langchain-core's SSRF policy, which hard-codes
+# block_k8s_internal=True: any host ending in .svc.cluster.local is refused
+# ("SSRF blocked: Kubernetes internal DNS") even when it is on the CR's
+# workflowHttpRequestAllowedHosts. The short name resolves to the same Service
+# through the pod's DNS search path and passes, once install_opa_routing.yml
+# has allowlisted it. Measured inside ao-worker, 2026-10-09. The MCP
+# integration works for the same reason: aap-mcp.aap.svc (#872).
+aac_opa_routing_url: "http://opa-routing.{{ aac_opa_namespace }}.svc:{{ aac_opa_port }}"
 
 # The AO integration and credential that give agentic nodes the AAP MCP
 # server (#867, Phase 4). Created by ao_mcp_integration.yml, attached by name
