@@ -6,8 +6,19 @@
 # Called by playbooks/ao_workflows.yml once per workflow, with:
 #   ao_wf                     the workflow entry from ao_workflows
 #   ao_workflow_state         present | absent
-#   ao_project_ids, ao_integration_ids, ao_credential_ids, ao_jt_ids
+#   ao_project_ids, ao_integration_ids, ao_credential_ids, ao_jt_ids,
+#   ao_wfjt_ids, ao_model_ids_by_name
 #                             name → ID maps for this environment
+#
+# NODE TYPES (#867). Four are rendered from NAMES: aap_job_template,
+# aap_workflow_job_template, agentic (llm_integration/llm_credential, optional
+# llm_model and mcp_integration/mcp_credential) and approval. `condition`
+# carries its expression. EVERY OTHER TYPE — http_request, switch, converge,
+# and whatever AO adds next — is carried VERBATIM from the node's `parameters`
+# key, so a workflow can use it without a loader change; the only thing a
+# verbatim node cannot do is name an environment-specific ID. A URL in an
+# http_request is templated from inventory (e.g. {{ aac_opa_routing_url }})
+# at load time, which is how it stays environment-neutral in the file.
 #   ao_sso_users              federated AO users (GET /api/v1/users)
 #   ao_existing_workflow_ids  workflow name → ID, non-built-in
 # Appends one line per workflow to ao_workflow_results.
@@ -52,15 +63,23 @@
         quiet: true
       vars:
         ao_wf_jt_nodes: "{{ ao_wf.nodes | selectattr('type', 'equalto', 'aap_job_template') | list }}"
+        ao_wf_wfjt_nodes: "{{ ao_wf.nodes | selectattr('type', 'equalto', 'aap_workflow_job_template') | list }}"
         ao_wf_agentic_nodes: "{{ ao_wf.nodes | selectattr('type', 'equalto', 'agentic') | list }}"
+        ao_wf_mcp_nodes: "{{ ao_wf_agentic_nodes | selectattr('mcp_integration', 'defined') | list }}"
         ao_wf_missing: >-
           {{
             (ao_wf_jt_nodes | map(attribute='job_template') | reject('in', ao_jt_ids)
              | map('regex_replace', '^', 'AAP job template: ') | list)
-            + (ao_wf_jt_nodes | map(attribute='credential') | reject('in', ao_credential_ids)
+            + (ao_wf_wfjt_nodes | map(attribute='workflow_job_template') | reject('in', ao_wfjt_ids | default({}))
+               | map('regex_replace', '^', 'AAP workflow template: ') | list)
+            + ((ao_wf_jt_nodes + ao_wf_wfjt_nodes) | map(attribute='credential') | reject('in', ao_credential_ids)
                | map('regex_replace', '^', 'AO credential: ') | list)
-            + (ao_wf_jt_nodes | map(attribute='integration') | reject('in', ao_integration_ids)
+            + ((ao_wf_jt_nodes + ao_wf_wfjt_nodes) | map(attribute='integration') | reject('in', ao_integration_ids)
                | map('regex_replace', '^', 'AO integration: ') | list)
+            + (ao_wf_mcp_nodes | map(attribute='mcp_integration') | reject('in', ao_integration_ids)
+               | map('regex_replace', '^', 'MCP integration: ') | list)
+            + (ao_wf_mcp_nodes | map(attribute='mcp_credential') | reject('in', ao_credential_ids)
+               | map('regex_replace', '^', 'MCP credential: ') | list)
             + (ao_wf_agentic_nodes | map(attribute='llm_integration') | reject('in', ao_integration_ids)
                | map('regex_replace', '^', 'LLM integration: ') | list)
             + (ao_wf_agentic_nodes | map(attribute='llm_credential') | reject('in', ao_credential_ids)
@@ -124,20 +143,38 @@
                      | combine({'extra_vars': ao_node.extra_vars}
                                if ao_node.extra_vars is defined else {})}
                   if ao_node.type == 'aap_job_template' else
+                  ({'parameters':
+                     {'credential_id': ao_credential_ids[ao_node.credential],
+                      'integration_id': ao_integration_ids[ao_node.integration],
+                      'workflow_job_template_id': ao_wfjt_ids[ao_node.workflow_job_template],
+                      'workflow_job_template_name': ao_node.workflow_job_template,
+                      'organization_name': ao_node.organization}
+                     | combine({'extra_vars': ao_node.extra_vars}
+                               if ao_node.extra_vars is defined else {})}
+                  if ao_node.type == 'aap_workflow_job_template' else
                   ({'parameters': {'condition': ao_node.condition}}
                    if ao_node.type == 'condition' else
                    ({'parameters':
                        {'prompt': ao_node.prompt | trim,
-                        'llm_model_id': ao_model_ids[ao_node.llm_integration],
+                        'llm_model_id': (ao_model_ids_by_name[ao_node.llm_integration][ao_node.llm_model]
+                                         if ao_node.llm_model is defined
+                                         else ao_model_ids[ao_node.llm_integration]),
                         'credential_id': ao_credential_ids[ao_node.llm_credential]}
                        | combine({'responseSchema': ao_node.response_schema}
-                                 if ao_node.response_schema is defined else {})}
+                                 if ao_node.response_schema is defined else {})
+                       | combine({'integration_connections':
+                                    [{'integration_id': ao_integration_ids[ao_node.mcp_integration],
+                                      'credential_id': ao_credential_ids[ao_node.mcp_credential]}],
+                                  'tool_selection_strategy': ao_node.tool_selection_strategy | default('ALL')}
+                                 if ao_node.mcp_integration is defined else {})}
                     if ao_node.type == 'agentic' else
-                    {'settings': {},
-                     'parameters': {
-                       'prompt': ao_node.prompt | trim,
-                       'approver_users': ao_wf_approver_usernames,
-                       'fallback_decision': ao_node.fallback_decision | default('reject')}}))
+                    ({'settings': {},
+                      'parameters': {
+                        'prompt': ao_node.prompt | trim,
+                        'approver_users': ao_wf_approver_usernames,
+                        'fallback_decision': ao_node.fallback_decision | default('reject')}}
+                     if ao_node.type == 'approval' else
+                     {'parameters': ao_node.parameters | default({})}))))
                 )
             ]
           }}
