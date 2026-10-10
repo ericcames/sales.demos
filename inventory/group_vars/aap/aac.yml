@@ -59,6 +59,12 @@ opa_ot_url: "http://opa-ot.{{ aac_opa_namespace }}.svc.cluster.local:{{ aac_opa_
 # ao_workflows_aac.yml can template its http_request URLs from one place.
 aac_opa_routing_url: "http://opa-routing.{{ aac_opa_namespace }}.svc.cluster.local:{{ aac_opa_port }}"
 
+# The AO integration and credential that give agentic nodes the AAP MCP
+# server (#867, Phase 4). Created by ao_mcp_integration.yml, attached by name
+# in ao_workflows_aac.yml -- declared here so both resolve the same names.
+aac_mcp_integration: "AAP MCP Server"
+aac_mcp_credential: "AAP MCP Token"
+
 # Fetches the release tarball. curl + busybox tar, about 10 MB; the only new
 # image pull this feature costs the node (probe_workloads.yml). Pinned by
 # digest: quay.io/curl/curl 8.22.0, 2026-09-02.

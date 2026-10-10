@@ -58,6 +58,9 @@ controller_labels_all:
   # compliant a host IS, beside `policy`, which is whether a job MAY run.
   - name: compliance
     organization: "IT Service Automation"
+  # The MCP surface — the AAP MCP server and what connects to it (#867).
+  - name: mcp
+    organization: "IT Service Automation"
 
   # --- phase ----------------------------------------------------------
   - name: install
