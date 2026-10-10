@@ -2247,6 +2247,7 @@ controller_templates_all:
     labels:
       - aap-ecosystem
       - install
+      - compliance
     job_type: run
     organization: "IT Service Automation"
     inventory: "Sales Demo VMs"
