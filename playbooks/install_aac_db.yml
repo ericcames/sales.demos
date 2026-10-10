@@ -40,7 +40,9 @@
 # SEED (optional, decision J-style). aac_db_seed_url, with an optional
 # aac_db_seed_token, restores a plain-SQL pg_dump (gzipped) into `aac` ONLY,
 # only when compliance_results is empty, and refuses a dump that would switch
-# databases. Where that URL lives is Tim's call; nothing is defaulted.
+# databases. The restore logs in AS `aac` (not postgres) with psql meta-commands
+# locked by \restrict, so a bad dump can damage `aac` and nothing else (#881).
+# Where that URL lives is Tim's call; nothing is defaulted.
 # ===========================================================================
 
 - name: Deploy the AAC evidence database
@@ -386,53 +388,77 @@
               changed_when: false
               failed_when: _dump_scan.stdout | trim | int > 0
 
-            - name: Stage the dump in the primary
+            - name: Write a .pgpass for {{ aac_db_owner }}
+              # The restore logs in as aac with its password (#881). k8s_exec
+              # has no env:, so PGPASSWORD would have to sit in the exec
+              # command, which travels in the API request URI and can be
+              # audit-logged. A staged 0600 file never appears in a command.
+              ansible.builtin.copy:
+                content: "localhost:5432:{{ aac_db_name }}:{{ aac_db_owner }}:{{ aac_db_password | replace(':', '\\:') }}\n"
+                dest: "/tmp/aac-seed.pgpass"
+                mode: "0600"
+              no_log: true
+
+            - name: Stage the dump and the .pgpass in the primary
               kubernetes.core.k8s_cp:
                 namespace: "{{ aac_db_namespace }}"
                 pod: "{{ _pod }}"
                 container: postgres
-                remote_path: "/controller/tmp/aac-seed.sql.gz"
-                local_path: "/tmp/aac-seed.sql.gz"
+                remote_path: "/controller/tmp/{{ item }}"
+                local_path: "/tmp/{{ item }}"
                 state: to_pod
+              loop:
+                - aac-seed.sql.gz
+                - aac-seed.pgpass
 
-            - name: Restore it into {{ aac_db_name }}
-              # ON_ERROR_STOP off, deliberately: the dump's CREATE TABLE lines
-              # collide with the schema just applied and must be skipped while
-              # every COPY still loads. The row counts below are the check.
+            - name: Restore it into the evidence database as {{ aac_db_owner }}
+              # AS aac, OVER TCP (#881). aac is not a superuser and holds no
+              # pg_execute_server_program, so COPY ... FROM PROGRAM, CREATE ROLE
+              # and pg_read_file in the dump are refused, and the worst a bad
+              # dump can do is damage aac -- never compliance. Not SET ROLE
+              # inside a postgres session: the dump could RESET ROLE. Not the
+              # socket either: pg_hba is peer there, and the OS user is not aac.
+              #
+              # \restrict FIRST. psql meta-commands run in the client, before
+              # any role check: `\! cmd` in the dump is a shell in this pod
+              # whoever psql logs in as. After `\restrict <key>` psql refuses
+              # every meta-command until `\unrestrict <key>`, and the key is
+              # made here, per run. COPY ... FROM stdin data still loads.
+              #
+              # ON_ERROR_STOP off, deliberately: the dump's CREATE TABLE and
+              # OWNER TO lines collide with the schema just applied and must be
+              # skipped while every COPY still loads. The row counts below are
+              # the check. psql's status, not rm's, is the task's status.
               kubernetes.core.k8s_exec:
                 namespace: "{{ aac_db_namespace }}"
                 pod: "{{ _pod }}"
                 container: postgres
                 command: >-
-                  sh -c "gunzip -c /controller/tmp/aac-seed.sql.gz
-                  | psql -U postgres -d {{ aac_db_name }} -q -v ON_ERROR_STOP=0 > /dev/null;
-                  rm -f /controller/tmp/aac-seed.sql.gz"
+                  sh -c "chmod 600 /controller/tmp/aac-seed.pgpass;
+                  { printf '\\\\restrict %s\\n' {{ _restrict_key }}; gunzip -c /controller/tmp/aac-seed.sql.gz; }
+                  | PGPASSFILE=/controller/tmp/aac-seed.pgpass
+                  psql 'host=localhost user={{ aac_db_owner }} dbname={{ aac_db_name }}' -X -q -v ON_ERROR_STOP=0 > /dev/null;
+                  rc=$?; rm -f /controller/tmp/aac-seed.sql.gz /controller/tmp/aac-seed.pgpass; exit $rc"
+              vars:
+                _restrict_key: "{{ lookup('ansible.builtin.password', '/dev/null', chars=['ascii_letters', 'digits'], length=32) }}"
               register: _restore
               changed_when: true
-
-            - name: Hand every table to {{ aac_db_owner }}
-              # The dump created anything it added as postgres; the AAC
-              # playbooks connect as aac and must own what they write to.
+          always:
+            - name: Remove the staged copies from the primary
               kubernetes.core.k8s_exec:
                 namespace: "{{ aac_db_namespace }}"
                 pod: "{{ _pod }}"
                 container: postgres
-                command: >-
-                  {{ _psql }} -d {{ aac_db_name }} -c
-                  "DO $$ DECLARE r record; BEGIN
-                     FOR r IN SELECT tablename FROM pg_tables WHERE schemaname = 'public' AND tableowner <> '{{ aac_db_owner }}' LOOP
-                       EXECUTE format('ALTER TABLE public.%I OWNER TO {{ aac_db_owner }}', r.tablename);
-                     END LOOP;
-                     FOR r IN SELECT sequencename FROM pg_sequences WHERE schemaname = 'public' AND sequenceowner <> '{{ aac_db_owner }}' LOOP
-                       EXECUTE format('ALTER SEQUENCE public.%I OWNER TO {{ aac_db_owner }}', r.sequencename);
-                     END LOOP;
-                   END $$;"
-              changed_when: true
-          always:
-            - name: Remove the local copy
+                command: "rm -f /controller/tmp/aac-seed.sql.gz /controller/tmp/aac-seed.pgpass"
+              changed_when: false
+
+            - name: Remove the local copies
               ansible.builtin.file:
-                path: "/tmp/aac-seed.sql.gz"
+                path: "/tmp/{{ item }}"
                 state: absent
+              loop:
+                - aac-seed.sql.gz
+                - aac-seed.pgpass
 
     - name: Count the evidence
       kubernetes.core.k8s_exec:
