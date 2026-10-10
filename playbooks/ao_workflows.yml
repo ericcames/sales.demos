@@ -96,6 +96,12 @@
 
     # Everything a workflow can name, read once. limit=100 comfortably covers
     # this repo; AO paginates with a cursor beyond that.
+    #
+    # THE AAP PROXIES ARE DIFFERENT (#887). /proxies/aap/* returns at most 50
+    # by default, ignores `limit` and `page`, and never says more exist (no
+    # `next`). Only `page_size` works. Sandbox crossed 50 job templates with
+    # #878 and the Windows Day 2 templates fell off the end, reported as "not
+    # found". The count is asserted below so outgrowing 200 fails loudly.
     - name: Read what this environment's AO and AAP have
       ansible.builtin.uri:
         url: "{{ ao_url }}/api/v1/{{ item }}"
@@ -106,12 +112,25 @@
         - projects
         - integrations
         - credentials
-        - proxies/aap/job_templates
+        - proxies/aap/job_templates?page_size=200
         - users?auth_type=federated&limit=100
         - workflows?limit=100
         # AAP WORKFLOW templates, for aap_workflow_job_template nodes (#867).
-        - proxies/aap/workflow_job_templates
+        - proxies/aap/workflow_job_templates?page_size=200
       register: ao_lookups
+
+    - name: Assert the AAP proxies returned every template, not one page
+      ansible.builtin.assert:
+        that:
+          - (ao_lookups.results[3].json.results | length) == (ao_lookups.results[3].json.count | int)
+          - (ao_lookups.results[6].json.results | default([]) | length) == (ao_lookups.results[6].json.count | default(0) | int)
+        fail_msg: >-
+          AO's AAP proxy returned {{ ao_lookups.results[3].json.results | length }} of
+          {{ ao_lookups.results[3].json.count }} job templates and
+          {{ ao_lookups.results[6].json.results | default([]) | length }} of
+          {{ ao_lookups.results[6].json.count | default(0) }} workflow templates. Raise
+          page_size above; any template past the page would be reported as missing (#887).
+        quiet: true
 
     - name: Build the name-to-ID maps
       ansible.builtin.set_fact:

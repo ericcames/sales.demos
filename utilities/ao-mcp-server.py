@@ -60,6 +60,12 @@ def _login() -> str:
     return _token
 
 
+# AO's /proxies/aap/* lists return at most 50 by default, ignore `limit` and
+# `page`, and never return `next`, so a truncated list looks complete. Only
+# `page_size` is honoured (#887).
+PROXY_PAGE_SIZE = 200
+
+
 def _api_get(path: str, params: dict[str, Any] | None = None) -> Any:
     token = _login()
     url = f"{AO_URL}{path}"
@@ -259,7 +265,7 @@ def service_accounts_list() -> list[TextContent]:
     "These are the JTs AO can use in workflow steps."
 )
 def proxies_aap_job_templates() -> list[TextContent]:
-    return _text(_api_get("/api/v1/proxies/aap/job_templates"))
+    return _text(_api_get("/api/v1/proxies/aap/job_templates", {"page_size": PROXY_PAGE_SIZE}))
 
 
 @server.tool(
@@ -275,33 +281,33 @@ def proxies_aap_job_template_get(job_template_id: str) -> list[TextContent]:
     description="List AAP workflow job templates visible through AO's proxy"
 )
 def proxies_aap_workflow_job_templates() -> list[TextContent]:
-    return _text(_api_get("/api/v1/proxies/aap/workflow_job_templates"))
+    return _text(_api_get("/api/v1/proxies/aap/workflow_job_templates", {"page_size": PROXY_PAGE_SIZE}))
 
 
 @server.tool(description="List AAP inventories visible through AO's proxy")
 def proxies_aap_inventories() -> list[TextContent]:
-    return _text(_api_get("/api/v1/proxies/aap/inventories"))
+    return _text(_api_get("/api/v1/proxies/aap/inventories", {"page_size": PROXY_PAGE_SIZE}))
 
 
 @server.tool(
     description="List AAP execution environments visible through AO's proxy"
 )
 def proxies_aap_execution_environments() -> list[TextContent]:
-    return _text(_api_get("/api/v1/proxies/aap/execution_environments"))
+    return _text(_api_get("/api/v1/proxies/aap/execution_environments", {"page_size": PROXY_PAGE_SIZE}))
 
 
 @server.tool(
     description="List AAP credentials visible through AO's proxy"
 )
 def proxies_aap_credentials() -> list[TextContent]:
-    return _text(_api_get("/api/v1/proxies/aap/credentials"))
+    return _text(_api_get("/api/v1/proxies/aap/credentials", {"page_size": PROXY_PAGE_SIZE}))
 
 
 @server.tool(
     description="List AAP organizations visible through AO's proxy"
 )
 def proxies_aap_organizations() -> list[TextContent]:
-    return _text(_api_get("/api/v1/proxies/aap/organizations"))
+    return _text(_api_get("/api/v1/proxies/aap/organizations", {"page_size": PROXY_PAGE_SIZE}))
 
 
 # ── Settings ──────────────────────────────────────────────────────────
