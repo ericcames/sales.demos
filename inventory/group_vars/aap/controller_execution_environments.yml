@@ -32,8 +32,7 @@ controller_execution_environments_all:
     description: |-
       {%- raw -%}
       sales.demos EE v1.3.0 (base ee-supported-rhel9, AAP 2.7) — Terraform 1.15.8 · Helm 3.21.4
-      Collections: cloud.terraform · kubernetes.core · redhat.openshift_virtualization · infra.aap_configuration · community.postgresql
-      {%- endraw -%}
+      Collections: cloud.terraform · kubernetes.core · redhat.openshift_virtualization · infra.aap_configuration · community.postgresql{%- endraw -%}
     organization: "IT Service Automation"
     # PULLED FROM THIS ENVIRONMENT'S OWN PRIVATE AUTOMATION HUB (#35), not from
     # quay.io directly. quay remains the published artifact and the source of
