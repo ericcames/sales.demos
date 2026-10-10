@@ -61,6 +61,21 @@
       - mythos_routing_v2.rego
       - golden_config.json
       - tests/drift_routing_test.rego
+    # AO runs workflow HTTP steps under an SSRF guard that refuses cluster DNS
+    # ("SSRF blocked: Kubernetes internal DNS", measured on sandbox). The AO CR's
+    # spec.workflowHttpRequestAllowedHosts is the bypass, and it is the ONLY one
+    # that path reads -- not APP_INTEGRATION_URL_ALLOWED_HOSTS (#621, #890).
+    ao_namespace: "automation-orchestrator"
+    ao_name: "ao"
+    # ONLY the short name. The policy refuses anything ending in
+    # .svc.cluster.local whether or not it is listed, so listing it would
+    # only suggest it works (#890); aac_opa_routing_url uses the short name.
+    _routing_hostnames:
+      - "{{ opa_routing_name }}.{{ opa_routing_namespace }}.svc"
+    # The long form an earlier revision listed. It can never pass, so it is
+    # taken back out wherever it is found rather than left looking useful.
+    _routing_hostnames_retired:
+      - "{{ opa_routing_name }}.{{ opa_routing_namespace }}.svc.cluster.local"
     _proxy: >-
       {{ openshift_api_url }}/api/v1/namespaces/{{ opa_routing_namespace }}/services/http:{{ opa_routing_name }}:{{ opa_routing_port }}/proxy
 
@@ -84,9 +99,40 @@
     # -----------------------------------------------------------------------
     # Removal
     # -----------------------------------------------------------------------
+    - name: Read Automation Orchestrator, whose HTTP steps call this server
+      kubernetes.core.k8s_info:
+        api_version: aap.ansible.com/v1alpha1
+        kind: AutomationOrchestrator
+        name: "{{ ao_name }}"
+        namespace: "{{ ao_namespace }}"
+      register: _ao_cr
+
+    - name: Work out AO's HTTP-step allowlist with and without opa-routing
+      ansible.builtin.set_fact:
+        _ao_http_hosts: "{{ _ao_cr.resources[0].spec.workflowHttpRequestAllowedHosts | default([]) if _ao_cr.resources | length > 0 else [] }}"
+
+    # Keep everyone else's entries, drop our retired one, add ours.
+    - name: Work out the list this playbook wants
+      ansible.builtin.set_fact:
+        _ao_http_hosts_wanted: "{{ _ao_http_hosts | difference(_routing_hostnames_retired) | union(_routing_hostnames) }}"
+
     - name: Remove the routing OPA
       when: opa_routing_state == 'absent'
       block:
+        - name: Take opa-routing back out of AO's HTTP-step allowlist
+          when:
+            - _ao_cr.resources | length > 0
+            - _ao_http_hosts | intersect(_routing_hostnames + _routing_hostnames_retired) | length > 0
+          kubernetes.core.k8s:
+            state: patched
+            api_version: aap.ansible.com/v1alpha1
+            kind: AutomationOrchestrator
+            name: "{{ ao_name }}"
+            namespace: "{{ ao_namespace }}"
+            definition:
+              spec:
+                workflowHttpRequestAllowedHosts: "{{ _ao_http_hosts | difference(_routing_hostnames + _routing_hostnames_retired) }}"
+
         - name: Delete its objects
           kubernetes.core.k8s:
             state: absent
@@ -242,6 +288,83 @@
             ports: "{{ [{'name': 'http', 'port': opa_routing_port | int, 'targetPort': 'http'}] }}"
 
     # -----------------------------------------------------------------------
+    # 2b. Let AO's workflow HTTP steps reach it (#890)
+    # -----------------------------------------------------------------------
+    - name: Say so when Automation Orchestrator is not installed
+      when: _ao_cr.resources | length == 0
+      ansible.builtin.debug:
+        msg: >-
+          No AutomationOrchestrator '{{ ao_name }}' in {{ ao_namespace }}; skipping the
+          HTTP-step allowlist. Re-run this playbook after install_ao.yml so the AAC
+          workflows can reach opa-routing.
+
+    - name: Add opa-routing to AO's HTTP-step allowlist
+      when:
+        - _ao_cr.resources | length > 0
+        - (_ao_http_hosts_wanted | sort) != (_ao_http_hosts | sort)
+      block:
+        - name: Assert the list stays within the CRD's 50-host limit
+          ansible.builtin.assert:
+            that: (_ao_http_hosts_wanted | length) <= 50
+            fail_msg: "workflowHttpRequestAllowedHosts would exceed 50 entries: {{ _ao_http_hosts }}"
+            quiet: true
+
+        # Union, never replace: other playbooks may have added their own hosts.
+        - name: Patch the AutomationOrchestrator CR
+          kubernetes.core.k8s:
+            state: patched
+            api_version: aap.ansible.com/v1alpha1
+            kind: AutomationOrchestrator
+            name: "{{ ao_name }}"
+            namespace: "{{ ao_namespace }}"
+            definition:
+              spec:
+                workflowHttpRequestAllowedHosts: "{{ _ao_http_hosts_wanted }}"
+
+        - name: Wait for the operator to reconcile the change
+          kubernetes.core.k8s_info:
+            api_version: aap.ansible.com/v1alpha1
+            kind: AutomationOrchestrator
+            name: "{{ ao_name }}"
+            namespace: "{{ ao_namespace }}"
+          register: _ao_cr_after
+          until: >-
+            _ao_cr_after.resources | length > 0
+            and (_ao_cr_after.resources[0].status.observedGeneration | default(0) | int)
+                == (_ao_cr_after.resources[0].metadata.generation | int)
+            and (_ao_cr_after.resources[0].status.conditions | default([])
+                 | selectattr('type', 'equalto', 'Ready') | map(attribute='status') | first | default('False')) == 'True'
+          retries: 60
+          delay: 10
+
+        # The operator hands the list to ao-worker as an environment variable,
+        # which means new pods. "Ready" on the CR comes back before they exist;
+        # a workflow run in that gap still gets the old, blocking policy.
+        - name: Wait for ao-worker to roll out with the new list
+          kubernetes.core.k8s_info:
+            api_version: apps/v1
+            kind: Deployment
+            name: "{{ ao_name }}-worker"
+            namespace: "{{ ao_namespace }}"
+          register: _ao_worker
+          until: >-
+            _ao_worker.resources | length > 0
+            and (_ao_worker.resources[0].status.observedGeneration | default(0) | int)
+                == (_ao_worker.resources[0].metadata.generation | int)
+            and (_ao_worker.resources[0].status.updatedReplicas | default(0) | int)
+                == (_ao_worker.resources[0].spec.replicas | int)
+            and (_ao_worker.resources[0].status.availableReplicas | default(0) | int)
+                == (_ao_worker.resources[0].spec.replicas | int)
+            and (_ao_worker.resources[0].status.replicas | default(0) | int)
+                == (_ao_worker.resources[0].spec.replicas | int)
+            and (_ao_worker.resources[0].spec.template.spec.containers[0].env | default([])
+                 | selectattr('name', 'equalto', 'APP_WORKFLOW_HTTP_REQUEST_ALLOWED_HOSTS')
+                 | map(attribute='value') | first | default('[]') | from_json
+                 | intersect(_routing_hostnames) | length) == (_routing_hostnames | length)
+          retries: 60
+          delay: 10
+
+    # -----------------------------------------------------------------------
     # 3. Ask it, do not trust the rollout: the policy must override the agent
     # -----------------------------------------------------------------------
     - name: Ask the golden-image routing policy three questions
@@ -311,5 +434,8 @@
       ansible.builtin.debug:
         msg:
           - "opa-routing in {{ opa_routing_namespace }}: {{ _routing_data | length }} files from {{ aac_pack_repo }}@{{ aac_pack_version }}"
-          - "URL for AO http_request nodes: http://{{ opa_routing_name }}.{{ opa_routing_namespace }}.svc.cluster.local:{{ opa_routing_port }} (aac_opa_routing_url)"
+          - "URL for AO http_request nodes: {{ aac_opa_routing_url }} (aac_opa_routing_url)"
           - "Smoke: policy overrode the agent on critical drift, allowed routine drift, sent no-baseline to investigate; Tanium fails closed to a human."
+          - >-
+            AO HTTP-step allowlist: {{ 'AO not installed, skipped' if _ao_cr.resources | length == 0
+            else (_ao_http_hosts_wanted | join(', ')) }}
