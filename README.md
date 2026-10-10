@@ -159,7 +159,8 @@ CI enforces that every skill in `.claude/skills/` appears above.
 |---|---|---|
 | [sales.demos-docs](https://github.com/ericcames/sales.demos-docs) | Talk tracks, run sheets, plans, reference | **Documents** this repo |
 | [image.builder.pipeline](https://github.com/ericcames/image.builder.pipeline) | The **image factory** — CIS-hardened RHEL and Windows Server 2022 golden images | **Produces** what this repo consumes |
-| [rego_policy_libraries](https://github.com/ynotbhatc/rego_policy_libraries) | OPA policy library | Consumes the factory's compliance data, not this repo |
+| [rego_policy_libraries](https://github.com/ynotbhatc/rego_policy_libraries) | OPA policy library | **Consumed** by Policy and Compliance as Code — loaded into OPA at `policy_library_version`; it also consumes the factory's compliance data |
+| [aac-pack](https://github.com/ynotbhatc/aac-pack) | The AAC pack — Compliance as Code playbooks, OPA routing policies, AO workflows, evidence schema | **Consumed** at the tag `aac_pack_version` pins |
 
 ## ⚖️ License
 
