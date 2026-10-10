@@ -1,0 +1,80 @@
+---
+# ===========================================================================
+# tasks/ao_restart_components.yml — restart AO's backend, worker and
+# background-worker so they re-read ao-admin-settings, and wait until each
+# Deployment is back (#892).
+#
+# Needs: ao_namespace, ao_api_retries, ao_api_delay
+# Optional: ao_name (default "ao")
+#
+# Pods read the ConfigMap through envFrom, so only new pods see a change.
+# Deleting them is enough — each Deployment recreates its pods — and it changes
+# nothing the operator owns. Same approach as configure_ao.yml.
+#
+# THE SELECTOR IS THE COMPONENT LABEL, NOT THE DEPLOYMENT NAME. The operator
+# labels ao-backend's pods `component=backend`, and so on. Three playbooks
+# selected `component=ao-backend`, matched nothing, reported `changed`, and
+# left 11-day-old pods running the old allowlist (#892). A delete that matches
+# no pod now fails instead of passing quietly.
+#
+# NO `wait: true` ON THE DELETE. With a label selector and no name, the module
+# waits on a resource called "None" and times out (#621). Readiness is waited
+# for on the Deployments instead.
+# ===========================================================================
+- name: Restart the AO components and wait for them
+  vars:
+    _ao_restart_components:
+      - {deployment: "{{ ao_name | default('ao') }}-backend", component: "backend"}
+      - {deployment: "{{ ao_name | default('ao') }}-worker", component: "worker"}
+      - {deployment: "{{ ao_name | default('ao') }}-background-worker", component: "background-worker"}
+  block:
+    - name: Restart the AO components so they read the new ConfigMap
+      kubernetes.core.k8s:
+        state: absent
+        api_version: v1
+        kind: Pod
+        namespace: "{{ ao_namespace }}"
+        label_selectors:
+          - "app.kubernetes.io/instance={{ ao_name | default('ao') }}"
+          - "app.kubernetes.io/component={{ item.component }}"
+        delete_all: true
+      loop: "{{ _ao_restart_components }}"
+      loop_control:
+        label: "{{ item.deployment }}"
+      register: _ao_restart
+
+    # A delete with delete_all that matches nothing returns changed=false.
+    - name: Assert the restart deleted pods for every component
+      ansible.builtin.assert:
+        that:
+          - item.changed | default(false)
+        fail_msg: >-
+          No pod in {{ ao_namespace }} matched app.kubernetes.io/instance={{ ao_name | default('ao') }},
+          app.kubernetes.io/component={{ item.item.component }}, so {{ item.item.deployment }}
+          still runs the old ao-admin-settings. Check the pods' labels — the
+          operator may have renamed them (#892).
+        quiet: true
+      loop: "{{ _ao_restart.results }}"
+      loop_control:
+        label: "{{ item.item.deployment }}"
+
+    - name: Wait for the AO components to be ready again
+      kubernetes.core.k8s_info:
+        api_version: apps/v1
+        kind: Deployment
+        namespace: "{{ ao_namespace }}"
+        name: "{{ item.deployment }}"
+      loop: "{{ _ao_restart_components }}"
+      loop_control:
+        label: "{{ item.deployment }}"
+      register: _ao_rollout
+      retries: "{{ ao_api_retries }}"
+      delay: "{{ ao_api_delay }}"
+      until:
+        - _ao_rollout.resources | length > 0
+        - _ao_rollout.resources[0].status.readyReplicas | default(0) | int
+          == _ao_rollout.resources[0].spec.replicas | default(1) | int
+        - _ao_rollout.resources[0].status.updatedReplicas | default(0) | int
+          == _ao_rollout.resources[0].spec.replicas | default(1) | int
+        - _ao_rollout.resources[0].status.replicas | default(0) | int
+          == _ao_rollout.resources[0].spec.replicas | default(1) | int

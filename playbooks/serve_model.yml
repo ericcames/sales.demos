@@ -843,33 +843,10 @@
                 APP_OIDC_ALLOW_PRIVATE_NETWORKS: "true"
           register: _ao_ssrf_cm_updated
 
+        # Selected by the pods' component label, and fails if it matched none (#892).
         - name: Restart AO components so they read the updated ConfigMap
           when: _ao_ssrf_cm_updated.changed | default(false)
-          kubernetes.core.k8s:
-            state: absent
-            api_version: v1
-            kind: Pod
-            namespace: "{{ ao_namespace }}"
-            label_selectors:
-              - "app.kubernetes.io/component={{ item }}"
-          loop:
-            - ao-backend
-            - ao-worker
-            - ao-background-worker
-          changed_when: true
-
-        - name: Wait for the AO backend to be ready after restart
-          when: _ao_ssrf_cm_updated.changed | default(false)
-          kubernetes.core.k8s_info:
-            api_version: apps/v1
-            kind: Deployment
-            namespace: "{{ ao_namespace }}"
-            name: ao-backend
-            wait: true
-            wait_condition:
-              type: Available
-              status: "True"
-            wait_timeout: 120
+          ansible.builtin.include_tasks: tasks/ao_restart_components.yml
 
         - name: Re-login to AO after restart
           when: _ao_ssrf_cm_updated.changed | default(false)
