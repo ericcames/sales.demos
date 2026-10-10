@@ -12,7 +12,7 @@
 # THREE AXES, and each value has to earn its place:
 #
 #   domain      aap-ecosystem, linux, windows, observability, golden-image,
-#               cluster, policy
+#               cluster, compliance, mcp
 #   phase       install, day-0, day-1, day-2
 #   safety      read-only
 #   launch-time break-glass, change-ticket:CHG0012345 (Policy as Code)
@@ -52,10 +52,11 @@ controller_labels_all:
     organization: "IT Service Automation"
   - name: cluster
     organization: "IT Service Automation"
-  - name: policy
-    organization: "IT Service Automation"
-  # Compliance as Code (#841): the AAC assessment layer — evidence of how
-  # compliant a host IS, beside `policy`, which is whether a job MAY run.
+  # Policy AND Compliance as Code (#841, #893): one demo story, one label.
+  # Enforcement ("Policy as Code -", may this job run?) and assessment
+  # ("Compliance as Code -", how compliant is this host?) share the OPA, the
+  # rego_policy_libraries pin and policy-db; the template names tell them
+  # apart. There was a `policy` label until #893; nothing selected on it.
   - name: compliance
     organization: "IT Service Automation"
   # The MCP surface — the AAP MCP server and what connects to it (#867).

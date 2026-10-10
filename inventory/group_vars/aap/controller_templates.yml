@@ -625,7 +625,7 @@ controller_templates_all:
     labels:
       - aap-ecosystem
       - install
-      - policy
+      - compliance
     job_type: run
     organization: "IT Service Automation"
     inventory: "Sales Demo VMs"
@@ -648,7 +648,7 @@ controller_templates_all:
     labels:
       - aap-ecosystem
       - install
-      - policy
+      - compliance
     job_type: run
     organization: "IT Service Automation"
     inventory: "Sales Demo VMs"
@@ -671,7 +671,7 @@ controller_templates_all:
     labels:
       - aap-ecosystem
       - install
-      - policy
+      - compliance
     job_type: run
     organization: "IT Service Automation"
     inventory: "Sales Demo VMs"
@@ -695,7 +695,7 @@ controller_templates_all:
   - name: "Policy as Code - Hello"
     description: "Blocked by policy when launched with a secret-shaped extra var (e.g. db_password); runs otherwise. The demo is whether AAP lets it start."
     labels:
-      - policy
+      - compliance
     job_type: run
     organization: "IT Service Automation"
     inventory: "Sales Demo VMs"
@@ -719,7 +719,7 @@ controller_templates_all:
   - name: "Policy as Code - Canary"
     description: "Always blocked by policy (deny_all). If this job ever runs, AAP is not reaching OPA."
     labels:
-      - policy
+      - compliance
     job_type: run
     organization: "IT Service Automation"
     inventory: "Sales Demo VMs"
@@ -741,7 +741,7 @@ controller_templates_all:
   - name: "Policy as Code - Change Window"
     description: "Blocked outside the weekend change window (Saturday and Sunday, {{ policy_change_window_timezone }}). Launch with the break-glass label to override; the label stays on the job."
     labels:
-      - policy
+      - compliance
     job_type: run
     organization: "IT Service Automation"
     inventory: "Sales Demo VMs"
@@ -760,7 +760,7 @@ controller_templates_all:
   - name: "Policy as Code - Change Ticket"
     description: "Blocked unless launched with a change-ticket:CHG<7 digits> label, e.g. change-ticket:CHG0012345. The label stays on the job as the change record."
     labels:
-      - policy
+      - compliance
     job_type: run
     organization: "IT Service Automation"
     inventory: "Sales Demo VMs"
@@ -2277,6 +2277,7 @@ controller_templates_all:
     labels:
       - aap-ecosystem
       - install
+      - compliance
     job_type: run
     organization: "IT Service Automation"
     inventory: "Sales Demo VMs"
