@@ -32,8 +32,10 @@
 # CREDENTIALS (decision G). Role `aac` gets env_secrets[<env>].aac_db_password.
 # AAC's playbooks connect with community.postgresql over
 # policy-db-rw.<ns>.svc:5432, so the password reaches job templates through
-# the "Sales Demos - Env Secrets" credential like every other per-environment
-# secret. The password is only ever inside a no_log task.
+# the "Compliance as Code - Evidence Database" credential (#878), which reads
+# env_secrets[<env>].aac_db_password -- its own credential type, so the shared
+# "Sales Demos - Env Secrets" type is never changed (decision G). The password
+# is only ever inside a no_log task.
 #
 # SEED (optional, decision J-style). aac_db_seed_url, with an optional
 # aac_db_seed_token, restores a plain-SQL pg_dump (gzipped) into `aac` ONLY,
@@ -424,6 +426,6 @@
       ansible.builtin.debug:
         msg:
           - "AAC evidence database ready in {{ aap_env_name }}: {{ policy_db_cluster }} / database {{ aac_db_name }}, owner {{ aac_db_owner }}"
-          - "Read-write: {{ policy_db_cluster }}-rw.{{ aac_db_namespace }}.svc:5432 — AAC playbooks take pg_host/pg_db/pg_user from here and pg_password from the Env Secrets credential"
+          - "Read-write: {{ policy_db_cluster }}-rw.{{ aac_db_namespace }}.svc:5432 — AAC playbooks get pg_host/pg_db/pg_user/pg_password from the 'Compliance as Code - Evidence Database' credential"
           - "{{ _counts.stdout | trim }}"
           - "The platform's own `compliance` database and its tables were not touched."
