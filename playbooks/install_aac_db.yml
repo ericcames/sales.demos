@@ -82,6 +82,26 @@
       - ai_systems
       - ai_action_log
       - ai_approval_requests
+      # The seven files schema.yml applies since pack v2026.10.10 (#883 parts
+      # 1–2): the tables the tranche-1 playbooks read. Views are not asserted.
+      - installed_inventory          # files/inventory_catalog_schema.sql
+      - manual_product_declarations
+      - cve_events_received          # files/cve_cache_schema.sql
+      - cve_vendor_remediations
+      - patch_manifest_raw           # files/patch_worklist_schema.sql
+      - patch_worklist
+      - product_lifecycle            # files/support_status_schema.sql
+      - support_status_map
+      - host_support_status
+      - patch_risk_parameters        # files/patch_risk_schema.sql
+      - patch_risk_scores
+      - patch_heatmap_cells
+      - golden_image_baselines       # files/golden_image_schema.sql
+      - helpdesk_tickets
+      - remediation_log
+      - patch_traffic_state          # files/patch_change_schema.sql
+      - patch_assurance_results
+      - patch_backup_manifests
     _psql: "psql -U postgres -v ON_ERROR_STOP=1"
 
   tasks:

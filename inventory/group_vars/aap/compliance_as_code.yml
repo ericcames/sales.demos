@@ -23,10 +23,12 @@
 #     pg_password (and compliance_db_password, the older name some playbooks
 #     read). The host is policy-db's read-write Service; the password is
 #     env_secrets[<env>].aac_db_password.
-#   - the cluster, for the Golden Image family: "Compliance as Code -
-#     OpenShift", a stock Kubernetes bearer-token credential built from
-#     openshift_api_url and env_secrets[<env>].openshift_api_token, which
-#     kubernetes.core reads as K8S_AUTH_*.
+#   - the target VM, for the Golden Image family: "Sales Demos - Linux
+#     Machine", the same SSH credential every other VM template uses. The
+#     check / rollback / capture / drift plays run ON the target
+#     (hosts: target_host, become) and keep the database work on the
+#     controller; nothing reads the cluster. "Compliance as Code - OpenShift"
+#     stays defined for any pack playbook that still needs K8S_AUTH_*.
 #   - opa-routing (#874): aac_opa_routing_url from aac.yml, passed as
 #     opa_routing_url where a playbook calls it.
 #   - community.postgresql in the EE (#875) — until the EE is rebuilt with
@@ -35,17 +37,22 @@
 # NAMES ARE THE CONTRACT. The AO workflows (ao_workflows_aac.yml) name these
 # templates; the loader resolves them to IDs. Rename here, rename there.
 #
-# HONEST LIMIT. The Golden Image Check / Rollback / Notify playbooks read a
-# `demo-rhel9` Deployment through the Kubernetes API — the AAC lab's target.
-# This platform has no such Deployment, so those three run but find nothing
-# until Phase 5 on #841 re-points them at the CNV guests. They are here so
-# the AO workflows that name them can load and be rehearsed.
+# GOLDEN IMAGE ON THE VMs (Phase 5 on #841, #883 part 3). Check and Rollback
+# run the pack's SSH-shaped plays (golden_image_check.yml /
+# golden_image_rollback.yml) against a host of "Sales Demo VMs"; Capture
+# Baseline seeds golden_image_baselines for that host from the host itself,
+# and Introduce Drift is the demo helper that breaks it. Order for a fresh
+# VM: Capture Baseline → (Introduce Drift) → start the AO workflow, or run
+# "Compliance as Code - Golden Image Enforcement" by hand. A target that is
+# not in the inventory is refused by the plays, not silently skipped.
 # ============================================================================
 
-# Launch-time default for the Golden Image family. Phase 5 replaces it with a
-# guest; until then it names the lab's target so the plays are honest about
-# what they are looking for.
-aac_golden_target_host: "demo-rhel9"
+# Launch-time default for the Golden Image family: the inventory hostname of
+# the VM to govern. The AO workflows pass their own (${trigger.target_hostname});
+# this is what a hand launch gets when nobody types one. provision_vm.yml
+# names Linux guests <role>-lnx-<n> (role defaults to web); set this to the
+# one you captured.
+aac_golden_target_host: "web-lnx-1"
 
 # What an AAC agentic node may do through the MCP server it attaches (#867).
 # The real guard is the SERVER's write posture (aap_mcp_allow_write_operations,
@@ -196,31 +203,66 @@ controller_templates_aac:
     extra_vars:
       opa_routing_url: "{{ aac_opa_routing_url }}"
 
-  # The three below read a demo-rhel9 Deployment through the Kubernetes API
-  # (see the header). Phase 5 re-points them at the CNV guests.
+  # The four below run ON the target VM over SSH (see the header). The
+  # monitored file set is fixed inside the plays: sshd_config, selinux_config,
+  # auditd_conf, audit_rules, sysctl_conf — golden_file_key picks one
+  # (default selinux_config).
+  - <<: *aac_template
+    name: "Compliance as Code - Golden Image Capture Baseline"
+    description: >-
+      Read the golden files on the target over SSH and store them as its
+      current baseline in golden_image_baselines (previous baselines are kept,
+      marked not current). Run once per VM before Check / Rollback;
+      golden_require_all=false tolerates a missing file and names it.
+    playbook: playbooks/golden_image_capture_baseline.yml
+    credentials:
+      - "Sales Demos - Vault"
+      - "Sales Demos - Linux Machine"
+      - "Compliance as Code - Evidence Database"
+    extra_vars:
+      target_host: "{{ aac_golden_target_host }}"
+
   - <<: *aac_template
     name: "Compliance as Code - Golden Image Check"
     description: >-
-      Compare the monitored golden file on the target with the approved
-      baseline in the evidence database; publishes any_drift / critical_drift /
-      drifted_key / baseline_compliant as set_stats. Targets demo-rhel9 until
-      Phase 5.
-    playbook: playbooks/golden_image_check_macaap.yml
+      Compare the monitored golden file on the target (read over SSH) with
+      the approved baseline in the evidence database; publishes any_drift /
+      critical_drift / changed_files / drifted_key / baseline_compliant as
+      set_stats and writes a compliance_results row. fail_on_drift=true makes
+      the job fail on drift (the Enforcement workflow's verify node).
+    playbook: playbooks/golden_image_check.yml
     credentials:
       - "Sales Demos - Vault"
+      - "Sales Demos - Linux Machine"
       - "Compliance as Code - Evidence Database"
-      - "Compliance as Code - OpenShift"
     extra_vars:
       target_host: "{{ aac_golden_target_host }}"
 
   - <<: *aac_template
     name: "Compliance as Code - Golden Image Rollback"
-    description: "Restore the monitored golden file on the target from the approved baseline. Targets demo-rhel9 until Phase 5."
-    playbook: playbooks/golden_image_rollback_macaap.yml
+    description: >-
+      Restore the monitored golden file on the target from the approved
+      baseline over SSH (backup kept beside it), read it back, publish
+      rollback_verified and write a remediation_log row.
+    playbook: playbooks/golden_image_rollback.yml
     credentials:
       - "Sales Demos - Vault"
+      - "Sales Demos - Linux Machine"
       - "Compliance as Code - Evidence Database"
-      - "Compliance as Code - OpenShift"
+    extra_vars:
+      target_host: "{{ aac_golden_target_host }}"
+
+  - <<: *aac_template
+    name: "Compliance as Code - Golden Image Introduce Drift"
+    description: >-
+      DEMO HELPER: set SELINUX=permissive in /etc/selinux/config on the
+      target over SSH (file only, no setenforce, no reboot) so the governed
+      drift workflow has drift to govern. Requires confirm_drift=yes at
+      launch; edits that one file and nothing else.
+    playbook: playbooks/golden_image_introduce_drift.yml
+    credentials:
+      - "Sales Demos - Vault"
+      - "Sales Demos - Linux Machine"
     extra_vars:
       target_host: "{{ aac_golden_target_host }}"
 
