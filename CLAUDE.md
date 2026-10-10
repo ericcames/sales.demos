@@ -369,7 +369,7 @@ Environment secrets.
 - **Always clean up tokens** — any playbook creating a token must delete it in an
   `always:` block so stale tokens do not accumulate.
 
-  **The exception is a token that IS the deliverable**, and there are two:
+  **The exception is a token that IS the deliverable**, and there are three:
 
   **1. The AAP MCP client token** (#102, #515), created by
   `utilities/make-aap-mcp.sh`. Never committed; retired by hand — the script
@@ -379,7 +379,15 @@ Environment secrets.
   Minted from environment credentials, never stored. The playbook retires its
   own previous token. `-e hub_galaxy_link_state=absent` is the proven cleanup.
 
-  Both inherit the creating user's permissions. See [conventions
+  **3. The AO MCP integration token** (#867), created by
+  `playbooks/ao_mcp_integration.yml` and held only in AO's `AAP MCP Token`
+  credential. AO's `mcp_server` integration accepts nothing but an HTTP Bearer
+  Token — not the `AAP Admin` credential, not an LLM key — so it must be minted.
+  Every run mints a new one, writes it to AO, *then* retires the previous ones;
+  `-e aac_mcp_state=absent` retires all of them. What the agent may do is the
+  server's `aap_mcp_allow_write_operations`, not the token's scope.
+
+  All three inherit the creating user's permissions. See [conventions
   rationale](https://ericcames.github.io/sales.demos-docs/reference/conventions-rationale/#token-cleanup-exceptions)
   for the full safety analysis.
 - **Never ship a project-local `ansible.cfg`** — Ansible picks one cfg file and

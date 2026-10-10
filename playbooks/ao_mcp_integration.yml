@@ -49,9 +49,9 @@
 
   vars:
     aac_mcp_state: present
-    # The names ao_workflows_aac.yml resolves (Phase 4). Same defaults there.
-    aac_mcp_integration: "AAP MCP Server"
-    aac_mcp_credential: "AAP MCP Token"
+    # aac_mcp_integration / aac_mcp_credential live in group_vars/aap/aac.yml:
+    # ao_workflows_aac.yml resolves the same names, and a play var here is
+    # invisible to ao_workflows.yml.
     aac_mcp_token_description: "sales.demos AO MCP integration ({{ aap_env_name }})"
     aap_mcp_namespace: "{{ aap_namespace | default('aap') }}"
     aap_mcp_name: "{{ aap_mcp_cr_name | default('aap-mcp') }}"
@@ -274,7 +274,7 @@
       ansible.builtin.include_tasks: tasks/ao_connect.yml
 
     # -----------------------------------------------------------------------
-    # 3. A fresh AAP token, the previous one retired
+    # 3. A fresh AAP token (the previous one is retired once AO holds this)
     # -----------------------------------------------------------------------
     - name: Mint the AAP token for AO
       ansible.builtin.uri:
@@ -290,21 +290,6 @@
         validate_certs: "{{ aap_validate_certs | default(false) | bool }}"
         status_code: [200, 201]
       register: _gw_new_token
-      changed_when: true
-      no_log: true
-
-    - name: Retire the previous tokens with this description
-      ansible.builtin.uri:
-        url: "{{ _gw_tokens }}{{ item.id }}/"
-        method: DELETE
-        user: "{{ aap_username }}"
-        password: "{{ aap_password }}"
-        force_basic_auth: true
-        validate_certs: "{{ aap_validate_certs | default(false) | bool }}"
-        status_code: [200, 204]
-      loop: "{{ _gw_old_tokens.json.results | default([]) }}"
-      loop_control:
-        label: "token {{ item.id }}"
       changed_when: true
       no_log: true
 
@@ -342,6 +327,23 @@
         headers: "{{ ao_auth_header }}"
         validate_certs: false
         status_code: 200
+      no_log: true
+
+    # Only now: AO holds the new token. Retiring first would leave AO with a
+    # dead one if the credential write above failed.
+    - name: Retire the previous tokens with this description
+      ansible.builtin.uri:
+        url: "{{ _gw_tokens }}{{ item.id }}/"
+        method: DELETE
+        user: "{{ aap_username }}"
+        password: "{{ aap_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ aap_validate_certs | default(false) | bool }}"
+        status_code: [200, 204]
+      loop: "{{ _gw_old_tokens.json.results | default([]) }}"
+      loop_control:
+        label: "token {{ item.id }}"
+      changed_when: true
       no_log: true
 
     - name: Set the MCP credential ID
