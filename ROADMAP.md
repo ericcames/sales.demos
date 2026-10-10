@@ -45,6 +45,24 @@ demo documentation in
 | Automation Orchestrator — rehearsal | Preflights every fault the first rehearsal hit, breaks compliance on the guest, and reports a finished run's per-step timings and approval record. Rehearsed end to end 2026-09-15: 2 m 48 s, about 76 s of it automation. | **Done** ([#623](https://github.com/ericcames/sales.demos/issues/623)) |
 | Self-service portal | Red Hat Developer Hub with the AAP plugin, so a non-admin can launch a template from a browser. The AAP plugin has no workflow provider, so workflows need a launcher job template. | **Done** ([#103](https://github.com/ericcames/sales.demos/issues/103)) |
 
+## Compliance as Code — AAC on this platform
+
+Policy as Code answers "may this job run?". Compliance as Code answers "how
+compliant is this host?" with the **assessment** half of the same library, on
+the same VMs, with the verdicts beside the OpenSCAP evidence already in
+`policy-db`. Plan and decisions on
+[#841](https://github.com/ericcames/sales.demos/issues/841) (2026-10-08); each
+phase has its own issue. Opt-in throughout; nothing joins `setup.yml` until its
+gate has passed.
+
+| Phase | Outcome | Status |
+| --- | --- | --- |
+| 1 | Assessment OPA: one pod serving the pinned library as a 1.2 MB bundle behind `opa-security`, `opa-compliance`, `opa-ot`; each Service proven to answer a framework report on empty input. | **In progress** ([#868](https://github.com/ericcames/sales.demos/issues/868)) |
+| 2 | AAC evidence schema as a second database `aac` in `policy-db`, seeded from the AAC lab. | Not started ([#869](https://github.com/ericcames/sales.demos/issues/869)) |
+| 3 | Collect and assess the demo VMs: `Compliance as Code -` templates, the fact shaper into `host_facts`, the same six failures OpenSCAP found or each difference explained. | Not started |
+| 4 | Automation Orchestrator: the loader carries the AAC node types; `opa-routing` decides, the model recommends, a human approves. | **In progress** ([#867](https://github.com/ericcames/sales.demos/issues/867)) |
+| 5–8 | AAC workflows, governed AI agents with a model per task, dashboards over both evidence stores, the docs and skill. | Not started |
+
 ## Grafana Cloud observability
 
 Push cluster metrics and logs to Grafana Cloud so the AI agent can answer

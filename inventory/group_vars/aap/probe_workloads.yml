@@ -146,3 +146,14 @@ probe_workloads:
       each, from terraform/ocpvirt/locals.tf's own budget arithmetic. This is
       the workload available_memory_gb exists to protect, so it belongs beside
       the things competing with it.
+
+  - name: "Compliance as Code assessment OPA (policy-as-code/opa-assessment)"
+    cpu: 0.1
+    memory: 0.25
+    source: >-
+      DECLARED, not measured: the server container's own requests in
+      playbooks/install_aac_opa.yml (100m / 256Mi, limit 768Mi for a 970-file
+      bundle). Opt-in (#868). The three initContainers ask the same and run
+      only at rollout. Disk: the opa image is already on the node for the
+      enforcement pod; the one new pull is the ~10 MB curl image that fetches
+      the release tarball. The library itself is 1.2 MB as a bundle.

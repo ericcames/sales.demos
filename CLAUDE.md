@@ -369,7 +369,7 @@ Environment secrets.
 - **Always clean up tokens** — any playbook creating a token must delete it in an
   `always:` block so stale tokens do not accumulate.
 
-  **The exception is a token that IS the deliverable**, and there are two:
+  **The exception is a token that IS the deliverable**, and there are three:
 
   **1. The AAP MCP client token** (#102, #515), created by
   `utilities/make-aap-mcp.sh`. Never committed; retired by hand — the script
@@ -379,7 +379,15 @@ Environment secrets.
   Minted from environment credentials, never stored. The playbook retires its
   own previous token. `-e hub_galaxy_link_state=absent` is the proven cleanup.
 
-  Both inherit the creating user's permissions. See [conventions
+  **3. The AO MCP integration token** (#867), created by
+  `playbooks/ao_mcp_integration.yml` and held only in AO's `AAP MCP Token`
+  credential. AO's `mcp_server` integration accepts nothing but an HTTP Bearer
+  Token — not the `AAP Admin` credential, not an LLM key — so it must be minted.
+  Every run mints a new one, writes it to AO, *then* retires the previous ones;
+  `-e aac_mcp_state=absent` retires all of them. What the agent may do is the
+  server's `aap_mcp_allow_write_operations`, not the token's scope.
+
+  All three inherit the creating user's permissions. See [conventions
   rationale](https://ericcames.github.io/sales.demos-docs/reference/conventions-rationale/#token-cleanup-exceptions)
   for the full safety analysis.
 - **Never ship a project-local `ansible.cfg`** — Ansible picks one cfg file and
@@ -508,6 +516,14 @@ environments (`sandbox`/`demo`) consume the endpoint. Issue
   real status.
 
 - **Document before fixing** — open a GitHub issue before making code changes.
+- **Every PR body starts with its issue link** — `Closes #N`, or `Part of #N`
+  when the PR is one piece of a larger issue; the last piece carries `Closes`
+  (#879). A mention like "Decision E on #841" is a cross-reference, not a link:
+  GitHub only closes an issue on merge for `Closes` / `Fixes` / `Resolves`.
+  The PR template asks for this, but `gh pr create --body` skips the template
+  entirely — that is how #870–#878 all arrived unlinked. The required
+  `pr-links-issue` check enforces it and re-runs when the description is
+  edited, so fix the body, not the code.
 - **Always label new issues** — run `gh label list --repo ericcames/sales.demos`
   and apply every label that genuinely fits.
 - **One concern per PR** — group by shared root cause. Would you revert these
@@ -565,14 +581,15 @@ environments (`sandbox`/`demo`) consume the endpoint. Issue
     deliberate: a PR should not block on a second person being around.
   - **CODEOWNERS requests review; it does not gate.**
     `require_code_owner_reviews` is `false`.
-  - **All 9 lint checks are required** — `yamllint`, `ansible-lint`,
+  - **All 10 checks are required** — `yamllint`, `ansible-lint`,
     `secret-guard`, `secrets-example-sync`, `generated-files`,
     `skills-frontmatter`, `docs-artifacts-current`, `renderer-matches-role`,
-    `fact-normalisation-agrees`.
+    `fact-normalisation-agrees` (all in `lint.yml`), and `pr-links-issue`
+    (its own `pr-links-issue.yml`, because it must also run on `edited`).
     **Adding or renaming a CI job means updating this list** and the branch
     protection API — two steps, every time:
 
-    1. add the job to `.github/workflows/lint.yml` and to the list above;
+    1. add the job to a workflow in `.github/workflows/` and to the list above;
     2. `gh api -X PATCH repos/ericcames/sales.demos/branches/main/protection/required_status_checks`
        with `-F strict=false` and the full `contexts[]` set — **the full set**,
        because the endpoint replaces rather than appends.

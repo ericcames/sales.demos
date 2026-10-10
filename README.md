@@ -105,6 +105,7 @@ nothing, and nothing deploys from CI.
 |---|---|---|
 | [`/sales-demos-portal`](.claude/skills/sales-demos-portal/SKILL.md) | `portal.yml` | Deploy the AAP self-service portal (RHDH + AAP plugin) |
 | [`/sales-demos-policy`](.claude/skills/sales-demos-policy/SKILL.md) | `install_opa.yml`, `install_policy_db.yml`, `install_policy_dashboard.yml` | AAP Policy as Code: OPA with the pinned `rego_policy_libraries`, attached to a demo template; optional PostgreSQL evidence store and a shareable compliance dashboard |
+| [`/sales-demos-compliance`](.claude/skills/sales-demos-compliance/SKILL.md) | `install_aac_opa.yml` | Compliance as Code: the AAC assessment OPA — the same pinned `rego_policy_libraries` release, asked how compliant a host is, behind the three Service names AAC's playbooks resolve |
 | [`/sales-demos-orchestrator`](.claude/skills/sales-demos-orchestrator/SKILL.md) | `install_ao.yml` | Install Automation Orchestrator and its CloudNativePG database |
 | [`/sales-demos-orchestrator-config`](.claude/skills/sales-demos-orchestrator-config/SKILL.md) | `configure_ao.yml` | Connect AO to AAP — OIDC SSO and AAP integration |
 | [`/sales-demos-orchestrator-workflow`](.claude/skills/sales-demos-orchestrator-workflow/SKILL.md) | `ao_workflows.yml` | Load the AO demo workflows from config-as-code, resolving names to this environment's IDs |

@@ -1,0 +1,489 @@
+---
+# ===========================================================================
+# ao_mcp_integration.yml — give Automation Orchestrator an `mcp_server`
+# integration for this platform's AAP MCP server, so an agentic node can
+# call AAP tools. #867, Compliance as Code Phase 4 on #841.
+#
+#   ansible-playbook playbooks/ao_mcp_integration.yml -i inventory --limit sandbox \
+#     -e target_env=sandbox \
+#     --vault-id sales.demos@~/secrets/.vault_pass_sales_demos
+#
+# Remove it again (the MCP server itself and AO's other integrations stay):
+#
+#   ... -e aac_mcp_state=absent
+#
+# Needs playbooks/mcp_server.yml (the AnsibleMCPServer CR, #102) and
+# configure_ao.yml (AO reachable, the SSRF allowlist pattern) to have run.
+#
+# WHAT IT CREATES, AND WHERE THE TOKEN LIVES. Every AAC agentic node carries
+# `integration_connections` to an MCP server with `tool_selection_strategy:
+# ALL` — the agent may read AAP (and, where the server's write posture
+# allows, act) through the same governed surface a person uses. AO needs an
+# `mcp_server` integration plus an HTTP Bearer Token credential. The token is
+# an AAP gateway token minted here, described so the previous one is retired
+# on every run, and stored ONLY in the AO credential — a token that IS the
+# deliverable, the exception CLAUDE.md names for make-aap-mcp.sh and
+# link_hub.yml. Write posture is the server's aap_mcp_allow_write_operations,
+# never the token's scope (#102).
+#
+# IN-CLUSTER URL, NOT THE ROUTE. AO's SSRF guard allows hosts by name; the
+# Service behind the Route is resolved from the Route itself (spec.to.name,
+# spec.port) so nothing here assumes what the operator called it. The two
+# in-cluster spellings are added to APP_INTEGRATION_URL_ALLOWED_HOSTS the way
+# publish_inference.yml adds the model endpoint: read, union, write, restart,
+# re-login. An unchanged allowlist restarts nothing.
+#
+# PROVEN BY TOOLS, NOT BY A 201. The integration is validated, the
+# Integration Resource Discovery workflow is run, and the integration is read
+# back: it must list tools, or this fails.
+# ===========================================================================
+
+- name: Connect Automation Orchestrator to the AAP MCP server
+  hosts: aap
+  gather_facts: false
+
+  environment:
+    K8S_AUTH_HOST: "{{ openshift_api_url }}"
+    K8S_AUTH_API_KEY: "{{ openshift_api_token }}"
+    K8S_AUTH_VERIFY_SSL: "{{ openshift_validate_certs | default(false) | bool }}"
+
+  vars:
+    aac_mcp_state: present
+    # aac_mcp_integration / aac_mcp_credential live in group_vars/aap/aac.yml:
+    # ao_workflows_aac.yml resolves the same names, and a play var here is
+    # invisible to ao_workflows.yml.
+    aac_mcp_token_description: "sales.demos AO MCP integration ({{ aap_env_name }})"
+    aap_mcp_namespace: "{{ aap_namespace | default('aap') }}"
+    aap_mcp_name: "{{ aap_mcp_cr_name | default('aap-mcp') }}"
+    ao_namespace: "automation-orchestrator"
+    ao_route_name: "ao"
+    ao_admin_settings_configmap: "ao-admin-settings"
+    ao_api_retries: 30
+    ao_api_delay: 10
+    _gw_tokens: "https://{{ aap_hostname }}/api/gateway/v1/tokens/"
+
+  tasks:
+    - name: Confirm the inventory resolved to the environment you meant
+      ansible.builtin.include_tasks: tasks/assert_target_environment.yml
+
+    - name: Assert the inputs are set
+      ansible.builtin.assert:
+        that:
+          - openshift_api_url | default('') | length > 0
+          - openshift_api_token | default('') | length > 0
+          - aap_hostname | default('') | length > 0
+          - aap_username | default('') | length > 0
+          - aap_password | default('') | length > 0
+          - aac_mcp_state in ['present', 'absent']
+        fail_msg: >-
+          openshift_api_* / aap_* must be set for '{{ aap_env_name | default("?") }}'
+          (connection.yml, local.yml, the vault), and aac_mcp_state must be
+          present or absent (got '{{ aac_mcp_state }}').
+        quiet: true
+      no_log: true
+
+    - name: Connect to Automation Orchestrator
+      ansible.builtin.include_tasks: tasks/ao_connect.yml
+
+    - name: Look up AO credential types, projects, credentials and integrations
+      ansible.builtin.uri:
+        url: "{{ ao_url }}/api/v1/{{ item }}"
+        headers: "{{ ao_auth_header }}"
+        validate_certs: false
+        status_code: 200
+      loop:
+        - credential_types
+        - projects
+        - credentials
+        - integrations
+      register: _ao_lookups
+
+    - name: Resolve the IDs this play needs
+      ansible.builtin.set_fact:
+        _ao_bearer_type_id: >-
+          {{ _ao_lookups.results[0].json.resources
+             | selectattr('name', 'equalto', 'HTTP Bearer Token') | map(attribute='id') | first }}
+        _ao_default_project_id: >-
+          {{ _ao_lookups.results[1].json.resources
+             | selectattr('name', 'equalto', 'default') | map(attribute='id') | first }}
+        _ao_mcp_cred_existing: >-
+          {{ _ao_lookups.results[2].json.resources
+             | selectattr('name', 'equalto', aac_mcp_credential) | list }}
+        _ao_mcp_integration_existing: >-
+          {{ _ao_lookups.results[3].json.resources
+             | selectattr('name', 'equalto', aac_mcp_integration) | list }}
+
+    - name: Find the AAP tokens this playbook minted before
+      ansible.builtin.uri:
+        url: "{{ _gw_tokens }}?description={{ aac_mcp_token_description | urlencode }}"
+        user: "{{ aap_username }}"
+        password: "{{ aap_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ aap_validate_certs | default(false) | bool }}"
+      register: _gw_old_tokens
+      no_log: true
+
+    # -----------------------------------------------------------------------
+    # Removal
+    # -----------------------------------------------------------------------
+    - name: Remove the integration, the credential and the AAP tokens
+      when: aac_mcp_state == 'absent'
+      block:
+        - name: Delete the AO integration
+          when: _ao_mcp_integration_existing | length > 0
+          ansible.builtin.uri:
+            url: "{{ ao_url }}/api/v1/integrations/{{ _ao_mcp_integration_existing[0].id }}"
+            method: DELETE
+            headers: "{{ ao_auth_header }}"
+            validate_certs: false
+            status_code: [200, 204]
+          changed_when: true
+
+        - name: Delete the AO credential
+          when: _ao_mcp_cred_existing | length > 0
+          ansible.builtin.uri:
+            url: "{{ ao_url }}/api/v1/credentials/{{ _ao_mcp_cred_existing[0].id }}"
+            method: DELETE
+            headers: "{{ ao_auth_header }}"
+            validate_certs: false
+            status_code: [200, 204]
+          changed_when: true
+
+        - name: Retire the AAP tokens
+          ansible.builtin.uri:
+            url: "{{ _gw_tokens }}{{ item.id }}/"
+            method: DELETE
+            user: "{{ aap_username }}"
+            password: "{{ aap_password }}"
+            force_basic_auth: true
+            validate_certs: "{{ aap_validate_certs | default(false) | bool }}"
+            status_code: [200, 204]
+          loop: "{{ _gw_old_tokens.json.results | default([]) }}"
+          loop_control:
+            label: "token {{ item.id }}"
+          changed_when: true
+          no_log: true
+
+        - name: Stop here
+          ansible.builtin.meta: end_play
+
+    # -----------------------------------------------------------------------
+    # 1. Where the MCP server is, from the Route the operator made
+    # -----------------------------------------------------------------------
+    - name: Read the MCP server's Route
+      kubernetes.core.k8s_info:
+        api_version: route.openshift.io/v1
+        kind: Route
+        namespace: "{{ aap_mcp_namespace }}"
+        name: "{{ aap_mcp_name }}"
+      register: _mcp_route
+      failed_when: _mcp_route.resources | length == 0
+
+    - name: Read the Service behind it
+      kubernetes.core.k8s_info:
+        api_version: v1
+        kind: Service
+        namespace: "{{ aap_mcp_namespace }}"
+        name: "{{ _mcp_route.resources[0].spec.to.name }}"
+      register: _mcp_svc
+      failed_when: _mcp_svc.resources | length == 0
+
+    - name: Resolve the in-cluster URL
+      # The Route's targetPort may be a port NAME; the Service maps it to the
+      # number AO must dial.
+      ansible.builtin.set_fact:
+        _mcp_svc_host: "{{ _mcp_svc.resources[0].metadata.name }}.{{ aap_mcp_namespace }}.svc"
+        _mcp_port: >-
+          {{ (_mcp_svc.resources[0].spec.ports
+              | selectattr('name', 'equalto', _route_tp | string) | map(attribute='port') | first)
+             if (_mcp_svc.resources[0].spec.ports | selectattr('name', 'equalto', _route_tp | string) | list | length > 0)
+             else (_route_tp | int) }}
+      vars:
+        _route_tp: "{{ _mcp_route.resources[0].spec.port.targetPort | default(_mcp_svc.resources[0].spec.ports[0].port) }}"
+
+    - name: Set the base URL
+      ansible.builtin.set_fact:
+        _mcp_base_url: "http://{{ _mcp_svc_host }}:{{ _mcp_port }}/mcp"
+        _mcp_hostnames:
+          - "{{ _mcp_svc_host }}"
+          - "{{ _mcp_svc_host }}.cluster.local"
+
+    # -----------------------------------------------------------------------
+    # 2. Let AO reach it (SSRF allowlist, publish_inference.yml's pattern)
+    # -----------------------------------------------------------------------
+    - name: Read the current SSRF allowlist
+      kubernetes.core.k8s_info:
+        api_version: v1
+        kind: ConfigMap
+        namespace: "{{ ao_namespace }}"
+        name: "{{ ao_admin_settings_configmap }}"
+      register: _ao_ssrf_cm
+
+    - name: Parse the existing allowed hosts
+      ansible.builtin.set_fact:
+        _ao_ssrf_current: >-
+          {{ (_ao_ssrf_cm.resources[0].data.APP_INTEGRATION_URL_ALLOWED_HOSTS
+              | default('[]') | from_json)
+             if _ao_ssrf_cm.resources | length > 0 else [] }}
+
+    - name: Add the MCP server's in-cluster names to the allowlist
+      when: _mcp_hostnames | difference(_ao_ssrf_current) | length > 0
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: "{{ ao_admin_settings_configmap }}"
+            namespace: "{{ ao_namespace }}"
+          data:
+            APP_INTEGRATION_URL_ALLOWED_HOSTS: "{{ (_ao_ssrf_current + _mcp_hostnames) | unique | to_json }}"
+            APP_OIDC_ALLOW_PRIVATE_NETWORKS: "true"
+      register: _ao_ssrf_cm_updated
+
+    - name: Restart AO components so they read the updated ConfigMap
+      when: _ao_ssrf_cm_updated.changed | default(false)
+      kubernetes.core.k8s:
+        state: absent
+        api_version: v1
+        kind: Pod
+        namespace: "{{ ao_namespace }}"
+        label_selectors:
+          - "app.kubernetes.io/component={{ item }}"
+      loop:
+        - ao-backend
+        - ao-worker
+        - ao-background-worker
+      changed_when: true
+
+    - name: Wait for the AO backend to be ready after restart
+      when: _ao_ssrf_cm_updated.changed | default(false)
+      kubernetes.core.k8s_info:
+        api_version: apps/v1
+        kind: Deployment
+        namespace: "{{ ao_namespace }}"
+        name: ao-backend
+        wait: true
+        wait_condition:
+          type: Available
+          status: "True"
+        wait_timeout: 300
+
+    - name: Re-login to AO after restart
+      when: _ao_ssrf_cm_updated.changed | default(false)
+      ansible.builtin.include_tasks: tasks/ao_connect.yml
+
+    # -----------------------------------------------------------------------
+    # 3. A fresh AAP token (the previous one is retired once AO holds this)
+    # -----------------------------------------------------------------------
+    - name: Mint the AAP token for AO
+      ansible.builtin.uri:
+        url: "{{ _gw_tokens }}"
+        method: POST
+        user: "{{ aap_username }}"
+        password: "{{ aap_password }}"
+        force_basic_auth: true
+        body_format: json
+        body:
+          description: "{{ aac_mcp_token_description }}"
+          scope: write
+        validate_certs: "{{ aap_validate_certs | default(false) | bool }}"
+        status_code: [200, 201]
+      register: _gw_new_token
+      changed_when: true
+      no_log: true
+
+    # -----------------------------------------------------------------------
+    # 4. The AO credential and integration
+    # -----------------------------------------------------------------------
+    - name: Create the MCP credential
+      when: _ao_mcp_cred_existing | length == 0
+      ansible.builtin.uri:
+        url: "{{ ao_url }}/api/v1/credentials"
+        method: POST
+        body_format: json
+        body:
+          name: "{{ aac_mcp_credential }}"
+          description: "AAP gateway token for {{ aac_mcp_integration }}. Created by ao_mcp_integration.yml (#867); re-running rotates it."
+          credential_type_id: "{{ _ao_bearer_type_id | trim }}"
+          project_id: "{{ _ao_default_project_id | trim }}"
+          inputs:
+            token: "{{ _gw_new_token.json.token }}"
+        headers: "{{ ao_auth_header }}"
+        validate_certs: false
+        status_code: [200, 201]
+      register: _ao_mcp_cred_created
+      no_log: true
+
+    - name: Update the existing MCP credential
+      when: _ao_mcp_cred_existing | length > 0
+      ansible.builtin.uri:
+        url: "{{ ao_url }}/api/v1/credentials/{{ _ao_mcp_cred_existing[0].id }}"
+        method: PATCH
+        body_format: json
+        body:
+          inputs:
+            token: "{{ _gw_new_token.json.token }}"
+        headers: "{{ ao_auth_header }}"
+        validate_certs: false
+        status_code: 200
+      no_log: true
+
+    # Only now: AO holds the new token. Retiring first would leave AO with a
+    # dead one if the credential write above failed.
+    - name: Retire the previous tokens with this description
+      ansible.builtin.uri:
+        url: "{{ _gw_tokens }}{{ item.id }}/"
+        method: DELETE
+        user: "{{ aap_username }}"
+        password: "{{ aap_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ aap_validate_certs | default(false) | bool }}"
+        status_code: [200, 204]
+      loop: "{{ _gw_old_tokens.json.results | default([]) }}"
+      loop_control:
+        label: "token {{ item.id }}"
+      changed_when: true
+      no_log: true
+
+    - name: Set the MCP credential ID
+      ansible.builtin.set_fact:
+        _ao_mcp_cred_id: >-
+          {{ _ao_mcp_cred_created.json.id | trim
+             if _ao_mcp_cred_existing | length == 0
+             else _ao_mcp_cred_existing[0].id }}
+
+    - name: Create or update the MCP server integration
+      ansible.builtin.uri:
+        url: >-
+          {{ ao_url }}/api/v1/integrations{{
+             ('/' ~ _ao_mcp_integration_existing[0].id) if _ao_mcp_integration_existing | length > 0 else '' }}
+        method: "{{ 'PATCH' if _ao_mcp_integration_existing | length > 0 else 'POST' }}"
+        body_format: json
+        body: >-
+          {{ {
+               'description': 'This platform''s AAP MCP server (' ~ _mcp_base_url ~ '). Managed by ao_mcp_integration.yml (#867).',
+               'configuration': {
+                 'integration_type': 'mcp_server',
+                 'base_url': _mcp_base_url,
+                 'allow_http': true,
+                 'insecure_skip_tls_verify': false
+               },
+               'management_credential_id': _ao_mcp_cred_id | trim
+             } | combine({'name': aac_mcp_integration, 'integration_type': 'mcp_server'}
+                         if _ao_mcp_integration_existing | length == 0 else {}) }}
+        headers: "{{ ao_auth_header }}"
+        validate_certs: false
+        status_code: [200, 201]
+      register: _ao_mcp_integration_saved
+      retries: 5
+      delay: 20
+      until: _ao_mcp_integration_saved.status in [200, 201]
+
+    - name: Set the integration ID
+      ansible.builtin.set_fact:
+        _ao_mcp_integration_id: >-
+          {{ _ao_mcp_integration_existing[0].id
+             if _ao_mcp_integration_existing | length > 0
+             else _ao_mcp_integration_saved.json.id | trim }}
+
+    # -----------------------------------------------------------------------
+    # 5. Prove it: validate, discover, and read the tool count back
+    # -----------------------------------------------------------------------
+    - name: Validate the integration
+      ansible.builtin.uri:
+        url: "{{ ao_url }}/api/v1/integrations/{{ _ao_mcp_integration_id | trim }}/validate"
+        method: POST
+        headers: "{{ ao_auth_header }}"
+        validate_certs: false
+        status_code: 200
+      register: _ao_mcp_validate
+
+    - name: Assert AO could reach the MCP server
+      ansible.builtin.assert:
+        that:
+          - _ao_mcp_validate.json.success | default(false) | bool
+        fail_msg: >-
+          AO could not validate {{ aac_mcp_integration }} at {{ _mcp_base_url }}:
+          {{ _ao_mcp_validate.json.error | default(_ao_mcp_validate.json) }}.
+          Is the host in APP_INTEGRATION_URL_ALLOWED_HOSTS on a worker that has
+          restarted, and is the MCP server pod Available (mcp_server.yml)?
+        quiet: true
+
+    - name: Find the Integration Resource Discovery workflow
+      ansible.builtin.uri:
+        url: "{{ ao_url }}/api/v1/workflows?limit=50"
+        headers: "{{ ao_auth_header }}"
+        validate_certs: false
+        status_code: 200
+      register: _ao_discovery_workflows
+
+    - name: Read the discovery workflow
+      ansible.builtin.uri:
+        url: "{{ ao_url }}/api/v1/workflows/{{ _ao_discovery_wf_id | trim }}"
+        headers: "{{ ao_auth_header }}"
+        validate_certs: false
+        status_code: 200
+      register: _ao_discovery_wf
+      vars:
+        _ao_discovery_wf_id: >-
+          {{ _ao_discovery_workflows.json.resources
+             | selectattr('name', 'equalto', 'Integration Resource Discovery')
+             | map(attribute='id') | first }}
+
+    - name: Trigger tool discovery
+      ansible.builtin.uri:
+        url: "{{ ao_url }}/api/v1/executions"
+        method: POST
+        body_format: json
+        body:
+          workflow_id: "{{ _ao_discovery_wf.json.id }}"
+          trigger_node_id: "{{ _ao_discovery_wf.json.version.workflow_definition.triggers[0].id }}"
+          use_published: true
+        headers: "{{ ao_auth_header }}"
+        validate_certs: false
+        status_code: [200, 201]
+      register: _ao_discovery_execution
+      changed_when: true
+
+    - name: Wait for discovery to complete
+      ansible.builtin.uri:
+        url: "{{ ao_url }}/api/v1/executions/{{ _ao_discovery_execution.json.id }}"
+        headers: "{{ ao_auth_header }}"
+        validate_certs: false
+        status_code: 200
+      register: _ao_discovery_status
+      retries: 18
+      delay: 10
+      until: _ao_discovery_status.json.status in ['completed', 'failed']
+
+    - name: Read the integration back
+      ansible.builtin.uri:
+        url: "{{ ao_url }}/api/v1/integrations/{{ _ao_mcp_integration_id | trim }}"
+        headers: "{{ ao_auth_header }}"
+        validate_certs: false
+        status_code: 200
+      register: _ao_mcp_final
+      retries: 6
+      delay: 10
+      until: (_ao_mcp_final.json.total_tool_count | default(0) | int) > 0
+
+    - name: Assert the integration lists tools
+      ansible.builtin.assert:
+        that:
+          - (_ao_mcp_final.json.total_tool_count | default(0) | int) > 0
+          - (_ao_mcp_final.json.enabled_tool_count | default(0) | int) > 0
+        fail_msg: >-
+          {{ aac_mcp_integration }} validated but discovered no tools
+          (total={{ _ao_mcp_final.json.total_tool_count | default('?') }},
+          enabled={{ _ao_mcp_final.json.enabled_tool_count | default('?') }}).
+          Discovery status: {{ _ao_discovery_status.json.status }}.
+        quiet: true
+
+    - name: Report
+      ansible.builtin.debug:
+        msg:
+          - "AO integration '{{ aac_mcp_integration }}' → {{ _mcp_base_url }} ({{ _ao_mcp_final.json.validation_status }})"
+          - "Tools: {{ _ao_mcp_final.json.enabled_tool_count }} enabled of {{ _ao_mcp_final.json.total_tool_count }}"
+          - "Credential '{{ aac_mcp_credential }}': AAP gateway token '{{ aac_mcp_token_description }}', previous {{ _gw_old_tokens.json.count | default(0) }} retired"
+          - "Write posture is the server's: aap_mcp_allow_write_operations={{ aap_mcp_allow_write_operations | default('unset') }}"

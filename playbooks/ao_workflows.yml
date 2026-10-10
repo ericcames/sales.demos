@@ -69,19 +69,26 @@
           present or absent (got '{{ ao_workflow_state }}').
         quiet: true
 
+    # ao_workflows_aac (#867) is a second list, declared in its own file, so
+    # the AAC workflows load through this same path without their ~70 nodes
+    # sitting in ao_workflows.yml beside the Day 2 workflows. Absent, nothing
+    # changes.
     - name: Choose the workflows to act on
       ansible.builtin.set_fact:
         ao_selected_workflows: >-
-          {{ ao_workflows if ao_workflows_only | length == 0
-             else ao_workflows | selectattr('name', 'in', ao_workflows_only) | list }}
+          {{ ao_all_workflows if ao_workflows_only | length == 0
+             else ao_all_workflows | selectattr('name', 'in', ao_workflows_only) | list }}
+      vars:
+        ao_all_workflows: "{{ ao_workflows + (ao_workflows_aac | default([])) }}"
 
     - name: Assert every requested workflow is in the file
       ansible.builtin.assert:
         that:
-          - ao_selected_workflows | length == (ao_workflows_only | length if ao_workflows_only | length > 0 else ao_workflows | length)
+          - ao_selected_workflows | length == (ao_workflows_only | length if ao_workflows_only | length > 0
+                                               else (ao_workflows + (ao_workflows_aac | default([]))) | length)
         fail_msg: >-
-          ao_workflows_only names a workflow that is not in ao_workflows.yml:
-          {{ ao_workflows_only | reject('in', ao_workflows | map(attribute='name') | list) | list }}
+          ao_workflows_only names a workflow that is not in ao_workflows.yml or ao_workflows_aac.yml:
+          {{ ao_workflows_only | reject('in', (ao_workflows + (ao_workflows_aac | default([]))) | map(attribute='name') | list) | list }}
         quiet: true
 
     - name: Connect to Automation Orchestrator
@@ -102,6 +109,8 @@
         - proxies/aap/job_templates
         - users?auth_type=federated&limit=100
         - workflows?limit=100
+        # AAP WORKFLOW templates, for aap_workflow_job_template nodes (#867).
+        - proxies/aap/workflow_job_templates
       register: ao_lookups
 
     - name: Build the name-to-ID maps
@@ -114,6 +123,7 @@
         ao_existing_workflow_ids: >-
           {{ ao_lookups.results[5].json.resources | rejectattr('is_builtin') | list
              | items2dict(key_name='name', value_name='id') }}
+        ao_wfjt_ids: "{{ ao_lookups.results[6].json.results | default([]) | items2dict(key_name='name', value_name='id') }}"
 
     # Agentic nodes need model IDs from LLM Provider integrations. Only
     # query if at least one selected workflow has an agentic node.
@@ -150,6 +160,39 @@
                 {% endif -%}
               {% endfor -%}
               {{ result }}
+
+        # Per-node model choice (#867, decision I on #841). A node may name an
+        # `llm_model`; it resolves here by name within its integration. Nodes
+        # that do not name one keep the first-enabled behaviour above.
+        - name: Build integration-name-to-model-name-to-ID map
+          ansible.builtin.set_fact:
+            ao_model_ids_by_name: >-
+              {% set result = {} -%}
+              {% for idx in range(ao_llm_integration_names | length) -%}
+                {% set all_models = ao_llm_model_lookups.results[idx].json.resources | default([]) -%}
+                {% set _ = result.update({ao_llm_integration_names[idx]:
+                     dict(all_models | map(attribute='name') | zip(all_models | map(attribute='id')))}) -%}
+              {% endfor -%}
+              {{ result }}
+
+        - name: Assert every named llm_model exists in its integration
+          ansible.builtin.assert:
+            that:
+              - ao_named_models_missing | length == 0
+            fail_msg: >-
+              These agentic nodes name a model their LLM integration does not list
+              (is it enabled by publish_inference.yml?): {{ ao_named_models_missing }}
+            quiet: true
+          vars:
+            ao_named_models_missing: >-
+              {% set out = [] -%}
+              {% for n in ao_selected_workflows | map(attribute='nodes') | flatten
+                         | selectattr('type', 'equalto', 'agentic') | selectattr('llm_model', 'defined') -%}
+                {% if n.llm_model not in (ao_model_ids_by_name[n.llm_integration] | default({})) -%}
+                  {% set _ = out.append(n.name ~ ' wants ' ~ n.llm_model ~ ' from ' ~ n.llm_integration) -%}
+                {% endif -%}
+              {% endfor -%}
+              {{ out }}
 
         - name: Assert every referenced LLM integration has at least one model
           ansible.builtin.assert:

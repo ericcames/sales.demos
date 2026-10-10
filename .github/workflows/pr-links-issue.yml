@@ -1,0 +1,45 @@
+---
+name: PR links issue
+# Every PR body names its issue: `Closes #N` (or Fixes / Resolves), or
+# `Part of #N` when the PR is one piece of a larger issue (#879).
+#
+# The PR template already asks for this, but a template only applies to a PR
+# opened in the web UI. Claude Code agents open PRs with `gh pr create --body`,
+# which skips it -- so all eight Compliance as Code PRs (#870-#878) arrived
+# unlinked, and merging them would have left their issues open.
+#
+# A separate workflow, not a job in lint.yml, because it must re-run when the
+# DESCRIPTION is edited (`edited`), which lint.yml does not trigger on. Fixing
+# the body turns this green without a new commit.
+#
+# The body is passed through `env`, never interpolated into `run:` -- a PR
+# description is attacker-controlled text. No checkout, no token.
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+permissions: {}
+
+jobs:
+  pr-links-issue:
+    runs-on: ubuntu-latest
+    steps:
+      - name: "PR body has Closes #N or Part of #N"
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        # Strip fenced code, inline code and HTML comments first: GitHub ignores
+        # closing keywords in all three, so a quoted example (or the template's
+        # commented-out placeholder) must not count. #880's own test plan quoted
+        # `fixes #12` and passed this check while GitHub linked nothing.
+        run: |
+          linkable=$(printf '%s' "$PR_BODY" | perl -0777 -pe \
+            's/^[ \t]*```.*?^[ \t]*```[^\n]*$//gms; s/<!--.*?-->//gs; s/`[^`]*`//g')
+          if printf '%s' "$linkable" | grep -qiE \
+              '(\b(close[sd]?|fix(e[sd])?|resolve[sd]?)|\bpart of)[[:space:]]+([[:alnum:]_.-]+/[[:alnum:]_.-]+)?#[0-9]+'; then
+            echo "PR body links an issue."
+          else
+            echo "::error::The PR body must link its issue: 'Closes #N'" \
+              "(or Fixes/Resolves), or 'Part of #N' for one piece of a larger" \
+              "issue. Edit the description; this check re-runs on edit."
+            exit 1
+          fi
