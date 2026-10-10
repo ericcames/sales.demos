@@ -20,7 +20,7 @@
 #
 #   ./utilities/build-ee.sh              # build + verify
 #   ./utilities/build-ee.sh --push       # build + verify + push to quay
-#   EE_IMAGE=quay.io/zigfreed/sales-demos-ee:v1.2.0 ./utilities/build-ee.sh
+#   EE_IMAGE=quay.io/zigfreed/sales-demos-ee:v1.3.0 ./utilities/build-ee.sh
 #
 # Publishing is a separate, explicit flag. A build is cheap and local; a push
 # overwrites a tag other people's AAP instances pull from.
@@ -33,7 +33,7 @@
 set -euo pipefail
 
 # Default tag follows the aap_config convention: quay.io/zigfreed/<demo>-ee:vX.Y.Z
-EE_IMAGE="${EE_IMAGE:-quay.io/zigfreed/sales-demos-ee:v1.2.0}"
+EE_IMAGE="${EE_IMAGE:-quay.io/zigfreed/sales-demos-ee:v1.3.0}"
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repo_root"
