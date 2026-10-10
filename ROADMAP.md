@@ -57,10 +57,10 @@ gate has passed.
 
 | Phase | Outcome | Status |
 | --- | --- | --- |
-| 1 | Assessment OPA: one pod serving the pinned library as a 1.2 MB bundle behind `opa-security`, `opa-compliance`, `opa-ot`; each Service proven to answer a framework report on empty input. | **In progress** ([#868](https://github.com/ericcames/sales.demos/issues/868)) |
-| 2 | AAC evidence schema as a second database `aac` in `policy-db`, seeded from the AAC lab. | Not started ([#869](https://github.com/ericcames/sales.demos/issues/869)) |
-| 3 | Collect and assess the demo VMs: `Compliance as Code -` templates, the fact shaper into `host_facts`, the same six failures OpenSCAP found or each difference explained. | Not started |
-| 4 | Automation Orchestrator: the loader carries the AAC node types; `opa-routing` decides, the model recommends, a human approves. | **In progress** ([#867](https://github.com/ericcames/sales.demos/issues/867)) |
+| 1 | Assessment OPA: one pod serving the pinned library as a 1.2 MB bundle behind `opa-security`, `opa-compliance`, `opa-ot`; each Service proven to answer a framework report on empty input. | **Done** ([#868](https://github.com/ericcames/sales.demos/issues/868)), live on `sandbox` |
+| 2 | AAC evidence schema as a second database `aac` in `policy-db`, seeded from the AAC lab. | **Done** ([#869](https://github.com/ericcames/sales.demos/issues/869)); the seed restores as the `aac` role ([#881](https://github.com/ericcames/sales.demos/issues/881)) |
+| 3 | Collect and assess the demo VMs: `Compliance as Code -` templates, the fact shaper into `host_facts`, the same six failures OpenSCAP found or each difference explained. | **In progress**: the ten templates and the Golden Image Enforcement workflow are loaded ([#878](https://github.com/ericcames/sales.demos/pull/878)); the fact shaper and host assessment are not built, and several templates cannot succeed until [#883](https://github.com/ericcames/sales.demos/issues/883) |
+| 4 | Automation Orchestrator: the loader carries the AAC node types; `opa-routing` decides, the model recommends, a human approves. | **Done** ([#867](https://github.com/ericcames/sales.demos/issues/867)): the workflows load; they cannot run end to end until [#883](https://github.com/ericcames/sales.demos/issues/883) |
 | 5–8 | AAC workflows, governed AI agents with a model per task, dashboards over both evidence stores, the docs and skill. | Not started |
 
 ## Grafana Cloud observability
