@@ -76,6 +76,10 @@
       - technical_debt_items
       - technical_debt_summary
       - sidecar_datasets
+      # files/ai_action_log_schema.sql, applied through postgresql_script (#882)
+      - ai_systems
+      - ai_action_log
+      - ai_approval_requests
     _psql: "psql -U postgres -v ON_ERROR_STOP=1"
 
   tasks:
@@ -219,9 +223,16 @@
       ansible.builtin.uri:
         url: "{{ aac_db_files_url }}/{{ item | basename }}"
         return_content: true
+      # By KEY, not selectattr/map(attribute=): those read a dotted name as a
+      # path (community -> postgresql -> ...), never match the FQCN, and the
+      # loop is silently empty. That dropped ai_action_log_schema.sql (#882).
       loop: >-
-        {{ _schema_tasks | selectattr('community.postgresql.postgresql_script', 'defined')
-           | map(attribute='community.postgresql.postgresql_script.path') | list }}
+        {% set paths = [] -%}
+        {% for t in _schema_tasks -%}
+          {% set s = t['community.postgresql.postgresql_script'] | default({}) -%}
+          {% if s.path is defined %}{% set _ = paths.append(s.path) %}{% endif -%}
+        {% endfor -%}
+        {{ paths }}
       loop_control:
         label: "{{ item | basename }}"
       register: _script_fetched
@@ -231,6 +242,20 @@
         _script_files: >-
           {{ dict(_script_fetched.results | default([]) | map(attribute='item') | map('basename')
                   | zip(_script_fetched.results | default([]) | map(attribute='content'))) }}
+
+    - name: Assert every referenced script was fetched
+      # A script the render cannot find would otherwise become an empty
+      # statement, and the run would go green without it (#882).
+      ansible.builtin.assert:
+        that:
+          - _script_fetched.results | default([]) | length
+            == (_schema_tasks | map('dict2items') | flatten | selectattr('key', 'equalto', 'community.postgresql.postgresql_script') | list | length)
+          - _script_files.values() | select('search', 'CREATE') | list | length == _script_files | length
+        fail_msg: >-
+          schema.yml references {{ _schema_tasks | map('dict2items') | flatten
+          | selectattr('key', 'equalto', 'community.postgresql.postgresql_script') | list | length }}
+          script file(s); fetched {{ _script_files | list }}.
+        quiet: true
 
     - name: Render the statements
       # Each task is one community.postgresql call: `query:` (or a loop of
