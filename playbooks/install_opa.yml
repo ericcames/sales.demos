@@ -304,8 +304,8 @@
         return_content: true
       loop:
         # Midday UTC, so the weekday is the same in every zone from -11 to +11.
-        - {label: "Wed 12:00Z", allowed: false, input: {created: "2026-10-07T12:00:00Z", labels: [{name: policy}]}}
-        - {label: "Sat 12:00Z", allowed: true, input: {created: "2026-10-10T12:00:00Z", labels: [{name: policy}]}}
+        - {label: "Wed 12:00Z", allowed: false, input: {created: "2026-10-07T12:00:00Z", labels: [{name: compliance}]}}
+        - {label: "Sat 12:00Z", allowed: true, input: {created: "2026-10-10T12:00:00Z", labels: [{name: compliance}]}}
         - {label: "Wed 12:00Z + break-glass", allowed: true, input: {created: "2026-10-07T12:00:00Z", labels: [{name: break-glass}]}}
       loop_control:
         label: "{{ item.label }}"
@@ -336,9 +336,9 @@
         validate_certs: "{{ openshift_validate_certs | default(false) | bool }}"
         return_content: true
       loop:
-        - {label: "no ticket", allowed: false, input: {labels: [{name: policy}]}}
-        - {label: "change-ticket:12345", allowed: false, input: {labels: [{name: policy}, {name: "change-ticket:12345"}]}}
-        - {label: "change-ticket:CHG0012345", allowed: true, input: {labels: [{name: policy}, {name: "change-ticket:CHG0012345"}]}}
+        - {label: "no ticket", allowed: false, input: {labels: [{name: compliance}]}}
+        - {label: "change-ticket:12345", allowed: false, input: {labels: [{name: compliance}, {name: "change-ticket:12345"}]}}
+        - {label: "change-ticket:CHG0012345", allowed: true, input: {labels: [{name: compliance}, {name: "change-ticket:CHG0012345"}]}}
       loop_control:
         label: "{{ item.label }}"
       register: opa_rl_smoke

@@ -135,7 +135,7 @@ utilities/run-in-ee.sh playbooks/install_opa.yml \
    - no labels → job **failed** before running, *"Friday is not an approved
      day for automation (allowed: ["Saturday", "Sunday"])"*
    - with `{"labels": [<id of break-glass>]}` as admin → **successful**, and
-     the job carries both `break-glass` and `policy` labels — the record
+     the job carries both `break-glass` and `compliance` labels — the record
    - the same as `policy-demo` → **HTTP 403**, because it is not an org
      member — not because break-glass is protected (see above)
    On a weekend in that zone the first launch runs — that is the policy
