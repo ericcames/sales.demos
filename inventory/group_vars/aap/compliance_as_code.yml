@@ -49,10 +49,16 @@
 
 # Launch-time default for the Golden Image family: the inventory hostname of
 # the VM to govern. The AO workflows pass their own (${trigger.target_hostname});
-# this is what a hand launch gets when nobody types one. provision_vm.yml
-# names Linux guests <role>-lnx-<n> (role defaults to web); set this to the
-# one you captured.
-aac_golden_target_host: "web-lnx-1"
+# this is what a hand launch gets when nobody types one.
+#
+# DELIBERATELY EMPTY. There is no static name to put here: provision_vm.yml
+# registers a guest in AAP as its route FQDN,
+# web-lnx-1-<id>-<namespace>.apps.<cluster>..., and <id> changes on every
+# build — including the nightly rebuild. "web-lnx-1" alone is not a host in
+# "Sales Demo VMs" and was refused on sandbox (job 406). Empty makes every
+# hand launch fail at the plays' own assert until you pass
+# target_host=<the host's name in Sales Demo VMs>, which is the honest answer.
+aac_golden_target_host: ""
 
 # What an AAC agentic node may do through the MCP server it attaches (#867).
 # The real guard is the SERVER's write posture (aap_mcp_allow_write_operations,
