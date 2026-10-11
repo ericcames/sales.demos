@@ -175,7 +175,15 @@
                     volumeMounts:
                       - {name: lib, mountPath: /library, readOnly: true}
                     securityContext: *restricted
-                    resources: *init_resources
+                    # Its own limit: `opa test` is the hungriest step. At
+                    # library v2.1.1 it peaks between 768Mi and 832Mi (it was
+                    # OOMKilled at 768Mi on sandbox, exit 137; v2.0.0 fit), so
+                    # this is ~2x the measured peak. Measured with --memory under
+                    # the pinned opa image, 2026-10-10 (#904). Same request, so
+                    # scheduling is unchanged; build and serve still fit 768Mi.
+                    resources:
+                      requests: {cpu: 100m, memory: 256Mi}
+                      limits: {memory: 1536Mi}
                   # 3/3 compile it once. Serving a bundle instead of a directory
                   # is what makes startup seconds rather than the minutes a
                   # per-file REST load takes.
