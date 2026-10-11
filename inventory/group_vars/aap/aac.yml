@@ -96,11 +96,11 @@ aac_library_tarball: >-
 # (digital_sovereignty, fisma, gdpr, hipaa, pci_dss, soc2, sox) are known
 # upstream and are deliberately not listed here.
 #
-# eu_ai_act answers, but is NOT a smoke key: its report has no `compliant`,
-# and on empty input says `overall_compliant: true` — it passes when it knows
-# nothing, the opposite of every key below. Measured at v2.0.0 under OPA
-# 1.10, 2026-10-09. Its assessments are fail-open until that changes upstream;
-# opa-ot is still proven by nist_800_82.
+# eu_ai_act is a smoke key again (#904). Up to v2.0.0 its report had no
+# `compliant` and said `overall_compliant: true` on empty input — it passed
+# when it knew nothing. v2.1.1 (upstream #186) answers `compliant: false` with
+# an explicit FAIL-CLOSED violation; measured on {} under OPA 1.10 against
+# both tarballs, 2026-10-10. Keep it here so a regression fails the install.
 aac_opa_smoke:
   - {service: opa-security, key: cis_rhel9}
   - {service: opa-security, key: cis_windows_server_2022}
@@ -110,3 +110,4 @@ aac_opa_smoke:
   - {service: opa-compliance, key: nis2}
   - {service: opa-compliance, key: cis_controls_v8}
   - {service: opa-ot, key: nist_800_82}
+  - {service: opa-ot, key: eu_ai_act}

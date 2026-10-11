@@ -56,10 +56,10 @@ opa_image: "docker.io/openpolicyagent/opa@sha256:c0814ce7811ecef8f1297a8e55774a1
 policy_change_window_timezone: America/Phoenix
 
 policy_library_repo: ynotbhatc/rego_policy_libraries
-policy_library_version: v2.0.0
+policy_library_version: v2.1.1
 policy_library_path: enforcement/aap
 
-# Every file in enforcement/aap/ at v2.0.0. Listed rather than discovered so a
+# Every file in enforcement/aap/ at v2.1.1. Listed rather than discovered so a
 # new upstream file is a deliberate change here, not a surprise in a demo. The
 # test file ships too: the initContainer runs `opa test` on every rollout.
 policy_library_files:
@@ -69,6 +69,7 @@ policy_library_files:
   - owner_scope.rego
   - required_labels.rego
   - tests/test_aap_policy.rego
+  - tests/test_aap27_real_input.rego
 
 # Our settings, loaded at data.aac.aap.config. ONE BLOCK PER ATTACHED RULE,
 # written out in full even where it equals the library default, so a default

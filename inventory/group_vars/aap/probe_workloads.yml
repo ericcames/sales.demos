@@ -154,6 +154,6 @@ probe_workloads:
       DECLARED, not measured: the server container's own requests in
       playbooks/install_aac_opa.yml (100m / 256Mi, limit 768Mi for a 970-file
       bundle). Opt-in (#868). The three initContainers ask the same and run
-      only at rollout. Disk: the opa image is already on the node for the
+      only at rollout; opa-test's LIMIT is 1536Mi (#904), its request is not. Disk: the opa image is already on the node for the
       enforcement pod; the one new pull is the ~10 MB curl image that fetches
       the release tarball. The library itself is 1.2 MB as a bundle.
