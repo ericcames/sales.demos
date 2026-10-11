@@ -36,7 +36,12 @@
 # policies, the evidence schema and the AO workflow definitions all resolve
 # through these two lines. Moving to a new pack is one line.
 aac_pack_repo: ynotbhatc/aac-pack
-aac_pack_version: v2026.10.09
+# v2026.10.10-rc1 is a HAND-PUBLISHED release candidate from
+# ynotbhatc/compliance branch feat/golden-image-ssh (PRs #792 + #793 there),
+# not a job-published tag from main: it exists so this platform can test the
+# schema completeness and the SSH-shaped Golden Image family before they
+# merge. Move to the next job-published tag once they do.
+aac_pack_version: v2026.10.10-rc1
 aac_pack_raw: "https://raw.githubusercontent.com/{{ aac_pack_repo }}/{{ aac_pack_version }}"
 
 aac_opa_name: opa-assessment
