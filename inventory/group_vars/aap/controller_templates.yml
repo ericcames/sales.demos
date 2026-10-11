@@ -2272,8 +2272,8 @@ controller_templates_all:
   - name: "AAP Ecosystem - Install Compliance Evidence Database"
     description: >-
       Add the AAC evidence database `aac` to policy-db, apply the product's
-      schema (11 tables) as role `aac`, and optionally seed it from
-      aac_db_seed_url. Proves every table exists and who owns it.
+      schema at the pinned AAC pack as role `aac`, and optionally seed it
+      from aac_db_seed_url. Proves every table exists and who owns it.
     labels:
       - aap-ecosystem
       - install
