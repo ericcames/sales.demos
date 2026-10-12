@@ -524,6 +524,16 @@ environments (`sandbox`/`demo`) consume the endpoint. Issue
   entirely — that is how #870–#878 all arrived unlinked. The required
   `pr-links-issue` check enforces it and re-runs when the description is
   edited, so fix the body, not the code.
+- **Another repo's issue or PR is `owner/repo#N`, every time** (#913) —
+  `ynotbhatc/compliance#793`, `ericcames/sales.demos-docs#120`. GitHub resolves
+  a bare `#N` against the repo the text is in, and `compliance#793` or
+  `docs#120` is not valid shorthand: the prefix renders as text and `#N` still
+  links here. Nothing errors. #883 sent readers to this repo's prometheus issue
+  instead of the compliance PR, and #841 had 15 more. Lists are where it slips:
+  in `ynotbhatc/compliance#792 / #793` the second ref links here. Before posting,
+  read every bare `#N` as "this repo's item N". Text inside backticks never
+  links. No CI check is possible: a checker cannot tell which repo a bare `#161`
+  meant.
 - **Always label new issues** — run `gh label list --repo ericcames/sales.demos`
   and apply every label that genuinely fits.
 - **One concern per PR** — group by shared root cause. Would you revert these
