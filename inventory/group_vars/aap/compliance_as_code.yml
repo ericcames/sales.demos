@@ -213,13 +213,31 @@ controller_templates_aac:
   # monitored file set is fixed inside the plays: sshd_config, selinux_config,
   # auditd_conf, audit_rules, sysctl_conf — golden_file_key picks one
   # (default selinux_config).
+  #
+  # OUR GOLDEN IMAGE HAS THREE OF THOSE FIVE, SO CAPTURE SETS
+  # golden_require_all=false (#917). rhel9-cis-l1-golden ships sshd_config,
+  # selinux_config and auditd_conf; /etc/audit/rules.d/99-cis.rules and
+  # /etc/sysctl.d/99-cis.conf are not in it. The pack defaults the flag to
+  # true, so a plain launch refuses the partial set and writes no row — and a
+  # missing row is not a quiet failure: every Check, Rollback and AO Golden
+  # Image run then stops at "No current row in golden_image_baselines for
+  # hostname='<host>'", which is how this was found. Measured on sandbox
+  # 2026-10-13: job 334 refused, job 335 with the override captured baseline 1
+  # (demo-rhel9-2026-10-13), job 336 Check passed, any_drift=false.
+  #
+  # Three keys carry the demo — golden_file_key defaults to selinux_config and
+  # Introduce Drift edits that same file. Putting the two files into the image
+  # (ericcames/image.builder.pipeline) is the better CIS answer and is not
+  # blocked by this: once they are there they are captured automatically and
+  # this line becomes a no-op.
   - <<: *aac_template
     name: "Compliance as Code - Golden Image Capture Baseline"
     description: >-
       Read the golden files on the target over SSH and store them as its
       current baseline in golden_image_baselines (previous baselines are kept,
       marked not current). Run once per VM before Check / Rollback;
-      golden_require_all=false tolerates a missing file and names it.
+      golden_require_all is false here because this environment's golden image
+      ships three of the five monitored files (#917).
     playbook: playbooks/golden_image_capture_baseline.yml
     credentials:
       - "Sales Demos - Vault"
@@ -227,6 +245,7 @@ controller_templates_aac:
       - "Compliance as Code - Evidence Database"
     extra_vars:
       target_host: "{{ aac_golden_target_host }}"
+      golden_require_all: false
 
   - <<: *aac_template
     name: "Compliance as Code - Golden Image Check"
