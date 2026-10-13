@@ -118,6 +118,19 @@ token=<your token>
 url=https://galaxy.ansible.com/
 ```
 
+**Keep it alive.** An offline token expires after 30 days *unused*, and the
+check above counts as a use. Schedule it daily so the token never lapses:
+
+```bash
+bash utilities/install-hub-token-keepalive.sh            # --status, --uninstall
+```
+
+That is a systemd user timer on Fedora and a launchd agent on macOS — both
+catch up on a run missed while the laptop slept, which cron does not. It reads
+`~/.ansible.cfg` at run time, stores no token, and raises a desktop
+notification only if Red Hat SSO rejects the token (#915). Run it from the
+main checkout, not a worktree: the schedule embeds the path.
+
 Use `~/.ansible.cfg`, **not** `~/.ansible/ansible.cfg`. The latter is a stale
 leftover on some machines; this repo reads the former.
 

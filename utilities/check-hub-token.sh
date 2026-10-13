@@ -22,7 +22,9 @@
 # them is half a fix.
 #
 # The one implementation for shell callers -- utilities/preflight.sh
-# --hub-token, /sales-demos-first-time and /sales-demos-collections-sync.
+# --hub-token, /sales-demos-first-time, /sales-demos-collections-sync, and
+# utilities/hub-token-keepalive.sh, which runs it daily so the token never
+# goes 30 days unused (#915).
 # Playbooks use playbooks/tasks/check_hub_token.yml, which makes the same call
 # with ansible.builtin.uri.
 #
